@@ -1,6 +1,20 @@
+import {
+  APIConnectionError,
+  APIStatusError,
+  APITimeoutError,
+  AuthenticationError,
+  FetchFormat,
+  RateLimitError,
+  TinyFish,
+  type FetchError,
+  type FetchGetContentsParams,
+  type FetchResult,
+  type SearchQueryParams,
+} from "@tiny-fish/sdk";
 import { TINYFISH_TOOL_CONTRACTS } from "../provider-contracts/tinyfish";
 import { TINYFISH_WEB_PROMPT } from "../provider-prompts/tinyfish";
 import type {
+  WebArtifactRef,
   WebInvocationContext,
   WebProvider,
   WebProviderCapabilities,
@@ -10,13 +24,7 @@ import type {
   WebProviderToolResult,
   WebToolName,
 } from "../contracts";
-import {
-  assertPublicWebUrl,
-  createFetchArtifacts,
-  fetchWithTimeout,
-  htmlToText,
-  textResult,
-} from "./shared";
+import { assertPublicWebUrl, providerError, textResult } from "./shared";
 
 export class TinyFishWebProvider implements WebProvider {
   readonly id = "tinyfish" as const;
@@ -64,127 +72,192 @@ export class TinyFishWebProvider implements WebProvider {
   ): Promise<WebProviderToolResult> {
     if (!this.apiKey) throw new Error("TinyFish API key is not configured.");
     return toolName === "web.search"
-      ? this.search(
-          input as {
-            query: string;
-            limit?: number;
-            location?: string;
-            language?: string;
-            page?: number;
-          },
-          context,
-        )
-      : this.fetch(input as { url: string; format?: string; timeoutMs?: number }, context);
+      ? this.search(input as SearchQueryParams)
+      : this.fetch(input as FetchGetContentsParams, context);
   }
 
-  private async search(
-    input: { query: string; limit?: number; location?: string; language?: string; page?: number },
-    context: WebInvocationContext,
-  ): Promise<WebProviderToolResult> {
-    const apiKey = this.apiKey;
-    if (!apiKey) throw new Error("TinyFish API key is not configured.");
-    const url = new URL("https://api.search.tinyfish.ai");
-    url.searchParams.set("query", input.query);
-    if (input.location) url.searchParams.set("location", input.location);
-    if (input.language) url.searchParams.set("language", input.language);
-    if (typeof input.page === "number") url.searchParams.set("page", String(input.page));
-    const response = await fetchWithTimeout(url.href, {
-      timeoutMs: 30000,
-      signal: context.signal,
-      headers: {
-        "X-API-Key": apiKey,
-      },
-    });
-    const json = (await response.json()) as { results?: unknown[] };
-    const results = (Array.isArray(json.results) ? json.results : []).slice(0, input.limit ?? 10);
-    return textResult(JSON.stringify({ providerId: this.id, results }, null, 2), {
-      providerId: this.id,
-      toolName: "web.search",
-      status: "succeeded",
-      query: input.query,
-      resultCount: results.length,
-      commandFacts: {
+  private async search(input: SearchQueryParams): Promise<WebProviderToolResult> {
+    try {
+      const response = await this.client().search.query(input);
+      return textResult(JSON.stringify({ providerId: this.id, ...response }, null, 2), {
         providerId: this.id,
         toolName: "web.search",
         status: "succeeded",
         query: input.query,
-        resultCount: results.length,
-      },
-    });
+        resultCount: response.results.length,
+        commandFacts: {
+          providerId: this.id,
+          toolName: "web.search",
+          status: "succeeded",
+          query: input.query,
+          page: response.page,
+          totalResults: response.total_results,
+          resultCount: response.results.length,
+        },
+      });
+    } catch (error) {
+      throw mapTinyFishError(error);
+    }
   }
 
   private async fetch(
-    input: { url: string; format?: string; timeoutMs?: number },
+    input: FetchGetContentsParams,
     context: WebInvocationContext,
   ): Promise<WebProviderToolResult> {
-    const apiKey = this.apiKey;
-    if (!apiKey) throw new Error("TinyFish API key is not configured.");
-    const url = assertPublicWebUrl(input.url);
-    const response = await fetchWithTimeout("https://api.fetch.tinyfish.ai", {
-      method: "POST",
-      timeoutMs: input.timeoutMs ?? 45000,
-      signal: context.signal,
-      headers: {
-        "content-type": "application/json",
-        "X-API-Key": apiKey,
-      },
-      body: JSON.stringify({ urls: [url], format: input.format ?? "markdown" }),
-    });
-    const json = (await response.json()) as {
-      results?: Array<Record<string, unknown>>;
-      errors?: unknown[];
-    };
-    const page = json.results?.[0] ?? {};
-    const text = page.text;
-    const markdown =
-      typeof text === "string"
-        ? text
-        : text
-          ? JSON.stringify(text, null, 2)
-          : readString(page.content);
-    const html = readString(page.html);
-    const format = markdown ? "markdown" : html ? "html" : "json";
-    const content = markdown ?? html ?? JSON.stringify(page, null, 2);
-    const warnings =
-      Array.isArray(json.errors) && json.errors.length > 0
-        ? ["TinyFish returned per-URL fetch errors."]
-        : [];
-    const artifacts = createFetchArtifacts({
-      context,
-      providerId: this.id,
-      url,
-      finalUrl: readString(page.final_url) ?? readString(page.finalUrl) ?? url,
-      title: readString(page.title),
-      format,
-      content: format === "html" ? htmlToText(content) : content,
-      warnings,
-    });
-    return textResult(
-      JSON.stringify(
+    const urls = input.urls.map(assertPublicWebUrl);
+    try {
+      const response = await this.client().fetch.getContents({
+        ...input,
+        urls,
+        format: input.format ?? FetchFormat.Markdown,
+      });
+      const artifactSet = createTinyFishFetchArtifactSet(
+        context,
+        response.results,
+        response.errors,
+      );
+      return textResult(
+        JSON.stringify(
+          {
+            providerId: this.id,
+            artifacts: artifactSet.artifacts,
+            metadataArtifact: artifactSet.metadataArtifact,
+            errors: response.errors,
+            warnings: artifactSet.warnings,
+          },
+          null,
+          2,
+        ),
         {
           providerId: this.id,
-          artifacts: artifacts.artifacts,
-          metadataArtifact: artifacts.metadataArtifact,
+          toolName: "web.fetch",
+          status: "succeeded",
+          url: urls[0],
+          finalUrl: artifactSet.artifacts[0]?.finalUrl,
+          fetchedAt: artifactSet.fetchedAt,
+          format: input.format ?? FetchFormat.Markdown,
+          artifacts: artifactSet.artifacts,
+          metadataArtifact: artifactSet.metadataArtifact,
+          warnings: artifactSet.warnings,
+          commandFacts: artifactSet.commandFacts,
         },
-        null,
-        2,
-      ),
-      {
-        providerId: this.id,
-        toolName: "web.fetch",
-        status: "succeeded",
-        url,
-        finalUrl: readString(page.final_url) ?? readString(page.finalUrl) ?? url,
-        fetchedAt: artifacts.fetchedAt,
-        format,
-        artifacts: artifacts.artifacts,
-        metadataArtifact: artifacts.metadataArtifact,
-        commandFacts: artifacts.commandFacts,
-      },
-    );
+      );
+    } catch (error) {
+      throw mapTinyFishError(error);
+    }
+  }
+
+  private client(): TinyFish {
+    return new TinyFish({ apiKey: this.apiKey, maxRetries: 2 });
   }
 }
 
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value : undefined;
+function createTinyFishFetchArtifactSet(
+  context: WebInvocationContext,
+  results: FetchResult[],
+  errors: FetchError[],
+): {
+  fetchedAt: string;
+  artifacts: WebArtifactRef[];
+  metadataArtifact: WebArtifactRef;
+  warnings: string[];
+  commandFacts: Record<string, unknown>;
+} {
+  const fetchedAt = new Date().toISOString();
+  const warnings = errors.length > 0 ? ["TinyFish returned per-URL fetch errors."] : [];
+  const artifacts = results.map((result) => {
+    const extension =
+      result.format === FetchFormat.Json ? "json" : result.format === "html" ? "html" : "md";
+    const contentArtifact = context.createArtifact({
+      kind: result.format === FetchFormat.Json ? "json" : "text",
+      name: `web-fetch.${extension}`,
+      content: tinyFishFetchContent(result),
+    });
+    return {
+      artifactId: contentArtifact.id,
+      path: contentArtifact.path ?? "",
+      url: result.url,
+      finalUrl: result.final_url ?? undefined,
+      title: result.title ?? undefined,
+      format: result.format,
+    };
+  });
+  const metadata = {
+    providerId: "tinyfish",
+    fetchedAt,
+    artifacts,
+    errors,
+    warnings,
+    results: results.map((result) => ({
+      url: result.url,
+      finalUrl: result.final_url,
+      title: result.title,
+      description: result.description,
+      language: result.language,
+      author: result.author,
+      publishedDate: result.published_date,
+      links: result.links,
+      imageLinks: result.image_links,
+      latencyMs: result.latency_ms,
+      format: result.format,
+    })),
+  };
+  const metadataArtifactRaw = context.createArtifact({
+    kind: "json",
+    name: "web-fetch.metadata.json",
+    content: JSON.stringify(metadata, null, 2),
+  });
+  const metadataArtifact: WebArtifactRef = {
+    artifactId: metadataArtifactRaw.id,
+    path: metadataArtifactRaw.path ?? "",
+    format: "json",
+  };
+  const commandFacts = {
+    providerId: "tinyfish",
+    toolName: "web.fetch",
+    status: "succeeded",
+    url: artifacts[0]?.url,
+    finalUrl: artifacts[0]?.finalUrl,
+    format: artifacts[0]?.format,
+    fetchedAt,
+    artifactPaths: artifacts.map((artifact) => artifact.path),
+    artifactIds: artifacts.map((artifact) => artifact.artifactId),
+    metadataArtifactPath: metadataArtifact.path,
+    metadataArtifactId: metadataArtifact.artifactId,
+    fetchErrorCount: errors.length,
+    warnings,
+  };
+  return { fetchedAt, artifacts, metadataArtifact, warnings, commandFacts };
+}
+
+function tinyFishFetchContent(result: FetchResult): string {
+  if (result.format === FetchFormat.Json) {
+    return JSON.stringify(result.text ?? {}, null, 2);
+  }
+  return result.text ?? "";
+}
+
+function mapTinyFishError(error: unknown): Error {
+  if (error instanceof AuthenticationError) {
+    return providerError("provider_authentication_failed", error.message);
+  }
+  if (error instanceof RateLimitError) {
+    return providerError("rate_limited", error.message);
+  }
+  if (error instanceof APITimeoutError) {
+    return providerError("timeout", error.message);
+  }
+  if (error instanceof APIConnectionError) {
+    return providerError("provider_unavailable", error.message);
+  }
+  if (error instanceof APIStatusError) {
+    return providerError(
+      error.statusCode >= 500 ? "provider_unavailable" : "fetch_failed",
+      error.message,
+    );
+  }
+  if (error instanceof Error) {
+    return error;
+  }
+  return new Error(String(error));
 }

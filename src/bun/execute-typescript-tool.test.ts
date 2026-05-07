@@ -397,6 +397,117 @@ describe("execute_typescript tool", () => {
     expect(rejected.details.error?.message).toContain("site");
   });
 
+  it("typechecks api.web against the TinyFish SDK fetch contract", async () => {
+    const workspaceCwd = createWorkspaceRoot();
+    const store = createStore("session-web-tinyfish-types", workspaceCwd);
+    const runtime = createRuntime(store, "session-web-tinyfish-types", "Check TinyFish web typing");
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          results: [
+            {
+              url: "https://example.com/docs",
+              final_url: "https://example.com/docs",
+              title: "Docs",
+              description: null,
+              language: "en",
+              author: null,
+              published_date: null,
+              latency_ms: 10,
+              format: "markdown",
+              text: "TinyFish docs",
+            },
+          ],
+          errors: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+    const tool = createExecuteTypescriptTool({
+      cwd: workspaceCwd,
+      runtime,
+      store,
+      webProvider: createWebProvider({ provider: "tinyfish" }, { tinyfishApiKey: "tf-key" }),
+    });
+    try {
+      const accepted = await tool.execute("tool-call-tinyfish-web-types-ok", {
+        typescriptCode:
+          'const result = await api.web.fetch({ urls: ["https://example.com/docs"], links: true }); return result.details.providerId;',
+      });
+      expect(accepted.details.success).toBe(true);
+
+      const rejected = await tool.execute("tool-call-tinyfish-web-types-bad", {
+        typescriptCode: 'return await api.web.fetch({ url: "https://example.com/docs" });',
+      });
+      expect(rejected.details.success).toBe(false);
+      expect(rejected.details.error?.stage).toBe("typecheck");
+      expect(rejected.details.error?.message).toContain("url");
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it("fetches one real page through TinyFish and writes artifact-backed output", async () => {
+    const tinyfishApiKey = process.env.TINYFISH_API_KEY?.trim();
+    if (!tinyfishApiKey) {
+      return;
+    }
+    const workspaceCwd = createWorkspaceRoot();
+    const store = createStore("session-web-tinyfish-live", workspaceCwd);
+    const runtime = createRuntime(
+      store,
+      "session-web-tinyfish-live",
+      "Fetch one live TinyFish page",
+    );
+    const tool = createExecuteTypescriptTool({
+      cwd: workspaceCwd,
+      runtime,
+      store,
+      webProvider: createWebProvider({ provider: "tinyfish" }, { tinyfishApiKey }),
+    });
+
+    const result = await tool.execute("tool-call-tinyfish-live-fetch", {
+      typescriptCode: [
+        'const fetched = await api.web.fetch({ urls: ["https://example.com"], format: "markdown" });',
+        "const artifactPath = fetched.details.artifacts?.[0]?.path;",
+        "if (!artifactPath) throw new Error('missing TinyFish fetch artifact path');",
+        "const body = await api.read({ path: artifactPath });",
+        "return {",
+        "  providerId: fetched.details.providerId,",
+        "  artifactCount: fetched.details.artifacts?.length ?? 0,",
+        "  metadataPath: fetched.details.metadataArtifact?.path,",
+        "  bodyPreview: body.content[0],",
+        "};",
+      ].join("\n"),
+    });
+
+    expect(result.details.success).toBe(true);
+    const snapshot = store.getSessionState("session-web-tinyfish-live");
+    const webFetch = snapshot.commands.find((command) => command.toolName === "web.fetch");
+    expect(webFetch).toMatchObject({
+      executor: "execute_typescript",
+      status: "succeeded",
+      facts: expect.objectContaining({
+        providerId: "tinyfish",
+        toolName: "web.fetch",
+        url: "https://example.com/",
+        artifactPaths: expect.arrayContaining([expect.stringContaining("web-fetch")]),
+        metadataArtifactId: expect.any(String),
+      }),
+    });
+    const fetchArtifact = snapshot.artifacts.find((artifact) => artifact.name === "web-fetch.md");
+    const metadataArtifact = snapshot.artifacts.find(
+      (artifact) => artifact.name === "web-fetch.metadata.json",
+    );
+    expect(fetchArtifact?.path).toBeTruthy();
+    expect(metadataArtifact?.path).toBeTruthy();
+    const fetchContent = readFileSync(fetchArtifact!.path!, "utf8");
+    const metadataContent = readFileSync(metadataArtifact!.path!, "utf8");
+    expect(fetchContent).toContain("documentation examples");
+    expect(metadataContent).toContain("https://example.com");
+    expect(JSON.stringify(snapshot)).not.toContain(tinyfishApiKey);
+  }, 30000);
+
   it("omits api.web when no keyed provider is configured", async () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web-absent", workspaceCwd);

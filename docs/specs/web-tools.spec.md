@@ -29,7 +29,7 @@ The stable model-facing tool names are:
 
 Those tools are registered only when the selected provider is ready. When no provider is selected, or the selected provider is missing its API key, agents receive no callable `web.*` tools and no `api.web` helpers.
 
-The agent should not receive one hand-written generic schema that tries to fit every provider. It should receive the currently active provider's checked-in tool declarations and provider-specific usage notes through always-loaded web context.
+The agent should not receive one hand-written generic schema that tries to fit every provider. It receives the currently active provider's provider-owned tool declarations and provider-specific usage notes through always-loaded web context. TinyFish declarations come from the official TinyFish TypeScript SDK. Firecrawl declarations come from the checked-in Firecrawl provider contract.
 
 ## Product Settings
 
@@ -95,7 +95,7 @@ Search schema rules:
 
 - The input schema is checked in with the selected provider adapter.
 - The output schema is checked in with the selected provider adapter.
-- TinyFish search should track TinyFish's Search API or TinyFish agent skill schema.
+- TinyFish search tracks the official TinyFish TypeScript SDK `search.query` schema.
 - Firecrawl search should track Firecrawl's Search API or Firecrawl agent skill schema, including Firecrawl-specific controls such as domain filters, categories, sources, and scrape options when adopted.
 - If a provider supports search-and-scrape in one request, the provider prompt should teach when to use it instead of forcing a generic two-step search/fetch pattern.
 - Results are untrusted external content regardless of provider.
@@ -108,7 +108,7 @@ Fetch schema rules:
 
 - The input schema is checked in with the selected provider adapter.
 - The output schema is checked in with the selected provider adapter.
-- TinyFish fetch should track TinyFish's Fetch API or TinyFish agent skill schema.
+- TinyFish fetch tracks the official TinyFish TypeScript SDK `fetch.getContents` schema, including multi-URL fetches and TinyFish options such as `links` and `image_links`.
 - Firecrawl fetch should track Firecrawl's scrape/fetch-style API or Firecrawl agent skill schema.
 - The tool must reject local files, private app URLs, localhost, private-network URLs, and non-web schemes unless a later explicit local-network browsing feature is adopted.
 - The tool must not use the user's browser cookies or private authenticated web state.
@@ -222,8 +222,6 @@ src/bun/web-runtime/
   provider-prompts/
     tinyfish.ts
     firecrawl.ts
-  cli/
-    tinyfish/
   fixtures/
   web-runtime.test.ts
 ```
@@ -239,14 +237,18 @@ interface WebProvider {
   readonly capabilities: WebProviderCapabilities;
   checkReady(): WebProviderReadyState;
   getToolContracts(): WebProviderToolContracts;
-  invoke(toolName: WebToolName, input: unknown, context: WebInvocationContext): Promise<WebProviderToolResult>;
+  invoke(
+    toolName: WebToolName,
+    input: unknown,
+    context: WebInvocationContext,
+  ): Promise<WebProviderToolResult>;
   buildPromptNotes(): WebProviderPromptNotes;
 }
 ```
 
 `provider-registry.ts` resolves the active provider from settings, validates readiness, builds tool registrations, and feeds prompt construction.
 
-`provider-contracts/` stores checked-in provider-specific input and output schemas. TinyFish and Firecrawl schemas should be derived from their official machine-readable references when available, then checked into the product. The shipped app must not fetch provider schemas from remote docs at runtime.
+`provider-contracts/` stores provider-specific input and output schemas. TinyFish contracts are generated locally from the installed `@tiny-fish/sdk` Zod schemas and exported TypeScript types. Firecrawl contracts are checked in from Firecrawl-owned references. The shipped app must not fetch provider schemas from remote docs at runtime.
 
 `provider-prompts/` stores checked-in provider-specific agent guidance. When a provider publishes an official skill, MCP tool guide, or coding-agent context, `svvy` should borrow from that source, trim it to the active tools, and check the resulting prompt pack into the product. The shipped app must not fetch provider instructions from remote docs at runtime.
 
@@ -256,10 +258,9 @@ Provider-specific tool contracts and prompt guidance should be vendored from pro
 
 TinyFish sources:
 
+- `@tiny-fish/sdk`
 - `https://docs.tinyfish.ai/llms.txt`
-- `https://docs.tinyfish.ai/openapi/search.json`
-- `https://docs.tinyfish.ai/openapi/fetch.json`
-- TinyFish coding-agent or skill context when it is available in a packaged form
+- TinyFish coding-agent or skill context when available in a packaged form
 
 Firecrawl sources:
 
@@ -270,8 +271,8 @@ Firecrawl sources:
 
 Implementation rules:
 
-- Prefer checked-in schemas and borrowed provider skill guidance from these sources over hand-written approximations.
-- Refreshing a provider contract is a deliberate product update: inspect the provider's current docs or skill, update the checked-in contract and prompt pack, run tests, and ship that change.
+- Prefer provider-owned SDK schemas and borrowed provider skill guidance from these sources over hand-written approximations.
+- Refreshing a provider contract is a deliberate product update: update the provider dependency or checked-in contract, inspect the provider's current docs or skill when relevant, update the prompt pack, run tests, and ship the resolved design.
 - The app does not dynamically fetch TinyFish or Firecrawl schemas or instructions during normal use.
 
 ## TinyFish Provider
@@ -290,12 +291,13 @@ Adopted tools:
 
 Implementation rules:
 
-- Expose TinyFish-shaped `web.search` and `web.fetch` schemas.
-- Package the TinyFish CLI inside `src/bun/web-runtime/cli/tinyfish/` or an equivalent web-runtime-owned vendor path if CLI invocation is the most faithful way to preserve TinyFish's agent-facing behavior.
-- Pass the configured API key through a scoped environment variable or stdin path for provider invocation.
+- Use the official `@tiny-fish/sdk` client for TinyFish Search and Fetch.
+- Expose `web.search` from the SDK `search.query` input and output contract.
+- Expose `web.fetch` from the SDK `fetch.getContents` input contract: `{ urls: string[]; format?: "markdown" | "html" | "json"; links?: boolean; image_links?: boolean }`.
+- Preserve TinyFish's multi-URL fetch behavior. Successful fetched URLs write one svvy content artifact each, and every fetch call writes one metadata artifact with successful-page metadata and per-URL errors.
+- Pass the configured API key only through the SDK client constructor.
 - Do not write the TinyFish API key to the user's global `~/.tinyfish/config.json`.
 - Do not include TinyFish API keys in prompt or command records.
-- Prefer checked-in contracts derived from TinyFish's OpenAPI or equivalent official schema.
 
 ## Firecrawl Provider
 
@@ -457,7 +459,7 @@ Required tests:
 - stale provider tools disappear after provider refresh
 - prompt context never includes API keys
 - command facts never include API keys
-- TinyFish contracts are checked in from official TinyFish references or fixtures
+- TinyFish contracts come from the official `@tiny-fish/sdk` schemas and exported types
 - Firecrawl contracts are checked in from official Firecrawl references or fixtures
 - changing providers changes direct `web.*` schemas and generated `api.web` schemas before the next turn
 - unsupported options return warnings or structured errors

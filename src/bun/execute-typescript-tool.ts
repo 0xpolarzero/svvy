@@ -853,7 +853,7 @@ function createExecuteTypescriptApi(input: {
           tool: webFetchTool,
           params,
           title: "Web fetch",
-          summary: `Web fetch ${readUnknownProperty(params, "url")}`.trim(),
+          summary: `Web fetch ${readWebFetchSummary(params)}`.trim(),
           visibility: "summary",
           facts: (result) => readCommandFacts(result),
         });
@@ -868,6 +868,17 @@ function readUnknownProperty(value: unknown, key: string): string {
   }
   const property = (value as Record<string, unknown>)[key];
   return typeof property === "string" ? property : "";
+}
+
+function readWebFetchSummary(value: unknown): string {
+  const url = readUnknownProperty(value, "url");
+  if (url) return url;
+  if (!value || typeof value !== "object" || !("urls" in value)) return "";
+  const urls = (value as { urls?: unknown }).urls;
+  if (!Array.isArray(urls)) return "";
+  const firstUrl = urls.find((entry): entry is string => typeof entry === "string");
+  if (!firstUrl) return "";
+  return urls.length > 1 ? `${firstUrl} +${urls.length - 1}` : firstUrl;
 }
 
 function summarizeResult(value: unknown): string {
