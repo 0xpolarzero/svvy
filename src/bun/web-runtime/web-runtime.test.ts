@@ -8,11 +8,15 @@ import { createWebTools } from "./tools";
 
 describe("web runtime", () => {
   it("resolves provider readiness without leaking API keys into prompt context", () => {
-    const local = createWebProvider({ provider: "local" });
-    expect(local.checkReady().ready).toBe(true);
+    expect(createWebProvider({ provider: null })).toBeUndefined();
+
+    const noProviderPrompt = buildWebPromptContext("orchestrator");
+    expect(noProviderPrompt).toContain("Selected Web Provider: none");
+    expect(noProviderPrompt).toContain("Web tools available: no");
+    expect(noProviderPrompt).toContain("No `web.*` direct tools or `api.web` helpers");
 
     const tinyfish = createWebProvider({ provider: "tinyfish" });
-    expect(tinyfish.checkReady()).toMatchObject({
+    expect(tinyfish!.checkReady()).toMatchObject({
       ready: false,
       providerId: "tinyfish",
       missingRequirement: "TinyFish API key",
@@ -33,7 +37,7 @@ describe("web runtime", () => {
     const unavailable = createWebTools({
       cwd: mkdtempSync(join(tmpdir(), "svvy-web-unavailable-")),
       runtime: { current: null },
-      provider: createWebProvider({ provider: "tinyfish" }),
+      provider: createWebProvider({ provider: "tinyfish" })!,
       store: { createArtifact: () => ({ id: "artifact" }) },
     });
     expect(unavailable.map((tool) => tool.name)).toEqual([]);
@@ -41,27 +45,36 @@ describe("web runtime", () => {
     const available = createWebTools({
       cwd: mkdtempSync(join(tmpdir(), "svvy-web-available-")),
       runtime: { current: null },
-      provider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" }),
+      provider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" })!,
       store: { createArtifact: () => ({ id: "artifact" }) },
     });
     expect(available.map((tool) => tool.name)).toEqual(["web.search", "web.fetch"]);
     expect(JSON.stringify(available[0]?.parameters)).toContain("scrapeOptions");
   });
 
-  it("local fetch writes artifact-backed output and rejects private URLs", async () => {
+  it("firecrawl fetch writes artifact-backed output and rejects private URLs", async () => {
     const root = mkdtempSync(join(tmpdir(), "svvy-web-fetch-"));
     const artifacts: Array<{ id: string; path: string; content: string }> = [];
     const previousFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
-      new Response("<html><title>Example</title><main>Hello world</main></html>", {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      })) as unknown as typeof fetch;
+      new Response(
+        JSON.stringify({
+          data: {
+            markdown: "Fetched evidence",
+            url: "https://example.com/docs",
+            metadata: { title: "Docs" },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      )) as unknown as typeof fetch;
     try {
       const tools = createWebTools({
         cwd: root,
         runtime: { current: null },
-        provider: createWebProvider({ provider: "local" }),
+        provider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" })!,
         store: {
           createArtifact(input) {
             const id = `artifact-${artifacts.length + 1}`;
@@ -80,10 +93,12 @@ describe("web runtime", () => {
       expect(result.details.status).toBe("succeeded");
       expect(result.details.artifacts?.[0]?.path).toContain("web-fetch");
       expect(result.content[0]?.type).toBe("text");
-      expect((result.content[0] as { text: string }).text).not.toContain("Hello world");
-      expect(readFileSync(result.details.artifacts![0]!.path, "utf8")).toContain("Hello world");
+      expect((result.content[0] as { text: string }).text).not.toContain("Fetched evidence");
+      expect(readFileSync(result.details.artifacts![0]!.path, "utf8")).toContain(
+        "Fetched evidence",
+      );
       expect(result.details.commandFacts).toMatchObject({
-        providerId: "local",
+        providerId: "firecrawl",
         toolName: "web.fetch",
         metadataArtifactId: "artifact-2",
       });

@@ -306,14 +306,24 @@ describe("execute_typescript tool", () => {
     const store = createStore("session-web", workspaceCwd);
     const runtime = createRuntime(store, "session-web", "Fetch web evidence");
     globalThis.fetch = (async () =>
-      new Response("<html><title>Docs</title><article>Fetched evidence</article></html>", {
-        status: 200,
-      })) as unknown as typeof fetch;
+      new Response(
+        JSON.stringify({
+          data: {
+            markdown: "Fetched evidence",
+            url: "https://example.com/reference",
+            metadata: { title: "Docs" },
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      )) as unknown as typeof fetch;
     const tool = createExecuteTypescriptTool({
       cwd: workspaceCwd,
       runtime,
       store,
-      webProvider: createWebProvider({ provider: "local" }),
+      webProvider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" }),
     });
 
     const result = await tool.execute("tool-call-web", {
@@ -334,7 +344,7 @@ describe("execute_typescript tool", () => {
       status: "succeeded",
       visibility: "summary",
       facts: expect.objectContaining({
-        providerId: "local",
+        providerId: "firecrawl",
         toolName: "web.fetch",
         artifactPaths: expect.arrayContaining([expect.stringContaining("web-fetch")]),
         metadataArtifactId: expect.any(String),
@@ -356,6 +366,16 @@ describe("execute_typescript tool", () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web-types", workspaceCwd);
     const runtime = createRuntime(store, "session-web-types", "Check web provider typing");
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [{ url: "https://example.com/docs", title: "Docs" }],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      )) as unknown as typeof fetch;
     const tool = createExecuteTypescriptTool({
       cwd: workspaceCwd,
       runtime,
@@ -375,5 +395,24 @@ describe("execute_typescript tool", () => {
     expect(rejected.details.success).toBe(false);
     expect(rejected.details.error?.stage).toBe("typecheck");
     expect(rejected.details.error?.message).toContain("site");
+  });
+
+  it("omits api.web when no keyed provider is configured", async () => {
+    const workspaceCwd = createWorkspaceRoot();
+    const store = createStore("session-web-absent", workspaceCwd);
+    const runtime = createRuntime(store, "session-web-absent", "Check missing web provider");
+    const tool = createExecuteTypescriptTool({
+      cwd: workspaceCwd,
+      runtime,
+      store,
+    });
+
+    const result = await tool.execute("tool-call-web-absent", {
+      typescriptCode: 'return await api.web.search({ query: "docs" });',
+    });
+
+    expect(result.details.success).toBe(false);
+    expect(result.details.error?.stage).toBe("typecheck");
+    expect(result.details.error?.message).toContain("web");
   });
 });

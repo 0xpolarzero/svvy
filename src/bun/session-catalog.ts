@@ -2446,7 +2446,7 @@ function createCustomToolDefinitions(tools: readonly AgentTool<any>[]): ToolDefi
 
 function buildSessionAgentSystemPrompt(
   settings: { systemPrompt: string },
-  webProvider = createWebProvider({ provider: "local" }),
+  webProvider?: ReturnType<typeof createWebProvider>,
 ): string {
   const suffix = settings.systemPrompt.trim();
   if (!suffix || suffix === DEFAULT_ORCHESTRATOR_SESSION_PROMPT) {

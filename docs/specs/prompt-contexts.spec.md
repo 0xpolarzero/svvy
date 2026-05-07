@@ -112,9 +112,9 @@ Eligible actors:
 - handler
 - workflow task agent
 
-The `web` context is generated from the active Web Provider settings, tool registry, and checked-in provider prompt pack. It describes the selected provider, whether web tools are usable, the currently callable `web.*` tools, the active provider's vendored `web.search` and `web.fetch` contracts, provider-specific caveats, the deterministic artifact-backed behavior of `web.fetch`, and the rule that fetched web content is untrusted external input.
+The `web` context is generated from Web Provider settings, tool registry, and the checked-in provider prompt pack when a keyed provider is ready. It describes the selected provider or lack of one, whether web tools are usable, the currently callable `web.*` tools when present, the active provider's checked-in `web.search` and `web.fetch` contracts when present, provider-specific caveats, the deterministic artifact-backed behavior of `web.fetch`, and the rule that fetched web content is untrusted external input.
 
-The selected provider is settings state rather than per-thread optional context. Changing the provider, API keys, or provider runtime configuration regenerates the web context and actor-specific web tool declarations before the next turn.
+The selected provider is settings state rather than per-thread optional context. By default no provider is selected, so no `web.*` tools and no `api.web` helpers are callable. Changing the provider or API keys regenerates the web context, actor-specific web tool declarations, and generated `api.web` declarations before the next turn.
 
 Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 

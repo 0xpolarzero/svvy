@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { TSchema } from "@sinclair/typebox";
 
-export type WebProviderId = "local" | "tinyfish" | "firecrawl";
+export type WebProviderId = "tinyfish" | "firecrawl";
 export type WebToolName = "web.search" | "web.fetch";
 export type WebProviderErrorCategory =
   | "provider_not_configured"
@@ -110,36 +110,10 @@ export type WebInvocationContext = {
 };
 
 export type WebSettings = {
-  provider: WebProviderId;
+  provider?: WebProviderId | null;
 };
 
 export type WebProviderSecrets = {
   tinyfishApiKey?: string;
   firecrawlApiKey?: string;
 };
-
-export function providerNotReadyResult(
-  readyState: Extract<WebProviderReadyState, { ready: false }>,
-  toolName: WebToolName,
-): WebProviderToolResult {
-  const facts = {
-    providerId: readyState.providerId,
-    toolName,
-    status: "failed",
-    errorCategory: readyState.category,
-    missingRequirement: readyState.missingRequirement,
-  };
-  return {
-    content: [{ type: "text", text: readyState.message }],
-    details: {
-      providerId: readyState.providerId,
-      toolName,
-      status: "failed",
-      error: {
-        category: readyState.category,
-        message: readyState.message,
-      },
-      commandFacts: facts,
-    },
-  };
-}

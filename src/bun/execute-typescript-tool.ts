@@ -11,8 +11,6 @@ import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import { createWorkflowLibrary, type WorkflowLibrary } from "./smithers-runtime/workflow-library";
 import { createSvvyDirectTools } from "./svvy-direct-tools";
 import type { WebProvider } from "./web-runtime/contracts";
-import { createUnavailableWebToolInvoker } from "./web-runtime/tools";
-import { createWebProvider } from "./web-runtime/provider-registry";
 import type {
   StructuredArtifactKind,
   StructuredCommandExecutor,
@@ -135,7 +133,12 @@ type ExecuteTypescriptToolOptions = {
   webProvider?: WebProvider;
 };
 
-type ExecuteTypescriptApi = SvvyApi;
+type ExecuteTypescriptApi = SvvyApi & {
+  web?: {
+    search(input: unknown): Promise<unknown>;
+    fetch(input: unknown): Promise<unknown>;
+  };
+};
 type CxApiToolResult = Awaited<ReturnType<ExecuteTypescriptApi["cx"]["overview"]>>;
 
 type ExecuteTypescriptCommandFacts = Record<string, unknown>;
@@ -649,7 +652,7 @@ function createExecuteTypescriptApi(input: {
     runtime: { current: null },
     store: input.store,
     workflowLibrary: input.workflowLibrary,
-    webProvider: input.webProvider ?? createWebProvider({ provider: "local" }),
+    webProvider: input.webProvider,
   });
   const cxTools = createCxTools({ cwd: input.cwd });
   const toolByName = new Map(
@@ -661,8 +664,6 @@ function createExecuteTypescriptApi(input: {
       ...directTools.webTools,
     ].map((tool) => [tool.name, tool] as const),
   );
-  const activeWebProvider = input.webProvider ?? createWebProvider({ provider: "local" });
-  const unavailableWeb = createUnavailableWebToolInvoker(activeWebProvider);
   const getTool = (name: string): AgentTool<any> => {
     const tool = toolByName.get(name);
     if (!tool) {
@@ -671,7 +672,7 @@ function createExecuteTypescriptApi(input: {
     return tool;
   };
 
-  return {
+  const api: ExecuteTypescriptApi = {
     read: (params) =>
       invokeTool({
         tool: getTool("read"),
@@ -827,73 +828,46 @@ function createExecuteTypescriptApi(input: {
           },
         }),
     },
+  };
+
+  const webSearchTool = toolByName.get("web.search");
+  const webFetchTool = toolByName.get("web.fetch");
+  if (!webSearchTool || !webFetchTool) {
+    return api;
+  }
+
+  return {
+    ...api,
     web: {
-      search: (params) => {
-        const tool = toolByName.get("web.search");
-        if (!tool && unavailableWeb) {
-          return call({
-            toolName: "web.search",
-            title: "Web search",
-            summary: "Web search unavailable",
-            run: async () => {
-              const value = unavailableWeb("web.search") as Awaited<
-                ReturnType<ExecuteTypescriptApi["web"]["search"]>
-              >;
-              return {
-                value,
-                status: "failed",
-                summary: value.content
-                  .filter((entry) => entry.type === "text")
-                  .map((entry) => entry.text)
-                  .join("\n"),
-                facts: readToolResultDetails(value),
-              };
-            },
-          });
-        }
+      search: (params: unknown) => {
         return invokeTool({
-          tool: getTool("web.search"),
+          tool: webSearchTool,
           params,
           title: "Web search",
-          summary: `Web search ${"query" in params ? params.query : ""}`.trim(),
+          summary: `Web search ${readUnknownProperty(params, "query")}`.trim(),
           facts: (result) => readCommandFacts(result),
         });
       },
-      fetch: (params) => {
-        const tool = toolByName.get("web.fetch");
-        if (!tool && unavailableWeb) {
-          return call({
-            toolName: "web.fetch",
-            title: "Web fetch",
-            summary: "Web fetch unavailable",
-            visibility: "summary",
-            run: async () => {
-              const value = unavailableWeb("web.fetch") as Awaited<
-                ReturnType<ExecuteTypescriptApi["web"]["fetch"]>
-              >;
-              return {
-                value,
-                status: "failed",
-                summary: value.content
-                  .filter((entry) => entry.type === "text")
-                  .map((entry) => entry.text)
-                  .join("\n"),
-                facts: readToolResultDetails(value),
-              };
-            },
-          });
-        }
+      fetch: (params: unknown) => {
         return invokeTool({
-          tool: getTool("web.fetch"),
+          tool: webFetchTool,
           params,
           title: "Web fetch",
-          summary: `Web fetch ${"url" in params ? params.url : ""}`.trim(),
+          summary: `Web fetch ${readUnknownProperty(params, "url")}`.trim(),
           visibility: "summary",
           facts: (result) => readCommandFacts(result),
         });
       },
     },
   };
+}
+
+function readUnknownProperty(value: unknown, key: string): string {
+  if (!value || typeof value !== "object" || !(key in value)) {
+    return "";
+  }
+  const property = (value as Record<string, unknown>)[key];
+  return typeof property === "string" ? property : "";
 }
 
 function summarizeResult(value: unknown): string {

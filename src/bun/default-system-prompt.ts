@@ -16,7 +16,7 @@ function buildExecuteTypescriptPromptSection(webProvider?: WebProvider): string 
     "Use execute_typescript only when a small TypeScript program is genuinely useful for batching, looping, filtering, aggregation, workflow discovery, bash-backed inspection, or artifact evidence.",
     "When you call execute_typescript, write plain TypeScript against the injected `api` object and `console`.",
     "Do not import or assume Node.js built-ins such as `fs`, `path`, `process`, or `node:*` inside the snippet.",
-    "The injected `api` duplicates only selected direct tools: read, grep, find, ls, bash, artifact.*, workflow.*, web.*, and the read-only cx.* subset.",
+    "The injected `api` duplicates only selected direct tools: read, grep, find, ls, bash, artifact.*, workflow.*, web.* when a keyed web provider is ready, and the read-only cx.* subset.",
     "Do not use execute_typescript for ordinary reads, edits, writes, or simple command runs; call the direct tools instead.",
     "The execute_typescript contract follows and is the source of truth for the snippet environment:",
     "```ts",

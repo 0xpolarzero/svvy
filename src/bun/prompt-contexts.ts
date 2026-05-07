@@ -6,7 +6,6 @@ import {
   type PromptContextActor,
 } from "../shared/prompt-context";
 import type { WebProvider } from "./web-runtime/contracts";
-import { createWebProvider } from "./web-runtime/provider-registry";
 import { buildWebPromptContext } from "./web-runtime/prompt-context";
 
 export type { OptionalPromptContextKey, PromptContextActor } from "../shared/prompt-context";
@@ -131,9 +130,7 @@ export function buildAlwaysLoadedPromptContext(
   } else {
     sections.push(SMITHERS_WORKFLOW_TASK_CONTEXT_PROMPT);
   }
-  sections.push(
-    buildWebPromptContext(actor, options.webProvider ?? createWebProvider({ provider: "local" })),
-  );
+  sections.push(buildWebPromptContext(actor, options.webProvider));
   return sections.join("\n\n");
 }
 

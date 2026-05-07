@@ -80,7 +80,7 @@ Web access is provided through provider-backed direct tools:
 | `web.search` | Search the public web through the active Web Provider. |
 | `web.fetch` | Fetch and extract a known public web page through the active Web Provider, writing fetched content to artifacts. |
 
-The active provider is selected in settings. Local requires no API key. TinyFish and Firecrawl require their own API keys. The agent-facing schemas are generated from checked-in provider contracts so TinyFish, Firecrawl, and Local can each expose the shape that fits that provider best without fetching remote provider docs at runtime.
+The active provider is selected in settings. TinyFish and Firecrawl require their own API keys. By default no provider is selected, so `web.search`, `web.fetch`, and `api.web` are absent. The agent-facing schemas are generated from checked-in provider contracts so TinyFish and Firecrawl can each expose the shape that fits that provider best without fetching remote provider docs at runtime.
 
 Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
@@ -194,10 +194,6 @@ interface SvvyApi {
     list_assets(input?: WorkflowListAssetsInput): Promise<ToolResult<WorkflowListAssetsDetails>>;
     list_models(): Promise<ToolResult<WorkflowListModelsDetails>>;
   };
-  web: {
-    search(input: ActiveWebSearchInput): Promise<ToolResult<ActiveWebSearchOutput>>;
-    fetch(input: ActiveWebFetchInput): Promise<ToolResult<ActiveWebFetchOutput>>;
-  };
 }
 ```
 
@@ -221,12 +217,12 @@ The code-mode API duplicates these direct tools only:
 | `api.artifact.attach_file` | `artifact.attach_file` |
 | `api.workflow.list_assets` | `workflow.list_assets` |
 | `api.workflow.list_models` | `workflow.list_models` |
-| `api.web.search` | `web.search` |
-| `api.web.fetch` | `web.fetch` |
+| `api.web.search` | `web.search`, only when a keyed web provider is ready |
+| `api.web.fetch` | `web.fetch`, only when a keyed web provider is ready |
 
 `edit`, `write`, `cx.lang.add`, `cx.lang.remove`, and `cx.cache.clean` are not duplicated inside code mode. Agents call those tools directly so modifications to repository or cx runtime state stay explicit in the transcript and command stream.
 
-`api.web` is part of the adopted code-mode API. Its concrete input and output types are generated from the active Web Provider's checked-in direct-tool contracts. Changing providers regenerates the `api.web` declaration before the next turn. It is meant for batching, filtering, aggregation, and artifact evidence over multiple independent searches or fetches. One-shot web lookups should use the direct `web.*` tools. `api.web.fetch` follows the same deterministic artifact-backed behavior as direct `web.fetch`: fetched page bodies are written to artifacts and the result returns artifact references. If the selected Web Provider is not usable, `api.web.search` and `api.web.fetch` return the same structured provider-readiness error as the direct `web.*` tools.
+`api.web` is an optional code-mode API block. It is generated only when the active Web Provider is selected and ready with its API key. Its concrete input and output types are generated from the active provider's checked-in direct-tool contracts. Changing providers or key state regenerates the `api.web` declaration before the next turn. It is meant for batching, filtering, aggregation, and artifact evidence over multiple independent searches or fetches. One-shot web lookups should use the direct `web.*` tools. `api.web.fetch` follows the same deterministic artifact-backed behavior as direct `web.fetch`: fetched page bodies are written to artifacts and the result returns artifact references. If no provider is ready, `api.web` is absent and snippets that reference it fail typecheck.
 
 ## Examples
 

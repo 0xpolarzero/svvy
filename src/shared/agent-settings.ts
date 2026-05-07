@@ -5,7 +5,7 @@ export type SessionMode = "orchestrator" | "dumb";
 export type SessionAgentKey = "defaultSession" | "dumbOrchestrator" | "namer";
 export type WorkflowAgentKey = "explorer" | "implementer" | "reviewer";
 export type PreferredExternalEditor = "system" | "code" | "cursor" | "zed" | "sublime" | "custom";
-export type WebProviderId = "local" | "tinyfish" | "firecrawl";
+export type WebProviderId = "tinyfish" | "firecrawl";
 export type WorkflowAgentToolName =
   | "read"
   | "grep"
@@ -62,7 +62,7 @@ export interface AgentSettingsState {
 export interface AppPreferences {
   preferredExternalEditor: PreferredExternalEditor;
   customExternalEditorCommand: string;
-  webProvider: WebProviderId;
+  webProvider: WebProviderId | null;
 }
 
 export const DEFAULT_AGENT_SETTINGS = {
@@ -192,6 +192,6 @@ export const DEFAULT_AGENT_SETTINGS_STATE = {
   appPreferences: {
     preferredExternalEditor: "system",
     customExternalEditorCommand: "",
-    webProvider: "local",
+    webProvider: null,
   },
 } satisfies AgentSettingsState;

@@ -224,7 +224,7 @@ Direct tools cover:
 - generating artifacts
 - running bounded shell commands
 - editing and writing files
-- provider-backed web search and web fetch through the active `web.*` provider
+- provider-backed web search and web fetch through the active keyed `web.*` provider when configured
 - discovering workflow assets and workflow-authoring models
 - listing the currently callable actor-specific tool surface
 
@@ -301,7 +301,7 @@ The optional context key is:
 
 Provider-backed web context is different from optional context.
 
-The active web provider context is always loaded for orchestrator, handler-thread, and workflow task-agent prompts when web tools are configured or when the selected provider is unavailable and the agent needs to know that web is disabled. It is regenerated from settings and tool registrations rather than loaded through `thread.start({ context })` or `request_context`.
+The active web provider context is always loaded for orchestrator, handler-thread, and workflow task-agent prompts when web tools are configured, when the selected provider is unavailable, or when no provider is selected and the agent needs to know that web is disabled by default. It is regenerated from settings and tool registrations rather than loaded through `thread.start({ context })` or `request_context`.
 
 The orchestrator does not receive `request_context`.
 

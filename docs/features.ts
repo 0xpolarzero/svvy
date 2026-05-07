@@ -52,7 +52,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Direct Tools And Execute Typescript",
     status: "in-progress",
     summary:
-      "Provides native direct tools as the default coding-agent work surface, with svvy recording around semantic cx navigation, text and image reads, searches, edits, writes, bash commands, artifacts, workflow discovery, provider-backed web search and fetch, and actor-local tool-surface inspection through `list_tools`; explicitly teaches agents to issue independent tool calls together so pi can run them in parallel; keeps execute_typescript as a typed composition tool with a generated JSDoc-rich declaration for read/search/bash/artifact/workflow/web and read-only api.cx calls embedded in the system prompt, preflight typecheck or compile diagnostics, file-backed snippet artifacts for every attempt, and parent-first rollups over nested child command facts.",
+      "Provides native direct tools as the default coding-agent work surface, with svvy recording around semantic cx navigation, text and image reads, searches, edits, writes, bash commands, artifacts, workflow discovery, provider-backed web search and fetch when a keyed provider is ready, and actor-local tool-surface inspection through `list_tools`; explicitly teaches agents to issue independent tool calls together so pi can run them in parallel; keeps execute_typescript as a typed composition tool with a generated JSDoc-rich declaration for read/search/bash/artifact/workflow, optional provider-shaped web helpers when ready, and read-only api.cx calls embedded in the system prompt, preflight typecheck or compile diagnostics, file-backed snippet artifacts for every attempt, and parent-first rollups over nested child command facts.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/execute-typescript.spec.md",
@@ -64,7 +64,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Provider-Backed Web Tools",
     status: "in-progress",
     summary:
-      "Lets users choose Local, TinyFish, or Firecrawl as the active web provider in settings, store TinyFish and Firecrawl API keys there, expose provider-shaped `web.search` and deterministic artifact-backed `web.fetch` tools plus generated `api.web` composition helpers from checked-in provider contracts and prompt packs, package TinyFish's CLI under the web-runtime boundary when used by that provider, regenerate prompt context and tool declarations cleanly on provider changes, and keep the Local no-key implementation under `src/bun/web-runtime/` as an extractable future library boundary.",
+      "Lets users choose TinyFish or Firecrawl as the active keyed web provider in settings, store provider API keys there, expose provider-shaped `web.search` and deterministic artifact-backed `web.fetch` tools plus generated `api.web` composition helpers only when the selected provider is ready, package TinyFish's CLI under the web-runtime boundary when used by that provider, regenerate prompt context and tool declarations cleanly on provider changes, and keep the default product state web-disabled with no no-key Local fallback.",
     sourceSpecs: ["docs/specs/web-tools.spec.md"],
   },
   {

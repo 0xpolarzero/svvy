@@ -235,6 +235,6 @@ function normalizePreferredExternalEditor(input: string): PreferredExternalEdito
   return "system";
 }
 
-function normalizeWebProvider(input: string): WebProviderId {
-  return input === "tinyfish" || input === "firecrawl" || input === "local" ? input : "local";
+function normalizeWebProvider(input: string | null | undefined): WebProviderId | null {
+  return input === "tinyfish" || input === "firecrawl" ? input : null;
 }

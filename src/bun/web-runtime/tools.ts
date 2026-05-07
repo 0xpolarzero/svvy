@@ -5,7 +5,6 @@ import type {
   StructuredSessionStateStore,
 } from "../structured-session-state";
 import type { WebProvider, WebProviderErrorCategory, WebToolName } from "./contracts";
-import { providerNotReadyResult } from "./contracts";
 import { textResult } from "./providers/shared";
 
 export function createWebTools(options: {
@@ -49,14 +48,6 @@ export function createWebTools(options: {
         invokeProviderTool(options, "web.fetch", toolCallId, input, signal),
     },
   ];
-}
-
-export function createUnavailableWebToolInvoker(provider: WebProvider) {
-  return (toolName: WebToolName) => {
-    const ready = provider.checkReady();
-    if (ready.ready) throw new Error(`${toolName} is available; use the registered direct tool.`);
-    return providerNotReadyResult(ready, toolName);
-  };
 }
 
 async function invokeProviderTool(

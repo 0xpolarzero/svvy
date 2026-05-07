@@ -1,25 +1,32 @@
 import type { PromptContextActor } from "../../shared/prompt-context";
 import type { WebProvider } from "./contracts";
 
-export function buildWebPromptContext(actor: PromptContextActor, provider: WebProvider): string {
-  const ready = provider.checkReady();
-  const contracts = provider.getToolContracts();
-  const notes = provider.buildPromptNotes();
-  const availableTools = ready.ready ? ["web.search", "web.fetch"] : [];
+export function buildWebPromptContext(actor: PromptContextActor, provider?: WebProvider): string {
+  const ready = provider?.checkReady() ?? null;
+  const availableTools = ready?.ready ? ["web.search", "web.fetch"] : [];
   const sections = [
     "Loaded always-on prompt context: provider-backed web tools.",
     "",
     `Actor: ${actor}`,
-    `Selected Web Provider: ${provider.label} (${provider.id})`,
-    `Web tools available: ${ready.ready ? "yes" : "no"}`,
+    provider
+      ? `Selected Web Provider: ${provider.label} (${provider.id})`
+      : "Selected Web Provider: none",
+    `Web tools available: ${ready?.ready ? "yes" : "no"}`,
   ];
-  if (!ready.ready) {
+  if (!provider) {
+    sections.push(
+      "No web provider is selected. Configure TinyFish or Firecrawl with an API key in Settings before using web tools.",
+      "No `web.*` direct tools or `api.web` helpers are callable from this surface.",
+    );
+  } else if (ready && !ready.ready) {
     sections.push(
       `Missing setup: ${ready.missingRequirement}`,
       `Readiness error: ${ready.message}`,
       "Do not claim web access is available from this surface until settings are fixed.",
+      "No `web.*` direct tools or `api.web` helpers are callable while this provider is not ready.",
     );
   } else {
+    const contracts = provider.getToolContracts();
     sections.push(`Callable web tools: ${availableTools.map((tool) => `\`${tool}\``).join(", ")}`);
     sections.push(
       "",
@@ -31,10 +38,10 @@ export function buildWebPromptContext(actor: PromptContextActor, provider: WebPr
       contracts.fetch.outputTypeDeclaration,
       "```",
     );
+    const notes = provider.buildPromptNotes();
+    sections.push("", notes.text);
   }
   sections.push(
-    "",
-    notes.text,
     "",
     "Core web rules:",
     "- Use `web.search` when the source URL is unknown.",

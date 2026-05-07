@@ -37,12 +37,16 @@ describe("default system prompt", () => {
       "The execute_typescript contract follows and is the source of truth",
     );
     expect(DEFAULT_SYSTEM_PROMPT).toContain(EXECUTE_TYPESCRIPT_API_DECLARATION.trim());
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("interface ActiveWebSearchInput");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("site?: string");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("interface ActiveWebSearchInput");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("site?: string");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("interface SvvyApi");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("list_assets(");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("list_models(): Promise<ToolResult");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("api.cx");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("Selected Web Provider: none");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain(
+      "No `web.*` direct tools or `api.web` helpers are callable",
+    );
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "Loaded always-on prompt context: cx semantic code navigation.",
     );

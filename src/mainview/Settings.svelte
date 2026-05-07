@@ -39,8 +39,8 @@
 	};
 
 	const BASE_REASONING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
-	const WEB_PROVIDER_OPTIONS: Array<{ id: WebProviderId; label: string; summary: string }> = [
-		{ id: "local", label: "Local", summary: "No-key local web search and fetch." },
+	const WEB_PROVIDER_OPTIONS: Array<{ id: WebProviderId | null; label: string; summary: string }> = [
+		{ id: null, label: "None", summary: "Do not expose web tools or api.web helpers." },
 		{ id: "tinyfish", label: "TinyFish", summary: "TinyFish Search and Fetch with a stored TinyFish API key." },
 		{ id: "firecrawl", label: "Firecrawl", summary: "Firecrawl Search and Scrape with a stored Firecrawl API key." },
 	];
@@ -136,8 +136,8 @@
 		return providers.find((provider) => provider.provider === providerId) ?? null;
 	}
 
-	function webProviderReady(providerId: WebProviderId): { text: string; tone: "success" | "neutral" | "warning" } {
-		if (providerId === "local") return { text: "Ready", tone: "success" };
+	function webProviderReady(providerId: WebProviderId | null): { text: string; tone: "success" | "neutral" | "warning" } {
+		if (!providerId) return { text: "No web tools", tone: "neutral" };
 		const info = providerInfo(providerId);
 		if (info?.hasKey) return { text: "Ready", tone: "success" };
 		return { text: "API key required", tone: "warning" };
@@ -398,7 +398,7 @@
 				onclick={() => (activeSection = "web")}
 			>
 				<span>Web</span>
-				<span>{agentSettings?.appPreferences.webProvider ?? "local"}</span>
+				<span>{agentSettings?.appPreferences.webProvider ?? "none"}</span>
 			</button>
 			<button
 				class={`settings-nav-item ${activeSection === "agents" ? "active" : ""}`.trim()}
@@ -567,12 +567,12 @@
 			{#if activeSection === "web" && agentSettings}
 				<div class="settings-section-note">
 					<ShieldIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-					<p>Web API keys stay in local credential storage and are never included in prompts.</p>
+					<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web helpers.</p>
 				</div>
 				<div class="settings-row-stack">
-					{#each WEB_PROVIDER_OPTIONS as option (option.id)}
+					{#each WEB_PROVIDER_OPTIONS as option (option.id ?? "none")}
 						{@const readiness = webProviderReady(option.id)}
-						{@const info = providerInfo(option.id)}
+						{@const info = option.id ? providerInfo(option.id) : null}
 						<article class="provider-row">
 							<div class="provider-main">
 								<div class="provider-heading">
@@ -592,11 +592,11 @@
 									{/if}
 								</div>
 								<p class="provider-meta">{option.summary}</p>
-								{#if saveMessage[option.id]}
+								{#if option.id && saveMessage[option.id]}
 									<p class="save-msg">{saveMessage[option.id]}</p>
 								{/if}
 							</div>
-							{#if option.id !== "local"}
+							{#if option.id}
 								<div class="provider-actions">
 									{#if editingProvider === option.id}
 										<div class="key-input-row">
