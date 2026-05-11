@@ -62,6 +62,7 @@
   .reference-artifact-chip {
     --artifact-color: var(--ui-text-tertiary);
     --artifact-soft: var(--ui-surface-muted);
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -82,6 +83,16 @@
       background-color 140ms ease,
       color 140ms ease,
       opacity 140ms ease;
+  }
+
+  .reference-artifact-chip::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.65rem);
+    height: max(100%, 1.65rem);
+    transform: translate(-50%, -50%);
+    border-radius: inherit;
   }
 
   .reference-artifact-chip:hover {

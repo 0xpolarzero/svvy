@@ -138,6 +138,7 @@ export interface ChatRuntimeRpcClient {
     getProviderAuthState: typeof rpc.request.getProviderAuthState;
     getWorkspaceInfo: typeof rpc.request.getWorkspaceInfo;
     listWorkspacePaths: typeof rpc.request.listWorkspacePaths;
+    pickWorkspaceAttachments: typeof rpc.request.pickWorkspaceAttachments;
     openWorkspacePath: typeof rpc.request.openWorkspacePath;
     getSavedWorkflowLibrary: typeof rpc.request.getSavedWorkflowLibrary;
     deleteSavedWorkflowLibraryItem: typeof rpc.request.deleteSavedWorkflowLibraryItem;
@@ -288,6 +289,7 @@ export interface ChatRuntime {
   requireProviderAccess: (providerId: string) => Promise<boolean>;
   listConfiguredProviders: () => Promise<string[]>;
   listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
+  pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
   openWorkspacePath: (workspaceRelativePath: string) => Promise<boolean>;
   getSavedWorkflowLibrary: () => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
   deleteSavedWorkflowLibraryItem: (path: string) => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
@@ -1553,6 +1555,10 @@ export async function createChatRuntime(
     requireProviderAccess,
     listConfiguredProviders,
     listWorkspacePaths: (pathOptions) => rpcClient.request.listWorkspacePaths(pathOptions),
+    pickWorkspaceAttachments: async () => {
+      const result = await rpcClient.request.pickWorkspaceAttachments();
+      return result.entries;
+    },
     openWorkspacePath: async (workspaceRelativePath) => {
       const result = await rpcClient.request.openWorkspacePath({ workspaceRelativePath });
       return result.opened;

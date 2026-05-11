@@ -49,10 +49,9 @@
 
 <style>
   .reference-failed-card {
-    border: 1px solid var(--ui-border-soft);
-    border-left: 2px solid var(--ui-danger);
+    border: 1px solid color-mix(in oklab, var(--ui-danger) 34%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
+    background: color-mix(in oklab, var(--ui-surface) 94%, var(--ui-danger-soft));
     overflow: hidden;
   }
 
@@ -113,6 +112,7 @@
   }
 
   button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.26rem;
@@ -124,5 +124,25 @@
     color: var(--ui-text-secondary);
     font-size: 0.64rem;
     cursor: pointer;
+  }
+
+  button::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.85rem);
+    height: max(100%, 1.85rem);
+    transform: translate(-50%, -50%);
+    border-radius: inherit;
+  }
+
+  button:hover {
+    border-color: color-mix(in oklab, var(--ui-danger) 24%, var(--ui-border-soft));
+    color: var(--ui-text-primary);
+  }
+
+  button:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
   }
 </style>

@@ -41,6 +41,7 @@
 
 <style>
 	.ui-button {
+		position: relative;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -61,6 +62,16 @@
 			box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1),
 			transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
 		will-change: transform;
+	}
+
+	.ui-button::before {
+		content: "";
+		position: absolute;
+		inset: 50% auto auto 50%;
+		width: max(100%, 1.75rem);
+		height: max(100%, 1.75rem);
+		transform: translate(-50%, -50%);
+		border-radius: inherit;
 	}
 
 	.ui-button:focus-visible {

@@ -2,8 +2,7 @@
 	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 	import FileIcon from "@lucide/svelte/icons/file";
 	import FolderIcon from "@lucide/svelte/icons/folder";
-	import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-	import AtSignIcon from "@lucide/svelte/icons/at-sign";
+	import PaperclipIcon from "@lucide/svelte/icons/paperclip";
 	import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
 	import SquareIcon from "@lucide/svelte/icons/square";
 	import XIcon from "@lucide/svelte/icons/x";
@@ -48,6 +47,7 @@
 		onSend: (input: string) => Promise<boolean> | boolean;
 		onThinkingChange: (level: ThinkingLevel) => void;
 		listWorkspacePaths: () => Promise<WorkspacePathIndexEntry[]>;
+		pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
 	};
 
 	const BASE_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
@@ -68,6 +68,7 @@
 		onSend,
 		onThinkingChange,
 		listWorkspacePaths,
+		pickWorkspaceAttachments,
 	}: Props = $props();
 
 	let draft = $state("");
@@ -111,6 +112,14 @@
 				(mentionLoading || mentionError || workspacePathsLoaded || mentionResults.length > 0),
 		),
 	);
+
+	$effect(() => {
+		const targetKey = `${sessionName}\u0000${targetLabel}\u0000${worktreeLabel}`;
+		void targetKey;
+		void tick().then(() => {
+			draftElement?.focus();
+		});
+	});
 
 	onMount(() => {
 		const handlePointerDown = (event: PointerEvent) => {
@@ -294,15 +303,35 @@
 		showThinkingMenu = false;
 	}
 
-	function focusMentionEntry() {
-		void tick().then(() => {
-			draftElement?.focus();
-			if (!draft.includes("@")) {
-				draft = draft ? `${draft} @` : "@";
-				moveCaretToDraftEnd(draft);
-				void ensureWorkspacePaths();
+	async function attachPickedWorkspaceFiles() {
+		try {
+			const entries = await pickWorkspaceAttachments();
+			if (entries.length === 0) {
+				draftElement?.focus();
+				return;
 			}
-		});
+
+			let nextDraft = draft.trimEnd();
+			const nextMentions = new Map(selectedMentions.map((mention) => [mention.id, mention]));
+			for (const entry of entries) {
+				const mentionText = `@${entry.workspaceRelativePath}`;
+				if (!nextDraft.includes(mentionText)) {
+					nextDraft = nextDraft ? `${nextDraft} ${mentionText}` : mentionText;
+				}
+				nextMentions.set(`${entry.kind}:${entry.workspaceRelativePath}`, {
+					id: `${entry.kind}:${entry.workspaceRelativePath}`,
+					kind: entry.kind,
+					label: entry.workspaceRelativePath.split("/").filter(Boolean).at(-1) ?? entry.workspaceRelativePath,
+					workspaceRelativePath: entry.workspaceRelativePath,
+				});
+			}
+			draft = nextDraft;
+			selectedMentions = [...nextMentions.values()];
+			await tick();
+			moveCaretToDraftEnd(draft);
+		} catch {
+			draftElement?.focus();
+		}
 	}
 </script>
 
@@ -312,33 +341,31 @@
 			<p class="composer-error">{errorMessage}</p>
 		{/if}
 
-		<section class="composer-context-row" aria-label="Selected workspace mentions">
-			<div class="mention-chip-row">
-				{#each selectedMentions as mention (mention.id)}
-					<button
-						class="mention-chip"
-						type="button"
-						aria-label={`Remove ${mention.workspaceRelativePath}`}
-						onclick={() => void removeMention(mention)}
-					>
-						{#if mention.kind === "folder"}
-							<FolderIcon size={12} aria-hidden="true" />
-						{:else}
-							<FileIcon size={12} aria-hidden="true" />
-						{/if}
-						<span>{mention.workspaceRelativePath}</span>
-						<XIcon size={11} aria-hidden="true" />
-					</button>
-				{/each}
-				<button class="mention-add-chip" type="button" onclick={focusMentionEntry}>
-					<AtSignIcon size={12} aria-hidden="true" />
-					<span>Add context</span>
-				</button>
-			</div>
-		</section>
-
 		<div class="composer-main-row">
 			<div class="composer-input-wrap">
+				{#if selectedMentions.length > 0}
+					<section class="composer-context-row" aria-label="Attached file and context items">
+						<div class="mention-chip-row">
+							{#each selectedMentions as mention (mention.id)}
+								<button
+									class="mention-chip"
+									type="button"
+									aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
+									title={`Remove attached context ${mention.workspaceRelativePath}`}
+									onclick={() => void removeMention(mention)}
+								>
+									{#if mention.kind === "folder"}
+										<FolderIcon size={12} aria-hidden="true" />
+									{:else}
+										<FileIcon size={12} aria-hidden="true" />
+									{/if}
+									<span>{mention.workspaceRelativePath}</span>
+									<XIcon size={11} aria-hidden="true" />
+								</button>
+							{/each}
+						</div>
+					</section>
+				{/if}
 				<TextArea
 					bind:value={draft}
 					bind:element={draftElement}
@@ -407,11 +434,11 @@
 					<button
 						class="composer-icon-button"
 						type="button"
-						title="Add @mention"
-						aria-label="Add @mention"
-						onclick={focusMentionEntry}
+						title="Attach file context"
+						aria-label="Attach file context"
+						onclick={() => void attachPickedWorkspaceFiles()}
 					>
-						<AtSignIcon size={15} aria-hidden="true" />
+						<PaperclipIcon size={15} aria-hidden="true" />
 					</button>
 					{#if isStreaming}
 						<button class="composer-submit danger" type="button" aria-label="Stop" title="Stop" onclick={onAbort}>
@@ -464,24 +491,9 @@
 			</div>
 		{/if}
 
-		<div class="composer-status-row">
-			<div class="composer-targets" aria-label="Composer target context">
-				<span class="status-chip">{targetLabel}</span>
-				<span class="status-separator">/</span>
-				<span class="status-chip session-chip">{sessionName}</span>
-				<span class="status-chip worktree-chip"><GitBranchIcon size={10} aria-hidden="true" /> {worktreeLabel}</span>
-			</div>
-
-			{#if usageText}
+		{#if usageText}
+			<div class="composer-status-row">
 				<p class="composer-usage">usage {usageText}</p>
-			{/if}
-		</div>
-
-		{#if selectedMentions.length > 0}
-			<div class="mention-resolution-row" aria-label="Mention serialization preview">
-				{#each selectedMentions as mention (mention.id)}
-					<span>@{mention.workspaceRelativePath}</span>
-				{/each}
 			</div>
 		{/if}
 
@@ -517,15 +529,14 @@
 
 	.composer-context-row,
 	.composer-status-row,
-	.mention-resolution-row,
 	.composer-streaming-row {
 		border-top: 1px solid var(--ui-border-soft);
 	}
 
 	.composer-context-row {
-		padding: 0.5rem 0.72rem;
+		padding: 0 0 0.42rem;
 		border-top: 0;
-		border-bottom: 1px solid var(--ui-border-soft);
+		border-bottom: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
 	}
 
 	.thinking-wrap {
@@ -557,26 +568,6 @@
 		cursor: pointer;
 	}
 
-	.mention-add-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.26rem;
-		min-height: 1.32rem;
-		padding: 0.12rem 0.4rem;
-		border: 1px dashed var(--ui-border-soft);
-		border-radius: var(--ui-radius-sm);
-		background: transparent;
-		color: var(--ui-text-tertiary);
-		font: inherit;
-		font-family: var(--font-mono);
-		font-size: 0.62rem;
-		cursor: pointer;
-		transition:
-			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-			background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-			color 150ms cubic-bezier(0.19, 1, 0.22, 1);
-	}
-
 	.mention-chip span {
 		min-width: 0;
 		overflow: hidden;
@@ -586,9 +577,7 @@
 	}
 
 	.mention-chip:hover,
-	.mention-chip:focus-visible,
-	.mention-add-chip:hover,
-	.mention-add-chip:focus-visible {
+	.mention-chip:focus-visible {
 		outline: none;
 		border-color: color-mix(in oklab, var(--ui-accent) 62%, var(--ui-border-strong));
 		background: color-mix(in oklab, var(--ui-accent-soft) 54%, var(--ui-surface-raised));
@@ -597,16 +586,16 @@
 
 	.composer-main-row {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(0, 1fr);
 		align-items: start;
-		gap: 0.62rem;
-		min-height: 6.65rem;
+		gap: 0.44rem;
+		min-height: 0;
 		padding: 0.58rem 0.72rem 0.48rem;
 	}
 
 	.composer-input-wrap {
 		min-width: 0;
-		min-height: 5.15rem;
+		min-height: 4.95rem;
 		padding: 0.38rem 0.52rem;
 		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
 		border-radius: var(--ui-radius-md);
@@ -650,28 +639,25 @@
 	}
 
 	.composer-row-actions,
-	.composer-runtime,
-	.composer-targets {
+	.composer-control-cluster,
+	.composer-action-cluster {
 		display: flex;
 		align-items: center;
 		min-width: 0;
 	}
 
 	.composer-row-actions {
-		justify-content: flex-end;
-		align-content: flex-start;
+		justify-content: space-between;
+		align-content: center;
 		gap: 0.4rem;
 		flex-wrap: wrap;
-		max-width: 18.75rem;
+		width: 100%;
 	}
 
 	.composer-control-cluster,
 	.composer-action-cluster {
-		display: inline-flex;
-		align-items: center;
 		flex: 0 0 auto;
 		gap: 0.22rem;
-		min-width: 0;
 		padding: 0.16rem;
 		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 68%, transparent);
 		border-radius: var(--ui-radius-md);
@@ -738,8 +724,7 @@
 		color: var(--ui-danger);
 	}
 
-	.model-pill,
-	.status-chip {
+	.model-pill {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.28rem;
@@ -755,11 +740,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.status-chip {
-		min-height: 1.35rem;
-		padding: 0.1rem 0.42rem;
 	}
 
 	.model-pill {
@@ -794,8 +774,7 @@
 	.model-pill:focus-visible,
 	.composer-icon-button:focus-visible,
 	.composer-submit:focus-visible,
-	.mention-chip:focus-visible,
-	.mention-add-chip:focus-visible {
+	.mention-chip:focus-visible {
 		box-shadow: var(--ui-focus-ring);
 	}
 
@@ -878,66 +857,15 @@
 	.composer-status-row {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
+		justify-content: flex-end;
 		gap: 0.7rem;
 		min-width: 0;
 		padding: 0.28rem 0.72rem 0.34rem;
 	}
 
-	.composer-targets,
-	.composer-runtime {
-		gap: 0.42rem;
-	}
-
-	.status-separator {
-		color: var(--ui-border-strong);
-		font-size: 0.66rem;
-	}
-
-	.session-chip {
-		max-width: 12rem;
-	}
-
-	.worktree-chip {
-		max-width: 13rem;
-	}
-
-	.composer-runtime {
-		justify-content: flex-end;
-		flex: 1 1 auto;
-	}
-
-	.composer-runtime :global(.context-budget-full) {
-		width: min(15rem, 28vw);
-		min-width: 8rem;
-	}
-
-	.composer-control {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.34rem;
-		min-height: 1.35rem;
-		max-width: 12rem;
-		padding: 0.1rem 0.42rem;
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 74%, transparent);
-		border-radius: var(--ui-radius-sm);
-		background: transparent;
-		color: var(--ui-text-tertiary);
-		font: inherit;
-		font-family: var(--font-mono);
-		text-align: left;
-		cursor: pointer;
-	}
-
 	.thinking-field {
 		position: relative;
 		padding-right: 1.55rem;
-	}
-
-	.composer-control-label {
-		font-size: 0.62rem;
-		font-family: var(--font-mono);
-		color: var(--ui-text-secondary);
 	}
 
 	:global(.thinking-chevron) {
@@ -951,13 +879,6 @@
 
 	:global(.thinking-chevron.open) {
 		transform: translateY(-50%) rotate(180deg);
-	}
-
-	.composer-control:hover,
-	.composer-control:focus-visible {
-		outline: none;
-		border-color: color-mix(in oklab, var(--ui-accent) 58%, var(--ui-border-strong));
-		background: color-mix(in oklab, var(--ui-surface-subtle) 54%, transparent);
 	}
 
 	.thinking-menu {
@@ -1032,7 +953,6 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	.mention-resolution-row,
 	.composer-streaming-row {
 		display: flex;
 		align-items: center;
@@ -1042,17 +962,6 @@
 		color: var(--ui-text-tertiary);
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
-	}
-
-	.mention-resolution-row {
-		flex-wrap: wrap;
-	}
-
-	.mention-resolution-row span {
-		max-width: min(100%, 24rem);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 
 	.composer-streaming-row {
@@ -1073,15 +982,13 @@
 
 	@media (max-width: 760px) {
 		.composer-main-row {
-			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-columns: minmax(0, 1fr);
 			padding: 0.5rem;
 		}
 
 		.composer-icon-button,
 		.composer-submit,
 		.model-pill,
-		.status-chip,
-		.composer-control,
 		.mention-option {
 			min-height: 2.75rem;
 		}
@@ -1102,7 +1009,7 @@
 		}
 
 		.composer-status-row,
-		.composer-runtime {
+		.composer-row-actions {
 			align-items: flex-start;
 			flex-direction: column;
 			justify-content: flex-start;
@@ -1110,20 +1017,6 @@
 
 		.composer-status-row {
 			padding: 0.44rem 0.5rem;
-		}
-
-		.composer-targets {
-			width: 100%;
-			flex-wrap: wrap;
-		}
-
-		.composer-runtime {
-			width: 100%;
-		}
-
-		.composer-runtime :global(.context-budget-full) {
-			width: 100%;
-			min-width: 0;
 		}
 	}
 
@@ -1155,11 +1048,6 @@
 
 		.composer-status-row {
 			padding: 0.24rem 0.56rem 0.3rem;
-		}
-
-		.composer-targets {
-			flex-wrap: wrap;
-			gap: 0.28rem;
 		}
 	}
 </style>

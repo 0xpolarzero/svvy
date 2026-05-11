@@ -172,8 +172,7 @@
   .reference-thread-card {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--ui-border-soft);
-    border-left: 2px solid var(--thread-status-color);
+    border: 1px solid color-mix(in oklab, var(--thread-status-color) 34%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-surface) 92%, var(--thread-status-bg));
     box-shadow: var(--ui-shadow-soft);
@@ -233,11 +232,22 @@
 
   button {
     all: unset;
+    position: relative;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: color 0.15s ease;
+  }
+
+  button::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.75rem);
+    height: max(100%, 1.75rem);
+    transform: translate(-50%, -50%);
+    border-radius: var(--ui-radius-sm);
   }
 
   button:focus-visible {

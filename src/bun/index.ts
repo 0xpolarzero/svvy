@@ -8,7 +8,7 @@ import {
 import { getModel, getModels, getProviders } from "@mariozechner/pi-ai";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import type {
   AuthStateResponse,
   ChatRPCSchema,
@@ -405,6 +405,44 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       listWorkspacePaths: ({ refresh } = {}) => {
         return refresh ? workspacePathIndex.refresh() : workspacePathIndex.list();
+      },
+      pickWorkspaceAttachments: async () => {
+        const cwd = resolveWorkspaceCwd();
+        const selectedPaths = await Utils.openFileDialog({
+          startingFolder: cwd,
+          allowedFileTypes: "*",
+          canChooseFiles: true,
+          canChooseDirectory: true,
+          allowsMultipleSelection: true,
+        });
+        const entries = [];
+        const skippedPaths = [];
+
+        for (const selectedPath of selectedPaths) {
+          if (!selectedPath) continue;
+          const absolutePath = resolve(selectedPath);
+          const workspaceRelativePath = relative(cwd, absolutePath);
+          const kind = getWorkspacePathKind(absolutePath);
+          if (kind === "missing") {
+            skippedPaths.push(selectedPath);
+            continue;
+          }
+
+          const isWorkspacePath =
+            workspaceRelativePath !== "" &&
+            !workspaceRelativePath.startsWith("..") &&
+            !workspaceRelativePath.includes(`..${sep}`) &&
+            resolve(cwd, workspaceRelativePath) === absolutePath;
+
+          entries.push({
+            kind,
+            workspaceRelativePath: (isWorkspacePath ? workspaceRelativePath : absolutePath)
+              .split(sep)
+              .join("/"),
+          });
+        }
+
+        return { entries, skippedPaths };
       },
       openWorkspacePath: ({ workspaceRelativePath }) => {
         const absolutePath = resolveSafeWorkspacePath(workspaceRelativePath);

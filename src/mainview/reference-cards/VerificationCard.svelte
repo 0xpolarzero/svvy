@@ -55,10 +55,9 @@
     --verify-color: var(--ui-danger);
     display: grid;
     gap: 0.55rem;
-    border: 1px solid var(--ui-border-soft);
-    border-left: 2px solid var(--verify-color);
+    border: 1px solid color-mix(in oklab, var(--verify-color) 34%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
+    background: color-mix(in oklab, var(--ui-surface) 94%, color-mix(in oklab, var(--verify-color) 12%, transparent));
     overflow: hidden;
   }
 
@@ -145,6 +144,7 @@
   }
 
   button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     gap: 0.24rem;
@@ -155,5 +155,24 @@
     color: var(--ui-text-tertiary);
     font-size: 0.6rem;
     cursor: pointer;
+  }
+
+  button::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.85rem);
+    height: max(100%, 1.85rem);
+    transform: translate(-50%, -50%);
+    border-radius: var(--ui-radius-sm);
+  }
+
+  button:hover {
+    color: var(--ui-text-secondary);
+  }
+
+  button:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
   }
 </style>

@@ -787,6 +787,10 @@ function createFakeRpc(input: {
           { kind: "file", workspaceRelativePath: "docs/progress.md" },
           { kind: "folder", workspaceRelativePath: "src/mainview/" },
         ],
+        pickWorkspaceAttachments: async () => ({
+          entries: [{ kind: "file", workspaceRelativePath: "docs/progress.md" }],
+          skippedPaths: [],
+        }),
         openWorkspacePath: async ({ workspaceRelativePath }) => ({
           opened: workspaceRelativePath === "docs/progress.md",
           kind: workspaceRelativePath === "docs/progress.md" ? "file" : "missing",

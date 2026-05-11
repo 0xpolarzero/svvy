@@ -45,10 +45,9 @@
 
 <style>
   .reference-waiting-card {
-    border: 1px solid var(--ui-border-soft);
-    border-left: 2px solid var(--ui-warning);
+    border: 1px solid color-mix(in oklab, var(--ui-warning) 34%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
-    background: var(--ui-surface);
+    background: color-mix(in oklab, var(--ui-surface) 94%, var(--ui-warning-soft));
     overflow: hidden;
   }
 
@@ -114,6 +113,7 @@
   }
 
   button {
+    position: relative;
     min-height: 1.8rem;
     padding: 0.24rem 0.68rem;
     border: 1px solid var(--ui-accent);
@@ -123,6 +123,22 @@
     font-size: 0.66rem;
     font-weight: 650;
     cursor: pointer;
+  }
+
+  button::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.9rem);
+    height: max(100%, 1.9rem);
+    transform: translate(-50%, -50%);
+    border-radius: inherit;
+  }
+
+  input:focus-visible,
+  button:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
   }
 
   button:disabled {

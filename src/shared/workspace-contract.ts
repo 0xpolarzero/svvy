@@ -136,6 +136,11 @@ export interface OpenWorkspacePathResponse {
   kind: ComposerMentionKind | "missing";
 }
 
+export interface PickWorkspaceAttachmentResponse {
+  entries: WorkspacePathIndexEntry[];
+  skippedPaths: string[];
+}
+
 export interface ProviderAuthInfo {
   provider: string;
   hasKey: boolean;
@@ -827,6 +832,10 @@ export interface ChatRPCSchema {
       listWorkspacePaths: {
         params: { refresh?: boolean } | undefined;
         response: WorkspacePathIndexEntry[];
+      };
+      pickWorkspaceAttachments: {
+        params: undefined;
+        response: PickWorkspaceAttachmentResponse;
       };
       openWorkspacePath: {
         params: OpenWorkspacePathRequest;

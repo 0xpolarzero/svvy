@@ -59,6 +59,7 @@ test("splits, exposes resize dividers, and closes the durable pane grid", async 
       expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(1);
       expect(await page.locator('[data-testid="pane-copy-transcript-button"]').count()).toBe(1);
       expect(await page.locator('[data-testid="pane-duplicate-button"]').count()).toBe(1);
+      expect(await page.locator('[data-testid="pane-close-button"]').count()).toBe(1);
 
       expect(await page.locator('[data-testid="pane-split-right"]').count()).toBe(0);
       expect(await page.locator('[data-testid="pane-split-below"]').count()).toBe(0);

@@ -1,7 +1,6 @@
 <script lang="ts">
   import PlusIcon from "@lucide/svelte/icons/plus";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import BookOpenIcon from "@lucide/svelte/icons/book-open";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
@@ -73,9 +72,6 @@
     ...navigation.activeSessions,
     ...navigation.archived.sessions,
   ]);
-  const episodeCount = $derived(
-    allSessions.reduce((total, session) => total + (session.counts?.episodes ?? 0), 0),
-  );
   const openSurfaceEntries = $derived.by(() =>
     Object.entries(paneLocationsBySessionId)
       .flatMap(([sessionId, locations]) => {
@@ -89,6 +85,7 @@
           focused: location.focused,
         }));
       })
+      .toSorted((left, right) => Number(right.focused) - Number(left.focused))
       .slice(0, 8),
   );
 
@@ -107,9 +104,8 @@
     <div class="sidebar-header-copy">
       <div class="sidebar-brand-row">
         <span class="sidebar-brand">svvy</span>
-        <span class="sidebar-workspace" title={workspaceLabel}>{workspaceLabel}</span>
       </div>
-      <h2 class="sidebar-workspace-heading">{workspaceLabel}</h2>
+      <h2 class="sidebar-workspace-heading" title={workspaceLabel}>{workspaceLabel}</h2>
       <p class="sidebar-context">
         {#if branch}
           <span class="branch-pill"><GitBranchIcon size={9} aria-hidden="true" /> {branch.split("/").at(-1) ?? branch}</span>
@@ -262,17 +258,9 @@
         </section>
       {/if}
 
-      <section class="sidebar-section reference-nav-section" aria-label="Episodes">
-        <div class="reference-nav-row static">
-          <BookOpenIcon size={13} aria-hidden="true" />
-          <span>Episodes</span>
-          <small>{episodeCount}</small>
-        </div>
-      </section>
-
       {#if openSurfaceEntries.length > 0}
-        <section class="sidebar-section reference-nav-section" aria-label="Open surfaces">
-          <p class="sidebar-section-label">Open surfaces</p>
+        <section class="sidebar-section reference-nav-section" aria-label="Open panes">
+          <p class="sidebar-section-label">Open panes</p>
           {#each openSurfaceEntries as surface (surface.id)}
             <button
               class={`open-surface-row ${surface.focused ? "focused" : ""}`.trim()}
@@ -281,7 +269,7 @@
               onclick={() => onFocusPane(surface.paneId)}
             >
               <span>{surface.title}</span>
-              <small>{surface.label}</small>
+              <small>{surface.focused ? "Focused" : surface.label}</small>
             </button>
           {/each}
         </section>
@@ -322,8 +310,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    min-height: 2.25rem;
-    padding: 0.45rem 0.72rem 0.45rem 3.6rem;
+    min-height: 3.2rem;
+    padding: 0.38rem 0.72rem 0.42rem 4.35rem;
     border-bottom: 1px solid var(--ui-shell-edge);
   }
 
@@ -334,9 +322,8 @@
   }
 
   .sidebar-header-copy {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    display: grid;
+    gap: 0.1rem;
     min-width: 0;
   }
 
@@ -356,26 +343,18 @@
     letter-spacing: 0;
   }
 
-  .sidebar-workspace {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ui-text-primary);
-    font-size: 0.68rem;
-    font-weight: 600;
-  }
-
   .sidebar-workspace-heading {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
+    min-width: 0;
+    margin: 0;
     padding: 0;
     overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
     border: 0;
+    color: var(--ui-text-primary);
+    font-size: 0.74rem;
+    font-weight: 650;
+    line-height: 1.12;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sidebar-context {
@@ -584,7 +563,14 @@
   }
 
   .open-surface-row.focused {
+    border-color: color-mix(in oklab, var(--ui-accent) 28%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-accent) 8%, var(--ui-surface-subtle));
     box-shadow: inset 2px 0 0 var(--ui-accent);
+    color: var(--ui-text-primary);
+  }
+
+  .open-surface-row.focused small {
+    color: var(--ui-accent);
   }
 
   .sidebar-footer {

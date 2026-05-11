@@ -69,6 +69,7 @@
 
 <style>
   .reference-workflow-card {
+    position: relative;
     display: flex;
     align-items: flex-start;
     gap: 0.55rem;
@@ -80,6 +81,16 @@
     color: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  .reference-workflow-card::before {
+    content: "";
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 1.85rem);
+    height: max(100%, 1.85rem);
+    transform: translate(-50%, -50%);
+    border-radius: inherit;
   }
 
   .reference-workflow-card:hover,

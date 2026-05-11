@@ -162,21 +162,22 @@ test("keeps the workspace chrome visible while toggling the sidebar and opening 
     await app.page.getByRole("button", { name: "Hide sidebar" }).click();
     await app.page.locator(".session-sidebar").waitFor({ state: "hidden" });
 
+    expect(await app.page.getByRole("button", { name: "Open settings" }).count()).toBe(0);
+
+    await app.page.getByRole("button", { name: "Show sidebar" }).click();
+    await app.page.locator(".session-sidebar").waitFor({ state: "visible" });
     await app.page.getByRole("button", { name: "Open settings" }).click({ force: true });
     const settings = app.page.getByRole("dialog", { name: "Settings" });
     await settings.waitFor({ state: "visible" });
 
     expect(await app.page.locator(".workspace-titlebar").isVisible()).toBe(true);
     expect(await app.page.locator(".composer-shell").isVisible()).toBe(true);
-    expect(await app.page.locator(".session-sidebar").isVisible()).toBe(false);
-    expect(await app.page.getByRole("button", { name: "Show sidebar" }).isVisible()).toBe(true);
+    expect(await app.page.locator(".session-sidebar").isVisible()).toBe(true);
+    expect(await app.page.getByRole("button", { name: "Hide sidebar" }).isVisible()).toBe(true);
 
     await app.page.locator(".ui-dialog-close").click();
     await settings.waitFor({ state: "detached" });
 
-    expect(await app.page.getByRole("button", { name: "Show sidebar" }).isVisible()).toBe(true);
-    await app.page.getByRole("button", { name: "Show sidebar" }).click();
-    await app.page.locator(".session-sidebar").waitFor({ state: "visible" });
     expect(await app.page.getByRole("button", { name: "Hide sidebar" }).isVisible()).toBe(true);
   });
 });

@@ -146,7 +146,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Composer Mention Links",
     status: "shipped",
     summary:
-      "Lets the composer autocomplete indexed workspace files and folders after `@`, insert removable mention chips, serialize selected mentions as ordinary `@path` user text, and render sent transcript mentions as actionable workspace links that reveal files, open folders, and visibly mark missing paths without prompt injection, eager file reads, folder expansion, or a special context-target model.",
+      "Lets the composer autocomplete indexed workspace files and folders after `@`, attach files or folders through the native paperclip picker, insert removable attachment chips, serialize selected context as ordinary `@path` user text, and render sent transcript mentions as actionable workspace links that reveal files, open folders, and visibly mark missing paths without prompt injection, eager file reads, folder expansion, or a special context-target model.",
     sourceSpecs: ["docs/specs/composer-mention-links.spec.md", "docs/progress.md"],
   },
   {

@@ -4,9 +4,7 @@
   import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
   import FileSearchIcon from "@lucide/svelte/icons/file-search";
   import SearchIcon from "@lucide/svelte/icons/search";
-  import SettingsIcon from "@lucide/svelte/icons/settings";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import Grid2x2Icon from "@lucide/svelte/icons/grid-2x2";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
   import PlusIcon from "@lucide/svelte/icons/plus";
@@ -396,7 +394,6 @@
     buildContextBudgetFromUsage(conversationSummary.latestContextUsage, currentModel?.contextWindow),
   );
   const summaryMessageCount = $derived(conversationSummary.messageCount);
-  const paneLayoutSummary = $derived(`${paneLayout.columns.length}×${paneLayout.rows.length}`);
   const composerErrorMessage = $derived.by(() => {
     const message =
       errorMessage ?? (currentSession?.status === "error" ? currentSession.preview : undefined);
@@ -2313,17 +2310,6 @@
       >
         <FileSearchIcon aria-hidden="true" size={15} strokeWidth={1.85} />
       </button>
-      {#if onOpenSettings}
-        <button
-          class="titlebar-icon"
-          type="button"
-          aria-label="Open settings"
-          title="Settings"
-          onclick={onOpenSettings}
-        >
-          <SettingsIcon aria-hidden="true" size={15} strokeWidth={1.85} />
-        </button>
-      {/if}
     </div>
   </header>
 
@@ -2410,17 +2396,6 @@
           {/if}
           <ContextBudgetBar budget={contextBudget} variant="compact" label="Focused context" />
           <button
-            class="layout-chip-button"
-            type="button"
-            aria-label={`Pane layout ${paneLayoutSummary}`}
-            title={`Pane layout ${paneLayoutSummary}`}
-            onclick={() => openPalette("actions")}
-          >
-            <Grid2x2Icon aria-hidden="true" size={13} strokeWidth={1.85} />
-            <span>{paneLayoutSummary}</span>
-          </button>
-          <span class="runtime-summary">{currentModel?.name ?? "No surface"} + {paneLayout.panes.length}</span>
-          <button
             class="header-icon-button"
             type="button"
             aria-label="Open command palette"
@@ -2438,17 +2413,6 @@
           >
             <FileSearchIcon aria-hidden="true" size={14} strokeWidth={1.85} />
           </button>
-          {#if onOpenSettings}
-            <button
-              class="header-icon-button"
-              type="button"
-              aria-label={sidebarHidden ? "Open settings" : "Settings"}
-              title="Settings"
-              onclick={onOpenSettings}
-            >
-              <SettingsIcon aria-hidden="true" size={14} strokeWidth={1.85} />
-            </button>
-          {/if}
           <button
             class="header-icon-button"
             type="button"
@@ -2599,20 +2563,18 @@
                 >
                   <CopyPlusIcon aria-hidden="true" size={13} strokeWidth={1.9} />
                 </button>
-                {#if paneLayout.panes.length > 1}
-                  <button
-                    type="button"
-                    data-testid="pane-close-button"
-                    aria-label={`Close pane ${pane.paneId}`}
-                    title="Close pane"
-                    onclick={(event) => {
-                      event.stopPropagation();
-                      window.setTimeout(() => void handleClosePane(pane.paneId), 0);
-                    }}
-                  >
-                    <XIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-                  </button>
-                {/if}
+                <button
+                  type="button"
+                  data-testid="pane-close-button"
+                  aria-label={`Close pane ${pane.paneId}`}
+                  title="Close pane"
+                  onclick={(event) => {
+                    event.stopPropagation();
+                    window.setTimeout(() => void handleClosePane(pane.paneId), 0);
+                  }}
+                >
+                  <XIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                </button>
               </div>
             </header>
             {#if pane.paneId !== focusedPaneId && paneContextBudget}
@@ -2780,7 +2742,7 @@
                 <p class="new-session-watermark">svvy</p>
                 <div class="new-session-heading">
                   <h2>Start with the composer</h2>
-                  <p>Describe the repo work, attach context with @mentions, then send.</p>
+                  <p>Describe the repo work, attach file context, then send.</p>
                 </div>
               </div>
 
@@ -2810,8 +2772,8 @@
                 </div>
                 <p class="new-session-mode-note">
                   {currentSessionMode === "quick"
-                    ? "Direct single-surface replies."
-                    : "Delegation, workflow, and verification paths available."}
+                    ? "Direct answers in this pane."
+                    : "Plans work, delegates handlers, and verifies outcomes."}
                 </p>
               </div>
 
@@ -2873,6 +2835,7 @@
               currentSurfaceController?.agent.setThinkingLevel(level);
             }}
             listWorkspacePaths={() => runtime.listWorkspacePaths()}
+            pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
           />
                 </div>
               </section>
@@ -2911,6 +2874,7 @@
                       paneController.agent.setThinkingLevel(level);
                     }}
                     listWorkspacePaths={() => runtime.listWorkspacePaths()}
+                    pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
                   />
                 </div>
               </section>
@@ -4675,47 +4639,6 @@
       transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .layout-chip-button,
-  .runtime-summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.28rem;
-    min-height: 1.45rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    line-height: 1;
-    white-space: nowrap;
-  }
-
-  .layout-chip-button {
-    padding: 0 0.46rem;
-    cursor: pointer;
-    transition:
-      border-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
-      background-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
-      color 140ms cubic-bezier(0.19, 1, 0.22, 1),
-      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .runtime-summary {
-    max-width: 9.6rem;
-    overflow: hidden;
-    padding: 0 0.42rem;
-    text-overflow: ellipsis;
-  }
-
-  .layout-chip-button:hover,
-  .layout-chip-button:focus-visible {
-    outline: none;
-    border-color: var(--ui-border-strong);
-    background: var(--ui-surface-subtle);
-    color: var(--ui-text-primary);
-  }
-
   .header-icon-button:hover,
   .header-icon-button:focus-visible,
   .header-icon-button[aria-pressed="true"] {
@@ -4725,8 +4648,7 @@
   }
 
   .titlebar-icon:active:not(:disabled),
-  .header-icon-button:active:not(:disabled),
-  .layout-chip-button:active:not(:disabled) {
+  .header-icon-button:active:not(:disabled) {
     transform: translateY(1px) scale(0.94);
   }
 
@@ -5653,7 +5575,6 @@
   @media (prefers-reduced-motion: reduce) {
     .titlebar-icon,
     .header-icon-button,
-    .layout-chip-button,
     .pane-chrome-actions button {
       transition:
         border-color 0.01ms linear,
@@ -5664,7 +5585,6 @@
 
     .titlebar-icon:active:not(:disabled),
     .header-icon-button:active:not(:disabled),
-    .layout-chip-button:active:not(:disabled),
     .pane-chrome-actions button:active:not(:disabled) {
       transform: none;
     }
