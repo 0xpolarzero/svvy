@@ -9,7 +9,7 @@
   - define keyboard shortcuts and fallback prompt behavior
   - define the command/action registry model
   - define command search, matching, and execution routing semantics
-  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, saved workflow library browsing, panes, settings, agent settings, and future product actions
+  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, saved workflow library browsing, Dockview panels, settings, agent settings, and future product actions
 
 ## Purpose
 
@@ -17,7 +17,7 @@ The command palette is the shell-level action surface for `svvy`.
 
 It gives users a VS Code-like way to discover and execute product actions without turning those actions into a second runtime. `Cmd+Shift+P` opens the all-actions command palette. `Cmd+P` opens a file quick-open palette, which is intentionally a placeholder until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist.
 
-The palette invokes existing product behavior. It routes into sessions, panes, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, saved workflow library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
+The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, saved workflow library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
 
 ## Source Boundaries
 
@@ -37,7 +37,7 @@ The command palette does not implement:
 - direct Smithers execution from the shell outside the owning handler-thread model
 - direct Project CI execution outside normal orchestrator or handler-thread routing
 - file quick-open results before file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist
-- pane-placement semantics as core palette behavior; pane-specific placement belongs to `docs/specs/pane-layout.spec.md`
+- Dockview placement semantics as core palette behavior; panel-specific placement belongs to `docs/specs/pane-layout.spec.md`
 
 ## UI Primitive
 
@@ -61,7 +61,7 @@ The all-actions palette discovers and executes product actions, including:
 - open handler thread surfaces
 - open workflow inspector-related surfaces
 - open the read-only saved workflow library surface
-- pane and layout actions once pane layout exists
+- Dockview panel and layout actions once Dockview layout exists
 - settings and agent-setting actions when those features exist
 - future product actions as they are added
 
@@ -179,11 +179,11 @@ Until file surfaces exist, quick-open has placeholder semantics:
 - it must not search files through an unowned execution path
 - it must not create file editor, diagnostics, or typecheck records before those product surfaces exist
 
-## Relationship To Panes
+## Relationship To Dockview Panels
 
-The core command palette section defines default behavior in pre-pane terms: commands use the product's normal current workspace and session routing.
+The core command palette section defines default behavior before choosing a Dockview target: commands use the product's normal current workspace and session routing.
 
-Pane-specific placement behavior belongs to `docs/specs/pane-layout.spec.md`. Once pane layout exists, command palette results that open sessions or surfaces default to opening in a new pane, while `Cmd+Enter` from the command palette opens the selected command or result into the currently focused pane.
+Dockview placement behavior belongs to `docs/specs/pane-layout.spec.md`. Command palette results that open sessions or surfaces default to opening in a new Dockview panel, while `Cmd+Enter` from the command palette opens the selected command or result into the currently focused Dockview panel.
 
 ## Relationship To Product Areas
 
@@ -208,10 +208,10 @@ Workflow inspectors:
 - the palette can open workflow inspector-related surfaces over durable workflow-run state
 - workflow inspection remains separate from orchestrator reconciliation by default
 
-Panes:
+Dockview panels:
 
-- the palette can expose pane and layout actions once pane layout exists
-- pane placement and focused-pane replacement behavior are defined by the pane-layout spec
+- the palette can expose panel and layout actions once Dockview layout exists
+- panel placement and focused-panel replacement behavior are defined by the pane-layout spec
 
 Settings and agent settings:
 
@@ -238,12 +238,12 @@ Future product actions:
 - The palette does not invent a parallel workflow abstraction.
 - Project CI actions route through normal orchestrator or handler-thread behavior.
 - Smithers execution remains owned by handler threads through Smithers-native tools.
-- Pane-specific placement behavior is defined by the pane-layout spec.
+- Dockview placement behavior is defined by the pane-layout spec.
 
 ## Relationship To Other Specs
 
 - `docs/prd.md` defines the product-level command palette and quick-open behavior.
-- `docs/specs/pane-layout.spec.md` defines pane-specific placement for command palette results once pane layout exists.
+- `docs/specs/pane-layout.spec.md` defines Dockview placement for command palette results once Dockview layout exists.
 - `docs/specs/workspace-navigation-core-projection.spec.md` defines the session navigation and surface projection state that command actions operate on.
 - `docs/specs/multi-session-support.spec.md` defines the existing multi-session primitives used by session commands.
 - `docs/specs/structured-session-state.spec.md` defines session, thread, workflow-run, artifact, Project CI, and turn records that command actions reference.
@@ -257,5 +257,5 @@ This design is successful when:
 - users can discover and execute product actions from `Cmd+Shift+P`
 - `Cmd+P` is reserved for future file quick-open behavior without implying file surfaces that do not exist
 - unmatched palette text starts a normal new session prompt
-- command results use existing sessions, surfaces, orchestrator and handler routing, durable state, and pane semantics
+- command results use existing sessions, surfaces, orchestrator and handler routing, durable state, and Dockview panel semantics
 - implementation can use `cmdk-sv` for the Svelte menu UI without delegating product semantics to the UI library

@@ -119,7 +119,7 @@ The `svvy`-owned part is:
 - For this supervision slice, one handler thread should own at most one active Smithers run at a time.
 - Workflow task agents are a lower-level actor class inside Smithers tasks, not another `svvy` interactive surface.
 - `svvy` should derive active and latest workflow summaries from workflow-run records and recency rules rather than persisting a thread-level latest-workflow pointer.
-- Workflow attention must reacquire and target the owning handler surface by `surfacePiSessionId`, never a globally active surface or the currently focused pane.
+- Workflow attention must reacquire and target the owning handler surface by `surfacePiSessionId`, never a globally active surface or the currently focused Dockview panel.
 - `thread.start`, `thread.handoff`, and `wait` remain the only `svvy`-native control tools in this area.
 - Agent-facing workflow supervision should use Smithers-native semantic tools exposed through the Bun bridge rather than a svvy-defined `workflow.*` abstraction.
 - Shipped product runtime must not depend on repo-root `workflows/`, repo-relative Smithers binaries, or nearest-db path walking.

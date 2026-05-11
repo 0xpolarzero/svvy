@@ -56,7 +56,7 @@ If this spec and the POC ever disagree, the POC should be reconciled to the spec
 - Treat optional prompt-context loading as explicit handler state through `thread.start` context keys and the top-level handler-only `request_context` tool, not as an `execute_typescript` API.
 - Drive durable facts from real runtime handlers and bridge events, not transcript heuristics.
 - Use one explicit surface-target identity model with `workspaceSessionId`, `surfacePiSessionId`, and `threadId` instead of overloading `session.id`.
-- Emit workspace-level read-model updates independently from live surface transcript updates; the renderer should join durable workspace facts, live surface facts, and pane bindings locally instead of depending on one active-session payload.
+- Emit workspace-level read-model updates independently from live surface transcript updates; the renderer should join durable workspace facts, live surface facts, and Dockview panel bindings locally instead of depending on one active-session payload.
 - Keep status derivation and workflow lifecycle projection write-driven; do not overlay `activePrompt`, parse transcript files, or perform read-side Smithers repair writes.
 - Future Smithers lifecycle projection beyond explicit tool-boundary snapshots should arrive through bridge events rather than speculative read-side reconciliation.
 - Keep workflow-run state separate from handler-thread state.
@@ -69,7 +69,7 @@ If this spec and the POC ever disagree, the POC should be reconciled to the spec
 - Treat handler-thread episodes as durable handoff summaries that are emitted explicitly through `thread.handoff` whenever a thread gives control back to the orchestrator.
 - Do not model internal workflow pauses as separate episodes.
 - Use selectors and metadata-first read models instead of making the UI reconstruct state from storage details or transcripts.
-- Keep pane geometry, pane focus, and pane-to-surface bindings out of structured session state; those are UI layout concerns layered on top of durable workspace state and live surface state.
+- Keep Dockview layout state, panel focus, and panel-to-surface bindings out of structured session state; those are UI layout concerns layered on top of durable workspace state and live surface state.
 
 ## Core Modeling Rule
 
@@ -386,17 +386,17 @@ Use it this way:
 
 Structured session state is durable workspace state.
 
-It is not the live transcript cache for every open surface and it is not pane layout state.
+It is not the live transcript cache for every open surface and it is not Dockview layout state.
 
 The adopted runtime split is:
 
 - workspace updates carry structured session summaries, thread summaries, workflow summaries, command rollups, wait state, and other metadata-first read models keyed by `workspaceSessionId`
 - surface updates carry one live surface snapshot keyed by `surfacePiSessionId`
-- pane state binds a UI pane to a surface locally and is free to change without mutating structured session state
+- Dockview panel state binds a UI panel to a surface locally and is free to change without mutating structured session state
 
 This means:
 
-- workspace summaries must keep updating even when no pane is focused on the affected surface
+- workspace summaries must keep updating even when no panel is focused on the affected surface
 - surface transcript updates must not require the backend to nominate one global active surface
 - renderer code must not poll read APIs or infer lifecycle repair from transcript mutations
 

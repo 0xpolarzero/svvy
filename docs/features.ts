@@ -72,7 +72,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Delegated Handler Thread Surfaces",
     status: "in-progress",
     summary:
-      "Lets the orchestrator open pi-backed delegated handler threads as fully interactive conversation surfaces that supervise one delegated objective, optionally preload prompt context keys such as `ci` through `thread.start`, derive handler-thread titles through the configured `namer` from the supplied objective instead of exposing a separate title field to the orchestrator, stay multi-turn and directly messageable before and after handoff, distinguish handler-active, workflow-active, waiting, troubleshooting, and completed thread states, reject `thread.handoff` while the thread still owns a running or waiting workflow run for the current span, route workflow attention back to the owning handler surface rather than the focused pane, can be inspected on demand without becoming the default reconciliation path, and return control to the orchestrator only through explicit `thread.handoff` calls that append ordered handoff episodes over the thread's lifetime and immediately trigger a fresh orchestrator reconciliation turn.",
+      "Lets the orchestrator open pi-backed delegated handler threads as fully interactive conversation surfaces that supervise one delegated objective, optionally preload prompt context keys such as `ci` through `thread.start`, derive handler-thread titles through the configured `namer` from the supplied objective instead of exposing a separate title field to the orchestrator, stay multi-turn and directly messageable before and after handoff, distinguish handler-active, workflow-active, waiting, troubleshooting, and completed thread states, reject `thread.handoff` while the thread still owns a running or waiting workflow run for the current span, route workflow attention back to the owning handler surface rather than the focused Dockview panel, can be inspected on demand without becoming the default reconciliation path, and return control to the orchestrator only through explicit `thread.handoff` calls that append ordered handoff episodes over the thread's lifetime and immediately trigger a fresh orchestrator reconciliation turn.",
     sourceSpecs: ["docs/prd.md", "docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -154,7 +154,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workspace Navigation And Core Projection",
     status: "shipped",
     summary:
-      "Keeps the workspace shell navigable with pinned active sessions, a single collapsed-by-default Archived group for non-destructive session hiding, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable pane bindings, focus, pane-local scroll, display preferences, and inspector selections while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
+      "Keeps the workspace shell navigable with pinned active sessions, a single collapsed-by-default Archived group for non-destructive session hiding, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable Dockview panel bindings, focus, panel-local scroll, display preferences, and inspector selections while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/pane-layout.spec.md",
@@ -169,7 +169,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Command Palette And Quick Open",
     status: "in-progress",
     summary:
-      "Defines a VS Code-like shell action surface where `Cmd+Shift+P` discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, pane, settings, and agent-setting routing, shows visually distinct kind badges for open-session results across orchestrator, handler-thread, and task-agent categories, `Cmd+P` is reserved as a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty palette text creates a normal new session initial prompt without introducing a parallel runtime, shell, terminal loop, or workflow abstraction.",
+      "Defines a VS Code-like shell action surface where `Cmd+Shift+P` discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, Dockview panel, settings, and agent-setting routing, shows visually distinct kind badges for open-session results across orchestrator, handler-thread, and task-agent categories, `Cmd+P` is reserved as a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty palette text creates a normal new session initial prompt without introducing a parallel runtime, shell, terminal loop, or workflow abstraction.",
     sourceSpecs: ["docs/prd.md", "docs/specs/command-palette.spec.md"],
   },
   {
@@ -198,7 +198,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Multi-Surface Live Runtime",
     status: "in-progress",
     summary:
-      "Separates durable workspace state from live surface runtimes and user-driven pane-grid layout state with ordered row and column percentages plus deterministic pane coordinates, manages live pi surfaces in a shared registry keyed by `surfacePiSessionId`, gives each surface its own prompt lock and model or reasoning lifecycle, supports explicit open and close semantics, persisted split, divider resize, close, drag placement, full-width or full-height span placement, sidebar pane-location indicators, compact thread and workflow-run projections, and lets multiple panes attach to the same surface without duplicating the underlying runtime while keeping pane-local scroll independent.",
+      "Separates durable workspace state from live surface runtimes and Dockview-backed layout state, using Dockview core for panels, groups, tabs, tab groups, splitters, drag/drop overlays, edge groups, floating groups, popouts, and serialized layout restore while svvy stores panel-to-surface bindings and panel-local metadata; manages live pi surfaces in a shared registry keyed by `surfacePiSessionId`, gives each surface its own prompt lock and model or reasoning lifecycle, supports explicit open and close semantics, sidebar panel-location indicators, compact thread and workflow-run projections, and lets multiple panels attach to the same surface without duplicating the underlying runtime while keeping panel-local scroll independent.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/multi-session-support.spec.md",
@@ -286,7 +286,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workflow Inspector Surface",
     status: "shipped",
     summary:
-      "Provides a durable tree-first pane surface for Smithers runs, modeled after React DevTools and the Smithers GUI live-run tree, with searchable expandable rows, selected and expanded node state, normalized svvy status beside raw Smithers status, launch arguments and props, Smithers DevTools snapshot and event-cursor streaming, historical frame inspection, selected-node status, output, partial output, artifact, workflow-agent, task-attempt, command, worktree, timing, wait-reason, output/diff/log/transcript/command/event/raw detail, Project CI check rows only for declared CI entries, and related handler-thread, task-agent, command, CI check, and artifact pane targets without forcing the orchestrator to absorb raw workflow history.",
+      "Provides a durable tree-first Dockview panel surface for Smithers runs, modeled after React DevTools and the Smithers GUI live-run tree, with searchable expandable rows, selected and expanded node state, normalized svvy status beside raw Smithers status, launch arguments and props, Smithers DevTools snapshot and event-cursor streaming, historical frame inspection, selected-node status, output, partial output, artifact, workflow-agent, task-attempt, command, worktree, timing, wait-reason, output/diff/log/transcript/command/event/raw detail, Project CI check rows only for declared CI entries, and related handler-thread, task-agent, command, CI check, and artifact Dockview targets without forcing the orchestrator to absorb raw workflow history.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/workflow-supervision.spec.md",

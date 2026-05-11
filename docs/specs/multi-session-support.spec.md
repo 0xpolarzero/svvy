@@ -3,14 +3,14 @@
 ## Status
 
 - Date: 2026-04-21
-- Status: adopted direction for workspace navigation, live surface ownership, and pane indirection
+- Status: adopted direction for workspace navigation, live surface ownership, and Dockview panel indirection
 - Scope of this document:
   - define how one workspace hosts many durable sessions and many live surfaces at once
-  - define the separation between workspace state, live surface state, and pane layout state
+  - define the separation between workspace state, live surface state, and Dockview layout state
   - define the runtime contracts needed for multi-surface open, close, targeting, and rehydration
-  - define the pane-to-surface model that later pane-layout UI builds on
+  - define the panel-to-surface model that Dockview layout UI builds on
   - defer detailed session pin/archive, artifact block, compact CI projection, and restore exclusions to `docs/specs/workspace-navigation-core-projection.spec.md`
-  - defer detailed pane-grid layout, placement, duplicate-pane behavior, and expanded pane restore rules to `docs/specs/pane-layout.spec.md`
+  - defer detailed Dockview layout, placement, duplicate-panel behavior, and expanded panel restore rules to `docs/specs/pane-layout.spec.md`
 
 ## Purpose
 
@@ -20,8 +20,8 @@ The product must support:
 
 - many durable workspace sessions
 - many live pi-backed interactive surfaces open at the same time
-- pane layout state that points at surfaces without becoming surface identity
-- shared live state when more than one pane shows the same surface
+- Dockview layout state and svvy panel metadata that point at surfaces without becoming surface identity
+- shared live state when more than one panel shows the same surface
 - explicit open and close semantics for each live surface
 
 This spec defines the adopted steady-state architecture for that behavior.
@@ -33,11 +33,11 @@ This spec defines the adopted steady-state architecture for that behavior.
 - Manage live interactive surfaces separately from durable workspace state.
 - Key each live surface runtime by `surfacePiSessionId`.
 - Give each live surface its own prompt lock, model state, reasoning state, cancellation state, and transcript snapshot.
-- Treat pane layout as UI state that binds panes to surfaces; panes are not runtime identity.
-- Allow more than one pane to bind to the same surface at once.
-- Close a pane by detaching that pane from its surface.
+- Treat Dockview layout as UI state that binds panels to surfaces; panels are not runtime identity.
+- Allow more than one panel to bind to the same surface at once.
+- Close a panel by detaching that panel from its surface.
 - Close a surface by releasing its final owner and disposing its live runtime cleanly.
-- Route workflow attention to the owning handler surface, never to whichever pane is focused.
+- Route workflow attention to the owning handler surface, never to whichever panel is focused.
 - Emit workspace-level updates independently from surface-level transcript and runtime updates.
 - Keep the session sidebar to active sessions, pinned active sessions, and one Archived group; arbitrary user-created session folders are out of scope.
 
@@ -62,7 +62,7 @@ It owns:
 
 Workspace state is keyed by `workspaceSessionId` where needed and survives app reload or runtime disposal.
 
-Workspace state must not depend on which pane is focused or which surface is currently open.
+Workspace state must not depend on which panel is focused or which surface is currently open.
 
 ### 2. Live Surface State
 
@@ -81,21 +81,21 @@ It owns:
 
 Live surface state is keyed only by `surfacePiSessionId`.
 
-If two panes show the same surface, they share this one live surface state.
+If two panels show the same surface, they share this one live surface state.
 
-### 3. Pane And Layout State
+### 3. Dockview Panel And Layout State
 
-Pane state is UI-local layout and focus state.
+Dockview panel state is UI-local layout and focus state.
 
 It owns:
 
-- pane ids
-- which surface each pane is showing
-- focused pane
-- pane-grid geometry and pane occupancy
-- pane-local view state such as scroll position or inspector selection
+- Dockview panel ids
+- which surface each panel is showing
+- focused panel
+- Dockview layout JSON and panel occupancy
+- panel-local view state such as scroll position or inspector selection
 
-Pane state must not own transcript state, prompt locks, or model settings.
+Panel state must not own transcript state, prompt locks, or model settings.
 
 ## Identity Model
 
@@ -136,17 +136,17 @@ Use it for:
 - thread inspectors
 - routing workflow attention
 
-### `paneId`
+### `panelId`
 
-The UI identity for one pane.
+The Dockview UI identity for one panel.
 
 Use it for:
 
 - layout persistence
 - focus state
-- pane-local projection state
+- panel-local projection state
 
-`paneId` must never be reused as a session id or surface id.
+`panelId` must never be reused as a session id or surface id.
 
 ## Surface Ownership And Lifecycle
 
@@ -267,7 +267,7 @@ They include:
 - model and reasoning state
 - system prompt state
 
-The renderer joins surface updates with pane bindings locally.
+The renderer joins surface updates with Dockview panel bindings locally.
 
 ## Frontend Ownership Rules
 
@@ -275,17 +275,17 @@ The frontend runtime should be split into:
 
 - a workspace store for session summaries and structured read models
 - a shared surface-controller registry keyed by `surfacePiSessionId`
-- a pane/layout store keyed by `paneId`
+- a Dockview layout store plus svvy panel metadata keyed by Dockview panel id
 
 Rules:
 
-- a pane points at a surface controller; it does not own transcript state
+- a Dockview panel points at a surface controller; it does not own transcript state
 - a surface controller may exist without being focused
-- more than one pane may subscribe to the same surface controller
-- pane focus chooses where commands such as "open session in focused pane" land, but focus does not redefine surface ownership
-- closing the last pane bound to a surface should release that surface cleanly unless a runtime-owned background turn still holds it
+- more than one Dockview panel may subscribe to the same surface controller
+- panel focus chooses where commands such as "open session in focused panel" land, but focus does not redefine surface ownership
+- closing the last panel bound to a surface should release that surface cleanly unless a runtime-owned background turn still holds it
 
-## Sidebar And Pane Semantics
+## Sidebar And Panel Semantics
 
 The left sidebar is workspace navigation, not runtime identity.
 
@@ -299,27 +299,27 @@ The adopted sidebar grouping is:
 
 Selecting a session from the sidebar should:
 
-- choose a target pane
-- bind that pane to the session's orchestrator surface by default
-- leave other open panes and surfaces alone unless the user explicitly changes them
+- choose a target Dockview panel or placement target
+- bind that panel to the session's orchestrator surface by default
+- leave other open panels and surfaces alone unless the user explicitly changes them
 
 Opening a handler thread from the orchestrator should:
 
 - resolve the thread's `surfacePiSessionId`
-- bind the chosen pane to that surface
+- bind the chosen Dockview panel to that surface
 - reuse the existing live surface if already open elsewhere
 
 ## Shared-Surface Behavior
 
-When multiple panes show the same surface:
+When multiple Dockview panels show the same surface:
 
 - transcript content stays shared
 - streaming state stays shared
 - prompt locks stay shared
 - model and reasoning settings stay shared
-- pane-local scroll and selection may differ
+- panel-local scroll and selection may differ
 
-The product must never duplicate the underlying live surface runtime just because two panes show it.
+The product must never duplicate the underlying live surface runtime just because two panels show it.
 
 ## Product Outcomes
 
@@ -329,6 +329,6 @@ The design is successful when:
 - each surface streams, cancels, and updates settings independently
 - workspace summaries keep updating even when another surface is focused
 - workflow attention always resumes the owning handler surface
-- duplicated panes share one underlying live surface state
-- closing a pane detaches UI state only
+- duplicated panels share one underlying live surface state
+- closing a panel detaches UI state only
 - closing the last owner of a surface disposes the live runtime cleanly without deleting durable state

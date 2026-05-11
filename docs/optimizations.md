@@ -275,8 +275,8 @@ Preferred direction:
 PRD pressure:
 
 - the main session view must show conversation, threads, workflow activity, episodes, Project CI, and artifacts together
-- the shell supports fixed pane layouts up to `3x3`
-- the same surface may be open in multiple panes
+- the shell supports Dockview layouts with groups, tabs, edge groups, floating groups, and popouts
+- the same surface may be open in multiple Dockview panels
 
 Optimization requirement:
 
@@ -284,12 +284,12 @@ Optimization requirement:
 
 Do not:
 
-- duplicate transcript parsing, artifact reconstruction, or workflow graph derivation per pane
+- duplicate transcript parsing, artifact reconstruction, or workflow graph derivation per panel
 
 Preferred direction:
 
 - shared immutable backing stores
-- pane-local viewport state only
+- panel-local viewport state only
 - memoized selectors by surface ID
 - virtualization and culling for long timelines and inspectors
 
@@ -503,7 +503,7 @@ Do not:
 
 Preferred direction:
 
-- startup loads workspace summary, session summaries, active session metadata, pane layout, and pending work first
+- startup loads workspace summary, session summaries, active session metadata, Dockview layout, and pending work first
 - transcript segments, artifacts, and deep workflow details stream in lazily
 
 ## Recommended Architecture Direction
@@ -535,7 +535,7 @@ Maintain explicit stores for:
 - CI run/check result records
 - workflow runs
 - workflow graph nodes
-- pane layouts
+- Dockview layouts
 - worktrees
 
 ### 3. Incremental projections
@@ -563,7 +563,7 @@ For transcript, graph, artifact, and inspector surfaces:
 
 - virtualize long lists
 - cull offscreen nodes
-- keep pane-local state lightweight
+- keep panel-local state lightweight
 
 ## Suggested Optimization Order
 
@@ -583,7 +583,7 @@ For transcript, graph, artifact, and inspector surfaces:
 
 - introduce first-class thread, episode, artifact, Project CI, workflow, and worktree stores
 - make startup metadata-first and detail-lazy
-- make workflow inspector and multi-pane UI consume shared projections instead of transcript replay
+- make workflow inspector and multi-panel UI consume shared projections instead of transcript replay
 
 ## Practical Litmus Test
 
@@ -592,7 +592,7 @@ Before implementing a new feature from the PRD, ask:
 1. Can this surface render from indexed product state instead of replaying transcript?
 2. Can session summaries and list views load from persisted metadata without materializing full detail?
 3. Can updates arrive as deltas instead of full snapshots?
-4. Can multiple panes share one canonical backing state?
+4. Can multiple Dockview panels share one canonical backing state?
 5. Can restart recovery show useful state before deep history is loaded?
 
 If the answer is "no", the implementation is likely building more transcript-replay debt.

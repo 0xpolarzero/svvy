@@ -555,14 +555,14 @@ The product carries four different identifiers and they are not interchangeable:
 - `workspaceSessionId`: the durable top-level session container id used for storage, summaries, navigation, and restart recovery
 - `surfacePiSessionId`: the pi session id for the currently addressed interactive surface
 - `threadId`: the durable handler-thread record id for the delegated objective; it exists only when the target surface is a handler thread
-- `paneId`: the UI layout identity that points at a surface without becoming that surface's runtime identity
+- `panelId`: the Dockview panel identity that points at a surface without becoming that surface's runtime identity
 
 Rules:
 
 - backend RPC calls and backend-to-renderer surface payloads must carry an explicit surface target rather than overloading `session.id`
 - `session.id` inside session summaries means `workspaceSessionId`
 - if the orchestrator surface currently happens to reuse the same string for `workspaceSessionId` and `surfacePiSessionId`, callers must treat that as an implementation detail rather than a shared identity contract
-- `paneId` must never be used as a session id, surface id, or thread id
+- `panelId` must never be used as a session id, surface id, or thread id
 
 ### Live Surface Runtime
 
@@ -577,26 +577,27 @@ That live runtime owns:
 - the current prompt execution context
 - one prompt lock for that surface
 
-Live surface runtime is separate from both durable workspace state and pane layout state.
+Live surface runtime is separate from both durable workspace state and Dockview layout state.
 
-### Pane And Layout State
+### Dockview Panel And Layout State
 
-Pane and layout state is UI state.
+Dockview panel and layout state is UI state.
 
 It owns:
 
-- which pane shows which surface
-- a user-driven pane grid with pane geometry
-- pane focus
-- pane-local scroll and inspector state
+- which Dockview panel shows which surface
+- the Dockview layout document, including groups, tabs, split sizes, edge groups, floating groups, and popout groups
+- panel focus
+- panel-local scroll and inspector state
+- svvy panel metadata keyed by Dockview panel id
 
-Panes are not live runtimes.
+Dockview panels are not live runtimes.
 
-If two panes show the same surface, they share one underlying live surface runtime.
+If two Dockview panels show the same surface, they share one underlying live surface runtime.
 
-Users may split, drag, resize, and close panes as their workspace requires, with the renderer responsible for enforcing practical minimum pane sizes and explicit close behavior.
+Users may split, dock, tab, drag, resize, close, float, and pop out panels as their workspace requires. Dockview owns the layout interaction mechanics, including drag/drop overlays and splitter behavior. The renderer is responsible for applying svvy product policy, practical minimum panel sizes, and explicit close behavior around Dockview events.
 
-Pane geometry is proportional. The durable layout stores ordered row and column track percentages plus deterministic pane coordinates, and window resize recomputes pixels from those percentages without changing pane placement.
+The durable layout stores Dockview serialized layout state plus svvy panel metadata. Window resize preserves the Dockview layout intent without changing surface bindings or live runtime ownership.
 
 ### Orchestrator Surface
 
@@ -827,7 +828,7 @@ Every user request goes through one orchestrator-controlled product loop:
 8. update structured state
 9. emit explicit workspace-state updates whenever durable summaries or read models change
 10. emit explicit surface-state updates whenever one live surface transcript or runtime snapshot changes
-11. render updated workspace and pane surfaces by joining those updates with pane bindings
+11. render updated workspace and Dockview panel surfaces by joining those updates with panel bindings
 
 Read APIs and renderer code must not compensate for missing lifecycle writes with polling, transcript parsing, or inferred repair logic.
 
@@ -943,15 +944,16 @@ The command palette is a shell/action surface. It is not an alternate execution 
 
 When the user types text into `Cmd+Shift+P` and it does not match an existing command or action, pressing Enter creates a new session and uses that typed text as the initial prompt. That prompt enters the normal orchestrator turn model; it does not bypass system prompt loading, prompt history, structured turn state, or live surface runtime ownership.
 
-The default command-palette behavior is defined in pre-pane terms as normal current workspace and session routing. Once pane layout exists, pane-specific placement rules belong to the pane-layout spec: command palette results that open sessions or surfaces default to a new pane, and `Cmd+Enter` opens into the currently focused pane.
+The default command-palette behavior is defined before choosing a Dockview target as normal current workspace and session routing. Once Dockview layout exists, placement rules belong to the pane-layout spec: command palette results that open sessions or surfaces default to a new Dockview panel, and `Cmd+Enter` opens into the currently focused panel.
 
 ### Surface Projection
 
-`svvy` uses a multi-pane desktop layout where:
+`svvy` uses a Dockview-backed multi-pane desktop layout where:
 
-- the main orchestrator surface can be opened in a pane
-- a handler thread surface can be opened in a pane
-- a workflow inspector surface can be opened in a pane
+- the main orchestrator surface can be opened in a Dockview panel
+- a handler thread surface can be opened in a Dockview panel
+- a workflow inspector surface can be opened in a Dockview panel
+- artifact, Project CI, saved workflow library, and related inspector surfaces can be opened in Dockview panels, tab groups, edge groups, floating groups, or popout groups when valid
 
 The main orchestrator surface and a handler thread surface should use the same core interactive UI model:
 
@@ -963,43 +965,44 @@ The main orchestrator surface and a handler thread surface should use the same c
 
 Message targeting is simple:
 
-- sending a message from a pane sends it to the surface shown in that pane
-- if the pane shows the orchestrator, the message goes to the orchestrator
-- if the pane shows a handler thread, the message goes to that handler thread
+- sending a message from a panel sends it to the surface shown in that panel
+- if the panel shows the orchestrator, the message goes to the orchestrator
+- if the panel shows a handler thread, the message goes to that handler thread
 
 This is shared surface behavior, not a thread-specific exception.
 
 Projection ownership is equally simple:
 
 - the backend owns durable workspace projection and live surface runtime ownership
-- the renderer owns pane bindings, pane focus, and pane-local view state
+- Dockview owns layout mechanics and serialized layout state
+- the renderer owns panel bindings, panel focus projection, and panel-local view state
 - the renderer listens for explicit workspace updates and surface updates, then joins them locally
 - the renderer does not poll read APIs, inspect transcript files, or infer lifecycle changes from transcript mutations
 
-Pane and surface semantics are:
+Panel and surface semantics are:
 
-- opening a pane attaches that pane to a surface
-- closing a pane detaches that pane without deleting durable state
+- opening a Dockview panel attaches that panel to a surface
+- closing a panel detaches that panel without deleting durable state
 - closing the last owner of a surface releases that live surface runtime cleanly
-- more than one pane may attach to the same surface
-- duplicated panes share one underlying live surface state but may keep independent scroll position
-- split, resize, close, drag/drop placement, focus, bindings, occupancy, row and column percentages, and pane-local state persist across restart
-- background workflow attention always targets the owning handler surface, not the currently focused pane
+- more than one panel may attach to the same surface
+- duplicated panels share one underlying live surface state but may keep independent scroll position
+- split, resize, close, tab reorder, panel/group drag/drop placement, Dockview focus, bindings, Dockview layout JSON, edge-group state, floating/popout state, and panel-local state persist across restart
+- background workflow attention always targets the owning handler surface, not the currently focused panel
 
 On restart, the workspace shell should restore useful stable UI state:
 
 - pinned and archived session state
 - Archived group collapsed state
-- open panes and pane-to-surface bindings
-- focused pane
-- pane-local scroll and display preferences
-- selected inspector target per pane when the target still exists
+- open Dockview panels and panel-to-surface bindings
+- focused panel
+- panel-local scroll and display preferences
+- selected inspector target per panel when the target still exists
 
 It should not restore transient menus or popovers, unsaved inline edits, composer draft text, selected transcript text, temporary search highlights, or stale live stream and tool-running state.
 
 ## Workflow Inspection
 
-The product exposes workflow runs as inspectable pane surfaces without forcing the orchestrator to absorb every internal event.
+The product exposes workflow runs as inspectable Dockview panel surfaces without forcing the orchestrator to absorb every internal event.
 
 The workflow inspector lets the user inspect:
 
@@ -1012,10 +1015,10 @@ The workflow inspector lets the user inspect:
 - command, task-agent transcript, output, diff, log, event, and raw node detail tabs when those sources exist
 - related artifacts
 - worktree and workflow agent context
-- related handler-thread, task-agent attempt, command, artifact, and Project CI check surfaces opened into chosen panes
+- related handler-thread, task-agent attempt, command, artifact, and Project CI check surfaces opened into chosen Dockview panels
 - historical frames without requiring the handler thread or orchestrator to summarize raw workflow history
 
-The inspector is a durable pane binding keyed by the local workflow-run record. Its run header shows normalized `svvy` status beside raw Smithers status, the Smithers run id, workflow label, owning handler thread, timing, heartbeat or latest event, and current frame state. The tree is the primary navigation model: search, expansion state, selected node, live-versus-historical frame mode, and pane placement belong to the inspector surface instead of the orchestrator transcript.
+The inspector is a durable panel binding keyed by the local workflow-run record. Its run header shows normalized `svvy` status beside raw Smithers status, the Smithers run id, workflow label, owning handler thread, timing, heartbeat or latest event, and current frame state. The tree is the primary navigation model: search, expansion state, selected node, live-versus-historical frame mode, and Dockview placement belong to the inspector surface instead of the orchestrator transcript.
 
 Some workflow categories may justify specialized UI instead of a generic workflow card.
 

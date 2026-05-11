@@ -18,9 +18,9 @@ Section 8 exists to make the workspace shell reflect durable product state clear
 - sessions can be pinned or archived
 - handler threads and workflow runs can show their linked artifacts directly
 - Project CI status can be seen without opening a dedicated deep inspector first
-- pane bindings and inspector selections can survive app restart
+- Dockview panel bindings and inspector selections can survive app restart
 
-The renderer must still join durable workspace read models, live surface state, and pane state locally. It must not infer these projections from transcript text.
+The renderer must still join durable workspace read models, live surface state, and Dockview panel state locally. It must not infer these projections from transcript text.
 
 ## Non-Goals
 
@@ -31,7 +31,7 @@ This section does not implement:
 - saved workflow library browsing
 - source editor, syntax highlighting, typecheck, or diagnostics surfaces
 - full workflow graph inspection
-- pane-grid creation, pane geometry editing, or expanded pane-layout workflows beyond the restore rules listed here
+- Dockview layout creation, panel placement editing, or expanded pane-layout workflows beyond the restore rules listed here
 - composer draft recovery
 - transient UI recovery
 
@@ -306,7 +306,7 @@ It must not infer Project CI status from arbitrary command names, logs, transcri
 
 The product should restore as much workspace UI state as is useful and stable.
 
-Restart restore is a product contract, not a best-effort UI convenience. On startup the workspace shell rebuilds restorable pane bindings from durable workspace UI state, opens referenced live surfaces through the Bun catalog, and lets the catalog bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
+Restart restore is a product contract, not a best-effort UI convenience. On startup the workspace shell rebuilds restorable Dockview panel bindings from durable workspace UI state, opens referenced live surfaces through the Bun catalog, and lets the catalog bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
 
 ### Restore Targets
 
@@ -314,55 +314,56 @@ The app should restore:
 
 - pinned and archived session state
 - Archived group collapsed state
-- open panes
-- pane-to-surface bindings
-- focused pane
-- selected inspector target per pane, when the target still exists
+- open Dockview panels
+- panel-to-surface bindings
+- focused Dockview panel
+- selected inspector target per panel, when the target still exists
 - open surface structure
 - model and reasoning state that belongs to the live surface runtime when it has durable backing
 
-Pane restoration should be lazy. On app load, the renderer can restore pane bindings first and hydrate live surfaces as their panes become visible or active.
+Panel restoration should be lazy. On app load, the renderer can restore panel bindings first and hydrate live surfaces as their panels become visible or active.
 
 ### Persisted Restore Shape
 
 ```ts
 type WorkspaceUiRestoreState = {
-  focusedPaneId: string | null;
-  panes: Array<{
-    paneId: string;
-    surfacePiSessionId: string | null;
-    workspaceSessionId: string | null;
-    threadId: string | null;
-    scroll:
-      | null
-      | {
-          transcriptAnchorId: string | null;
-          offsetPx: number;
-        };
-    inspectorSelection:
-      | null
-      | { kind: "thread"; threadId: string }
-      | { kind: "workflow-run"; workflowRunId: string }
-      | { kind: "artifact"; artifactId: string }
-      | { kind: "ci-run"; ciRunId: string };
+  dockview: unknown | null;
+  focusedPanelId: string | null;
+  panels: Array<{
+    panelId: string;
+    binding: unknown | null;
+    localState: {
+      scroll:
+        | null
+        | {
+            transcriptAnchorId: string | null;
+            offsetPx: number;
+          };
+      inspectorSelection:
+        | null
+        | { kind: "thread"; threadId: string }
+        | { kind: "workflow-run"; workflowRunId: string }
+        | { kind: "artifact"; artifactId: string }
+        | { kind: "ci-run"; ciRunId: string };
+    };
   }>;
   updatedAt: string;
 };
 ```
 
-Pane-grid geometry is owned by the pane-layout work. Section 8 does not need to solve expanded pane-layout editing.
+Dockview layout geometry is owned by the pane-layout work. Section 8 does not need to solve expanded Dockview layout editing.
 
 ### Restore Rules
 
 On restart:
 
-- restore pane bindings whose target surface still exists
-- restore the focused pane if it still exists
-- otherwise focus the first visible pane
-- restore pane-local scroll if its anchor still exists
+- restore panel bindings whose target surface still exists
+- restore the focused Dockview panel if it still exists
+- otherwise focus the first visible panel
+- restore panel-local scroll if its anchor still exists
 - restore inspector selection if the selected target still exists
-- otherwise clear that pane's inspector selection
-- show a non-destructive unavailable-surface state if a pane binding points at a deleted or missing surface
+- otherwise clear that panel's inspector selection
+- show a non-destructive unavailable-surface state if a panel binding points at a deleted or missing surface
 - never delete durable state just because a restore target is missing
 
 ### What Not To Restore
@@ -385,8 +386,8 @@ The app does restore durable prompt-lock projection from opened surface snapshot
 
 ## Relationship To Other Specs
 
-- `docs/specs/multi-session-support.spec.md` defines the state-layer split, live surface ownership, and pane indirection.
-- `docs/specs/pane-layout.spec.md` defines the expanded pane-grid layout, pane placement, duplicate-pane behavior, and detailed restart restore rules for Section 10.
+- `docs/specs/multi-session-support.spec.md` defines the state-layer split, live surface ownership, and Dockview panel indirection.
+- `docs/specs/pane-layout.spec.md` defines the expanded Dockview layout, panel placement, duplicate-panel behavior, and detailed restart restore rules for Section 10.
 - `docs/specs/structured-session-state.spec.md` defines canonical session, thread, workflow-run, command, CI, artifact, and wait records.
 - `docs/specs/project-ci.spec.md` defines Project CI record creation and result semantics.
 - `docs/specs/workflow-library.spec.md` defines workflow library storage, but saved workflow library browsing is intentionally deferred from this Section 8 scope.

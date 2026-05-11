@@ -158,52 +158,54 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Render archived sessions inside one Archived group in the session sidebar. Commit(s): `3855fe4`
 - [x] Persist the Archived group collapsed state per workspace. Commit(s): `3855fe4`
 - [x] Add session row actions for pin, unpin, archive, and unarchive. Commit(s): `3855fe4`
-- [x] Join session summaries, focused pane, and pane-to-surface bindings in one workspace-shell read model without depending on a global active surface. Commit(s): `9a21f87`, `b0ee858`
+- [x] Join session summaries, focused panel, and panel-to-surface bindings in one workspace-shell read model without depending on a global active surface. Commit(s): `9a21f87`, `b0ee858`
 - [x] Split workspace-summary updates from live surface transcript updates in the renderer runtime. Commit(s): `9a21f87`, `b0ee858`
 - [x] Manage open live surfaces in a shared registry keyed by `surfacePiSessionId`. Commit(s): `9a21f87`, `b0ee858`
 - [x] Give each live surface its own prompt lock, model state, reasoning state, and cancellation lifecycle. Commit(s): `9a21f87`, `b0ee858`
-- [x] Render handler-thread lists from structured thread data in the workspace shell and focused pane. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
-- [x] Show thread objective, status, latest workflow-run summary, and blocked reason in pane-local thread views. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
+- [x] Render handler-thread lists from structured thread data in the workspace shell and focused panel. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
+- [x] Show thread objective, status, latest workflow-run summary, and blocked reason in panel-local thread views. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
 - [x] Render the latest handoff episode for an inspected thread while preserving earlier handoff points in thread history. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
 - [x] Render thread- and workflow-run-linked artifacts before relying on transcript reconstruction. Commit(s): `3855fe4`
 - [x] Render the latest Project CI summary block for the focused surface or inspected thread. Commit(s): `3855fe4`
-- [x] Restore focused pane, pane-to-surface bindings, and inspector selection after restart. Commit(s): `3855fe4`
+- [x] Restore focused panel, panel-to-surface bindings, and inspector selection after restart. Commit(s): `3855fe4`
 
 ## 9. Command Palette And Quick Open
 
 Current product decisions for this section are specified in `docs/specs/command-palette.spec.md`.
 
 - [x] Define the product-owned command/action registry shape, including stable ids, labels, aliases, categories, availability, shortcuts, and typed execution targets. Commit(s): `cb319ac`
-- [x] Define `Cmd+Shift+P` as the all-actions command palette for session, surface, Project CI, handler-thread, workflow-inspector, pane, settings, agent settings, and future product actions. Commit(s): `cb319ac`
+- [x] Define `Cmd+Shift+P` as the all-actions command palette for session, surface, Project CI, handler-thread, workflow-inspector, Dockview panel, settings, agent settings, and future product actions. Commit(s): `cb319ac`
 - [x] Define `Cmd+P` as file quick-open with placeholder or no-op behavior until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist. Commit(s): `cb319ac`
 - [x] Adopt `cmdk-sv` as the Svelte command palette UI primitive while keeping product routing and command semantics owned by `svvy`. Commit(s): `cb319ac`
 - [x] Build a POC command palette over static product actions. Commit(s): `cb319ac`
 - [x] Expose session creation, open/switch, pin, unpin, archive, and unarchive actions through the palette. Commit(s): `cb319ac`
 - [x] Show unified `Open Session` results for orchestrator, handler-thread, and workflow task-agent projection categories with visible kind badges. Commit(s): `12d89d8`
 - [x] Route unmatched non-empty `Cmd+Shift+P` text into a new session initial prompt through the normal orchestrator turn model. Commit(s): `cb319ac`
-- [x] Add keyboard shortcut handling for `Cmd+Shift+P`, `Cmd+P`, Enter, and command-palette `Cmd+Enter` placement once pane layout exists. Commit(s): `cb319ac`
+- [x] Add keyboard shortcut handling for `Cmd+Shift+P`, `Cmd+P`, Enter, and command-palette `Cmd+Enter` placement once Dockview layout exists. Commit(s): `cb319ac`
 - [x] Add tests for shortcut dispatch, command matching, action routing, disabled or hidden availability, and unmatched prompt-session creation. Commit(s): `cb319ac`
 
 ## 10. Pane Layout, Surface Ownership, And Expanded Surfaces
 
 Current product decisions for this section are specified in `docs/specs/pane-layout.spec.md`.
 
-- [x] Define the stored shape for a user-driven pane grid, including ordered row and column tracks, track percentages, minimum pane constraints, deterministic pane coordinates, and pane surface bindings. Commit(s): `77681bb`
-- [x] Persist pane-to-surface bindings separately from live surface runtime state. Commit(s): `77681bb`
-- [x] Build a POC workspace pane-grid layout that opens one surface in a targeted pane. Commit(s): `77681bb`
-- [x] Support persisted user-driven split, divider resize, close, drag placement, and full-width or full-height span placement into a chosen pane. Commit(s): `902f79c`
-- [x] Manage explicit open and close semantics for live surfaces independently from pane focus. Commit(s): `9a21f87`, `b0ee858`
-- [x] Allow the same interactive surface to be opened in more than one pane at once. Commit(s): `9a21f87`, `b0ee858`
-- [x] Keep one underlying live surface controller per `surfacePiSessionId` regardless of pane count. Commit(s): `9a21f87`, `b0ee858`
-- [x] Persist pane-grid occupancy, track percentages, pane-local state, and pane geometry across app restart. Commit(s): `77681bb`
-- [x] Restore the focused pane on app restart. Commit(s): `77681bb`
-- [x] Show exact pane-location indicators in the sidebar for open surfaces. Commit(s): `902f79c`
-- [x] Show a clear highlight for the currently focused pane surface. Commit(s): `77681bb`
-- [x] Define the stored shape for compact thread and workflow-run surfaces inside the workspace shell. Commit(s): `902f79c`
-- [x] Render compact thread cards in the workspace shell timeline. Commit(s): `902f79c`
-- [x] Render compact workflow-run cards in the workspace shell timeline. Commit(s): `902f79c`
-- [x] Open a selected handler-thread surface in a chosen pane as a fully interactive surface. Commit(s): `77681bb`
-- [x] Keep duplicated views of the same surface synchronized while allowing independent scroll position. Commit(s): `902f79c`
+- [ ] Add `dockview-core` as the workspace layout engine and mount one Dockview workbench instance from the Svelte renderer.
+- [ ] Build the Svelte renderer adapter for Dockview content, tabs, header actions, context menu items, tab-group chips, watermark, and unavailable-surface panels.
+- [ ] Persist Dockview serialized layout state plus svvy panel metadata, including panel-to-surface bindings, panel-local state, chrome state, restore state, and minimum panel policy.
+- [ ] Keep panel-to-surface bindings separate from live surface runtime state.
+- [ ] Support Dockview split, splitter resize, close, tab placement, panel and group drag placement, root-edge placement, edge groups, floating groups, and popout groups through svvy placement commands.
+- [ ] Configure Dockview drag/drop overlays and `dndEdges`, with svvy policy enforced through `onWillShowOverlay`, `onWillDrop`, `onDidDrop`, and `onUnhandledDragOverEvent`.
+- [ ] Manage explicit open and close semantics for live surfaces independently from Dockview panel focus.
+- [ ] Allow the same interactive surface to be opened in more than one Dockview panel at once.
+- [ ] Keep one underlying live surface controller per `surfacePiSessionId` regardless of panel count.
+- [ ] Persist Dockview layout JSON, panel occupancy, panel-local state, tab-group state, edge-group state, floating/popout state, and panel metadata across app restart.
+- [ ] Restore the focused Dockview panel on app restart.
+- [ ] Show exact Dockview panel-location indicators in the sidebar for open surfaces, including tab, edge-group, floating, and popout locations.
+- [ ] Show a clear highlight for the currently focused Dockview panel surface.
+- [ ] Define the stored shape for compact thread and workflow-run surfaces inside the workspace shell.
+- [ ] Render compact thread cards in the workspace shell timeline.
+- [ ] Render compact workflow-run cards in the workspace shell timeline.
+- [ ] Open a selected handler-thread surface in a chosen Dockview panel as a fully interactive surface.
+- [ ] Keep duplicated panel views of the same surface synchronized while allowing independent scroll position.
 
 ## 11. Session Agents And Workflow Agents
 
@@ -254,7 +256,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 
 Current product decisions for this section are specified in `docs/specs/workflow-inspector.spec.md`.
 
-- [x] Define the tree-first workflow-inspector surface model, including run header state, selected node, expanded nodes, live-versus-historical mode, and pane binding. Commit(s): `ba56647`
+- [x] Define the tree-first workflow-inspector surface model, including run header state, selected node, expanded nodes, live-versus-historical mode, and Dockview panel binding. Commit(s): `ba56647`
 - [x] Build a POC static inspector over one completed workflow run using a React-DevTools-like tree instead of a graph layout. Commit(s): `ba56647`
 - [x] Render workflow root, sequence, parallel, loop, conditional, approval, task-agent, script, Project CI check, wait, retry, and terminal-result rows, with Project CI rows shown only for runs backed by declared Project CI entries. Commit(s): `ba56647`
 - [x] Show launch arguments and node props in the selected-node inspector for workflow containers, executable tasks, approvals, and Project CI checks. Commit(s): `ba56647`
@@ -264,18 +266,18 @@ Current product decisions for this section are specified in `docs/specs/workflow
 - [x] Add inspector tabs for output, diff, logs, transcript, command, events, and raw JSON when those data sources exist for the selected node. Commit(s): `ba56647`
 - [x] Stream live Smithers snapshot and delta updates into the tree while a workflow is running, including latest activity previews for active leaf rows. Commit(s): `625cab4`
 - [x] Add historical frame inspection with a scrubber and return-to-live behavior without making rewind or replay a default control. Commit(s): `ba56647`
-- [x] Open a selected task-agent session, command record, artifact, Project CI check, or owning handler thread from the workflow inspector into another chosen pane. Commit(s): `625cab4`
-- [x] Keep completed workflow inspectors available as durable historical pane surfaces after completion and app restart. Commit(s): `ba56647`
+- [x] Open a selected task-agent session, command record, artifact, Project CI check, or owning handler thread from the workflow inspector into another chosen Dockview panel. Commit(s): `625cab4`
+- [x] Keep completed workflow inspectors available as durable historical Dockview panel surfaces after completion and app restart. Commit(s): `ba56647`
 
 ## 16. Recovery And Test Coverage
 
-- [x] Build a POC restart or resume flow that restores multiple open surfaces and pane bindings from durable state. Commit(s): `7f84f06`
+- [x] Build a POC restart or resume flow that restores multiple open surfaces and panel bindings from durable state. Commit(s): `7f84f06`
 - [x] Restore pending clarification and waiting state after app restart. Commit(s): `7f84f06`
 - [x] Restore active workflow-run state after app restart. Commit(s): `7f84f06`
 - [x] Restore pending handler attention queues and per-surface prompt-lock state after app restart. Commit(s): `7f84f06`
 - [x] Add integration tests that exercise the real pi-backed runtime seam for direct work. Commit(s): `b0ee858`
 - [x] Expand from the current real embedded-runtime supervision coverage in `src/bun/smithers-runtime/manager.test.ts` and `src/bun/smithers-tools.test.ts` to full pi-backed handler-thread delegation and workflow-run supervision. Commit(s): `f8557d9`, `b0ee858`, `55963d9`, `097ae47`
-- [x] Add integration tests that exercise restart and resume behavior across workspace state, live surface state, and pane bindings. Commit(s): `7f84f06`
+- [x] Add integration tests that exercise restart and resume behavior across workspace state, live surface state, and panel bindings. Commit(s): `7f84f06`
 
 ## 17. Context Budget Observability
 

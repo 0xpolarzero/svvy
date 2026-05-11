@@ -10,7 +10,7 @@ Live inspection was performed against the artifact Vite app at `http://localhost
 
 Visual source facts:
 
-- Dense dark workbench layout, compact typography, status colors, spacing, borders, row treatments, cards, pane chrome, artifact previews, and local motion are valid source inputs for the Svelte port.
+- Dense dark workbench layout, compact typography, status colors, spacing, borders, row treatments, cards, Dockview panel chrome, artifact previews, and local motion are valid source inputs for the Svelte port.
 - React routes, mock data, local component boundaries, Wouter navigation, Radix/shadcn primitives, and fixture-only state names are not production architecture.
 - Replit route variants such as `/session/active`, `/session/waiting`, and `/session/failed` are fixture states of one production session surface, not product routes to recreate.
 - Source labels that say "subagent" are artifact vocabulary. Production language should distinguish delegated handler threads from workflow task-agent attempts.
@@ -19,7 +19,7 @@ Visual source facts:
 Production ownership facts:
 
 - `src/mainview` owns Svelte presentation.
-- `src/mainview/chat-runtime.ts`, `src/mainview/pane-layout.ts`, and `src/mainview/chat-storage.ts` own renderer runtime and pane state.
+- `src/mainview/chat-runtime.ts`, the Dockview layout integration, and `src/mainview/chat-storage.ts` own renderer runtime and panel state.
 - `src/shared/workspace-contract.ts` owns renderer-facing read-model contracts.
 - `src/bun/structured-session-state.ts`, `src/bun/structured-session-selectors.ts`, and `src/bun/session-projection.ts` own durable state and read-model derivation.
 - pi owns orchestrator and handler-thread transcript/runtime surfaces.
@@ -36,7 +36,7 @@ Production ownership facts:
 | `/session/waiting` | `docs/ui/ui.reference-screenshots/05-session-waiting.png` | `MainSession.tsx` with `variant="waiting"`, `WaitingCard.tsx` | Fixture-only wait state of the production session surface | Same shell and transcript, but first thread is waiting and a bottom waiting-for-input card asks a clarification question with inline reply | Live inspection confirmed reply button is disabled until text is entered, input gains focus, Enter calls the optional `onReply`, and "Skip and continue" is a visual button. Waiting dot pulses amber | `mockThreads[2]`, hardcoded waiting question and context | Map to handler or orchestrator wait state from structured session state. Reply must target the owning surface, not a generic route. Skip behavior needs product semantics before porting |
 | `/session/failed` | `docs/ui/ui.reference-screenshots/06-session-failed.png` | `MainSession.tsx` with `variant="failed"`, `FailedCard.tsx` | Fixture-only failure state of the production session surface | Same shell and transcript, but session badge and context budget show failure pressure; verification card is replaced by a red failed card with error snippet and actions | Failure state uses red border-left, red status badge, monospace snippet, `View full report`, `Retry`, and `Override` buttons. Buttons are visual unless callbacks are supplied | `mockVerificationFailed`, hardcoded error snippet | Map failures to command, turn, workflow-run, task-attempt, or Project CI read models. "Override" is not a PRD product action and should not be ported without an explicit product decision |
 | `/session/inspector` | `docs/ui/ui.reference-screenshots/07-session-inspector.png` | `MainSession.tsx` with `variant="inspector"`, `RightInspector.tsx` | Production-like inspector visual source over fixture data | Adds a right docked inspector to the main workbench with tabs for Thread, Episode, Artifact, Workflow, and Verification | Source opens/closes inspector with Framer Motion width and opacity animation. Tabs use local active state. The desktop screenshot shows the thread tab. In the constrained live viewport the dock was offscreen, but route/source confirm tab states and animation | `mockThreads[0]`, `mockEpisodes[0]`, `mockArtifacts[0]`, `mockPaneSurfaces`, `mockVerification` | Map to existing Svelte related inspectors, thread inspector, command inspector, artifact preview, workflow inspector, and Project CI detail. Do not port a single omniscient inspector if production surfaces already have separate read-model ownership |
-| `/session/multipane` | `docs/ui/ui.reference-screenshots/08-session-multipane.png` | `MultiPanePage.tsx`, `PaneGrid.tsx` | Fixture-only visual state for pane layout | Fixed 3x3 grid with colored borders by pane type, occupied/empty panes, pane coordinates, expand and close icons, empty add-surface cells, bottom streaming composer | Empty cells hover; expand buttons navigate to route fixtures; close buttons are visual. Running session, workflow, and subagent dots pulse. No real drag/drop or persistent resize exists in this route | `defaultPanes`, `mockPaneSurfaces`, hardcoded grid coordinates and labels | Use pane density, empty-state styling, coordinate badges, and colored pane focus as visual inputs. Production pane ownership stays in `src/mainview/pane-layout.ts` and `ChatWorkspace.svelte` with persisted user-driven layout |
+| `/session/multipane` | `docs/ui/ui.reference-screenshots/08-session-multipane.png` | `MultiPanePage.tsx`, `PaneGrid.tsx` | Fixture-only visual state for multi-panel layout | Fixed 3x3 grid with colored borders by pane type, occupied/empty panes, pane coordinates, expand and close icons, empty add-surface cells, bottom streaming composer | Empty cells hover; expand buttons navigate to route fixtures; close buttons are visual. Running session, workflow, and subagent dots pulse. No real drag/drop or persistent resize exists in this route | `defaultPanes`, `mockPaneSurfaces`, hardcoded grid coordinates and labels | Use density, empty-state styling, compact labels, and colored focus as visual inputs only. Production layout ownership belongs to the Dockview integration with persisted Dockview layout JSON and svvy panel metadata |
 | `/session/subagent` | `docs/ui/ui.reference-screenshots/09-session-subagent.png` | `SubagentPane.tsx` | Fixture-only visual source for task-agent or delegated work detail | Full shell with subagent header, live-output terminal-like pre block, file-read/file-written sidebar, and action bar | Shows blinking stream cursor at the end of live output. `Interrupt` and `Expand context` buttons hover but do not act. File lists are static and use basenames | `liveOutput`, `filesRead`, hardcoded model `haiku`, token count, elapsed, and worktree | Do not recreate "subagent" as a product route. Use the visual language for workflow task-agent attempt inspectors or handler-thread detail surfaces backed by workflow/task command and artifact read models |
 | `/workflow` | `docs/ui/ui.reference-screenshots/10-workflow-inspector-source-graph.png` | `WorkflowInspectorPage.tsx`, `WorkflowGraph.tsx` | Non-portable artifact-only graph source | App shell with workflow header and a manually positioned graph of workflow nodes and SVG edges | Live inspection confirmed click-to-select node details, active node orange outline/glow, pulsing active dot, disabled-looking waiting nodes, green completed edges, orange active edge, and detail drawer with objective/latest output/elapsed/worktree | `mockWorkflowRun`, `mockWorkflowNodes`, `mockWorkflowEdges`, fixed `x`/`y` graph coordinates | Production workflow inspector remains tree-first. Reuse status colors, compact node/card density, detail drawer treatment, and edge/status semantics only where they fit the tree-first Svelte inspector |
 | `/artifacts` | `docs/ui/ui.reference-screenshots/11-artifacts-browser.png` | `ArtifactBrowserPage.tsx`, `ArtifactBrowser.tsx`, `DiffViewer.tsx` | Production surface visual source with fixture content | App shell with artifacts header, grouped artifact tree, selected artifact row, preview/raw/metadata tabs, diff/log/json/empty previews | Live inspection confirmed tab selection and selected row treatment. Diff view uses sticky-like header, monospace table rows, blue hunk/header rows, green additions, red removals, thin scrollbars | `mockArtifacts`, `fakeDiff`, `LogPreview`, `JsonPreview` | Map to durable artifact records and previews from `WorkspaceCommandArtifactLink` and artifact preview contracts. Do not rely on transcript-local artifact reconstruction or fake preview strings |
@@ -52,8 +52,8 @@ Production ownership facts:
 
 | Component | Responsibility | Product mapping |
 | --- | --- | --- |
-| `frontend-replit/artifacts/svvy/src/components/svvy/AppShell.tsx` | Simple shell around `NavRail`, header chrome, `BottomComposer`, and optional `RightInspector`; local collapsed and inspector state | Styling input for `ChatWorkspace.svelte`. Runtime behavior maps to Svelte surface controllers, pane bindings, and settings/prompt state |
-| `frontend-replit/artifacts/svvy/src/components/svvy/PaneSplitShell.tsx` | Production-like shell using `react-resizable-panels` plus `PanesProvider`; supports up to two local detail panes beside the session pane | Visual input for pane chrome and resize handles. Ownership maps to `src/mainview/pane-layout.ts`, `chat-runtime.ts`, and `ChatWorkspace.svelte` |
+| `frontend-replit/artifacts/svvy/src/components/svvy/AppShell.tsx` | Simple shell around `NavRail`, header chrome, `BottomComposer`, and optional `RightInspector`; local collapsed and inspector state | Styling input for `ChatWorkspace.svelte`. Runtime behavior maps to Svelte surface controllers, Dockview panel bindings, and settings/prompt state |
+| `frontend-replit/artifacts/svvy/src/components/svvy/PaneSplitShell.tsx` | Production-like shell using `react-resizable-panels` plus `PanesProvider`; supports up to two local detail panes beside the session pane | Visual input for Dockview panel chrome and resize handles. Ownership maps to the Dockview integration, `chat-runtime.ts`, and `ChatWorkspace.svelte` |
 | `frontend-replit/artifacts/svvy/src/pages/WorkspaceLauncher.tsx` | Standalone workspace launcher with recent workspace/session/folder fixtures | Possible future visual reference. Current production launcher behavior must be app/workspace owned |
 | `frontend-replit/artifacts/svvy/src/pages/SettingsAuth.tsx` and `SettingsProfiles.tsx` settings layouts | Duplicate settings shells with left nav and top back/theme controls | Styling input for `src/mainview/Settings.svelte`; avoid duplicating layout logic |
 
@@ -62,17 +62,17 @@ Production ownership facts:
 | Component | Responsibility | Product mapping |
 | --- | --- | --- |
 | `frontend-replit/artifacts/svvy/src/components/svvy/NavRail.tsx` | Full/collapsed session rail; workspace header; new-session dropdown, folder chips, active/recent/archived/workflows/episodes/open-surfaces sections, settings/theme footer | Maps visually to `SessionSidebar.svelte` and `SessionListItem.svelte`. Product data maps to `WorkspaceSessionNavigationReadModel`; do not port artifact folders as product folders |
-| `frontend-replit/artifacts/svvy/src/components/svvy/SessionRow.tsx` | Compact row with status dot, title, preview, time, model badge, pane location, selected background | Maps to `SessionListItem.svelte`; likely needs reusable dense row, status dot, model badge, and pane-location badge primitives |
+| `frontend-replit/artifacts/svvy/src/components/svvy/SessionRow.tsx` | Compact row with status dot, title, preview, time, model badge, pane location, selected background | Maps to `SessionListItem.svelte`; likely needs reusable dense row, status dot, model badge, and Dockview panel-location badge primitives |
 | `frontend-replit/artifacts/svvy/src/components/svvy/StatusBadge.tsx` | Status badge and dot for `running`, `active`, `done`, `verified`, `waiting`, `blocked`, `failed`, `idle`; running and active pulse | Maps to production status badge primitives. Product status vocabulary is richer than this fixture enum |
 | `frontend-replit/artifacts/svvy/src/components/svvy/ModelBadge.tsx` | Short model/provider chip display | Maps to focused surface agent summaries and settings model chips |
 
-### Pane Chrome
+### Dockview Panel Chrome
 
 | Component | Responsibility | Product mapping |
 | --- | --- | --- |
-| `frontend-replit/artifacts/svvy/src/components/svvy/PaneSplitShell.tsx` | Header, panel group, detail pane headers, close buttons, resizer, composer dock, inspector dock | Visual source for production pane chrome, but data and persistence stay in Svelte pane layout |
-| `frontend-replit/artifacts/svvy/src/components/svvy/PaneGrid.tsx` | Static 3x3 fixture grid with colored pane borders, coordinates, empty cells, expand and close affordances | Styling source for pane overview/empty cells. Not a production layout engine |
-| `frontend-replit/artifacts/svvy/src/hooks/usePanes.tsx` | Local React pane state, `openPane`, `closePane`, `replacePane`; caps additional panes at two; IDs with `Date.now()` | Non-portable. Production pane state is renderer-local but persisted through Svelte layout storage and stable pane IDs |
+| `frontend-replit/artifacts/svvy/src/components/svvy/PaneSplitShell.tsx` | Header, panel group, detail pane headers, close buttons, resizer, composer dock, inspector dock | Visual source for production Dockview panel chrome, but data and persistence stay in Dockview layout state plus svvy panel metadata |
+| `frontend-replit/artifacts/svvy/src/components/svvy/PaneGrid.tsx` | Static 3x3 fixture grid with colored pane borders, coordinates, empty cells, expand and close affordances | Styling source for multi-panel overview and empty panel states. Not a production layout engine |
+| `frontend-replit/artifacts/svvy/src/hooks/usePanes.tsx` | Local React pane state, `openPane`, `closePane`, `replacePane`; caps additional panes at two; IDs with `Date.now()` | Non-portable. Production panel state is renderer-local but persisted through Dockview layout storage and stable Dockview panel IDs |
 | `frontend-replit/artifacts/svvy/src/components/svvy/panes/*.tsx` | Pane-specific content for thread, workflow, artifact, subagent | Visual source for secondary pane density, tabs, headers, and sidebars |
 
 ### Composer
@@ -173,7 +173,7 @@ Production command palette behavior already maps to `src/mainview/CommandPalette
 - Secondary buttons and rows use muted/card background lifts and border color changes.
 - Sidebar row hover raises text contrast and often background opacity.
 - Workspace rows reveal stronger chevron color on group hover.
-- Thread/pane/artifact action icons are muted until hover.
+- Thread/panel/artifact action icons are muted until hover.
 - Workflow graph nodes use `hover:brightness-110`.
 - Pane resize handles in `PaneSplitShell` turn orange on hover and stronger orange while active.
 - Artifact chips reduce opacity on hover.
@@ -192,7 +192,7 @@ Production command palette behavior already maps to `src/mainview/CommandPalette
 
 - `PaneSplitShell` uses `react-resizable-panels` for horizontal resize of dynamic detail panes.
 - The resize handle is a 1 px border line with a 4 px interaction area and orange hover/active feedback.
-- Production Svelte already owns pane geometry, drag/drop placement, restart persistence, and pane focus. The artifact `PaneGrid` does not implement real dragging, span editing, or close behavior.
+- Production layout uses Dockview for geometry, drag/drop overlays, splitter behavior, restart persistence, and panel focus. The artifact `PaneGrid` does not implement real dragging, docking, tabbing, floating, popout, or close behavior.
 
 ### Composer Behavior
 
@@ -212,14 +212,14 @@ Production command palette behavior already maps to `src/mainview/CommandPalette
 - Theme toggle persists local storage and updates the root class.
 - Product sidebar must use pinned/active/archived navigation read models, not Replit folder groups.
 
-### Pane Behavior
+### Dockview Panel Behavior
 
 - `usePanes.openPane` appends up to two detail panes; when full, it drops all but the first old detail pane and appends the new pane.
 - Detail pane IDs are timestamp-based and not stable.
 - Detail pane close removes the pane from local state.
 - Pane headers show type-specific icon color and title.
 - The session pane, detail panes, right inspector, and bottom composer all remain in one shell.
-- Production must preserve stable pane IDs, surface bindings, duplicated surface attachment, pane-local scroll, focus, and restart restoration.
+- Production must preserve stable Dockview panel IDs, surface bindings, duplicated surface attachment, panel-local scroll, focus, and restart restoration.
 
 ### Inspector Behavior
 
@@ -266,7 +266,7 @@ Production command palette behavior already maps to `src/mainview/CommandPalette
 | `mockVerification` and `mockVerificationFailed` | Build/test/lint summaries, counts, snippets, artifacts | Project CI lane when declared by CI entries, or explicit command/verification read models. Do not infer from arbitrary transcript text |
 | `mockArtifacts` | Eight artifacts across three sessions with fake names, sizes, ages, types, and thread IDs | Durable artifact metadata/indexes and artifact preview APIs |
 | `mockRuntimeProfiles` | Orchestrator, Dumb, Explorer, Implementer, Reviewer, Workflow-writer, Namer profiles with Claude/OpenAI model names and cost metadata | Session-agent settings and workflow-agent settings. Production model lists come from connected providers |
-| `mockPaneSurfaces` and `defaultPanes` | Static pane labels and coordinates such as `[1,1]`, `[2,3]`, and fixed 3x3 spans | Renderer pane layout state and pane-to-surface bindings |
+| `mockPaneSurfaces` and `defaultPanes` | Static pane labels and coordinates such as `[1,1]`, `[2,3]`, and fixed 3x3 spans | Dockview layout state and panel-to-surface bindings |
 | `mockMentionTargets` | Three workspace paths and resolved absolute paths | Workspace path index, composer mention contracts, and sent text serialization |
 | `recentWorkspaces` | Four fake local repos, branches, recency, session counts | Optional workspace launcher/recent workspace state, not current product runtime evidence |
 | `providers`, `oauthConnections`, `envCreds` | Fake provider auth state, masked keys, connected username, env var presence | Provider auth settings, OAuth state, credential discovery, model discovery |
@@ -294,7 +294,7 @@ Typography:
 - Most UI copy sits between 9 px and 13 px.
 - Section labels are uppercase monospace with wide tracking.
 - Transcript body uses compact 13 px text with relaxed line-height.
-- Metadata chips and pane coordinates are monospace and intentionally small.
+- Metadata chips and panel-location labels are monospace and intentionally small.
 
 Color and status semantics:
 
@@ -311,7 +311,7 @@ Spacing and borders:
 - Use 1 px borders heavily instead of shadow-heavy elevation.
 - Left border accents identify thread, verification, waiting, and failure cards.
 - Panels separate by border lines and thin scrollbars.
-- Empty pane states use dashed or faint borders.
+- Empty panel states use dashed or faint borders.
 
 Elevation:
 
@@ -340,7 +340,7 @@ Dark and light behavior:
 - Command palette behavior is absent from the artifact, despite production having a command palette.
 - Several settings and failure actions are visual-only and would require product semantics and confirmations before porting.
 - `FailedCard` includes an `Override` action that is not in the PRD product model.
-- `PaneGrid` is a static visual sketch, not the production pane layout engine.
+- `PaneGrid` is a static visual sketch, not the production Dockview layout engine.
 - `usePanes` uses timestamp IDs, no persistence, and a two-detail-pane cap.
 - `RightInspector` combines many domains into one generic dock, while production has specific inspector surfaces and read models.
 - `/narrow` exists in source without a reference screenshot; the removed narrow screenshot requirement should not be reintroduced.
@@ -349,7 +349,7 @@ Dark and light behavior:
 
 ## Porting Implications
 
-- Build Svelte primitives around the visual language first: dense rows, pane chrome, status badges, metadata chips, section headers, tabs, icon buttons, artifact chips, and inspector sections.
+- Build Svelte primitives around the visual language first: dense rows, Dockview panel chrome, status badges, metadata chips, section headers, tabs, icon buttons, artifact chips, and inspector sections.
 - Keep production behavior in Svelte controllers and shared contracts. Do not port React local state models.
 - Treat every screenshot state as a fixture coverage target, not a route target.
 - Use the artifact's status colors only after mapping them to product statuses and PRD thresholds.
