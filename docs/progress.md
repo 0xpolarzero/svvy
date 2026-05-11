@@ -60,13 +60,13 @@ Workflow-inspector UI work remains explicitly out of scope for this section and 
 
 Current product decisions for this section are specified in `docs/specs/web-tools.spec.md`.
 
-- [ ] Define Web Provider settings for TinyFish and Firecrawl, including default no-provider state, readiness state, and secret storage for provider API keys.
-- [ ] Build the `src/bun/web-runtime/` provider boundary with shared contracts, provider registry, prompt-context generation, tool adapters, and TinyFish SDK integration.
-- [ ] Expose provider-shaped direct `web.search` and deterministic artifact-backed `web.fetch` tools from TinyFish SDK contracts or checked-in Firecrawl contracts and prompt packs only when the selected provider is ready, with structured command facts and no API-key leakage.
-- [ ] Generate always-loaded web prompt context from the active provider, including unavailable-provider guidance when the selected provider is missing required setup.
-- [ ] Regenerate active actor tool declarations, `list_tools` output, and web prompt context after provider or key changes before the next turn.
-- [ ] Add generated `execute_typescript` `api.web.search` and artifact-backed `api.web.fetch` helpers from the active provider's direct-tool contracts only when the selected keyed provider is ready.
-- [ ] Keep self-hosted web fallback out of current scope unless explicitly adopted later, with self-hosted Firecrawl and OrioSearch retained only as heavier reference directions.
+- [x] Define Web Provider settings for TinyFish and Firecrawl, including default no-provider state, readiness state, and secret storage for provider API keys. Commit(s): `788ecb1`, `c479f72`
+- [x] Build the `src/bun/web-runtime/` provider boundary with shared contracts, provider registry, prompt-context generation, tool adapters, and TinyFish SDK integration. Commit(s): `788ecb1`, `540e886`
+- [x] Expose provider-shaped direct `web.search` and deterministic artifact-backed `web.fetch` tools from TinyFish SDK contracts or checked-in Firecrawl contracts and prompt packs only when the selected provider is ready, with structured command facts and no API-key leakage. Commit(s): `788ecb1`, `540e886`
+- [x] Generate always-loaded web prompt context from the active provider, including unavailable-provider guidance when the selected provider is missing required setup. Commit(s): `788ecb1`, `c479f72`, `540e886`
+- [x] Regenerate active actor tool declarations, `list_tools` output, and web prompt context after provider or key changes before the next turn. Commit(s): `788ecb1`, `c479f72`, `540e886`
+- [x] Add generated `execute_typescript` `api.web.search` and artifact-backed `api.web.fetch` helpers from the active provider's direct-tool contracts only when the selected keyed provider is ready. Commit(s): `788ecb1`, `540e886`
+- [x] Keep self-hosted web fallback out of current scope unless explicitly adopted later, with self-hosted Firecrawl and OrioSearch retained only as heavier reference directions. Commit(s): `c479f72`, `540e886`
 
 ## 3. Turn Decisions And Delegation
 

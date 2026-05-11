@@ -62,7 +62,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
   {
     id: "web-tool-surface",
     name: "Provider-Backed Web Tools",
-    status: "in-progress",
+    status: "shipped",
     summary:
       "Lets users choose TinyFish or Firecrawl as the active keyed web provider in settings, store provider API keys there, expose provider-shaped `web.search` and deterministic artifact-backed `web.fetch` tools plus generated `api.web` composition helpers only when the selected provider is ready, use TinyFish's official TypeScript SDK for TinyFish Search and Fetch contracts and runtime calls, regenerate prompt context and tool declarations cleanly on provider changes, and keep the default product state web-disabled with no no-key Local fallback.",
     sourceSpecs: ["docs/specs/web-tools.spec.md"],
