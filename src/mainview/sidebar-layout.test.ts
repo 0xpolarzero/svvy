@@ -35,6 +35,7 @@ describe("isSidebarToggleShortcut", () => {
         altKey: false,
         metaKey: true,
         ctrlKey: false,
+        shiftKey: false,
         key: "b",
       } as KeyboardEvent),
     ).toBe(true);
@@ -45,6 +46,7 @@ describe("isSidebarToggleShortcut", () => {
         altKey: false,
         metaKey: false,
         ctrlKey: true,
+        shiftKey: false,
         key: "B",
       } as KeyboardEvent),
     ).toBe(true);
@@ -57,6 +59,7 @@ describe("isSidebarToggleShortcut", () => {
         altKey: false,
         metaKey: true,
         ctrlKey: false,
+        shiftKey: false,
         key: "b",
       } as KeyboardEvent),
     ).toBe(false);
@@ -67,6 +70,7 @@ describe("isSidebarToggleShortcut", () => {
         altKey: true,
         metaKey: true,
         ctrlKey: false,
+        shiftKey: false,
         key: "b",
       } as KeyboardEvent),
     ).toBe(false);
@@ -77,6 +81,18 @@ describe("isSidebarToggleShortcut", () => {
         altKey: false,
         metaKey: true,
         ctrlKey: false,
+        shiftKey: true,
+        key: "b",
+      } as KeyboardEvent),
+    ).toBe(false);
+
+    expect(
+      isSidebarToggleShortcut({
+        defaultPrevented: false,
+        altKey: false,
+        metaKey: true,
+        ctrlKey: false,
+        shiftKey: false,
         key: "k",
       } as KeyboardEvent),
     ).toBe(false);

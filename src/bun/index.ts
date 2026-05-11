@@ -18,6 +18,12 @@ import type {
   SendPromptRequest,
 } from "../shared/workspace-contract";
 import {
+  getKeybinding,
+  getKeybindingAccelerator,
+  isAppMenuAction,
+  type AppMenuAction,
+} from "../shared/keybindings";
+import {
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
   type AgentDefaults,
@@ -71,6 +77,18 @@ const agentSettingsStore = createSessionAgentSettingsStore({
   cwd: resolveWorkspaceCwd(),
   agentDir: getSvvyAgentDir(),
 });
+
+function appMenuItem(action: AppMenuAction): {
+  label: string;
+  action: string;
+  accelerator: string;
+} {
+  return {
+    label: getKeybinding(action).label,
+    action,
+    accelerator: getKeybindingAccelerator(action),
+  };
+}
 
 function loadEnvFile(filePath: string): void {
   if (!existsSync(filePath)) return;
@@ -908,6 +926,10 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
     ],
   },
   {
+    label: "File",
+    submenu: [appMenuItem("session.new"), appMenuItem("session.dumb")],
+  },
+  {
     label: "Edit",
     submenu: [
       { role: "undo", accelerator: "CommandOrControl+Z" },
@@ -920,6 +942,15 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
       { role: "delete" },
       { type: "separator" },
       { role: "selectAll", accelerator: "CommandOrControl+A" },
+    ],
+  },
+  {
+    label: "View",
+    submenu: [
+      appMenuItem("commandPalette.open"),
+      appMenuItem("quickOpen.open"),
+      { type: "separator" },
+      appMenuItem("sidebar.toggle"),
     ],
   },
   {
@@ -937,6 +968,13 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
 const localInfoChannelPromise = Updater.localInfo.channel();
 
 ApplicationMenu.setApplicationMenu(appMenu);
+ApplicationMenu.on("application-menu-clicked", (event) => {
+  const action = (event as { data?: { action?: unknown } }).data?.action;
+  if (!isAppMenuAction(action)) {
+    return;
+  }
+  rpc.send.sendAppMenuAction({ action });
+});
 
 loadRuntimeEnv();
 

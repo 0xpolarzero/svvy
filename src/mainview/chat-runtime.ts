@@ -36,6 +36,7 @@ import {
 } from "./chat-storage";
 import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-settings";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
+import type { AppMenuAction } from "../shared/keybindings";
 import {
   bindPane,
   closePane,
@@ -196,6 +197,7 @@ export interface ChatRuntime {
   primaryPaneId: string;
   dispose: () => void;
   subscribe: (listener: ChatRuntimeListener) => () => void;
+  subscribeAppMenuAction: (listener: (action: AppMenuAction) => void) => () => void;
   listSessions: () => Promise<WorkspaceSessionSummary[]>;
   getPane: (paneId: string) => ChatPaneState | undefined;
   getPaneController: (paneId: string) => ChatSurfaceController | null;
@@ -1281,6 +1283,15 @@ export async function createChatRuntime(
       listener();
       return () => {
         listeners.delete(listener);
+      };
+    },
+    subscribeAppMenuAction: (listener) => {
+      const appMenuListener = ({ action }: { action: AppMenuAction }) => {
+        listener(action);
+      };
+      rpcClient.addMessageListener("sendAppMenuAction", appMenuListener);
+      return () => {
+        rpcClient.removeMessageListener("sendAppMenuAction", appMenuListener);
       };
     },
     listSessions: refreshSessions,

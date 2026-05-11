@@ -185,6 +185,26 @@ describe("command palette shortcuts", () => {
     expect(isQuickOpenShortcut(keyEvent({ key: "p", metaKey: true, shiftKey: true }))).toBe(false);
   });
 
+  it("matches shortcut properties inherited from KeyboardEvent-like prototypes", () => {
+    const commandPaletteEvent = Object.create({
+      key: "P",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: true,
+      altKey: false,
+    });
+    const quickOpenEvent = Object.create({
+      key: "p",
+      metaKey: true,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+    });
+
+    expect(isCommandPaletteShortcut(commandPaletteEvent)).toBe(true);
+    expect(isQuickOpenShortcut(quickOpenEvent)).toBe(true);
+  });
+
   it("uses new panes by default and focused pane for Cmd+Enter", () => {
     expect(
       getCommandExecutionPaneId({
@@ -209,7 +229,10 @@ describe("command palette shortcuts", () => {
 
     expect(
       getCommandActionShortcutHints(actions.find((action) => action.id === "session.new")!),
-    ).toEqual(["Enter", "Cmd+Enter"]);
+    ).toEqual(["Cmd+N", "Enter", "Cmd+Enter"]);
+    expect(
+      getCommandActionShortcutHints(actions.find((action) => action.id === "session.dumb")!),
+    ).toEqual(["Cmd+Shift+N", "Enter", "Cmd+Enter"]);
     expect(
       getCommandActionShortcutHints(
         actions.find((action) => action.id === "session.open.session-1")!,

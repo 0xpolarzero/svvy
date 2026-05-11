@@ -3,6 +3,7 @@ import {
   bindPane,
   closePane,
   createEmptyPaneLayout,
+  focusPane,
   getPaneGridSplitControls,
   getOpenPaneLocations,
   movePaneToSpanningRow,
@@ -312,6 +313,31 @@ describe("pane layout grid", () => {
       { paneId: "primary", label: "Left", focused: false },
       { paneId: "right", label: "Right", focused: true },
     ]);
+  });
+
+  it("keeps pane geometry stable when focus changes", () => {
+    let layout = bindPane(createEmptyPaneLayout("2026-04-27T00:00:00.000Z"), "primary", target);
+    layout = splitPane(layout, "primary", "right", { nextPaneId: "right" });
+    const beforeGeometry = layout.panes.map((pane) => ({
+      paneId: pane.paneId,
+      columnStart: pane.columnStart,
+      columnEnd: pane.columnEnd,
+      rowStart: pane.rowStart,
+      rowEnd: pane.rowEnd,
+    }));
+
+    const focusedLayout = focusPane(layout, "primary");
+
+    expect(focusedLayout.focusedPaneId).toBe("primary");
+    expect(
+      focusedLayout.panes.map((pane) => ({
+        paneId: pane.paneId,
+        columnStart: pane.columnStart,
+        columnEnd: pane.columnEnd,
+        rowStart: pane.rowStart,
+        rowEnd: pane.rowEnd,
+      })),
+    ).toEqual(beforeGeometry);
   });
 
   it("places a dragged pane into a target split zone while preserving local state", () => {

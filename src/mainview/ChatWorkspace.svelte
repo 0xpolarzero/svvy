@@ -99,6 +99,7 @@
     type CommandAction,
     type CommandPaletteMode,
   } from "./command-palette";
+  import { matchesKeybinding, type AppMenuAction } from "../shared/keybindings";
   import ModelPickerDialog from "./ModelPickerDialog.svelte";
   import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
   import VerificationCard, { type ReferenceVerification } from "./reference-cards/VerificationCard.svelte";
@@ -283,8 +284,8 @@
       return `Messaging handler thread ${currentSurface.threadId ?? currentSurface.surfacePiSessionId}`;
     }
 
-    if (currentSessionMode === "quick") {
-      return "Messaging quick session";
+    if (currentSessionMode === "dumb") {
+      return "Messaging dumb session";
     }
 
     return "Messaging orchestrator";
@@ -315,7 +316,7 @@
     if (paneController?.target.surface === "thread") {
       return "Handler Thread";
     }
-    return paneController?.sessionMode === "quick" ? "Quick Session" : "Orchestrator";
+    return paneController?.sessionMode === "dumb" ? "Dumb Session" : "Orchestrator";
   }
   function formatPaneAgentSummary(
     paneController: ChatSurfaceController | null,
@@ -635,17 +636,35 @@
   }
 
   function openPalette(mode: CommandPaletteMode) {
-    setTimeout(() => {
-      paletteMode = mode;
-      paletteError = undefined;
-      paletteOpen = true;
-    }, 0);
+    paletteMode = mode;
+    paletteError = undefined;
+    paletteOpen = true;
   }
 
   function closePalette() {
     paletteOpen = false;
     paletteError = undefined;
     paletteBusy = false;
+  }
+
+  function handleAppMenuAction(action: AppMenuAction) {
+    switch (action) {
+      case "commandPalette.open":
+        openPalette("actions");
+        return;
+      case "quickOpen.open":
+        openPalette("quick-open");
+        return;
+      case "session.new":
+        void handleCreateSession();
+        return;
+      case "session.dumb":
+        void handleCreateDumbSession();
+        return;
+      case "sidebar.toggle":
+        toggleSidebarVisibility();
+        return;
+    }
   }
 
   async function runPaletteMutation(action: () => Promise<void>) {
@@ -722,9 +741,9 @@
     await runSessionMutation(() => runtime.createSession({}, { kind: "new-pane", direction: "right" }));
   }
 
-  async function handleCreateQuickSession() {
+  async function handleCreateDumbSession() {
     await runSessionMutation(() =>
-      runtime.createSession({ mode: "quick" }, { kind: "new-pane", direction: "right" }),
+      runtime.createSession({ mode: "dumb" }, { kind: "new-pane", direction: "right" }),
     );
   }
 
@@ -2214,13 +2233,29 @@
         return;
       }
 
+      if (matchesKeybinding(event, "session.new")) {
+        event.preventDefault();
+        void handleCreateSession();
+        return;
+      }
+
+      if (matchesKeybinding(event, "session.dumb")) {
+        event.preventDefault();
+        void handleCreateDumbSession();
+        return;
+      }
+
       if (!isSidebarToggleShortcut(event)) return;
 
       event.preventDefault();
       toggleSidebarVisibility();
     };
+    const handleAppMenuMessage = ({ action }: { action: AppMenuAction }) => {
+      handleAppMenuAction(action);
+    };
     window.addEventListener("resize", handleResize);
     window.addEventListener("keydown", handleWindowKeydown);
+    const unsubscribeAppMenuAction = runtime.subscribeAppMenuAction(handleAppMenuMessage);
 
     syncSurfaceTools();
     void runtime.storage.promptHistory
@@ -2263,6 +2298,7 @@
       clearCopyTranscriptResetTimer();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleWindowKeydown);
+      unsubscribeAppMenuAction();
       controller = null;
     };
   });
@@ -2330,9 +2366,8 @@
             busy={mutatingSession}
             errorMessage={sidebarError}
             onCreateSession={handleCreateSession}
-            onCreateQuickSession={handleCreateQuickSession}
+            onCreateDumbSession={handleCreateDumbSession}
             onOpenSession={handleOpenSession}
-            onFocusPane={handleFocusPane}
             onRenameSession={handleRenameSession}
             onForkSession={handleForkSession}
             onDeleteSession={handleDeleteSession}
@@ -2761,17 +2796,17 @@
                     </button>
                     <button
                       type="button"
-                      class:active={currentSessionMode === "quick"}
-                      aria-pressed={currentSessionMode === "quick"}
+                      class:active={currentSessionMode === "dumb"}
+                      aria-pressed={currentSessionMode === "dumb"}
                       disabled={mutatingSession}
-                      onclick={() => void handleSelectCurrentSessionMode("quick")}
+                      onclick={() => void handleSelectCurrentSessionMode("dumb")}
                     >
-                      Quick
+                      Dumb
                     </button>
                   </div>
                 </div>
                 <p class="new-session-mode-note">
-                  {currentSessionMode === "quick"
+                  {currentSessionMode === "dumb"
                     ? "Direct answers in this pane."
                     : "Plans work, delegates handlers, and verifies outcomes."}
                 </p>

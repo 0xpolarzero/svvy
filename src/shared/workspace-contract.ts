@@ -11,6 +11,7 @@ import type {
   WorkflowAgentKey,
   WorkflowAgentSettings,
 } from "./agent-settings";
+import type { AppMenuAction } from "./keybindings";
 
 export type AuthKeyType = "apikey" | "oauth" | "env" | "none";
 export type PromptSurfaceKind = "orchestrator" | "thread";
@@ -1003,6 +1004,7 @@ export interface ChatRPCSchema {
       sendStreamEvent: StreamEventMessage;
       sendWorkspaceSync: WorkspaceSyncMessage;
       sendSurfaceSync: SurfaceSyncMessage;
+      sendAppMenuAction: { action: AppMenuAction };
     };
   };
 }

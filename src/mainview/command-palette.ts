@@ -7,6 +7,7 @@ import type {
   WorkspaceWorkflowTaskAttemptSummary,
 } from "../shared/workspace-contract";
 import type { ChatRuntime } from "./chat-runtime";
+import { getKeybindingShortcut, matchesKeybinding } from "../shared/keybindings";
 
 export type CommandPaletteMode = "actions" | "quick-open";
 
@@ -142,22 +143,32 @@ const COMMAND_ACTION_CATEGORY_ORDER: CommandActionCategory[] = [
 export function isCommandPaletteShortcut(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
 ): boolean {
-  return (
-    (event.metaKey || event.ctrlKey) &&
-    event.shiftKey &&
-    !event.altKey &&
-    event.key.toLowerCase() === "p"
+  return matchesKeybinding(
+    {
+      defaultPrevented: false,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      key: event.key,
+    },
+    "commandPalette.open",
   );
 }
 
 export function isQuickOpenShortcut(
   event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
 ): boolean {
-  return (
-    (event.metaKey || event.ctrlKey) &&
-    !event.shiftKey &&
-    !event.altKey &&
-    event.key.toLowerCase() === "p"
+  return matchesKeybinding(
+    {
+      defaultPrevented: false,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      key: event.key,
+    },
+    "quickOpen.open",
   );
 }
 
@@ -194,7 +205,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       label: "New Session",
       category: "session",
       aliases: ["create session", "new chat", "new orchestrator session"],
-      shortcut: null,
+      shortcut: getKeybindingShortcut("session.new"),
       availability: { kind: "available" },
       execute: { kind: "create-session" },
     },
@@ -203,7 +214,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       label: "New Dumb Session",
       category: "session",
       aliases: ["dumb session", "scratch session", "fast session", "lightweight orchestrator"],
-      shortcut: null,
+      shortcut: getKeybindingShortcut("session.dumb"),
       availability: { kind: "available" },
       execute: { kind: "create-session", mode: "dumb" },
     },
@@ -542,7 +553,7 @@ export function getCommandActionShortcutHints(action: CommandAction): string[] {
     case "open-surface":
     case "open-saved-workflow-library":
     case "start-orchestrator-turn":
-      return ["Enter", "Cmd+Enter"];
+      return action.shortcut ? [action.shortcut, "Enter", "Cmd+Enter"] : ["Enter", "Cmd+Enter"];
     default:
       return action.shortcut ? [action.shortcut] : [];
   }

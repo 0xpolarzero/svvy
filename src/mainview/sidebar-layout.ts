@@ -1,10 +1,12 @@
+import { matchesKeybinding } from "../shared/keybindings";
+
 export const MIN_SIDEBAR_WIDTH = 240;
 export const MAX_SIDEBAR_WIDTH = 420;
 const SIDEBAR_VIEWPORT_RATIO = 0.42;
 
 type SidebarShortcutEvent = Pick<
   KeyboardEvent,
-  "defaultPrevented" | "altKey" | "metaKey" | "ctrlKey" | "key"
+  "defaultPrevented" | "altKey" | "metaKey" | "ctrlKey" | "shiftKey" | "key"
 >;
 
 export function getMaxSidebarWidth(viewportWidth: number): number {
@@ -20,13 +22,5 @@ export function clampSidebarWidth(width: number, viewportWidth: number): number 
 }
 
 export function isSidebarToggleShortcut(event: SidebarShortcutEvent): boolean {
-  if (event.defaultPrevented || event.altKey) {
-    return false;
-  }
-
-  if (!(event.metaKey || event.ctrlKey)) {
-    return false;
-  }
-
-  return event.key.toLowerCase() === "b";
+  return matchesKeybinding(event, "sidebar.toggle");
 }

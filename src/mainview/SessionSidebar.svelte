@@ -6,6 +6,7 @@
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import { getKeybindingDisplayShortcut, getKeybindingShortcut } from "../shared/keybindings";
   import type { WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
   import SessionListItem from "./SessionListItem.svelte";
   import Button from "./ui/Button.svelte";
@@ -22,7 +23,6 @@
     onCreateSession: () => void;
     onCreateDumbSession: () => void;
     onOpenSession: (sessionId: string) => void;
-    onFocusPane: (paneId: string) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
     onForkSession: (session: WorkspaceSessionSummary) => void;
     onDeleteSession: (session: WorkspaceSessionSummary) => void;
@@ -47,7 +47,6 @@
     onCreateSession,
     onCreateDumbSession,
     onOpenSession,
-    onFocusPane,
     onRenameSession,
     onForkSession,
     onDeleteSession,
@@ -61,32 +60,15 @@
   }: Props = $props();
 
   let showNewSessionMenu = $state(false);
+  const newSessionShortcut = getKeybindingShortcut("session.new");
+  const dumbSessionShortcut = getKeybindingShortcut("session.dumb");
+  const newSessionDisplayShortcut = getKeybindingDisplayShortcut("session.new");
+  const dumbSessionDisplayShortcut = getKeybindingDisplayShortcut("session.dumb");
 
   const sessionCount = $derived(
     navigation.pinnedSessions.length +
       navigation.activeSessions.length +
       navigation.archived.sessions.length,
-  );
-  const allSessions = $derived([
-    ...navigation.pinnedSessions,
-    ...navigation.activeSessions,
-    ...navigation.archived.sessions,
-  ]);
-  const openSurfaceEntries = $derived.by(() =>
-    Object.entries(paneLocationsBySessionId)
-      .flatMap(([sessionId, locations]) => {
-        const session = allSessions.find((item) => item.id === sessionId);
-        return locations.map((location) => ({
-          id: `${sessionId}:${location.paneId}`,
-          sessionId,
-          paneId: location.paneId,
-          title: session?.title ?? sessionId,
-          label: location.label,
-          focused: location.focused,
-        }));
-      })
-      .toSorted((left, right) => Number(right.focused) - Number(left.focused))
-      .slice(0, 8),
   );
 
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
@@ -97,7 +79,15 @@
     }
     showNewSessionMenu = false;
   }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      showNewSessionMenu = false;
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleWindowKeydown} />
 
 <div class="session-sidebar">
   <header class="sidebar-header electrobun-webkit-app-region-drag">
@@ -130,29 +120,37 @@
         variant="primary"
         size="sm"
         class="new-session"
-        onclick={onCreateSession}
+        onclick={() => {
+          showNewSessionMenu = false;
+          onCreateSession();
+        }}
         disabled={busy}
         aria-label="Create a new session"
-        title="New Session"
+        title={`New Session (${newSessionShortcut})`}
         aria-haspopup="menu"
         aria-expanded={showNewSessionMenu}
       >
         <PlusIcon aria-hidden="true" size={13} strokeWidth={2} />
         <span>New session</span>
-        <ChevronDownIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+        <kbd>{newSessionDisplayShortcut}</kbd>
+        <ChevronDownIcon class="new-session-chevron" aria-hidden="true" size={12} strokeWidth={1.9} />
       </Button>
       {#if showNewSessionMenu}
-        <button
-          type="button"
-          class="new-session-menu-item"
-          disabled={busy}
-          onclick={() => {
-            showNewSessionMenu = false;
-            onCreateDumbSession();
-          }}
-        >
-          New dumb session
-        </button>
+        <div class="new-session-menu" role="menu" aria-label="New session variants">
+          <button
+            type="button"
+            class="new-session-menu-item"
+            role="menuitem"
+            disabled={busy}
+            onclick={() => {
+              showNewSessionMenu = false;
+              onCreateDumbSession();
+            }}
+          >
+            <span>New dumb session</span>
+            <kbd>{dumbSessionDisplayShortcut}</kbd>
+          </button>
+        </div>
       {/if}
     </div>
   </div>
@@ -258,22 +256,6 @@
         </section>
       {/if}
 
-      {#if openSurfaceEntries.length > 0}
-        <section class="sidebar-section reference-nav-section" aria-label="Open panes">
-          <p class="sidebar-section-label">Open panes</p>
-          {#each openSurfaceEntries as surface (surface.id)}
-            <button
-              class={`open-surface-row ${surface.focused ? "focused" : ""}`.trim()}
-              type="button"
-              title={`${surface.title} ${surface.label}`}
-              onclick={() => onFocusPane(surface.paneId)}
-            >
-              <span>{surface.title}</span>
-              <small>{surface.focused ? "Focused" : surface.label}</small>
-            </button>
-          {/each}
-        </section>
-      {/if}
     </div>
   </div>
 
@@ -396,11 +378,14 @@
     gap: 0.28rem;
     padding: 0.5rem 0.72rem;
     border-bottom: 1px solid var(--ui-shell-edge);
+    position: relative;
+    z-index: 8;
   }
 
   .new-session-menu-shell {
     position: relative;
     display: grid;
+    min-width: 0;
   }
 
   :global(button.new-session) {
@@ -412,29 +397,91 @@
     font-size: 0.68rem;
   }
 
+  :global(button.new-session .new-session-chevron) {
+    flex: 0 0 auto;
+    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .new-session-menu-shell.menu-open :global(button.new-session .new-session-chevron) {
+    transform: rotate(180deg);
+  }
+
   :global(button.new-session span) {
     flex: 1;
     text-align: left;
   }
 
+  :global(button.new-session kbd),
+  .new-session-menu-item kbd {
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding: 0.08rem 0.26rem;
+    border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, currentColor 10%, transparent);
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  :global(button.new-session kbd) {
+    color: color-mix(in oklab, var(--ui-accent-ink) 86%, var(--ui-accent));
+  }
+
   .new-session-menu-shell.menu-open :global(button.new-session) {
-    border-bottom-right-radius: var(--ui-radius-xs);
-    border-bottom-left-radius: var(--ui-radius-xs);
+    border-color: color-mix(in oklab, var(--ui-accent) 44%, var(--ui-border-soft));
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .new-session-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 12;
+    width: 100%;
+    padding-top: 0.28rem;
+    transform-origin: 50% 0;
+    animation: new-session-menu-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    will-change: opacity, transform;
   }
 
   .new-session-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     width: 100%;
-    min-height: 1.54rem;
-    padding: 0.28rem 0.52rem 0.28rem 1.62rem;
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 84%, transparent);
-    border-top: 0;
-    border-radius: 0 0 var(--ui-radius-md) var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-panel) 72%, transparent);
+    min-height: 1.82rem;
+    padding: 0.36rem 0.6rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-strong) 76%, transparent);
+    border-radius: var(--ui-radius-md);
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--ui-panel) 98%, var(--ui-shell)),
+      color-mix(in oklab, var(--ui-panel) 90%, var(--ui-shell))
+    );
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, var(--ui-text-primary) 8%, transparent),
+      0 0.48rem 1.05rem color-mix(in oklab, var(--ui-bg) 45%, transparent);
     color: var(--ui-text-secondary);
-    font-size: 0.64rem;
+    font-size: 0.66rem;
     font-weight: 600;
     text-align: left;
     cursor: pointer;
+    transition:
+      border-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 170ms cubic-bezier(0.19, 1, 0.22, 1),
+      box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .new-session-menu-item span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .new-session-menu-item:hover,
@@ -442,12 +489,29 @@
     outline: none;
     border-color: color-mix(in oklab, var(--ui-accent) 42%, var(--ui-border-soft));
     background: color-mix(in oklab, var(--ui-accent) 9%, var(--ui-panel));
+    box-shadow:
+      var(--ui-focus-ring),
+      inset 0 1px 0 color-mix(in oklab, var(--ui-text-primary) 9%, transparent),
+      0 0.55rem 1.2rem color-mix(in oklab, var(--ui-bg) 48%, transparent);
     color: var(--ui-text-primary);
+    transform: translateY(-1px);
   }
 
   .new-session-menu-item:disabled {
     cursor: default;
     opacity: 0.55;
+  }
+
+  @keyframes new-session-menu-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.22rem) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .sidebar-sections {
@@ -510,8 +574,7 @@
     padding-top: 0.18rem;
   }
 
-  .reference-nav-row,
-  .open-surface-row {
+  .reference-nav-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -531,16 +594,13 @@
     cursor: default;
   }
 
-  .reference-nav-row:hover:not(.static),
-  .open-surface-row:hover,
-  .open-surface-row.focused {
+  .reference-nav-row:hover:not(.static) {
     border-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
     background: color-mix(in oklab, var(--ui-surface-subtle) 66%, transparent);
     color: var(--ui-text-primary);
   }
 
-  .reference-nav-row span,
-  .open-surface-row span {
+  .reference-nav-row span {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -549,28 +609,10 @@
     font-weight: 500;
   }
 
-  .reference-nav-row small,
-  .open-surface-row small {
+  .reference-nav-row small {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
     font-size: 0.52rem;
-  }
-
-  .open-surface-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 1.5rem;
-    padding-left: 0.72rem;
-  }
-
-  .open-surface-row.focused {
-    border-color: color-mix(in oklab, var(--ui-accent) 28%, var(--ui-border-soft));
-    background: color-mix(in oklab, var(--ui-accent) 8%, var(--ui-surface-subtle));
-    box-shadow: inset 2px 0 0 var(--ui-accent);
-    color: var(--ui-text-primary);
-  }
-
-  .open-surface-row.focused small {
-    color: var(--ui-accent);
   }
 
   .sidebar-footer {

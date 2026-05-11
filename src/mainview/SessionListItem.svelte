@@ -121,10 +121,18 @@
 
   const showingThreadSurface = $derived(active && activeSurface === "thread");
   const renameLocked = $derived(session.titleGeneration?.renameLocked ?? false);
+  const focusedPaneLocation = $derived(paneLocations.find((location) => location.focused) ?? null);
+  const openPaneSummary = $derived(
+    paneLocations.length === 0
+      ? ""
+      : paneLocations.length === 1
+        ? (focusedPaneLocation?.label ?? paneLocations[0]?.label ?? "")
+        : `${paneLocations.length} panes`,
+  );
 </script>
 
 <article
-  class={`session-item ${active ? "active" : ""} ${showingThreadSurface ? "active-thread" : ""} ${session.isArchived ? "archived" : ""} ${menuOpen ? "menu-open" : ""}`.trim()}
+  class={`session-item ${active ? "active" : ""} ${showingThreadSurface ? "active-thread" : ""} ${session.isArchived ? "archived" : ""} ${paneLocations.length > 0 ? "open-in-pane" : ""} ${menuOpen ? "menu-open" : ""}`.trim()}
 >
   <button
     class="session-main"
@@ -137,7 +145,17 @@
   >
     <div class="session-main-top">
       <strong>{session.title}</strong>
-      <span>{formatRelativeSessionTime(session.updatedAt)}</span>
+      <div class="session-main-top-meta">
+        {#if openPaneSummary}
+          <span
+            class="session-open-marker"
+            title={`Open in ${paneLocations.map((location) => location.label).join(", ")}`}
+          >
+            {openPaneSummary}
+          </span>
+        {/if}
+        <span>{formatRelativeSessionTime(session.updatedAt)}</span>
+      </div>
     </div>
     <div class="session-main-body">
       <div class="session-main-preview">{session.preview}</div>
@@ -150,17 +168,10 @@
       {/if}
     </div>
 
-    {#if showingThreadSurface || session.status !== "idle" || session.parentSessionId || paneLocations.length > 0}
+    {#if showingThreadSurface || session.status !== "idle" || session.parentSessionId}
       <div class="session-main-meta">
         {#if showingThreadSurface}
           <span class="session-surface">Thread Open</span>
-        {/if}
-        {#if paneLocations.length > 0}
-          <span class="session-surface" title={`Open in ${paneLocations.map((location) => location.label).join(", ")}`}>
-            {paneLocations.length === 1
-              ? `Open ${paneLocations[0]?.label ?? ""}`.trim()
-              : `Open ${paneLocations.length} panes`}
-          </span>
         {/if}
         {#if session.status !== "idle"}
           <span class={`session-status status-${session.status}`.trim()}>
@@ -208,18 +219,19 @@
     </Button>
 
     {#if menuOpen}
-      <div class="session-menu">
+      <div class="session-menu" role="menu" aria-label={`Actions for ${session.title}`}>
         {#if session.isArchived}
-          <button type="button" onclick={() => { menuOpen = false; onUnarchive(); }}>Unarchive</button>
+          <button role="menuitem" type="button" onclick={() => { menuOpen = false; onUnarchive(); }}>Unarchive</button>
         {:else}
           {#if session.isPinned}
-            <button type="button" onclick={() => { menuOpen = false; onUnpin(); }}>Unpin</button>
+            <button role="menuitem" type="button" onclick={() => { menuOpen = false; onUnpin(); }}>Unpin</button>
           {:else}
-            <button type="button" onclick={() => { menuOpen = false; onPin(); }}>Pin</button>
+            <button role="menuitem" type="button" onclick={() => { menuOpen = false; onPin(); }}>Pin</button>
           {/if}
-          <button type="button" onclick={() => { menuOpen = false; onArchive(); }}>Archive</button>
+          <button role="menuitem" type="button" onclick={() => { menuOpen = false; onArchive(); }}>Archive</button>
         {/if}
         <button
+          role="menuitem"
           type="button"
           disabled={renameLocked}
           title={renameLocked ? "Title generation is running" : "Rename"}
@@ -227,8 +239,8 @@
         >
           Rename
         </button>
-        <button type="button" onclick={() => { menuOpen = false; onFork(); }}>Fork</button>
-        <button class="danger" type="button" onclick={() => { menuOpen = false; onDelete(); }}>Delete</button>
+        <button role="menuitem" type="button" onclick={() => { menuOpen = false; onFork(); }}>Fork</button>
+        <button class="danger" role="menuitem" type="button" onclick={() => { menuOpen = false; onDelete(); }}>Delete</button>
       </div>
     {/if}
   </div>
@@ -237,10 +249,7 @@
 <style>
   .session-item {
     position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.12rem;
-    align-items: center;
+    display: block;
     border-radius: var(--ui-radius-md);
   }
 
@@ -248,7 +257,7 @@
     position: relative;
     width: 100%;
     min-width: 0;
-    padding: 0.42rem 0.46rem 0.44rem 0.9rem;
+    padding: 0.42rem 2rem 0.44rem 0.9rem;
     border-radius: var(--ui-radius-md);
     border: 1px solid transparent;
     background: transparent;
@@ -301,6 +310,15 @@
     border-color: color-mix(in oklab, var(--ui-accent) 22%, transparent);
   }
 
+  .open-in-pane:not(.active) .session-main {
+    border-color: color-mix(in oklab, var(--ui-border-soft) 62%, transparent);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
+  }
+
+  .open-in-pane:not(.active) .session-main::before {
+    background: color-mix(in oklab, var(--ui-text-tertiary) 42%, transparent);
+  }
+
   .archived .session-main {
     opacity: 0.74;
   }
@@ -322,11 +340,31 @@
     letter-spacing: 0;
   }
 
-  .session-main-top span {
+  .session-main-top-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.28rem;
     flex-shrink: 0;
+    min-width: 0;
     font-family: var(--font-mono);
     font-size: 0.54rem;
     color: var(--ui-text-tertiary);
+  }
+
+  .session-main-top-meta span {
+    flex-shrink: 0;
+  }
+
+  .session-open-marker {
+    max-width: 4.4rem;
+    overflow: hidden;
+    color: color-mix(in oklab, var(--ui-accent) 66%, var(--ui-text-tertiary));
+    font-family: var(--font-mono);
+    font-size: 0.5rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .session-main-body {
@@ -430,7 +468,10 @@
   }
 
   .session-menu-wrap {
-    position: relative;
+    position: absolute;
+    top: 0.32rem;
+    right: 0.32rem;
+    z-index: 2;
     opacity: 0;
     pointer-events: none;
     transition: opacity 140ms cubic-bezier(0.19, 1, 0.22, 1);
@@ -444,46 +485,106 @@
   }
 
   .session-menu-trigger {
-    min-width: 1.35rem;
-    min-height: 1.35rem;
-    padding-inline: 0.18rem;
+    min-width: 1.42rem;
+    min-height: 1.42rem;
+    padding-inline: 0.16rem;
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface-raised) 64%, transparent);
+    color: var(--ui-text-tertiary);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .session-menu-trigger:hover,
+  .session-menu-trigger:focus-visible {
+    background: var(--ui-surface-raised);
+    color: var(--ui-text-primary);
   }
 
   .session-menu {
     position: absolute;
-    top: calc(100% + 0.25rem);
+    top: calc(100% + 0.24rem);
     right: 0;
     z-index: var(--ui-z-overlay);
     display: grid;
-    gap: 0.2rem;
-    min-width: 8rem;
-    padding: 0.32rem;
+    gap: 0.08rem;
+    min-width: 9.2rem;
+    padding: 0.28rem;
     border-radius: var(--ui-radius-md);
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 92%, transparent);
-    background: var(--ui-surface-raised);
-    box-shadow: var(--ui-shadow-strong);
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--ui-surface-raised) 96%, white 4%),
+        var(--ui-surface-raised)
+      );
+    box-shadow:
+      0 18px 42px color-mix(in oklab, black 18%, transparent),
+      0 4px 14px color-mix(in oklab, black 12%, transparent);
+    transform-origin: top right;
+    animation: session-menu-enter 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .session-menu button {
-    padding: 0.42rem 0.52rem;
-    border: 0;
+    display: flex;
+    align-items: center;
+    min-height: 1.72rem;
+    padding: 0.34rem 0.48rem;
+    border: 1px solid transparent;
     border-radius: var(--ui-radius-sm);
     background: transparent;
-    color: var(--ui-text-primary);
+    color: var(--ui-text-secondary);
+    font-size: 0.62rem;
+    font-weight: 560;
+    line-height: 1.1;
     text-align: left;
     cursor: pointer;
+    transition:
+      border-color 120ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 120ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 120ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  .session-menu button:hover {
-    background: color-mix(in oklab, var(--ui-surface-subtle) 84%, transparent);
+  .session-menu button:hover:not(:disabled),
+  .session-menu button:focus-visible {
+    border-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 78%, transparent);
+    color: var(--ui-text-primary);
+    outline: none;
+  }
+
+  .session-menu button:disabled {
+    color: color-mix(in oklab, var(--ui-text-tertiary) 58%, transparent);
+    cursor: not-allowed;
   }
 
   .session-menu .danger {
     color: color-mix(in oklab, var(--ui-danger) 86%, var(--ui-text-primary));
   }
 
+  .session-menu .danger:hover,
+  .session-menu .danger:focus-visible {
+    border-color: color-mix(in oklab, var(--ui-danger) 24%, transparent);
+    background: color-mix(in oklab, var(--ui-danger) 10%, transparent);
+    color: color-mix(in oklab, var(--ui-danger) 92%, var(--ui-text-primary));
+  }
+
+  @keyframes session-menu-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-0.18rem) scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   @media (max-width: 760px) {
     .session-menu-wrap {
+      top: 0.24rem;
+      right: 0.24rem;
       opacity: 1;
       pointer-events: auto;
     }
