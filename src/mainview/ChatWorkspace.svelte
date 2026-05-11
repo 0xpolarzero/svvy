@@ -2290,11 +2290,15 @@
       </button>
       <p class="workspace-titlebar-title">svvy</p>
     </div>
-    <div class="workspace-titlebar-actions electrobun-webkit-app-region-no-drag">
+    <div
+      class="workspace-titlebar-actions electrobun-webkit-app-region-no-drag"
+      role="toolbar"
+      aria-label="Window actions"
+    >
       <button
         class="titlebar-icon"
         type="button"
-        aria-label="Titlebar command palette"
+        aria-label="Open command palette"
         title="Command Palette (Cmd+Shift+P)"
         onclick={() => openPalette("actions")}
       >
@@ -2303,7 +2307,7 @@
       <button
         class="titlebar-icon"
         type="button"
-        aria-label="Titlebar quick open"
+        aria-label="Open quick open"
         title="Quick Open (Cmd+P)"
         onclick={() => openPalette("quick-open")}
       >
@@ -2313,7 +2317,7 @@
         <button
           class="titlebar-icon"
           type="button"
-          aria-label="Titlebar settings"
+          aria-label="Open settings"
           title="Settings"
           onclick={onOpenSettings}
         >
@@ -2376,7 +2380,13 @@
     <section class="workspace-main">
       <header class="workspace-main-header">
         <div class="workspace-main-copy">
-          <button class="workspace-main-title-button" type="button" onclick={() => openPalette("actions")}>
+          <button
+            class="workspace-main-title-button"
+            type="button"
+            aria-label="Open command palette"
+            title="Command Palette (Cmd+Shift+P)"
+            onclick={() => openPalette("actions")}
+          >
             <span class="workspace-main-title">{currentSession?.title ?? "New Session"}</span>
           </button>
           <Badge tone={workspaceStatusTone}>{workspaceStatusText}</Badge>
@@ -2387,7 +2397,7 @@
           </span>
         </div>
 
-        <div class="workspace-main-meta">
+        <div class="workspace-main-meta" role="toolbar" aria-label="Workspace actions">
           {#if currentSurface?.surface === "thread"}
             <Button
               variant="ghost"
@@ -2442,8 +2452,9 @@
           <button
             class="header-icon-button"
             type="button"
+            aria-pressed={showArtifactsPanel}
             aria-label="Toggle artifacts inspector"
-            title="Toggle artifacts inspector"
+            title={showArtifactsPanel ? "Hide artifacts inspector" : "Show artifacts inspector"}
             disabled={!hasArtifacts}
             onclick={() => (showArtifactsPanel = !showArtifactsPanel)}
           >
@@ -2538,6 +2549,7 @@
                 class="pane-focus-button"
                 type="button"
                 aria-label={`Focus pane ${pane.paneId}`}
+                title="Focus pane"
                 onclick={() => void handleFocusPane(pane.paneId)}
               >
                 <span class="pane-title-line">
@@ -2558,7 +2570,7 @@
                   <MetadataChip label="context" value={paneContextBudget.label} tone={paneContextBudget.tone === "red" ? "danger" : paneContextBudget.tone === "orange" ? "warning" : "neutral"} />
                 {/if}
               </div>
-              <div class="pane-chrome-actions">
+              <div class="pane-chrome-actions" role="toolbar" aria-label={`Pane ${pane.paneId} actions`}>
                 {#if paneController}
                   <button
                     type="button"
@@ -2763,66 +2775,44 @@
           {/if}
 
           {#if showNewSessionEmptyState}
-            <section class="new-session-empty" aria-label="Start orchestrating">
-              <p class="new-session-watermark">svvy</p>
-              <div class="new-session-heading">
-                <h2>Start orchestrating</h2>
-                <p>Choose a session type or resume a recent session.</p>
+            <section class="new-session-empty" aria-label="Start a session">
+              <div class="new-session-intro">
+                <p class="new-session-watermark">svvy</p>
+                <div class="new-session-heading">
+                  <h2>Start with the composer</h2>
+                  <p>Describe the repo work, attach context with @mentions, then send.</p>
+                </div>
               </div>
 
-              <div class="new-session-options" aria-label="Session type">
-                <button
-                  type="button"
-                  class={`new-session-option ${currentSessionMode === "orchestrator" ? "active" : ""}`.trim()}
-                  aria-pressed={currentSessionMode === "orchestrator"}
-                  disabled={mutatingSession}
-                  onclick={() => void handleSelectCurrentSessionMode("orchestrator")}
-                >
-                  <span class="new-session-option-icon">o</span>
-                  <strong>Orchestrator session</strong>
-                  <small>Use this session for handler threads and workflow task-agents</small>
-                </button>
-                <button
-                  type="button"
-                  class={`new-session-option ${currentSessionMode === "quick" ? "active" : ""}`.trim()}
-                  aria-pressed={currentSessionMode === "quick"}
-                  disabled={mutatingSession}
-                  onclick={() => void handleSelectCurrentSessionMode("quick")}
-                >
-                  <span class="new-session-option-icon quick">q</span>
-                  <strong>Quick session</strong>
-                  <small>Keep this session direct, lightweight, and focused</small>
-                </button>
-                <button
-                  type="button"
-                  class="new-session-option"
-                  disabled={recentSessionSuggestions.length === 0}
-                  onclick={() => {
-                    const nextSession = recentSessionSuggestions[0];
-                    if (nextSession) void handleOpenSession(nextSession.id);
-                  }}
-                >
-                  <span class="new-session-option-icon resume">r</span>
-                  <strong>Resume session</strong>
-                  <small>Pick up where you left off</small>
-                </button>
-              </div>
-
-              <div class="new-session-mode-preview">
-                <div class="new-session-mode-header">
-                  <span>Session mode preview</span>
-                  <code>orchestrator vs quick</code>
-                </div>
-                <div class="new-session-mode-grid">
-                  <div class:active={currentSessionMode === "orchestrator"}>
-                    <strong>Orchestrator</strong>
-                    <p>Direct, delegated, verification, and pause paths with per-agent runtime profiles.</p>
-                  </div>
-                  <div class:active={currentSessionMode === "quick"}>
-                    <strong>Quick</strong>
-                    <p>Single surface, smaller context budget, faster answer path with fewer delegated actions.</p>
+              <div class="new-session-controls">
+                <div class="new-session-mode-toggle" role="group" aria-label="Session type">
+                  <span>Mode</span>
+                  <div class="new-session-mode-buttons">
+                    <button
+                      type="button"
+                      class:active={currentSessionMode === "orchestrator"}
+                      aria-pressed={currentSessionMode === "orchestrator"}
+                      disabled={mutatingSession}
+                      onclick={() => void handleSelectCurrentSessionMode("orchestrator")}
+                    >
+                      Orchestrator
+                    </button>
+                    <button
+                      type="button"
+                      class:active={currentSessionMode === "quick"}
+                      aria-pressed={currentSessionMode === "quick"}
+                      disabled={mutatingSession}
+                      onclick={() => void handleSelectCurrentSessionMode("quick")}
+                    >
+                      Quick
+                    </button>
                   </div>
                 </div>
+                <p class="new-session-mode-note">
+                  {currentSessionMode === "quick"
+                    ? "Direct single-surface replies."
+                    : "Delegation, workflow, and verification paths available."}
+                </p>
               </div>
 
               {#if recentSessionSuggestions.length > 0}
@@ -3888,7 +3878,8 @@
     transition:
       background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
       color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .titlebar-icon {
@@ -4327,6 +4318,11 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-tertiary);
+    transition:
+      border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+      color 140ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .pane-resize-button.vertical {
@@ -4341,6 +4337,10 @@
     border-color: color-mix(in oklab, var(--ui-shell-edge) 78%, transparent);
     color: var(--ui-text-primary);
     background: color-mix(in oklab, var(--ui-surface-raised) 72%, transparent);
+  }
+
+  .pane-chrome-actions button:active:not(:disabled) {
+    transform: translateY(1px) scale(0.94);
   }
 
   .pane-divider-shell {
@@ -4671,7 +4671,8 @@
     transition:
       border-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
       background-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
-      color 140ms cubic-bezier(0.19, 1, 0.22, 1);
+      color 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .layout-chip-button,
@@ -4693,6 +4694,11 @@
   .layout-chip-button {
     padding: 0 0.46rem;
     cursor: pointer;
+    transition:
+      border-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .runtime-summary {
@@ -4711,10 +4717,17 @@
   }
 
   .header-icon-button:hover,
-  .header-icon-button:focus-visible {
+  .header-icon-button:focus-visible,
+  .header-icon-button[aria-pressed="true"] {
     border-color: var(--ui-border-strong);
     background: var(--ui-surface-subtle);
     color: var(--ui-text-primary);
+  }
+
+  .titlebar-icon:active:not(:disabled),
+  .header-icon-button:active:not(:disabled),
+  .layout-chip-button:active:not(:disabled) {
+    transform: translateY(1px) scale(0.94);
   }
 
   .inline-titlebar-action {
@@ -4765,18 +4778,25 @@
     display: grid;
     align-content: start;
     justify-items: center;
-    gap: 1.4rem;
+    gap: 0.72rem;
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: clamp(2.2rem, 7vh, 4rem) 1.25rem 1.5rem;
+    padding: clamp(1.4rem, 8vh, 3.1rem) 1.25rem 1rem;
     color: var(--ui-text-secondary);
+  }
+
+  .new-session-intro {
+    display: grid;
+    justify-items: center;
+    gap: 0.46rem;
+    width: min(32rem, 100%);
   }
 
   .new-session-watermark {
     margin: 0;
     color: color-mix(in oklab, var(--ui-text-tertiary) 22%, transparent);
-    font-size: 1.7rem;
+    font-size: 1.15rem;
     font-weight: 700;
     letter-spacing: 0;
   }
@@ -4795,7 +4815,7 @@
 
   .new-session-heading h2 {
     color: var(--ui-text-primary);
-    font-size: 1rem;
+    font-size: 0.86rem;
     font-weight: 700;
   }
 
@@ -4804,141 +4824,89 @@
     font-size: 0.72rem;
   }
 
-  .new-session-options,
-  .new-session-mode-preview,
+  .new-session-controls,
   .new-session-recent {
-    width: min(36rem, 100%);
+    width: min(32rem, 100%);
   }
 
-  .new-session-options {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.45rem;
-  }
-
-  .new-session-option {
-    display: grid;
-    justify-items: start;
-    gap: 0.38rem;
-    min-height: 5.4rem;
-    padding: 0.82rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 66%, transparent);
-    color: var(--ui-text-secondary);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .new-session-option:hover:not(:disabled),
-  .new-session-option:focus-visible,
-  .new-session-option.active {
-    border-color: color-mix(in oklab, var(--ui-accent) 32%, var(--ui-border-soft));
-    background: color-mix(in oklab, var(--ui-surface-muted) 72%, transparent);
-  }
-
-  .new-session-option:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .new-session-option-icon {
-    display: inline-flex;
+  .new-session-controls {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 1.42rem;
-    height: 1.42rem;
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-accent) 22%, transparent);
-    color: var(--ui-accent);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .new-session-option-icon.quick {
-    background: color-mix(in oklab, var(--ui-warning) 20%, transparent);
-    color: var(--ui-warning);
-  }
-
-  .new-session-option-icon.resume {
-    background: color-mix(in oklab, var(--ui-info) 18%, transparent);
-    color: var(--ui-info);
-  }
-
-  .new-session-option strong {
-    color: var(--ui-text-primary);
-    font-size: 0.74rem;
-    font-weight: 600;
-  }
-
-  .new-session-option small {
-    color: var(--ui-text-tertiary);
-    font-size: 0.64rem;
-    line-height: 1.35;
-  }
-
-  .new-session-mode-preview {
-    display: grid;
-    gap: 0.56rem;
-    padding: 0.72rem;
+    justify-content: space-between;
+    gap: 0.72rem;
+    min-height: 2.35rem;
+    padding: 0.38rem 0.48rem;
     border: 1px solid var(--ui-border-soft);
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-surface-subtle) 54%, transparent);
   }
 
-  .new-session-mode-header {
-    display: flex;
+  .new-session-mode-toggle,
+  .new-session-mode-buttons {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    color: var(--ui-text-primary);
-    font-size: 0.62rem;
-    font-weight: 600;
+    min-width: 0;
   }
 
-  .new-session-mode-header code {
+  .new-session-mode-toggle {
+    gap: 0.5rem;
+  }
+
+  .new-session-mode-toggle > span {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: 0.58rem;
     font-weight: 500;
+    text-transform: uppercase;
   }
 
-  .new-session-mode-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.45rem;
-  }
-
-  .new-session-mode-grid > div {
-    min-height: 3.5rem;
-    padding: 0.66rem;
+  .new-session-mode-buttons {
+    gap: 0.16rem;
+    padding: 0.12rem;
     border: 1px solid var(--ui-border-soft);
     border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-surface) 68%, transparent);
+    background: color-mix(in oklab, var(--ui-surface) 64%, transparent);
   }
 
-  .new-session-mode-grid > div.active {
-    border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-soft));
-  }
-
-  .new-session-mode-grid strong,
-  .new-session-mode-grid p,
-  .new-session-recent p {
-    margin: 0;
-  }
-
-  .new-session-mode-grid strong {
-    color: var(--ui-text-primary);
-    font-size: 0.66rem;
-  }
-
-  .new-session-mode-grid p {
-    margin-top: 0.34rem;
+  .new-session-mode-buttons button {
+    min-height: 1.42rem;
+    padding: 0 0.5rem;
+    border: 0;
+    border-radius: var(--ui-radius-sm);
+    background: transparent;
     color: var(--ui-text-tertiary);
     font-size: 0.62rem;
-    line-height: 1.45;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .new-session-mode-buttons button:hover:not(:disabled),
+  .new-session-mode-buttons button:focus-visible {
+    outline: none;
+    color: var(--ui-text-primary);
+    background: var(--ui-surface-subtle);
+  }
+
+  .new-session-mode-buttons button.active {
+    background: color-mix(in oklab, var(--ui-accent) 18%, var(--ui-surface-subtle));
+    color: var(--ui-text-primary);
+  }
+
+  .new-session-mode-buttons button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .new-session-mode-note {
+    margin: 0;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ui-text-tertiary);
+    font-size: 0.62rem;
+    line-height: 1.3;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .new-session-recent {
@@ -4947,6 +4915,7 @@
   }
 
   .new-session-recent p {
+    margin: 0;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
     font-size: 0.56rem;
@@ -5681,6 +5650,26 @@
     user-select: none;
   }
 
+  @media (prefers-reduced-motion: reduce) {
+    .titlebar-icon,
+    .header-icon-button,
+    .layout-chip-button,
+    .pane-chrome-actions button {
+      transition:
+        border-color 0.01ms linear,
+        background-color 0.01ms linear,
+        color 0.01ms linear,
+        opacity 0.01ms linear;
+    }
+
+    .titlebar-icon:active:not(:disabled),
+    .header-icon-button:active:not(:disabled),
+    .layout-chip-button:active:not(:disabled),
+    .pane-chrome-actions button:active:not(:disabled) {
+      transform: none;
+    }
+  }
+
   @media (max-width: 1220px) {
     .chat-workspace.split {
       grid-template-columns: var(--sidebar-width) 0.72rem minmax(0, 1fr);
@@ -5863,6 +5852,29 @@
     .pane-drag-ghost,
     .pane-span-drop-zone {
       display: none;
+    }
+
+    .new-session-empty {
+      padding-inline: 0.72rem;
+    }
+
+    .new-session-controls {
+      display: grid;
+      justify-items: stretch;
+    }
+
+    .new-session-mode-toggle,
+    .new-session-mode-buttons {
+      width: 100%;
+    }
+
+    .new-session-mode-buttons button {
+      flex: 1 1 0;
+    }
+
+    .new-session-mode-note {
+      text-align: left;
+      white-space: normal;
     }
 
     .structured-command-card-top,

@@ -58,7 +58,9 @@
 			border-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
 			background-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
 			color 170ms cubic-bezier(0.19, 1, 0.22, 1),
-			box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1);
+			box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1),
+			transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+		will-change: transform;
 	}
 
 	.ui-button:focus-visible {
@@ -66,10 +68,15 @@
 		box-shadow: var(--ui-focus-ring);
 	}
 
+	.ui-button:active:not(:disabled):not(.is-loading) {
+		transform: translateY(1px) scale(0.985);
+	}
+
 	.ui-button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
 		box-shadow: none;
+		transform: none;
 	}
 
 	.size-sm {
@@ -169,6 +176,25 @@
 		background: color-mix(in oklab, var(--ui-danger-soft) 74%, transparent);
 		border-color: color-mix(in oklab, var(--ui-danger) 22%, var(--ui-border-soft));
 		color: color-mix(in oklab, var(--ui-danger) 86%, var(--ui-text-primary));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.ui-button {
+			transition:
+				border-color 0.01ms linear,
+				background-color 0.01ms linear,
+				color 0.01ms linear,
+				box-shadow 0.01ms linear;
+			will-change: auto;
+		}
+
+		.ui-button:active:not(:disabled):not(.is-loading) {
+			transform: none;
+		}
+
+		.ui-button-spinner {
+			animation-duration: 1.4s;
+		}
 	}
 
 	@media (max-width: 760px) {

@@ -354,67 +354,82 @@
 			</div>
 
 			<div class="composer-row-actions">
-				<button class="model-pill model-control" type="button" disabled={!currentModel} onclick={() => onOpenModelPicker()}>
-					<strong>{currentModel?.name ?? "No surface"}</strong>
-				</button>
-				<div bind:this={thinkingMenuRoot} class="thinking-wrap compact-thinking-wrap">
+				<div class="composer-control-cluster" aria-label="Runtime controls">
 					<button
-						class="model-pill thinking-field"
+						class="model-pill model-control"
 						type="button"
-						aria-haspopup="listbox"
-						aria-expanded={showThinkingMenu}
-						aria-label="Thinking level"
-						onclick={() => (showThinkingMenu = !showThinkingMenu)}
+						disabled={!currentModel}
+						onclick={() => onOpenModelPicker()}
 					>
-						<strong>{thinkingLevel}</strong>
-						<ChevronDownIcon
-							class={`thinking-chevron ${showThinkingMenu ? "open" : ""}`.trim()}
-							aria-hidden="true"
-							size={13}
-							strokeWidth={1.9}
-						/>
+						<strong>{currentModel?.name ?? "No surface"}</strong>
 					</button>
-					{#if showThinkingMenu}
-						<div class="thinking-menu" role="listbox" aria-label="Thinking level options">
-							{#each availableThinkingLevels as level}
-								<button
-									class={`thinking-option ${level === thinkingLevel ? "active" : ""}`.trim()}
-									type="button"
-									role="option"
-									aria-selected={level === thinkingLevel}
-									onclick={() => selectThinkingLevel(level)}
-								>
-									<span>{level}</span>
-									{#if level === thinkingLevel}
-										<span class="thinking-option-state">Current</span>
-									{/if}
-								</button>
-							{/each}
-						</div>
+					<div bind:this={thinkingMenuRoot} class="thinking-wrap compact-thinking-wrap">
+						<button
+							class="model-pill thinking-field"
+							type="button"
+							aria-haspopup="listbox"
+							aria-expanded={showThinkingMenu}
+							aria-label="Thinking level"
+							onclick={() => (showThinkingMenu = !showThinkingMenu)}
+						>
+							<strong>{thinkingLevel}</strong>
+							<ChevronDownIcon
+								class={`thinking-chevron ${showThinkingMenu ? "open" : ""}`.trim()}
+								aria-hidden="true"
+								size={13}
+								strokeWidth={1.9}
+							/>
+						</button>
+						{#if showThinkingMenu}
+							<div class="thinking-menu" role="listbox" aria-label="Thinking level options">
+								{#each availableThinkingLevels as level}
+									<button
+										class={`thinking-option ${level === thinkingLevel ? "active" : ""}`.trim()}
+										type="button"
+										role="option"
+										aria-selected={level === thinkingLevel}
+										onclick={() => selectThinkingLevel(level)}
+									>
+										<span>{level}</span>
+										{#if level === thinkingLevel}
+											<span class="thinking-option-state">Current</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
+					<div class="compact-budget">
+						<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
+					</div>
+				</div>
+				<div class="composer-action-cluster" aria-label="Composer actions">
+					<button
+						class="composer-icon-button"
+						type="button"
+						title="Add @mention"
+						aria-label="Add @mention"
+						onclick={focusMentionEntry}
+					>
+						<AtSignIcon size={15} aria-hidden="true" />
+					</button>
+					{#if isStreaming}
+						<button class="composer-submit danger" type="button" aria-label="Stop" title="Stop" onclick={onAbort}>
+							<SquareIcon size={13} aria-hidden="true" />
+						</button>
+					{:else}
+						<button
+							class="composer-submit"
+							type="button"
+							aria-label="Send"
+							title="Send"
+							onclick={() => void submit()}
+							disabled={!currentModel || !draft.trim() || isSubmitting}
+						>
+							<ArrowUpIcon size={15} aria-hidden="true" />
+						</button>
 					{/if}
 				</div>
-				<div class="compact-budget">
-					<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
-				</div>
-				<button class="composer-icon-button" type="button" title="Add @mention" aria-label="Add @mention" onclick={focusMentionEntry}>
-					<AtSignIcon size={15} aria-hidden="true" />
-				</button>
-				{#if isStreaming}
-					<button class="composer-submit danger" type="button" aria-label="Stop" title="Stop" onclick={onAbort}>
-						<SquareIcon size={13} aria-hidden="true" />
-					</button>
-				{:else}
-					<button
-						class="composer-submit"
-						type="button"
-						aria-label="Send"
-						title="Send"
-						onclick={() => void submit()}
-						disabled={!currentModel || !draft.trim() || isSubmitting}
-					>
-						<ArrowUpIcon size={15} aria-hidden="true" />
-					</button>
-				{/if}
 			</div>
 		</div>
 
@@ -584,19 +599,39 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: start;
-		gap: 0.72rem;
+		gap: 0.62rem;
 		min-height: 6.65rem;
 		padding: 0.58rem 0.72rem 0.48rem;
 	}
 
 	.composer-input-wrap {
 		min-width: 0;
+		min-height: 5.15rem;
+		padding: 0.38rem 0.52rem;
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+		border-radius: var(--ui-radius-md);
+		background: color-mix(in oklab, var(--ui-surface-subtle) 38%, transparent);
+		transition:
+			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+			background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+			box-shadow 150ms cubic-bezier(0.19, 1, 0.22, 1);
+	}
+
+	.composer-input-wrap:hover {
+		border-color: color-mix(in oklab, var(--ui-border-strong) 70%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-surface-subtle) 54%, transparent);
+	}
+
+	.composer-input-wrap:focus-within {
+		border-color: color-mix(in oklab, var(--ui-accent) 62%, var(--ui-border-accent));
+		background: var(--ui-surface);
+		box-shadow: var(--ui-focus-ring);
 	}
 
 	:global(.composer-shell .ui-textarea) {
-		min-height: 4.65rem;
+		min-height: 4.35rem;
 		max-height: 15rem;
-		padding: 0.12rem 0;
+		padding: 0;
 		border: 0;
 		border-radius: 0;
 		background: transparent;
@@ -624,18 +659,41 @@
 
 	.composer-row-actions {
 		justify-content: flex-end;
-		gap: 0.36rem;
+		align-content: flex-start;
+		gap: 0.4rem;
 		flex-wrap: wrap;
-		max-width: 18rem;
+		max-width: 18.75rem;
+	}
+
+	.composer-control-cluster,
+	.composer-action-cluster {
+		display: inline-flex;
+		align-items: center;
+		flex: 0 0 auto;
+		gap: 0.22rem;
+		min-width: 0;
+		padding: 0.16rem;
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 68%, transparent);
+		border-radius: var(--ui-radius-md);
+		background: color-mix(in oklab, var(--ui-surface-subtle) 42%, transparent);
+	}
+
+	.composer-control-cluster {
+		max-width: 15.4rem;
+	}
+
+	.composer-action-cluster {
+		background: transparent;
 	}
 
 	.composer-icon-button,
 	.composer-submit {
+		position: relative;
 		display: inline-grid;
 		place-items: center;
 		flex: 0 0 auto;
-		width: 1.75rem;
-		height: 1.75rem;
+		width: 1.9rem;
+		height: 1.9rem;
 		border: 1px solid transparent;
 		border-radius: var(--ui-radius-md);
 		background: transparent;
@@ -687,8 +745,6 @@
 		gap: 0.28rem;
 		min-width: 0;
 		max-width: 10rem;
-		min-height: 1.35rem;
-		padding: 0.1rem 0.42rem;
 		border: 1px solid var(--ui-border-soft);
 		border-radius: var(--ui-radius-sm);
 		background: transparent;
@@ -701,7 +757,15 @@
 		text-overflow: ellipsis;
 	}
 
+	.status-chip {
+		min-height: 1.35rem;
+		padding: 0.1rem 0.42rem;
+	}
+
 	.model-pill {
+		position: relative;
+		min-height: 1.74rem;
+		padding: 0.22rem 0.48rem;
 		cursor: pointer;
 	}
 
@@ -716,24 +780,33 @@
 
 	.model-pill.thinking-field {
 		max-width: 7rem;
-		padding-right: 1.35rem;
+		padding-right: 1.38rem;
 	}
 
 	.model-pill:hover,
 	.model-pill:focus-visible {
 		outline: none;
 		border-color: color-mix(in oklab, var(--ui-accent) 52%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-surface) 72%, transparent);
 		color: var(--ui-text-primary);
+	}
+
+	.model-pill:focus-visible,
+	.composer-icon-button:focus-visible,
+	.composer-submit:focus-visible,
+	.mention-chip:focus-visible,
+	.mention-add-chip:focus-visible {
+		box-shadow: var(--ui-focus-ring);
 	}
 
 	.compact-budget {
 		position: relative;
 		width: 5.8rem;
-		height: 1.25rem;
+		height: 1.74rem;
 	}
 
 	.compact-budget :global(.context-budget-compact) {
-		inset: auto 0 0.28rem 0;
+		inset: auto 0 0.42rem 0;
 	}
 
 	.mention-picker {
@@ -1024,6 +1097,10 @@
 			display: none;
 		}
 
+		.composer-control-cluster {
+			display: none;
+		}
+
 		.composer-status-row,
 		.composer-runtime {
 			align-items: flex-start;
@@ -1069,6 +1146,10 @@
 
 		.model-pill,
 		.compact-budget {
+			display: none;
+		}
+
+		.composer-control-cluster {
 			display: none;
 		}
 
