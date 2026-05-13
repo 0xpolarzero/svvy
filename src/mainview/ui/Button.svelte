@@ -1,15 +1,19 @@
 <script lang="ts">
 	import type { Snippet } from "svelte";
 	import type { HTMLButtonAttributes } from "svelte/elements";
+	import Kbd from "./Kbd.svelte";
 
 	type ButtonVariant = "primary" | "secondary" | "ghost" | "success" | "danger";
 	type ButtonSize = "xs" | "sm" | "md";
+	type ButtonShortcutVisibility = "always" | "hover" | "none";
 
 	type Props = HTMLButtonAttributes & {
 		variant?: ButtonVariant;
 		size?: ButtonSize;
 		iconOnly?: boolean;
 		loading?: boolean;
+		shortcut?: string | null;
+		shortcutVisibility?: ButtonShortcutVisibility;
 		children?: Snippet;
 	};
 
@@ -18,24 +22,38 @@
 		size = "md",
 		iconOnly = false,
 		loading = false,
+		shortcut = null,
+		shortcutVisibility = "none",
 		type = "button",
 		class: className = "",
 		children,
 		...rest
 	}: Props = $props();
+
+	const hasHoverShortcut = $derived(Boolean(shortcut) && shortcutVisibility === "hover");
+	const hasInlineShortcut = $derived(Boolean(shortcut) && shortcutVisibility === "always");
 </script>
 
 <button
 	{...rest}
 	type={type}
 	aria-busy={loading || undefined}
-	class={`ui-button variant-${variant} size-${size} ${iconOnly ? "icon-only" : ""} ${loading ? "is-loading" : ""} ${className}`.trim()}
+	class={`ui-button variant-${variant} size-${size} ${iconOnly ? "icon-only" : ""} ${loading ? "is-loading" : ""} ${hasHoverShortcut ? "has-hover-shortcut" : ""} ${hasInlineShortcut ? "has-inline-shortcut" : ""} ${className}`.trim()}
 >
 	{#if loading}
 		<span class="ui-button-spinner" aria-hidden="true"></span>
 	{/if}
 	{#if children}
-		{@render children()}
+		<span class="ui-button-content">
+			{@render children()}
+		</span>
+	{/if}
+	{#if shortcut && shortcutVisibility !== "none"}
+		{#if shortcutVisibility === "hover"}
+			<Kbd value={shortcut} class="ui-button-shortcut hover-shortcut" />
+		{:else}
+			<Kbd value={shortcut} class="ui-button-shortcut" />
+		{/if}
 	{/if}
 </button>
 
@@ -62,6 +80,14 @@
 			box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1),
 			transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
 		will-change: transform;
+	}
+
+	.ui-button-content {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: inherit;
+		min-width: 0;
 	}
 
 	.ui-button::before {
@@ -124,6 +150,40 @@
 
 	.is-loading {
 		pointer-events: none;
+	}
+
+	.ui-button :global(.ui-button-shortcut) {
+		flex: 0 0 auto;
+		color: currentColor;
+	}
+
+	.ui-button :global(.hover-shortcut) {
+		position: absolute;
+		inset: 50% auto auto 50%;
+		max-width: calc(100% - 0.3rem);
+		opacity: 0;
+		transform: translate(-50%, -50%) scale(0.96);
+		transition:
+			opacity 110ms cubic-bezier(0.19, 1, 0.22, 1),
+			transform 110ms cubic-bezier(0.19, 1, 0.22, 1);
+	}
+
+	.has-hover-shortcut .ui-button-content {
+		transition:
+			opacity 110ms cubic-bezier(0.19, 1, 0.22, 1),
+			transform 110ms cubic-bezier(0.19, 1, 0.22, 1);
+	}
+
+	.has-hover-shortcut:hover:not(:disabled) .ui-button-content,
+	.has-hover-shortcut:focus-visible .ui-button-content {
+		opacity: 0;
+		transform: scale(0.92);
+	}
+
+	.has-hover-shortcut:hover:not(:disabled) :global(.hover-shortcut),
+	.has-hover-shortcut:focus-visible :global(.hover-shortcut) {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
 	}
 
 	.ui-button-spinner {

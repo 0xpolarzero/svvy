@@ -28,6 +28,7 @@
 	import WorkflowCard, { type ReferenceWorkflow } from "./WorkflowCard.svelte";
 	import { slide } from "svelte/transition";
   import { quintOut } from "svelte/easing";
+  import Tooltip from "../ui/Tooltip.svelte";
 
   type Props = {
     thread: ReferenceThread;
@@ -108,16 +109,17 @@
     <span class="font-mono text-[10px] text-muted-foreground tabular-nums">
       {thread.elapsed}
     </span>
-    <button
-      type="button"
-      class="text-muted-foreground/40 hover:text-muted-foreground"
-      title="Open handler thread"
-      aria-label="Open handler thread"
-      onclick={() => onopen?.(thread)}
-      data-testid={`thread-open-pane-${thread.id}`}
-    >
-      <ExternalLinkIcon size={13} strokeWidth={2.1} />
-    </button>
+    <Tooltip label="Open handler thread">
+      <button
+        type="button"
+        class="text-muted-foreground/40 hover:text-muted-foreground"
+        aria-label="Open handler thread"
+        onclick={() => onopen?.(thread)}
+        data-testid={`thread-open-pane-${thread.id}`}
+      >
+        <ExternalLinkIcon size={13} strokeWidth={2.1} />
+      </button>
+    </Tooltip>
   </header>
 
   {#if thread.status === "running"}

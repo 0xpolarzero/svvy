@@ -2,8 +2,6 @@
   import { onMount } from "svelte";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
-  import FileSearchIcon from "@lucide/svelte/icons/file-search";
-  import SearchIcon from "@lucide/svelte/icons/search";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
@@ -85,7 +83,11 @@
     type CommandAction,
     type CommandPaletteMode,
   } from "./command-palette";
-  import { matchesKeybinding, type AppMenuAction } from "../shared/keybindings";
+  import {
+    getKeybindingShortcut,
+    matchesKeybinding,
+    type AppMenuAction,
+  } from "../shared/keybindings";
   import ModelPickerDialog from "./ModelPickerDialog.svelte";
   import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
   import VerificationCard, { type ReferenceVerification } from "./reference-cards/VerificationCard.svelte";
@@ -99,6 +101,7 @@
   import Button from "./ui/Button.svelte";
   import { rpc } from "./rpc";
   import Input from "./ui/Input.svelte";
+  import Tooltip from "./ui/Tooltip.svelte";
 
   const DEFAULT_SIDEBAR_WIDTH = 240;
 
@@ -108,6 +111,8 @@
   };
 
   let { runtime, onOpenSettings }: Props = $props();
+  const sidebarToggleShortcut = getKeybindingShortcut("sidebar.toggle");
+  const commandPaletteShortcut = getKeybindingShortcut("commandPalette.open");
 
   let controller = $state<ArtifactsController | null>(null);
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
@@ -1983,68 +1988,55 @@
     <div class="workspace-titlebar-start">
       {#if isMacWindowChrome}
         <div class="window-controls electrobun-webkit-app-region-no-drag" aria-label="Window controls">
-          <button
-            class="window-control close"
-            type="button"
-            aria-label="Close window"
-            title="Close"
-            onclick={closeWindow}
-          ></button>
-          <button
-            class="window-control minimize"
-            type="button"
-            aria-label="Minimize window"
-            title="Minimize"
-            onclick={minimizeWindow}
-          ></button>
-          <button
-            class="window-control maximize"
-            type="button"
-            aria-label="Zoom window"
-            title="Zoom"
-            onclick={toggleMaximizeWindow}
-          ></button>
+          <Tooltip label="Close window" side="bottom">
+            <button
+              class="window-control close"
+              type="button"
+              aria-label="Close window"
+              onclick={closeWindow}
+            ></button>
+          </Tooltip>
+          <Tooltip label="Minimize window" side="bottom">
+            <button
+              class="window-control minimize"
+              type="button"
+              aria-label="Minimize window"
+              onclick={minimizeWindow}
+            ></button>
+          </Tooltip>
+          <Tooltip label="Zoom window" side="bottom">
+            <button
+              class="window-control maximize"
+              type="button"
+              aria-label="Zoom window"
+              onclick={toggleMaximizeWindow}
+            ></button>
+          </Tooltip>
         </div>
       {/if}
-      <button
-        class="titlebar-icon electrobun-webkit-app-region-no-drag"
-        type="button"
-        aria-pressed={!sidebarHidden}
-        aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
-        title={sidebarHidden ? "Show sidebar (Cmd/Ctrl+B)" : "Hide sidebar (Cmd/Ctrl+B)"}
-        onclick={toggleSidebarVisibility}
+      <Tooltip
+        class="electrobun-webkit-app-region-no-drag"
+        label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+        shortcut={sidebarToggleShortcut}
+        side="bottom"
       >
-        {#if sidebarHidden}
-          <PanelLeftDashedIcon aria-hidden="true" size={16} strokeWidth={1.8} />
-        {:else}
-          <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={1.8} />
-        {/if}
-      </button>
+        <button
+          class="titlebar-icon electrobun-webkit-app-region-no-drag"
+          type="button"
+          aria-pressed={!sidebarHidden}
+          aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+          onclick={toggleSidebarVisibility}
+        >
+          <span class="titlebar-icon-glyph">
+            {#if sidebarHidden}
+              <PanelLeftDashedIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+            {:else}
+              <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+            {/if}
+          </span>
+        </button>
+      </Tooltip>
       <p class="workspace-titlebar-title">svvy</p>
-    </div>
-    <div
-      class="workspace-titlebar-actions electrobun-webkit-app-region-no-drag"
-      role="toolbar"
-      aria-label="Window actions"
-    >
-      <button
-        class="titlebar-icon"
-        type="button"
-        aria-label="Open command palette"
-        title="Command Palette (Cmd+Shift+P)"
-        onclick={() => openPalette("commands")}
-      >
-        <SearchIcon aria-hidden="true" size={15} strokeWidth={1.85} />
-      </button>
-      <button
-        class="titlebar-icon"
-        type="button"
-        aria-label="Open quick open"
-        title="Quick Open (Cmd+P)"
-        onclick={() => openPalette("search")}
-      >
-        <FileSearchIcon aria-hidden="true" size={15} strokeWidth={1.85} />
-      </button>
     </div>
   </header>
 
@@ -2103,15 +2095,16 @@
     <section class="workspace-main">
       <header class="workspace-main-header">
         <div class="workspace-main-copy">
-          <button
-            class="workspace-main-title-button"
-            type="button"
-            aria-label="Search workspace from focused session title"
-            title="Command Palette (Cmd+Shift+P)"
-            onclick={() => openPalette("commands")}
-          >
-            <span class="workspace-main-title">{currentSession?.title ?? "New Session"}</span>
-          </button>
+          <Tooltip label="Search commands from the focused session" shortcut={commandPaletteShortcut} side="bottom">
+            <button
+              class="workspace-main-title-button"
+              type="button"
+              aria-label="Search workspace from focused session title"
+              onclick={() => openPalette("commands")}
+            >
+              <span class="workspace-main-title">{currentSession?.title ?? "New Session"}</span>
+            </button>
+          </Tooltip>
           <Badge tone={workspaceStatusTone}>{workspaceStatusText}</Badge>
           <span class="workspace-main-separator">/</span>
           <span class="workspace-main-branch">
@@ -2132,35 +2125,18 @@
             </Button>
           {/if}
           <ContextBudgetBar budget={contextBudget} variant="compact" label="Focused context" />
-          <button
-            class="header-icon-button"
-            type="button"
-            aria-label="Open command palette"
-            title="Command Palette (Cmd+Shift+P)"
-            onclick={() => openPalette("commands")}
-          >
-            <SearchIcon aria-hidden="true" size={14} strokeWidth={1.85} />
-          </button>
-          <button
-            class="header-icon-button"
-            type="button"
-            aria-label="Open quick open"
-            title="Quick Open (Cmd+P)"
-            onclick={() => openPalette("search")}
-          >
-            <FileSearchIcon aria-hidden="true" size={14} strokeWidth={1.85} />
-          </button>
-          <button
-            class="header-icon-button"
-            type="button"
-            aria-pressed={showArtifactsPanel}
-            aria-label="Toggle artifacts inspector"
-            title={showArtifactsPanel ? "Hide artifacts inspector" : "Show artifacts inspector"}
-            disabled={!hasArtifacts}
-            onclick={() => (showArtifactsPanel = !showArtifactsPanel)}
-          >
-            <PanelRightIcon aria-hidden="true" size={14} strokeWidth={1.85} />
-          </button>
+          <Tooltip label={showArtifactsPanel ? "Hide artifacts inspector" : "Show artifacts inspector"} side="bottom" disabled={!hasArtifacts}>
+            <button
+              class="header-icon-button"
+              type="button"
+              aria-pressed={showArtifactsPanel}
+              aria-label="Toggle artifacts inspector"
+              disabled={!hasArtifacts}
+              onclick={() => (showArtifactsPanel = !showArtifactsPanel)}
+            >
+              <PanelRightIcon aria-hidden="true" size={14} strokeWidth={1.85} />
+            </button>
+          </Tooltip>
           {#if projectCiStatus && hasActionableProjectCiStatus}
             <div class="project-ci-compact" aria-label="Project CI summary">
               <Badge tone={getProjectCiStatusTone(projectCiStatus.status)}>
@@ -3114,19 +3090,8 @@
     transform: scale(0.94);
   }
 
-  .workspace-titlebar-actions {
-    display: none;
-    align-items: center;
-    gap: 0.16rem;
-    padding: 0.12rem;
-    border: 1px solid color-mix(in oklab, var(--ui-shell-edge) 70%, transparent);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-shell) 82%, transparent);
-    box-shadow: var(--ui-shadow-soft);
-    pointer-events: auto;
-  }
-
   .titlebar-icon {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -3179,7 +3144,9 @@
   }
 
   .workspace-sidebar {
-    overflow: hidden;
+    position: relative;
+    z-index: 2;
+    overflow: visible;
     opacity: 1;
     transform: translateX(0);
     transform-origin: 0 50%;
@@ -3367,6 +3334,7 @@
   }
 
   .header-icon-button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4289,14 +4257,16 @@
     backdrop-filter: blur(8px);
   }
 
-  .titlebar-icon:hover,
-  .titlebar-icon[aria-pressed="true"] {
+  .titlebar-icon:hover {
     background: color-mix(in oklab, var(--ui-surface-subtle) 74%, transparent);
     color: var(--ui-text-primary);
   }
 
-  .titlebar-icon[aria-pressed="true"] {
-    color: color-mix(in oklab, var(--ui-accent) 64%, var(--ui-text-primary));
+  .titlebar-icon-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
   }
 
   .titlebar-icon:focus-visible {

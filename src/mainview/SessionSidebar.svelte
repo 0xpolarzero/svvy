@@ -8,9 +8,11 @@
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import ZapIcon from "@lucide/svelte/icons/zap";
-  import { getKeybindingDisplayShortcut, getKeybindingShortcut } from "../shared/keybindings";
+  import { getKeybindingDisplayShortcut } from "../shared/keybindings";
   import type { WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
   import SessionListItem from "./SessionListItem.svelte";
+  import Kbd from "./ui/Kbd.svelte";
+  import Tooltip from "./ui/Tooltip.svelte";
 
   type Props = {
     workspaceLabel: string;
@@ -59,10 +61,11 @@
   }: Props = $props();
 
   let showNewSessionMenu = $state(false);
-  const newSessionShortcut = getKeybindingShortcut("session.new");
-  const dumbSessionShortcut = getKeybindingShortcut("session.dumb");
+  let shortcutAction = $state<string | null>(null);
   const newSessionDisplayShortcut = getKeybindingDisplayShortcut("session.new");
   const dumbSessionDisplayShortcut = getKeybindingDisplayShortcut("session.dumb");
+  const quickOpenDisplayShortcut = getKeybindingDisplayShortcut("quickOpen.open");
+  const commandPaletteDisplayShortcut = getKeybindingDisplayShortcut("commandPalette.open");
 
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
     const current = event.currentTarget as HTMLElement | null;
@@ -76,6 +79,17 @@
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       showNewSessionMenu = false;
+      shortcutAction = null;
+    }
+  }
+
+  function showShortcut(action: string) {
+    shortcutAction = action;
+  }
+
+  function hideShortcut(action: string) {
+    if (shortcutAction === action) {
+      shortcutAction = null;
     }
   }
 </script>
@@ -99,27 +113,34 @@
       <div class="sidebar-action-row new-session-row">
         <button
           type="button"
-          class="sidebar-action-main"
+          class={`sidebar-action-main ${shortcutAction === "new" ? "shortcut-open" : ""}`.trim()}
+          onmouseenter={() => showShortcut("new")}
+          onmouseleave={() => hideShortcut("new")}
+          onfocus={() => showShortcut("new")}
+          onblur={() => hideShortcut("new")}
           onclick={() => {
             showNewSessionMenu = false;
             onCreateSession();
           }}
           disabled={busy}
           aria-label="Create a new session"
-          title={`New Session (${newSessionShortcut})`}
         >
           <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
           <span class="sidebar-action-label">New session</span>
-          <kbd class="sidebar-action-shortcut">{newSessionDisplayShortcut}</kbd>
+          <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
         </button>
       </div>
       <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
         <div class="new-session-accordion-inner">
           <button
             type="button"
-            class="sidebar-action-row new-session-child"
+            class={`sidebar-action-row new-session-child ${shortcutAction === "dumb" ? "shortcut-open" : ""}`.trim()}
             disabled={busy}
             tabindex={showNewSessionMenu ? 0 : -1}
+            onmouseenter={() => showShortcut("dumb")}
+            onmouseleave={() => hideShortcut("dumb")}
+            onfocus={() => showShortcut("dumb")}
+            onblur={() => hideShortcut("dumb")}
             onclick={() => {
               showNewSessionMenu = false;
               onCreateDumbSession();
@@ -127,21 +148,41 @@
           >
             <span class="sidebar-action-icon"><ZapIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">New dumb session</span>
-            <kbd class="sidebar-action-shortcut">{dumbSessionDisplayShortcut}</kbd>
+            <Kbd value={dumbSessionDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </div>
       </div>
     </div>
     {#if onOpenSearch}
-      <button class="sidebar-action-row" type="button" onclick={onOpenSearch}>
+      <button
+        class={`sidebar-action-row ${shortcutAction === "search" ? "shortcut-open" : ""}`.trim()}
+        type="button"
+        aria-label="Open quick open"
+        onmouseenter={() => showShortcut("search")}
+        onmouseleave={() => hideShortcut("search")}
+        onfocus={() => showShortcut("search")}
+        onblur={() => hideShortcut("search")}
+        onclick={onOpenSearch}
+      >
         <span class="sidebar-action-icon"><SearchIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
         <span class="sidebar-action-label">Search</span>
+        <Kbd value={quickOpenDisplayShortcut} class="sidebar-action-shortcut" />
       </button>
     {/if}
     {#if onOpenCommandPalette}
-      <button class="sidebar-action-row" type="button" onclick={onOpenCommandPalette}>
+      <button
+        class={`sidebar-action-row ${shortcutAction === "commands" ? "shortcut-open" : ""}`.trim()}
+        type="button"
+        aria-label="Open command palette"
+        onmouseenter={() => showShortcut("commands")}
+        onmouseleave={() => hideShortcut("commands")}
+        onfocus={() => showShortcut("commands")}
+        onblur={() => hideShortcut("commands")}
+        onclick={onOpenCommandPalette}
+      >
         <span class="sidebar-action-icon"><CommandIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
         <span class="sidebar-action-label">Command palette</span>
+        <Kbd value={commandPaletteDisplayShortcut} class="sidebar-action-shortcut" />
       </button>
     {/if}
   </div>
@@ -236,11 +277,13 @@
 
   {#if onOpenWorkflowLibrary}
     <div class="sidebar-lower-nav">
-      <button class="sidebar-action-row reference-nav-row" type="button" onclick={onOpenWorkflowLibrary}>
-        <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-        <span class="sidebar-action-label">Saved workflows</span>
-        <small class="sidebar-action-shortcut">.svvy</small>
-      </button>
+      <Tooltip label="Open saved workflow assets" side="right" block>
+        <button class="sidebar-action-row reference-nav-row" type="button" aria-label="Open saved workflows" onclick={onOpenWorkflowLibrary}>
+          <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+          <span class="sidebar-action-label">Saved workflows</span>
+          <small class="sidebar-action-shortcut">.svvy</small>
+        </button>
+      </Tooltip>
     </div>
   {/if}
 
@@ -250,15 +293,16 @@
       <span>{workspaceLabel}</span>
     </div>
     {#if onOpenSettings}
-      <button
-        class="sidebar-footer-button"
-        type="button"
-        title="Settings"
-        aria-label="Open settings"
-        onclick={onOpenSettings}
-      >
-        <SettingsIcon size={14} aria-hidden="true" />
-      </button>
+      <Tooltip label="Open settings">
+        <button
+          class="sidebar-footer-button"
+          type="button"
+          aria-label="Open settings"
+          onclick={onOpenSettings}
+        >
+          <SettingsIcon size={14} aria-hidden="true" />
+        </button>
+      </Tooltip>
     {/if}
   </footer>
 </div>
@@ -362,7 +406,7 @@
     white-space: nowrap;
   }
 
-  .sidebar-action-shortcut {
+  :global(.sidebar-action-shortcut) {
     justify-self: end;
     flex: 0 0 auto;
     min-width: max-content;
@@ -375,13 +419,22 @@
     font-size: 0.52rem;
     font-weight: 650;
     line-height: 1.2;
+    opacity: 0;
+    transform: translateX(0.12rem);
+    transition:
+      opacity 110ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 110ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  kbd.sidebar-action-shortcut {
-    padding: 0.08rem 0.25rem;
-    border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
-    border-radius: var(--ui-radius-xs);
-    background: color-mix(in oklab, currentColor 10%, transparent);
+  .sidebar-action-row:hover :global(.sidebar-action-shortcut),
+  .sidebar-action-row:focus-visible :global(.sidebar-action-shortcut),
+  .sidebar-action-row:focus-within :global(.sidebar-action-shortcut),
+  .sidebar-action-main:hover :global(.sidebar-action-shortcut),
+  .sidebar-action-main:focus-visible :global(.sidebar-action-shortcut),
+  .shortcut-open :global(.sidebar-action-shortcut),
+  .new-session-menu-shell.menu-open .new-session-row :global(.sidebar-action-shortcut) {
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .new-session-row {
@@ -568,6 +621,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .sidebar-action-row,
+    .sidebar-action-shortcut,
     .new-session-accordion {
       transition: none;
       animation: none;

@@ -28,6 +28,7 @@
 	import type { WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
 	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
+	import Tooltip from "./ui/Tooltip.svelte";
 
 	const DEFAULT_TRANSCRIPT_ROW_GAP = 16;
 	const MIN_VIRTUALIZED_MESSAGES = 40;
@@ -675,33 +676,33 @@
 							{/if}
 						{/each}
 						<div class="assistant-message-actions" aria-label="Assistant message actions">
-							<Button
-								variant="ghost"
-								size="xs"
-								iconOnly
-								aria-label="Fork session from this message"
-								title="Fork from this message"
-								data-tooltip="Fork from this message"
-								onclick={() => onForkAssistantMessage?.(message)}
-							>
-								<GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-							</Button>
-							<Button
-								variant="ghost"
-								size="xs"
-								iconOnly
-								aria-label="Copy assistant message"
-								title="Copy assistant message"
-								data-tooltip="Copy assistant message"
-								disabled={!assistantMessageText(message)}
-								onclick={() => void handleCopyAssistantMessage(message)}
-							>
-								{#if copiedAssistantMessageTimestamp === message.timestamp}
-									<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-								{:else}
-									<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-								{/if}
-							</Button>
+							<Tooltip label="Fork session from this message">
+								<Button
+									variant="ghost"
+									size="xs"
+									iconOnly
+									aria-label="Fork session from this message"
+									onclick={() => onForkAssistantMessage?.(message)}
+								>
+									<GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+								</Button>
+							</Tooltip>
+							<Tooltip label="Copy assistant message" disabled={!assistantMessageText(message)}>
+								<Button
+									variant="ghost"
+									size="xs"
+									iconOnly
+									aria-label="Copy assistant message"
+									disabled={!assistantMessageText(message)}
+									onclick={() => void handleCopyAssistantMessage(message)}
+								>
+									{#if copiedAssistantMessageTimestamp === message.timestamp}
+										<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+									{:else}
+										<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+									{/if}
+								</Button>
+							</Tooltip>
 						</div>
 						</div>
 					</article>

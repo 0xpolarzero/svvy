@@ -189,6 +189,21 @@ The core command palette section defines default behavior before choosing a Dock
 
 Dockview placement behavior belongs to `docs/specs/pane-layout.spec.md`. Command palette results that open sessions or surfaces default to opening in a new Dockview panel, while `Cmd+Enter` from the command palette opens the selected command or result into the currently focused Dockview panel.
 
+## Action Feedback And Shortcut Hints
+
+Command-related action controls use two distinct feedback layers:
+
+- an instant in-control shortcut hint for controls with a direct keybinding
+- a delayed explanatory tooltip that appears after 500 ms of hover or keyboard focus
+
+The instant hint uses the compact display shortcut from the shared keybinding registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. This is the preferred treatment for explicit labeled sidebar actions such as new session, command palette, and quick open; those actions do not also need an explanatory tooltip.
+
+The delayed tooltip uses the readable shortcut form from the same registry, such as `Cmd+N`, when a shortcut exists, but renders it with the same segmented keycap treatment as compact hints. It explains icon-only or ambiguous actions rather than repeating obvious sidebar labels. Native browser `title` tooltips must not be used for these product action buttons because their delay, styling, and shortcut rendering are browser-controlled.
+
+Action tooltips render in the app's top-level overlay layer, clamp to the visible window bounds, and choose a side appropriate to the control's chrome context so sidebar, titlebar, Dockview, and composer controls are not clipped by pane or scroll containers.
+
+Controls without keybindings may still use the delayed tooltip when the icon or compact label is not self-explanatory. Tooltips are local UI feedback only; they must not create durable session, command, log, workflow, or telemetry records.
+
 ## Relationship To Product Areas
 
 Sessions:
@@ -236,6 +251,7 @@ Future product actions:
 - File quick-open is a placeholder until file-oriented surfaces exist.
 - The palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.
 - The command registry is product-owned.
+- Product action buttons use shared keybinding definitions for shortcut hints and avoid native browser `title` tooltips; command-palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
 - Commands route into existing product models and durable state.
 - Unmatched non-empty command-mode text after `>` creates a new session initial prompt.
 - Non-command quick-open text must not create a session while quick-open is a placeholder.

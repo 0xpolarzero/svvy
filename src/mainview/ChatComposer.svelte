@@ -30,6 +30,7 @@
 	} from "./composer-mentions";
 	import ContextBudgetBar from "./ContextBudgetBar.svelte";
 	import TextArea from "./ui/TextArea.svelte";
+	import Tooltip from "./ui/Tooltip.svelte";
 
 	type Props = {
 		currentModel: Model<any> | null;
@@ -347,21 +348,22 @@
 					<section class="composer-context-row" aria-label="Attached file and context items">
 						<div class="mention-chip-row">
 							{#each selectedMentions as mention (mention.id)}
-								<button
-									class="mention-chip"
-									type="button"
-									aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
-									title={`Remove attached context ${mention.workspaceRelativePath}`}
-									onclick={() => void removeMention(mention)}
-								>
-									{#if mention.kind === "folder"}
-										<FolderIcon size={12} aria-hidden="true" />
-									{:else}
-										<FileIcon size={12} aria-hidden="true" />
-									{/if}
-									<span>{mention.workspaceRelativePath}</span>
-									<XIcon size={11} aria-hidden="true" />
-								</button>
+								<Tooltip label={`Remove ${mention.workspaceRelativePath}`}>
+									<button
+										class="mention-chip"
+										type="button"
+										aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
+										onclick={() => void removeMention(mention)}
+									>
+										{#if mention.kind === "folder"}
+											<FolderIcon size={12} aria-hidden="true" />
+										{:else}
+											<FileIcon size={12} aria-hidden="true" />
+										{/if}
+										<span>{mention.workspaceRelativePath}</span>
+										<XIcon size={11} aria-hidden="true" />
+									</button>
+								</Tooltip>
 							{/each}
 						</div>
 					</section>
@@ -431,30 +433,34 @@
 					</div>
 				</div>
 				<div class="composer-action-cluster" aria-label="Composer actions">
-					<button
-						class="composer-icon-button"
-						type="button"
-						title="Attach file context"
-						aria-label="Attach file context"
-						onclick={() => void attachPickedWorkspaceFiles()}
-					>
-						<PaperclipIcon size={15} aria-hidden="true" />
-					</button>
-					{#if isStreaming}
-						<button class="composer-submit danger" type="button" aria-label="Stop" title="Stop" onclick={onAbort}>
-							<SquareIcon size={13} aria-hidden="true" />
-						</button>
-					{:else}
+					<Tooltip label="Attach file context">
 						<button
-							class="composer-submit"
+							class="composer-icon-button"
 							type="button"
-							aria-label="Send"
-							title="Send"
-							onclick={() => void submit()}
-							disabled={!currentModel || !draft.trim() || isSubmitting}
+							aria-label="Attach file context"
+							onclick={() => void attachPickedWorkspaceFiles()}
 						>
-							<ArrowUpIcon size={15} aria-hidden="true" />
+							<PaperclipIcon size={15} aria-hidden="true" />
 						</button>
+					</Tooltip>
+					{#if isStreaming}
+						<Tooltip label="Stop generation">
+							<button class="composer-submit danger" type="button" aria-label="Stop" onclick={onAbort}>
+								<SquareIcon size={13} aria-hidden="true" />
+							</button>
+						</Tooltip>
+					{:else}
+						<Tooltip label="Send message" disabled={!currentModel || !draft.trim() || isSubmitting}>
+							<button
+								class="composer-submit"
+								type="button"
+								aria-label="Send"
+								onclick={() => void submit()}
+								disabled={!currentModel || !draft.trim() || isSubmitting}
+							>
+								<ArrowUpIcon size={15} aria-hidden="true" />
+							</button>
+						</Tooltip>
 					{/if}
 				</div>
 			</div>

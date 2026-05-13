@@ -6,6 +6,7 @@
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
   import { formatRelativeSessionTime, formatSessionStatusLabel } from "./session-format";
   import Button from "./ui/Button.svelte";
+  import Tooltip from "./ui/Tooltip.svelte";
 
   type Props = {
     session: WorkspaceSessionSummary;
@@ -174,53 +175,53 @@
   </button>
 
   <div class="session-inline-actions" role="toolbar" aria-label={`Actions for ${session.title}`}>
-    <Button
-      variant="ghost"
-      size="xs"
-      iconOnly
-      class="session-inline-action"
-      aria-label={session.isArchived ? `Unarchive ${session.title}` : `Archive ${session.title}`}
-      title={session.isArchived ? "Unarchive" : "Archive"}
-      data-tooltip={session.isArchived ? "Unarchive" : "Archive"}
-      onclick={(event) => {
-        event.stopPropagation();
-        if (session.isArchived) {
-          onUnarchive();
-        } else {
-          onArchive();
-        }
-      }}
-    >
-      {#if session.isArchived}
-        <ArchiveRestoreIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {:else}
-        <ArchiveIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {/if}
-    </Button>
+    <Tooltip label={session.isArchived ? "Unarchive session" : "Archive session"}>
+      <Button
+        variant="ghost"
+        size="xs"
+        iconOnly
+        class="session-inline-action"
+        aria-label={session.isArchived ? `Unarchive ${session.title}` : `Archive ${session.title}`}
+        onclick={(event) => {
+          event.stopPropagation();
+          if (session.isArchived) {
+            onUnarchive();
+          } else {
+            onArchive();
+          }
+        }}
+      >
+        {#if session.isArchived}
+          <ArchiveRestoreIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+        {:else}
+          <ArchiveIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+        {/if}
+      </Button>
+    </Tooltip>
 
-    <Button
-      variant="ghost"
-      size="xs"
-      iconOnly
-      class="session-inline-action"
-      aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
-      title={session.isPinned ? "Unpin" : "Pin"}
-      data-tooltip={session.isPinned ? "Unpin" : "Pin"}
-      onclick={(event) => {
-        event.stopPropagation();
-        if (session.isPinned) {
-          onUnpin();
-        } else {
-          onPin();
-        }
-      }}
-    >
-      {#if session.isPinned}
-        <PinOffIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {:else}
-        <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {/if}
-    </Button>
+    <Tooltip label={session.isPinned ? "Unpin session" : "Pin session"}>
+      <Button
+        variant="ghost"
+        size="xs"
+        iconOnly
+        class="session-inline-action"
+        aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
+        onclick={(event) => {
+          event.stopPropagation();
+          if (session.isPinned) {
+            onUnpin();
+          } else {
+            onPin();
+          }
+        }}
+      >
+        {#if session.isPinned}
+          <PinOffIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+        {:else}
+          <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+        {/if}
+      </Button>
+    </Tooltip>
   </div>
 </article>
 
@@ -498,40 +499,6 @@
   .session-inline-action:focus-visible {
     background: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
     color: var(--ui-text-primary);
-  }
-
-  .session-inline-action::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.42rem);
-    z-index: var(--ui-z-overlay);
-    width: max-content;
-    max-width: 10rem;
-    padding: 0.26rem 0.38rem;
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
-    border-radius: var(--ui-radius-sm);
-    background: var(--ui-surface-raised);
-    color: var(--ui-text-primary);
-    box-shadow:
-      0 10px 24px color-mix(in oklab, black 18%, transparent),
-      0 2px 8px color-mix(in oklab, black 12%, transparent);
-    font-size: 0.58rem;
-    font-weight: 560;
-    line-height: 1;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(0.12rem);
-    transition:
-      opacity 120ms cubic-bezier(0.19, 1, 0.22, 1),
-      transform 120ms cubic-bezier(0.19, 1, 0.22, 1);
-  }
-
-  .session-inline-action:hover::after,
-  .session-inline-action:focus-visible::after {
-    opacity: 1;
-    transform: translateY(0);
   }
 
   @media (max-width: 760px) {

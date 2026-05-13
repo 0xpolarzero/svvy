@@ -150,8 +150,8 @@
       button.type = "button";
       button.className = `dockview-surface-action action-${icon}`;
       button.ariaLabel = label;
-      button.title = label;
       button.innerHTML = getActionIcon(icon);
+      attachDelayedTooltip(button, label);
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -188,6 +188,42 @@
       return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.6" /><path d="M2.75 8h10.5" /><path d="M8 10.75v-2.5M6.75 9.5 8 10.75 9.25 9.5" /></svg>';
     }
     return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.6" /><path d="M8 2.75v10.5" /><path d="M10.75 8.1h-2.5M9.5 6.85l1.25 1.25L9.5 9.35" /></svg>';
+  }
+
+  function attachDelayedTooltip(button: HTMLButtonElement, label: string): void {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let tooltip: HTMLDivElement | null = null;
+
+    const remove = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      tooltip?.remove();
+      tooltip = null;
+    };
+
+    const show = () => {
+      if (button.disabled || tooltip) return;
+      const rect = button.getBoundingClientRect();
+      tooltip = document.createElement("div");
+      tooltip.className = "imperative-action-tooltip";
+      tooltip.textContent = label;
+      tooltip.style.left = `${Math.max(10, Math.min(window.innerWidth - 10, rect.left + rect.width / 2))}px`;
+      tooltip.style.top = `${Math.max(10, Math.min(window.innerHeight - 10, rect.bottom + 8))}px`;
+      document.body.append(tooltip);
+    };
+
+    const schedule = () => {
+      remove();
+      timer = setTimeout(show, 1000);
+    };
+
+    button.addEventListener("pointerenter", schedule);
+    button.addEventListener("focus", schedule);
+    button.addEventListener("pointerleave", remove);
+    button.addEventListener("blur", remove);
+    button.addEventListener("click", remove);
   }
 
   function createDockview(): void {
@@ -445,5 +481,36 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.55;
+  }
+
+  :global(.imperative-action-tooltip) {
+    position: fixed;
+    z-index: var(--ui-z-dialog);
+    max-width: min(18rem, calc(100vw - 1.25rem));
+    padding: 0.34rem 0.46rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-strong) 72%, transparent);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface-raised) 96%, black 4%);
+    color: var(--ui-text-primary);
+    box-shadow:
+      0 18px 36px color-mix(in oklab, black 28%, transparent),
+      0 2px 8px color-mix(in oklab, black 18%, transparent);
+    font-size: 0.68rem;
+    font-weight: 560;
+    line-height: 1.25;
+    pointer-events: none;
+    transform: translate(-50%, 0);
+    animation: dockview-tooltip-in 110ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  @keyframes dockview-tooltip-in {
+    from {
+      opacity: 0;
+      filter: blur(2px);
+    }
+    to {
+      opacity: 1;
+      filter: blur(0);
+    }
   }
 </style>

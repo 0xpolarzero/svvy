@@ -77,11 +77,11 @@
 	}
 
 	function renderCodeFrame(code: string, normalizedLanguage: string, codeHtml: string) {
-		return `<div class="code-block-frame" data-language="${escapeHtml(normalizedLanguage)}"><div class="code-block-toolbar"><span>${escapeHtml(normalizedLanguage)}</span><button class="code-copy-button" type="button" aria-label="Copy code" title="Copy code" data-copy-default-label="Copy code" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div>${codeHtml}</div>`;
+		return `<div class="code-block-frame" data-language="${escapeHtml(normalizedLanguage)}"><div class="code-block-toolbar"><span>${escapeHtml(normalizedLanguage)}</span><button class="code-copy-button" type="button" aria-label="Copy code" data-copy-default-label="Copy code" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div>${codeHtml}</div>`;
 	}
 
 	function renderMermaidFrame(code: string) {
-		return `<div class="code-block-frame mermaid-block-frame" data-language="mermaid"><div class="code-block-toolbar"><span>mermaid</span><button class="code-copy-button" type="button" aria-label="Copy diagram source" title="Copy diagram source" data-copy-default-label="Copy diagram source" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div><div class="mermaid-block" data-mermaid-source="${encodeURIComponent(code)}"><pre class="shiki shiki-fallback mermaid-fallback"><code>${escapeHtml(code)}</code></pre></div></div>`;
+		return `<div class="code-block-frame mermaid-block-frame" data-language="mermaid"><div class="code-block-toolbar"><span>mermaid</span><button class="code-copy-button" type="button" aria-label="Copy diagram source" data-copy-default-label="Copy diagram source" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div><div class="mermaid-block" data-mermaid-source="${encodeURIComponent(code)}"><pre class="shiki shiki-fallback mermaid-fallback"><code>${escapeHtml(code)}</code></pre></div></div>`;
 	}
 
 	async function copyTextToClipboard(text: string): Promise<void> {
