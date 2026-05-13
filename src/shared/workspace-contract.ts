@@ -839,6 +839,18 @@ export interface ChatRPCSchema {
         params: WriteClipboardTextRequest;
         response: WorkspaceMutationResponse;
       };
+      closeWindow: {
+        params: undefined;
+        response: WorkspaceMutationResponse;
+      };
+      minimizeWindow: {
+        params: undefined;
+        response: WorkspaceMutationResponse;
+      };
+      toggleMaximizeWindow: {
+        params: undefined;
+        response: WorkspaceMutationResponse;
+      };
       listWorkspacePaths: {
         params: { refresh?: boolean } | undefined;
         response: WorkspacePathIndexEntry[];

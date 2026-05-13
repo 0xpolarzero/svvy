@@ -425,6 +425,22 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         Utils.clipboardWriteText(text);
         return { ok: true };
       },
+      closeWindow: () => {
+        mainWindow?.close();
+        return { ok: true };
+      },
+      minimizeWindow: () => {
+        mainWindow?.minimize();
+        return { ok: true };
+      },
+      toggleMaximizeWindow: () => {
+        if (mainWindow?.isMaximized()) {
+          mainWindow.unmaximize();
+        } else {
+          mainWindow?.maximize();
+        }
+        return { ok: true };
+      },
       listWorkspacePaths: ({ refresh } = {}) => {
         return refresh ? workspacePathIndex.refresh() : workspacePathIndex.list();
       },
@@ -1001,7 +1017,7 @@ mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
   },
-  titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+  titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
   rpc,
 });
 

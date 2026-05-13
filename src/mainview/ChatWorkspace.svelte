@@ -97,6 +97,7 @@
   import Dialog from "./ui/Dialog.svelte";
   import Badge from "./ui/Badge.svelte";
   import Button from "./ui/Button.svelte";
+  import { rpc } from "./rpc";
   import Input from "./ui/Input.svelte";
 
   const DEFAULT_SIDEBAR_WIDTH = 240;
@@ -127,6 +128,8 @@
   let allowedProviders = $state<string[]>([]);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
   let windowWidth = $state(0);
+  let isMacWindowChrome = $state(false);
+  let dockviewLayoutEpoch = $state(0);
   let sessions = $state<WorkspaceSessionSummary[]>([]);
   let sessionNavigation = $state<WorkspaceSessionNavigationReadModel>({
     pinnedSessions: [],
@@ -200,6 +203,8 @@
   let workflowTaskAttemptInspectorSessionId: string | null = null;
   let unsubscribeSurfaceController: (() => void) | null = null;
   let restoredInspectorKey: string | null = null;
+  let dockviewLayoutSyncFrame: number | null = null;
+  let dockviewLayoutSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const conversation = $derived(projectConversation(messages));
   const conversationSummary = $derived(projectConversationSummary(conversation, streamMessage));
@@ -509,8 +514,63 @@
     artifactSyncMessageCount = nextMessageCount;
   }
 
+  function pulseDockviewLayout() {
+    dockviewLayoutEpoch += 1;
+  }
+
+  function scheduleDockviewLayoutPulse(delayMs = 0) {
+    if (delayMs > 0) {
+      if (dockviewLayoutSyncTimer) {
+        clearTimeout(dockviewLayoutSyncTimer);
+      }
+      dockviewLayoutSyncTimer = setTimeout(() => {
+        dockviewLayoutSyncTimer = null;
+        pulseDockviewLayout();
+      }, delayMs);
+      return;
+    }
+
+    if (dockviewLayoutSyncFrame !== null) {
+      window.cancelAnimationFrame(dockviewLayoutSyncFrame);
+    }
+    dockviewLayoutSyncFrame = window.requestAnimationFrame(() => {
+      dockviewLayoutSyncFrame = null;
+      pulseDockviewLayout();
+    });
+  }
+
+  function syncDockviewAfterSidebarToggle() {
+    pulseDockviewLayout();
+    scheduleDockviewLayoutPulse();
+    scheduleDockviewLayoutPulse(260);
+  }
+
   function toggleSidebarVisibility() {
     sidebarHidden = !sidebarHidden;
+    syncDockviewAfterSidebarToggle();
+  }
+
+  function handleWorkspaceTransitionEnd(event: TransitionEvent) {
+    if (event.target !== event.currentTarget || event.propertyName !== "grid-template-columns") return;
+    pulseDockviewLayout();
+  }
+
+  function closeWindow() {
+    void rpc.request.closeWindow().catch((error) => {
+      console.error("Failed to close window:", error);
+    });
+  }
+
+  function minimizeWindow() {
+    void rpc.request.minimizeWindow().catch((error) => {
+      console.error("Failed to minimize window:", error);
+    });
+  }
+
+  function toggleMaximizeWindow() {
+    void rpc.request.toggleMaximizeWindow().catch((error) => {
+      console.error("Failed to toggle window zoom:", error);
+    });
   }
 
   function setSidebarResizing(nextValue: boolean) {
@@ -1820,6 +1880,7 @@
 
   onMount(() => {
     windowWidth = window.innerWidth;
+    isMacWindowChrome = navigator.platform.toLowerCase().includes("mac");
     const nextController = new ArtifactsController();
     controller = nextController;
     const handleResize = () => {
@@ -1899,6 +1960,14 @@
       nextController.dispose();
       setSidebarResizing(false);
       clearCopyTranscriptResetTimer();
+      if (dockviewLayoutSyncFrame !== null) {
+        window.cancelAnimationFrame(dockviewLayoutSyncFrame);
+        dockviewLayoutSyncFrame = null;
+      }
+      if (dockviewLayoutSyncTimer) {
+        clearTimeout(dockviewLayoutSyncTimer);
+        dockviewLayoutSyncTimer = null;
+      }
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleWindowKeydown);
       unsubscribeAppMenuAction();
@@ -1908,8 +1977,35 @@
 </script>
 
 <div class="workspace-shell" style={`--sidebar-width: ${effectiveSidebarWidth}px;`}>
-  <header class="workspace-titlebar electrobun-webkit-app-region-drag">
+  <header
+    class={`workspace-titlebar electrobun-webkit-app-region-drag ${sidebarHidden ? "sidebar-titlebar-hidden" : ""}`.trim()}
+  >
     <div class="workspace-titlebar-start">
+      {#if isMacWindowChrome}
+        <div class="window-controls electrobun-webkit-app-region-no-drag" aria-label="Window controls">
+          <button
+            class="window-control close"
+            type="button"
+            aria-label="Close window"
+            title="Close"
+            onclick={closeWindow}
+          ></button>
+          <button
+            class="window-control minimize"
+            type="button"
+            aria-label="Minimize window"
+            title="Minimize"
+            onclick={minimizeWindow}
+          ></button>
+          <button
+            class="window-control maximize"
+            type="button"
+            aria-label="Zoom window"
+            title="Zoom"
+            onclick={toggleMaximizeWindow}
+          ></button>
+        </div>
+      {/if}
       <button
         class="titlebar-icon electrobun-webkit-app-region-no-drag"
         type="button"
@@ -1955,9 +2051,10 @@
   <div
     class={`chat-workspace ${showDesktopSplit ? "split" : ""} ${sidebarHidden ? "sidebar-hidden" : ""} viewport-${viewportClass}`.trim()}
     style={`--sidebar-width: ${effectiveSidebarWidth}px;`}
+    ontransitionend={handleWorkspaceTransitionEnd}
   >
-    {#if !sidebarHidden && !narrowShell}
-      <aside class="workspace-sidebar">
+    {#if !narrowShell}
+      <aside class="workspace-sidebar" aria-hidden={sidebarHidden} inert={sidebarHidden}>
         <div class="sidebar-surface">
           <SessionSidebar
             workspaceLabel={runtime.workspaceLabel}
@@ -1983,6 +2080,9 @@
           />
         </div>
       </aside>
+    {/if}
+
+    {#if !sidebarHidden && !narrowShell}
       <div
         bind:this={sidebarResizeHandle}
         class={`sidebar-resize-handle ${sidebarResizing ? "dragging" : ""}`.trim()}
@@ -2086,6 +2186,7 @@
         panels={paneLayout.panels}
         dockviewLayout={paneLayout.dockview}
         focusedPanelId={focusedPanelId}
+        layoutEpoch={dockviewLayoutEpoch}
         onFocusPanel={(panelId) => void handleFocusPane(panelId)}
         onPersistDockview={(dockview, panelId) => runtime.setDockviewLayout(dockview, panelId)}
       />
@@ -2928,6 +3029,7 @@
   }
 
   .workspace-titlebar {
+    --titlebar-inline-padding: 0.72rem;
     position: absolute;
     top: 0;
     left: 0;
@@ -2936,21 +3038,80 @@
     align-items: center;
     justify-content: flex-start;
     gap: 0.35rem;
-    width: 7rem;
+    width: var(--sidebar-width, 240px);
     height: 2.25rem;
-    padding: 0 0 0 5.1rem;
+    padding: 0 var(--titlebar-inline-padding);
     border: 0;
     background: transparent;
     pointer-events: auto;
+    transition: width 230ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .workspace-titlebar.sidebar-titlebar-hidden {
+    width: 7.25rem;
   }
 
   .workspace-titlebar-start {
     display: flex;
     align-items: center;
+    gap: 0.48rem;
   }
 
   .workspace-titlebar-title {
     display: none;
+  }
+
+  .window-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.48rem;
+    flex: 0 0 auto;
+  }
+
+  .window-control {
+    display: inline-flex;
+    width: 0.76rem;
+    height: 0.76rem;
+    padding: 0;
+    border: 1px solid color-mix(in oklab, var(--window-control-color) 82%, var(--ui-bg));
+    border-radius: 999px;
+    background: var(--window-control-color);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-text-primary) 12%, transparent);
+    cursor: pointer;
+    opacity: 0.92;
+    transition:
+      filter 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .window-control.close {
+    --window-control-color: #ff5f57;
+  }
+
+  .window-control.minimize {
+    --window-control-color: #febc2e;
+  }
+
+  .window-control.maximize {
+    --window-control-color: #28c840;
+  }
+
+  .window-control:hover,
+  .window-control:focus-visible {
+    outline: none;
+    filter: saturate(1.08) brightness(1.04);
+    opacity: 1;
+  }
+
+  .window-control:focus-visible {
+    box-shadow:
+      var(--ui-focus-ring),
+      inset 0 0 0 1px color-mix(in oklab, var(--ui-text-primary) 12%, transparent);
+  }
+
+  .window-control:active {
+    transform: scale(0.94);
   }
 
   .workspace-titlebar-actions {
@@ -2995,10 +3156,11 @@
     height: 100%;
     min-height: 0;
     padding: 0;
+    transition: grid-template-columns 230ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .chat-workspace.sidebar-hidden {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 0rem minmax(0, 1fr);
   }
 
   .chat-workspace.split {
@@ -3006,17 +3168,32 @@
   }
 
   .chat-workspace.sidebar-hidden.split {
-    grid-template-columns: minmax(0, 1fr) minmax(22rem, 28rem);
+    grid-template-columns: 0rem minmax(0, 1fr) minmax(22rem, 28rem);
   }
 
   .workspace-sidebar,
   .workspace-main,
   .artifacts-slot {
     min-height: 0;
+    min-width: 0;
   }
 
   .workspace-sidebar {
     overflow: hidden;
+    opacity: 1;
+    transform: translateX(0);
+    transform-origin: 0 50%;
+    pointer-events: auto;
+    transition:
+      opacity 155ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 230ms cubic-bezier(0.19, 1, 0.22, 1);
+    will-change: opacity, transform;
+  }
+
+  .chat-workspace.sidebar-hidden .workspace-sidebar {
+    opacity: 0;
+    transform: translateX(-0.42rem);
+    pointer-events: none;
   }
 
   .sidebar-surface {
@@ -3025,6 +3202,11 @@
     padding: 0;
     border-right: 1px solid var(--ui-shell-edge);
     background: var(--ui-shell);
+    transition: border-color 180ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .chat-workspace.sidebar-hidden .sidebar-surface {
+    border-right-color: transparent;
   }
 
   .sidebar-resize-handle {
@@ -4127,17 +4309,30 @@
     user-select: none;
   }
 
+  :global(body.sidebar-resizing) .chat-workspace {
+    transition: none;
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .chat-workspace,
+    .workspace-titlebar,
+    .workspace-sidebar,
+    .sidebar-surface,
+    .window-control,
     .titlebar-icon,
     .header-icon-button,
     .pane-chrome-actions button {
       transition:
+        grid-template-columns 0.01ms linear,
+        width 0.01ms linear,
+        transform 0.01ms linear,
         border-color 0.01ms linear,
         background-color 0.01ms linear,
         color 0.01ms linear,
         opacity 0.01ms linear;
     }
 
+    .window-control:active:not(:disabled),
     .titlebar-icon:active:not(:disabled),
     .header-icon-button:active:not(:disabled),
     .pane-chrome-actions button:active:not(:disabled) {
@@ -4151,7 +4346,7 @@
     }
 
     .chat-workspace.sidebar-hidden.split {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: 0rem 0rem minmax(0, 1fr);
     }
   }
 

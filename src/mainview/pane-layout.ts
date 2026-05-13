@@ -3,7 +3,6 @@ import type { WorkspacePaneSurfaceTarget } from "../shared/workspace-contract";
 import type { WorkspaceInspectorSelection } from "./chat-storage";
 
 export const PRIMARY_CHAT_PANE_ID = "primary";
-export const MIN_PANE_WIDTH_PX = 320;
 export const MIN_PANE_HEIGHT_PX = 260;
 
 export type DockviewSplitDirection = "left" | "right" | "above" | "below";

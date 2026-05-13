@@ -23,14 +23,24 @@
     panels: WorkspaceDockviewPanelState[];
     dockviewLayout: SerializedDockview | null;
     focusedPanelId: string;
+    layoutEpoch?: number;
     onFocusPanel: (panelId: string) => void;
     onPersistDockview: (dockview: SerializedDockview | null, focusedPanelId: string | null) => void;
   };
 
-  let { runtime, panels, dockviewLayout, focusedPanelId, onFocusPanel, onPersistDockview }: Props = $props();
+  let {
+    runtime,
+    panels,
+    dockviewLayout,
+    focusedPanelId,
+    layoutEpoch = 0,
+    onFocusPanel,
+    onPersistDockview,
+  }: Props = $props();
   let hostElement = $state<HTMLDivElement | null>(null);
   let dockview: DockviewComponent | null = null;
   let applying = false;
+  let layoutFrame: number | null = null;
 
   class SurfaceContentRenderer implements IContentRenderer {
     readonly element = document.createElement("div");
@@ -237,11 +247,36 @@
       }
       syncDockviewPanels();
     }
+    scheduleDockviewLayout();
   }
 
   function persistDockview(): void {
     if (!dockview || applying) return;
     onPersistDockview(dockview.toJSON(), dockview.activePanel?.id ?? null);
+  }
+
+  function layoutDockview(): void {
+    if (!dockview || !hostElement) return;
+    const width = hostElement.clientWidth;
+    const height = hostElement.clientHeight;
+    if (width <= 0 || height <= 0) return;
+    const wasApplying = applying;
+    applying = true;
+    try {
+      dockview.layout(width, height, true);
+    } finally {
+      applying = wasApplying;
+    }
+  }
+
+  function scheduleDockviewLayout(): void {
+    if (layoutFrame !== null) {
+      window.cancelAnimationFrame(layoutFrame);
+    }
+    layoutFrame = window.requestAnimationFrame(() => {
+      layoutFrame = null;
+      layoutDockview();
+    });
   }
 
   function getDockviewPanel(panelId: string) {
@@ -268,8 +303,8 @@
             tabComponent: "surfaceTab",
             title: panel.chrome?.title ?? "Surface",
             renderer: getPanelRenderer(panel),
-            minimumWidth: 320,
-            minimumHeight: 260,
+            minimumWidth: 0,
+            minimumHeight: 0,
             inactive: panel.panelId !== focusedPanelId,
             position:
               dockview.totalPanels > 0
@@ -301,11 +336,20 @@
     syncDockviewPanels();
   });
 
+  $effect(() => {
+    layoutEpoch;
+    scheduleDockviewLayout();
+  });
+
   onMount(() => {
     createDockview();
   });
 
   onDestroy(() => {
+    if (layoutFrame !== null) {
+      window.cancelAnimationFrame(layoutFrame);
+      layoutFrame = null;
+    }
     dockview?.dispose();
     dockview = null;
   });
