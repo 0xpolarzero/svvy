@@ -303,3 +303,15 @@ This UI should land first as a read-only workflow-library browser with an extern
 - [x] Show saved asset title, summary, kind, path, source preview, validation status, and diagnostics in the saved workflow library surface. Commit(s): `ab00e2c`
 - [x] Add open-in-editor actions for saved workflow source files and artifact workflow source files. Commit(s): `ab00e2c`
 - [x] Allow deleting a saved workflow definition, prompt, component, or entry from the library without deleting historical artifact workflows that previously used it. Commit(s): `ab00e2c`
+
+## 19. App Logs Surface
+
+Current product decisions for this section are specified in `docs/specs/app-logs.spec.md`.
+
+- [ ] Build a workspace-scoped app log store with structured info, warning, and error entries, monotonic sequence numbers, unread counts, seen state, bounded retention, SQLite persistence, and secret redaction.
+- [ ] Expose app log read, summary, mark-seen, and live-update contracts through the Bun bridge and renderer runtime without polling.
+- [ ] Route product observability through one app logger that also preserves Electrobun browser-tools bridge telemetry where useful.
+- [ ] Emit targeted app logs for app lifecycle, provider auth, RPC failures, sessions, title generation, surfaces, prompts, handler threads, Smithers workflow supervision, saved workflow validation, direct tools, `execute_typescript`, artifacts, Project CI projection, external editor handoff, and renderer bridge issues.
+- [ ] Add a `Logs` sidebar button directly above `Saved workflows` with compact unread counts by info, warning, and error category.
+- [ ] Render a dense app logs pane with level filters, source filtering, search, mark-all-read, live tail behavior, expandable details, stack traces, and links to related sessions, threads, workflow runs, commands, workflow task attempts, and artifacts where available.
+- [ ] Add store, RPC, renderer, sidebar, pane, redaction, and representative integration tests for app logs.
