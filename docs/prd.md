@@ -23,7 +23,7 @@ The product combines:
 - Smithers-backed workflow runs executed under those handler threads
 - authored artifact workflows plus workspace-saved reusable workflow assets and runnable workflow entries
 - first-class threads, workflow runs, commands, episodes, artifacts, Project CI, and worktree awareness
-- a VS Code-like command palette and quick-open shell surface for discovering product actions without creating a second runtime
+- a VS Code-like shared palette shell where `>` switches quick-open search into command/action mode without creating a second runtime
 
 The intended feel is closer to Slate than to stock pi:
 
@@ -45,7 +45,7 @@ The shipped product must let a user:
 - talk directly inside delegated thread surfaces when that work needs clarification or follow-up
 - configure, run, and interpret Project CI as first-class product behavior
 - save a reusable authored workflow into the workspace workflow library and discover it later
-- use `Cmd+Shift+P` to discover and execute product actions, and `Cmd+P` as the reserved file quick-open entry point
+- use `Cmd+Shift+P` to open the shared palette with `>` prefilled for product actions, and `Cmd+P` to open the same palette as the reserved file quick-open entry point
 - pause and resume safely when user input or an external prerequisite is required
 - keep session context and worktree context aligned
 - use the same execution model from both the desktop app and headless automation surfaces
@@ -932,17 +932,17 @@ Archiving is reversible and non-destructive. It must not delete durable session,
 
 ### Command Palette And Quick Open
 
-`svvy` should expose a VS Code-like command palette model as a first-class shell capability.
+`svvy` should expose a VS Code-like shared palette model as a first-class shell capability.
 
-`Cmd+Shift+P` opens the all-actions command palette. It should discover and execute product actions, including session creation and switching, session pin/archive actions, opening focused session/thread/workflow/artifact/Project CI surfaces, Project CI run or configuration actions, handler-thread surfaces, workflow-inspector-related surfaces, pane and layout actions when panes exist, settings and agent-setting actions when those features exist, and future product actions as they are added.
+The palette has one shell, one input, and one result interaction model. The leading `>` input prefix selects command mode. `Cmd+Shift+P` opens the shared palette with `>` already inserted, and command mode discovers and executes product actions, including session creation and switching, session pin/archive actions, opening focused session/thread/workflow/artifact/Project CI surfaces, Project CI run or configuration actions, handler-thread surfaces, workflow-inspector-related surfaces, pane and layout actions when panes exist, settings and agent-setting actions when those features exist, and future product actions as they are added.
 
-`Cmd+P` opens file quick-open. For now, file quick-open is intentionally a no-op or placeholder because file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces are not yet implemented. It must not fabricate file surfaces or introduce an ad hoc file browsing path.
+`Cmd+P` opens the same shared palette with an empty input for file quick-open search mode. For now, file quick-open is intentionally a no-op or placeholder because file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces are not yet implemented. It must not fabricate file surfaces or introduce an ad hoc file browsing path. Typing `>` into the quick-open input switches the already-open palette into command mode, and deleting the prefix switches it back to quick-open behavior.
 
 When implemented, the command palette UI should use `cmdk-sv` from `https://www.cmdk-sv.com/` as the Svelte command menu primitive. Its docs describe it as a "fast, composable, unstyled command menu for Svelte." `cmdk-sv` is the renderer menu primitive, not the source of product routing, runtime behavior, or command semantics.
 
-The command palette is a shell/action surface. It is not an alternate execution engine, standalone shell, custom terminal loop, readline loop, alternate TUI stack, or parallel workflow abstraction. Palette actions route into the existing product model: sessions, panes, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, durable state, settings, and agent settings.
+The command palette is a prefix-driven shell/action surface within the shared palette. It is not an alternate execution engine, standalone shell, custom terminal loop, readline loop, alternate TUI stack, or parallel workflow abstraction. Palette actions route into the existing product model: sessions, panes, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, durable state, settings, and agent settings.
 
-When the user types text into `Cmd+Shift+P` and it does not match an existing command or action, pressing Enter creates a new session and uses that typed text as the initial prompt. That prompt enters the normal orchestrator turn model; it does not bypass system prompt loading, prompt history, structured turn state, or live surface runtime ownership.
+When the shared palette is in command mode and the text after `>` does not match an existing command or action, pressing Enter creates a new session and uses the text after `>` as the initial prompt. That prompt enters the normal orchestrator turn model; it does not bypass system prompt loading, prompt history, structured turn state, or live surface runtime ownership. Text entered without the leading `>` remains quick-open search text and must not create prompt sessions while file quick-open is still a placeholder.
 
 The default command-palette behavior is defined before choosing a Dockview target as normal current workspace and session routing. Once Dockview layout exists, placement rules belong to the pane-layout spec: command palette results that open sessions or surfaces default to a new Dockview panel, and `Cmd+Enter` opens into the currently focused panel.
 

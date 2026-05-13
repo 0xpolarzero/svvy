@@ -5,17 +5,17 @@
 - Date: 2026-04-27
 - Status: adopted direction for Section 9 command palette and quick open
 - Scope of this document:
-  - define the product-level command palette and quick-open surfaces
+  - define the product-level unified palette surface for command mode and quick-open search mode
   - define keyboard shortcuts and fallback prompt behavior
   - define the command/action registry model
-  - define command search, matching, and execution routing semantics
+  - define prefix-driven command search, matching, and execution routing semantics
   - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, saved workflow library browsing, Dockview panels, settings, agent settings, and future product actions
 
 ## Purpose
 
-The command palette is the shell-level action surface for `svvy`.
+The palette is the shell-level action and search surface for `svvy`.
 
-It gives users a VS Code-like way to discover and execute product actions without turning those actions into a second runtime. `Cmd+Shift+P` opens the all-actions command palette. `Cmd+P` opens a file quick-open palette, which is intentionally a placeholder until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist.
+It gives users a VS Code-like way to discover and execute product actions without turning those actions into a second runtime. There is one shared palette shell, one input, and one result interaction model. Command behavior is selected by the input prefix: `>` means command mode. `Cmd+Shift+P` opens the shared palette with `>` already inserted, while `Cmd+P` opens the same shared palette with an empty input for file quick-open search mode, which is intentionally a placeholder until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist.
 
 The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, saved workflow library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
 
@@ -41,7 +41,7 @@ The command palette does not implement:
 
 ## UI Primitive
 
-When implemented, the command palette UI should use `cmdk-sv` from `https://www.cmdk-sv.com/` as the Svelte command menu primitive. Its docs describe it as a "fast, composable, unstyled command menu for Svelte."
+When implemented, the palette UI should use `cmdk-sv` from `https://www.cmdk-sv.com/` as the Svelte command menu primitive. Its docs describe it as a "fast, composable, unstyled command menu for Svelte."
 
 The intended use is as a fast, unstyled, composable command menu foundation. `svvy` still owns product semantics, command registry shape, search metadata, routing, telemetry, state updates, keyboard dispatch, and styling.
 
@@ -49,9 +49,9 @@ The intended use is as a fast, unstyled, composable command menu foundation. `sv
 
 ## Keyboard Shortcuts
 
-`Cmd+Shift+P` opens the all-actions command palette.
+`Cmd+Shift+P` opens the shared palette with the input value seeded to `>`.
 
-The all-actions palette discovers and executes product actions, including:
+With that prefix present, the palette discovers and executes product actions, including:
 
 - create a new session
 - open or switch to existing session-like targets, including orchestrator sessions, handler-thread sessions, and workflow task-agent projection sessions
@@ -65,14 +65,16 @@ The all-actions palette discovers and executes product actions, including:
 - settings and agent-setting actions when those features exist
 - future product actions as they are added
 
-`Cmd+P` opens file quick-open.
+`Cmd+P` opens the same shared palette with an empty input.
 
 For now, file quick-open is intentionally a no-op placeholder:
 
-- the UI may open an empty quick-open palette or show an unavailable state
+- the UI may show a quick-open unavailable state while the input does not start with `>`
 - it must not fabricate file, editor, or diagnostics surfaces
 - it must not browse files through an ad hoc shell or terminal path
 - it becomes actionable only after dedicated file-navigation primitives are designed
+
+Typing `>` into the quick-open input switches the already-open palette into command mode. Deleting the leading `>` switches it back to quick-open search mode. This prefix is the mode switch; there must not be two separate palette implementations with duplicated matching, rendering, keyboard handling, history, or result plumbing.
 
 ## Command Registry And Action Model
 
@@ -124,7 +126,7 @@ The registry should be generated or assembled from product-owned action definiti
 
 ## Search And Matching
 
-Command search should match across:
+When the input starts with `>`, command search uses the text after the prefix and should match across:
 
 - command label
 - aliases
@@ -157,25 +159,27 @@ The command palette does not execute repository commands directly. Repository wo
 
 ## Fallback Prompt Behavior
 
-When `Cmd+Shift+P` is open and the typed text does not match an existing command or action, pressing Enter creates a new session and uses the typed text as that session's initial prompt.
+When the shared palette is in command mode and the text after `>` does not match an existing command or action, pressing Enter creates a new session and uses the text after `>` as that session's initial prompt.
 
 Rules:
 
 - empty or whitespace-only text must not create a new session
 - matched commands execute the selected command instead of creating a prompt session
-- unmatched text creates a normal top-level session container with a main orchestrator surface
+- unmatched command-mode text creates a normal top-level session container with a main orchestrator surface
 - the initial prompt enters the orchestrator through the normal turn model
 - the fallback must not bypass prompt history, structured turn state, system prompt loading, or live surface runtime ownership
+- quick-open search mode text, meaning input without the leading `>`, must not create a prompt session while file quick-open is still a placeholder
 
 ## Quick Open Placeholder
 
-`Cmd+P` is reserved for file quick-open.
+`Cmd+P` is reserved for file quick-open and opens the shared palette without a prefix.
 
 Until file surfaces exist, quick-open has placeholder semantics:
 
 - it may open a quick-open UI shell
 - it may show that file quick-open is not available yet
 - pressing Enter on arbitrary text must not create a session
+- typing `>` immediately switches the same UI into command mode
 - it must not search files through an unowned execution path
 - it must not create file editor, diagnostics, or typecheck records before those product surfaces exist
 
@@ -190,7 +194,7 @@ Dockview placement behavior belongs to `docs/specs/pane-layout.spec.md`. Command
 Sessions:
 
 - the palette exposes new session, switch session, open session, pin, unpin, archive, and unarchive actions
-- fallback unmatched text creates a normal session with an initial orchestrator prompt
+- fallback unmatched command-mode text creates a normal session with an initial orchestrator prompt
 
 Project CI:
 
@@ -226,13 +230,15 @@ Future product actions:
 
 ## Invariants
 
-- `Cmd+Shift+P` is the all-actions command palette.
-- `Cmd+P` is file quick-open.
+- `Cmd+Shift+P` opens the shared palette with `>` prefilled.
+- `Cmd+P` opens the shared palette with an empty input for file quick-open search mode.
+- The leading `>` is the only command-mode switch; adding or removing it changes live behavior in the same UI.
 - File quick-open is a placeholder until file-oriented surfaces exist.
-- The command palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.
+- The palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.
 - The command registry is product-owned.
 - Commands route into existing product models and durable state.
-- Unmatched non-empty `Cmd+Shift+P` text creates a new session initial prompt.
+- Unmatched non-empty command-mode text after `>` creates a new session initial prompt.
+- Non-command quick-open text must not create a session while quick-open is a placeholder.
 - The palette is not an execution engine.
 - The palette is not a standalone shell, terminal, readline loop, or alternate TUI stack.
 - The palette does not invent a parallel workflow abstraction.
@@ -242,7 +248,7 @@ Future product actions:
 
 ## Relationship To Other Specs
 
-- `docs/prd.md` defines the product-level command palette and quick-open behavior.
+- `docs/prd.md` defines the product-level unified palette, command-prefix, and quick-open behavior.
 - `docs/specs/pane-layout.spec.md` defines Dockview placement for command palette results once Dockview layout exists.
 - `docs/specs/workspace-navigation-core-projection.spec.md` defines the session navigation and surface projection state that command actions operate on.
 - `docs/specs/multi-session-support.spec.md` defines the existing multi-session primitives used by session commands.
@@ -254,8 +260,8 @@ Future product actions:
 
 This design is successful when:
 
-- users can discover and execute product actions from `Cmd+Shift+P`
+- users can discover and execute product actions from `Cmd+Shift+P` or by typing `>` into the shared palette
 - `Cmd+P` is reserved for future file quick-open behavior without implying file surfaces that do not exist
-- unmatched palette text starts a normal new session prompt
+- unmatched command-mode text starts a normal new session prompt without including the leading `>` in the prompt
 - command results use existing sessions, surfaces, orchestrator and handler routing, durable state, and Dockview panel semantics
 - implementation can use `cmdk-sv` for the Svelte menu UI without delegating product semantics to the UI library

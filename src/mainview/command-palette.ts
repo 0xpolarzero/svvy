@@ -9,7 +9,9 @@ import type {
 import type { ChatRuntime } from "./chat-runtime";
 import { getKeybindingShortcut, matchesKeybinding } from "../shared/keybindings";
 
-export type CommandPaletteMode = "actions" | "quick-open";
+export type CommandPaletteMode = "commands" | "search";
+
+export const COMMAND_PALETTE_COMMAND_PREFIX = ">";
 
 export type CommandActionCategory =
   | "session"
@@ -48,12 +50,7 @@ export type CommandExecutionTarget =
   | { kind: "open-settings"; target: string }
   | {
       kind: "pane-action";
-      action:
-        | "split-right"
-        | "split-below"
-        | "duplicate-right"
-        | "duplicate-below"
-        | "close";
+      action: "split-right" | "split-below" | "duplicate-right" | "duplicate-below" | "close";
     };
 
 export type CommandAction = {
@@ -168,6 +165,24 @@ export function isQuickOpenShortcut(
     },
     "quickOpen.open",
   );
+}
+
+export function getCommandPaletteInitialInput(mode: CommandPaletteMode): string {
+  return mode === "commands" ? COMMAND_PALETTE_COMMAND_PREFIX : "";
+}
+
+export function getCommandPaletteInputState(input: string): {
+  mode: CommandPaletteMode;
+  commandQuery: string;
+} {
+  if (!input.startsWith(COMMAND_PALETTE_COMMAND_PREFIX)) {
+    return { mode: "search", commandQuery: "" };
+  }
+
+  return {
+    mode: "commands",
+    commandQuery: input.slice(COMMAND_PALETTE_COMMAND_PREFIX.length).trimStart(),
+  };
 }
 
 export function createCommandPalettePaneId(now = Date.now()): string {

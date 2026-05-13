@@ -78,6 +78,7 @@
     executePaletteFallbackPrompt,
     filterCommandActions,
     getCommandExecutionPaneId,
+    getCommandPaletteInitialInput,
     getCommandPalettePlacement,
     isCommandPaletteShortcut,
     isQuickOpenShortcut,
@@ -183,7 +184,7 @@
   let workflowTaskAttemptInspectorLoading = $state(false);
   let workflowTaskAttemptInspectorId = $state<string | null>(null);
   let paletteOpen = $state(false);
-  let paletteMode = $state<CommandPaletteMode>("actions");
+  let paletteInitialInput = $state(getCommandPaletteInitialInput("commands"));
   let paletteError = $state<string | undefined>(undefined);
   let paletteBusy = $state(false);
   let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
@@ -564,7 +565,7 @@
   }
 
   function openPalette(mode: CommandPaletteMode) {
-    paletteMode = mode;
+    paletteInitialInput = getCommandPaletteInitialInput(mode);
     paletteError = undefined;
     paletteOpen = true;
   }
@@ -578,10 +579,10 @@
   function handleAppMenuAction(action: AppMenuAction) {
     switch (action) {
       case "commandPalette.open":
-        openPalette("actions");
+        openPalette("commands");
         return;
       case "quickOpen.open":
-        openPalette("quick-open");
+        openPalette("search");
         return;
       case "session.new":
         void handleCreateSession();
@@ -1827,13 +1828,13 @@
     const handleWindowKeydown = (event: KeyboardEvent) => {
       if (isCommandPaletteShortcut(event)) {
         event.preventDefault();
-        openPalette("actions");
+        openPalette("commands");
         return;
       }
 
       if (isQuickOpenShortcut(event)) {
         event.preventDefault();
-        openPalette("quick-open");
+        openPalette("search");
         return;
       }
 
@@ -1935,7 +1936,7 @@
         type="button"
         aria-label="Open command palette"
         title="Command Palette (Cmd+Shift+P)"
-        onclick={() => openPalette("actions")}
+        onclick={() => openPalette("commands")}
       >
         <SearchIcon aria-hidden="true" size={15} strokeWidth={1.85} />
       </button>
@@ -1944,7 +1945,7 @@
         type="button"
         aria-label="Open quick open"
         title="Quick Open (Cmd+P)"
-        onclick={() => openPalette("quick-open")}
+        onclick={() => openPalette("search")}
       >
         <FileSearchIcon aria-hidden="true" size={15} strokeWidth={1.85} />
       </button>
@@ -1975,8 +1976,8 @@
             onArchiveSession={handleArchiveSession}
             onUnarchiveSession={handleUnarchiveSession}
             onToggleArchivedGroup={handleToggleArchivedGroup}
-            onOpenSearch={() => openPalette("quick-open")}
-            onOpenCommandPalette={() => openPalette("actions")}
+            onOpenSearch={() => openPalette("search")}
+            onOpenCommandPalette={() => openPalette("commands")}
             onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
             onOpenSettings={onOpenSettings}
           />
@@ -2007,7 +2008,7 @@
             type="button"
             aria-label="Search workspace from focused session title"
             title="Command Palette (Cmd+Shift+P)"
-            onclick={() => openPalette("actions")}
+            onclick={() => openPalette("commands")}
           >
             <span class="workspace-main-title">{currentSession?.title ?? "New Session"}</span>
           </button>
@@ -2036,7 +2037,7 @@
             type="button"
             aria-label="Open command palette"
             title="Command Palette (Cmd+Shift+P)"
-            onclick={() => openPalette("actions")}
+            onclick={() => openPalette("commands")}
           >
             <SearchIcon aria-hidden="true" size={14} strokeWidth={1.85} />
           </button>
@@ -2045,7 +2046,7 @@
             type="button"
             aria-label="Open quick open"
             title="Quick Open (Cmd+P)"
-            onclick={() => openPalette("quick-open")}
+            onclick={() => openPalette("search")}
           >
             <FileSearchIcon aria-hidden="true" size={14} strokeWidth={1.85} />
           </button>
@@ -2120,7 +2121,7 @@
 
 <CommandPalette
   open={paletteOpen}
-  mode={paletteMode}
+  initialInput={paletteInitialInput}
   actions={visibleCommandActions}
   busy={paletteBusy}
   errorMessage={paletteError}

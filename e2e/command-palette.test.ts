@@ -151,12 +151,20 @@ function seededSessions(): SeedSessionInput[] {
 }
 
 async function openActionsPalette(page: SvvyApp["page"]): Promise<void> {
-  await page.getByRole("button", { name: "Open command palette" }).click({ force: true });
+  await page
+    .getByRole("button", { name: "Open command palette" })
+    .filter({ visible: true })
+    .first()
+    .click({ force: true });
   await page.getByTestId("command-palette").waitFor({ state: "visible" });
 }
 
 async function openQuickOpen(page: SvvyApp["page"]): Promise<void> {
-  await page.getByRole("button", { name: "Open quick open" }).click({ force: true });
+  await page
+    .getByRole("button", { name: "Open quick open" })
+    .filter({ visible: true })
+    .first()
+    .click({ force: true });
   await page.getByTestId("quick-open").waitFor({ state: "visible" });
 }
 
@@ -194,6 +202,24 @@ async function waitForMainTitle(page: SvvyApp["page"], expected: string): Promis
   throw new Error(`Timed out waiting for main title "${expected}". Last text was "${lastText}".`);
 }
 
+async function waitForPaneCount(
+  page: SvvyApp["page"],
+  expectedCount: number,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const panes = page.locator('[data-testid="workspace-pane"]');
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if ((await panes.count()) === expectedCount) {
+      return;
+    }
+    await Bun.sleep(100);
+  }
+
+  throw new Error(`Timed out waiting for ${expectedCount} workspace panes.`);
+}
+
 async function launchWithPaletteSessions(fn: (app: SvvyApp) => Promise<void>): Promise<void> {
   await withSvvyApp(
     {
@@ -205,13 +231,13 @@ async function launchWithPaletteSessions(fn: (app: SvvyApp) => Promise<void>): P
   );
 }
 
-test("Cmd+Shift+P opens all-actions and routes session commands through workspace navigation", async () => {
+test("Cmd+Shift+P opens with command prefix and routes session commands through workspace navigation", async () => {
   await launchWithPaletteSessions(async ({ page }) => {
     await waitForSessionRows(page, 2);
     await waitForMainTitle(page, "Beta Palette");
 
     await openActionsPalette(page);
-    await page.locator("[data-cmdk-input]").fill("Open Session: Alpha Palette");
+    await page.locator("[data-cmdk-input]").fill(">Open Session: Alpha Palette");
     const openAlpha = page
       .locator("[data-cmdk-item]")
       .filter({ hasText: "Open Session: Alpha Palette" })
@@ -224,7 +250,7 @@ test("Cmd+Shift+P opens all-actions and routes session commands through workspac
 
     await page.getByTestId("command-palette").waitFor({ state: "hidden" });
     await waitForMainTitle(page, "Alpha Palette");
-    expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(2);
+    await waitForPaneCount(page, 2);
     await page.getByText("Beta response").waitFor({ state: "visible" });
     await page.getByText("Alpha response").waitFor({ state: "visible" });
     expect(
@@ -232,7 +258,7 @@ test("Cmd+Shift+P opens all-actions and routes session commands through workspac
     ).toBe("Alpha Palette");
 
     await openActionsPalette(page);
-    await page.locator("[data-cmdk-input]").fill("Archive Session: Alpha Palette");
+    await page.locator("[data-cmdk-input]").fill(">Archive Session: Alpha Palette");
     const archiveAlpha = page
       .locator("[data-cmdk-item]")
       .filter({ hasText: "Archive Session: Alpha Palette" })
@@ -244,7 +270,7 @@ test("Cmd+Shift+P opens all-actions and routes session commands through workspac
   });
 });
 
-test("unmatched all-actions text creates a normal prompted session", async () => {
+test("unmatched command-mode text creates a normal prompted session", async () => {
   const stub = startPaletteChatStub();
   const homeDir = await createHomeDir();
 
@@ -271,10 +297,10 @@ test("unmatched all-actions text creates a normal prompted session", async () =>
       async ({ page }) => {
         await waitForSessionRows(page, 2);
         await openActionsPalette(page);
-        await page.locator("[data-cmdk-input]").fill("zzzzzzzzzz palette fallback prompt");
+        await page.locator("[data-cmdk-input]").fill(">zzzzzzzzzz palette fallback prompt");
         await page.locator("[data-cmdk-input]").press("Enter");
 
-        await page.getByTestId("command-palette").waitFor({ state: "hidden" });
+        await page.getByTestId("command-palette").waitFor({ state: "hidden", timeout: 15_000 });
         await waitForSessionRows(page, 3);
         await waitForMainTitle(page, "New Session");
         await page.getByText("zzzzzzzzzz palette fallback prompt").waitFor({ state: "visible" });
@@ -299,6 +325,13 @@ test("Cmd+P opens quick-open placeholder and Enter does not create sessions or p
     await page.locator("[data-cmdk-input]").press("Enter");
     await page.getByTestId("quick-open").waitFor({ state: "visible" });
     await waitForSessionRows(page, 2);
+
+    await page.locator("[data-cmdk-input]").fill(">Open Session: Alpha Palette");
+    await page
+      .locator("[data-cmdk-item]")
+      .filter({ hasText: "Open Session: Alpha Palette" })
+      .first()
+      .waitFor({ state: "visible" });
 
     await page.locator("[data-cmdk-input]").press("Escape");
     await page.getByTestId("quick-open").waitFor({ state: "hidden" });

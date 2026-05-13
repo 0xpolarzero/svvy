@@ -1,16 +1,17 @@
 <script lang="ts">
   import { Command } from "cmdk-sv";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import { tick } from "svelte";
   import {
     filterCommandActions,
+    getCommandPaletteInputState,
     groupCommandActions,
     type CommandAction,
-    type CommandPaletteMode,
   } from "./command-palette";
 
   type Props = {
     open: boolean;
-    mode: CommandPaletteMode;
+    initialInput: string;
     actions: CommandAction[];
     busy?: boolean;
     errorMessage?: string;
@@ -21,7 +22,7 @@
 
   let {
     open,
-    mode,
+    initialInput,
     actions,
     busy = false,
     errorMessage,
@@ -31,20 +32,38 @@
   }: Props = $props();
 
   let search = $state("");
+  let inputElement = $state<HTMLInputElement | undefined>();
 
-  const title = $derived(mode === "actions" ? "Command Palette" : "Quick Open");
+  const inputState = $derived(getCommandPaletteInputState(search));
+  const commandMode = $derived(inputState.mode === "commands");
+  const commandQuery = $derived(inputState.commandQuery);
+  const title = $derived(commandMode ? "Command Palette" : "Quick Open");
   const placeholder = $derived(
-    mode === "actions" ? "Type a command or prompt..." : "File quick-open is not available yet",
+    commandMode ? "Type a command or prompt..." : "File quick-open is not available yet",
   );
-  const renderedActions = $derived(mode === "actions" ? filterCommandActions(actions, search) : []);
+  const renderedActions = $derived(commandMode ? filterCommandActions(actions, commandQuery) : []);
   const actionGroups = $derived(groupCommandActions(renderedActions));
   const hasActions = $derived(renderedActions.length > 0);
 
   $effect(() => {
-    if (!open) {
-      search = "";
+    if (open) {
+      search = initialInput;
+      void placeCaretAfterInitialInput(initialInput);
     }
   });
+
+  async function placeCaretAfterInitialInput(value: string) {
+    await tick();
+    window.requestAnimationFrame(() => {
+      if (!open || !inputElement || inputElement.value !== value) {
+        return;
+      }
+
+      const caret = value.length;
+      inputElement.focus();
+      inputElement.setSelectionRange(caret, caret);
+    });
+  }
 
   function handleRootKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
@@ -57,7 +76,7 @@
       return;
     }
 
-    if (mode === "quick-open") {
+    if (!commandMode) {
       event.preventDefault();
       return;
     }
@@ -80,7 +99,7 @@
       return;
     }
 
-    const prompt = search.trim();
+    const prompt = commandQuery.trim();
     if (!prompt) {
       event.preventDefault();
       return;
@@ -119,11 +138,12 @@
   >
     <div
       class="command-palette-shell"
-      data-testid={mode === "actions" ? "command-palette" : "quick-open"}
+      data-testid={commandMode ? "command-palette" : "quick-open"}
     >
       <div class="command-palette-input-row">
         <SearchIcon aria-hidden="true" size={16} strokeWidth={1.8} />
         <Command.Input
+          bind:el={inputElement}
           bind:value={search}
           {placeholder}
           aria-label={title}
@@ -132,7 +152,7 @@
       </div>
 
       <Command.List>
-        {#if mode === "quick-open"}
+        {#if !commandMode}
           <Command.Empty>
             <div class="command-palette-empty">
               <strong>File quick-open is reserved.</strong>
@@ -140,7 +160,7 @@
             </div>
           </Command.Empty>
         {:else}
-          {#if !hasActions && !search.trim()}
+          {#if !hasActions && !commandQuery.trim()}
             <div class="command-palette-empty">
               <strong>No actions available</strong>
             </div>
@@ -178,7 +198,7 @@
             {/each}
           {/if}
 
-          {#if search.trim() && !hasActions}
+          {#if commandQuery.trim() && !hasActions}
             <div class="command-palette-empty">
               <strong>Start a new session</strong>
               <span>Press Enter to send this prompt to a new orchestrator session.</span>
@@ -192,10 +212,11 @@
       {/if}
 
       <div class="command-palette-footer">
-        {#if mode === "actions"}
+        {#if commandMode}
           <span><kbd>Enter</kbd> opens a result in a new pane</span>
           <span><kbd>Cmd+Enter</kbd> uses the focused pane</span>
         {:else}
+          <span>Type <kbd>&gt;</kbd> to search commands</span>
           <span>Cmd+P is reserved for future file quick-open</span>
         {/if}
       </div>

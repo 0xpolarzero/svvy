@@ -794,8 +794,8 @@ Dockview keyboard behavior must be integrated with svvy shortcuts without steali
 
 Requirements:
 
-- `Cmd+Shift+P` always opens the command palette
-- `Cmd+P` remains reserved for file quick-open
+- `Cmd+Shift+P` opens the shared palette with `>` prefilled for command mode
+- `Cmd+P` opens the same shared palette without a prefix for file quick-open search mode
 - Dockview focus movement should be available through product actions
 - panel close, duplicate, split, float, and popout commands should be command-palette discoverable
 - resize and tab navigation must remain keyboard accessible where Dockview supports it

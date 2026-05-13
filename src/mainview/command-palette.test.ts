@@ -14,6 +14,8 @@ import {
   getCommandActionPlacementHints,
   getCommandActionShortcutHints,
   getCommandExecutionPaneId,
+  getCommandPaletteInitialInput,
+  getCommandPaletteInputState,
   getCommandPalettePlacement,
   groupCommandActions,
   isCommandPaletteShortcut,
@@ -164,7 +166,7 @@ function createRuntime(): CommandRuntime & {
 }
 
 describe("command palette shortcuts", () => {
-  it("distinguishes all-actions and quick-open shortcuts", () => {
+  it("distinguishes command-prefilled and quick-open shortcuts", () => {
     expect(isCommandPaletteShortcut(keyEvent({ key: "p", metaKey: true, shiftKey: true }))).toBe(
       true,
     );
@@ -199,6 +201,25 @@ describe("command palette shortcuts", () => {
 
     expect(isCommandPaletteShortcut(commandPaletteEvent)).toBe(true);
     expect(isQuickOpenShortcut(quickOpenEvent)).toBe(true);
+  });
+
+  it("uses the VS Code-style command prefix to derive live palette mode", () => {
+    expect(getCommandPaletteInitialInput("commands")).toBe(">");
+    expect(getCommandPaletteInitialInput("search")).toBe("");
+    expect(getCommandPaletteInputState("")).toEqual({ mode: "search", commandQuery: "" });
+    expect(getCommandPaletteInputState("Open Session")).toEqual({
+      mode: "search",
+      commandQuery: "",
+    });
+    expect(getCommandPaletteInputState(">")).toEqual({ mode: "commands", commandQuery: "" });
+    expect(getCommandPaletteInputState("> Open Session")).toEqual({
+      mode: "commands",
+      commandQuery: "Open Session",
+    });
+    expect(getCommandPaletteInputState(">Run Project CI")).toEqual({
+      mode: "commands",
+      commandQuery: "Run Project CI",
+    });
   });
 
   it("uses new panels by default and focused panel for Cmd+Enter", () => {
