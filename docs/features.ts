@@ -190,7 +190,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Multi-Session Workspace Navigation",
     status: "shipped",
     summary:
-      "Supports creating, listing, switching, renaming, forking, and deleting multiple pi-backed session containers from one workspace window, with top-level session auto-titling owned by a durable one-shot namer flow that starts concurrently with the first orchestrator turn, uses the namer settings prompt as the sole naming instruction, blocks manual rename while title generation is pending or running, freezes after manual rename or the first successful generated title, and keeps delegated handler titles owned by the same namer flow over the handler objective rather than by an orchestrator-supplied title.",
+      "Supports creating, listing, switching, renaming, forking, pinning, and archiving multiple pi-backed session containers from one workspace window, with archive serving as the user-facing hide/delete equivalent while preserving session history, top-level session auto-titling owned by a durable one-shot namer flow that starts concurrently with the first orchestrator turn, the namer settings prompt as the sole naming instruction, manual rename blocked while title generation is pending or running, titles frozen after manual rename or the first successful generated title, and delegated handler titles owned by the same namer flow over the handler objective rather than by an orchestrator-supplied title.",
     sourceSpecs: ["docs/specs/multi-session-support.spec.md"],
   },
   {

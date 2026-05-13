@@ -25,7 +25,6 @@
     onOpenSession: (sessionId: string) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
     onForkSession: (session: WorkspaceSessionSummary) => void;
-    onDeleteSession: (session: WorkspaceSessionSummary) => void;
     onPinSession: (session: WorkspaceSessionSummary) => void;
     onUnpinSession: (session: WorkspaceSessionSummary) => void;
     onArchiveSession: (session: WorkspaceSessionSummary) => void;
@@ -49,7 +48,6 @@
     onOpenSession,
     onRenameSession,
     onForkSession,
-    onDeleteSession,
     onPinSession,
     onUnpinSession,
     onArchiveSession,
@@ -174,7 +172,6 @@
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
               onFork={() => onForkSession(session)}
-              onDelete={() => onDeleteSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
               onArchive={() => onArchiveSession(session)}
@@ -197,7 +194,6 @@
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
               onFork={() => onForkSession(session)}
-              onDelete={() => onDeleteSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
               onArchive={() => onArchiveSession(session)}
@@ -235,7 +231,6 @@
                 onOpen={() => onOpenSession(session.id)}
                 onRename={() => onRenameSession(session)}
                 onFork={() => onForkSession(session)}
-                onDelete={() => onDeleteSession(session)}
                 onPin={() => onPinSession(session)}
                 onUnpin={() => onUnpinSession(session)}
                 onArchive={() => onArchiveSession(session)}
@@ -517,6 +512,7 @@
   .sidebar-sections {
     flex: 1;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
     padding: 0.36rem 0.24rem 0.62rem;
   }
@@ -524,11 +520,13 @@
   .sidebar-list {
     display: grid;
     gap: 0.42rem;
+    min-width: 0;
   }
 
   .sidebar-section {
     display: grid;
     gap: 0.12rem;
+    min-width: 0;
   }
 
   .sidebar-section-label {

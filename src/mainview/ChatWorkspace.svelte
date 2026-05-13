@@ -201,7 +201,6 @@
   let sendingPrompt = $state(false);
   let renameTarget = $state<WorkspaceSessionSummary | null>(null);
   let renameValue = $state("");
-  let deleteTarget = $state<WorkspaceSessionSummary | null>(null);
   let sidebarResizeHandle = $state<HTMLDivElement | null>(null);
   let paneGridElement = $state<HTMLElement | null>(null);
   let artifactSyncSessionId: string | undefined = undefined;
@@ -1114,19 +1113,6 @@
 
   function handleTranscriptScrollState(paneId: string, scroll: { transcriptAnchorId: string | null; offsetPx: number }) {
     runtime.setPaneScroll(paneId, scroll);
-  }
-
-  function handleDeleteSession(session: WorkspaceSessionSummary) {
-    deleteTarget = session;
-  }
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    const target = deleteTarget;
-    await runSessionMutation(async () => {
-      await runtime.deleteSession(target.id, focusedPaneId);
-      deleteTarget = null;
-    });
   }
 
   async function handlePinSession(session: WorkspaceSessionSummary) {
@@ -2370,7 +2356,6 @@
             onOpenSession={handleOpenSession}
             onRenameSession={handleRenameSession}
             onForkSession={handleForkSession}
-            onDeleteSession={handleDeleteSession}
             onPinSession={handlePinSession}
             onUnpinSession={handleUnpinSession}
             onArchiveSession={handleArchiveSession}
@@ -3043,28 +3028,6 @@
         </Button>
         <Button variant="primary" size="sm" onclick={() => void confirmRename()} disabled={mutatingSession}>
           Save
-        </Button>
-      </div>
-    </div>
-  </Dialog>
-{/if}
-
-{#if deleteTarget}
-  <Dialog
-    eyebrow="Session"
-    title="Delete Session"
-    description={`Delete "${deleteTarget.title}" permanently? This removes the pi session file and cannot be undone.`}
-    width="md"
-    onClose={() => (deleteTarget = null)}
-  >
-    <div class="session-dialog">
-      <div class="session-delete-note">
-        The session will disappear from the workspace navigator and cannot be restored.
-      </div>
-      <div class="session-dialog-actions">
-        <Button variant="ghost" size="sm" onclick={() => (deleteTarget = null)}>Cancel</Button>
-        <Button variant="danger" size="sm" onclick={() => void confirmDelete()} disabled={mutatingSession}>
-          Delete
         </Button>
       </div>
     </div>
@@ -5555,15 +5518,6 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-  }
-
-  .session-delete-note {
-    padding: 0.8rem;
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-danger-soft) 84%, transparent);
-    color: color-mix(in oklab, var(--ui-danger) 80%, var(--ui-text-primary));
-    font-size: 0.76rem;
-    line-height: 1.5;
   }
 
   .desktop-open {

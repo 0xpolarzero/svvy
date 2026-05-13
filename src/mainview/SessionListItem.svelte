@@ -1,11 +1,13 @@
 <script lang="ts">
-  import EllipsisVerticalIcon from "@lucide/svelte/icons/ellipsis-vertical";
-  import { onMount } from "svelte";
+  import ArchiveIcon from "@lucide/svelte/icons/archive";
+  import ArchiveRestoreIcon from "@lucide/svelte/icons/archive-restore";
+  import GitForkIcon from "@lucide/svelte/icons/git-fork";
+  import PinIcon from "@lucide/svelte/icons/pin";
+  import PinOffIcon from "@lucide/svelte/icons/pin-off";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
   import { formatRelativeSessionTime, formatSessionStatusLabel } from "./session-format";
   import Button from "./ui/Button.svelte";
-
-  const SESSION_MENU_OPEN_EVENT = "svvy-session-menu-open";
 
   type Props = {
     session: WorkspaceSessionSummary;
@@ -16,7 +18,6 @@
     onOpen: () => void;
     onRename: () => void;
     onFork: () => void;
-    onDelete: () => void;
     onPin: () => void;
     onUnpin: () => void;
     onArchive: () => void;
@@ -34,7 +35,6 @@
     onOpen,
     onRename,
     onFork,
-    onDelete,
     onPin,
     onUnpin,
     onArchive,
@@ -42,21 +42,6 @@
     onArrowUp,
     onArrowDown,
   }: Props = $props();
-
-  let menuOpen = $state(false);
-  let menuRoot = $state<HTMLDivElement | null>(null);
-
-  onMount(() => {
-    function closeWhenAnotherMenuOpens(event: Event) {
-      const nextSessionId = event instanceof CustomEvent ? event.detail?.sessionId : undefined;
-      if (nextSessionId !== session.id) {
-        menuOpen = false;
-      }
-    }
-
-    window.addEventListener(SESSION_MENU_OPEN_EVENT, closeWhenAnotherMenuOpens);
-    return () => window.removeEventListener(SESSION_MENU_OPEN_EVENT, closeWhenAnotherMenuOpens);
-  });
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "ArrowUp") {
@@ -68,12 +53,6 @@
     if (event.key === "ArrowDown") {
       event.preventDefault();
       onArrowDown?.();
-    }
-  }
-
-  function closeIfFocusLeaves(nextTarget: EventTarget | null) {
-    if (!(nextTarget instanceof Node) || !menuRoot?.contains(nextTarget)) {
-      menuOpen = false;
     }
   }
 
@@ -132,7 +111,7 @@
 </script>
 
 <article
-  class={`session-item ${active ? "active" : ""} ${showingThreadSurface ? "active-thread" : ""} ${session.isArchived ? "archived" : ""} ${paneLocations.length > 0 ? "open-in-pane" : ""} ${menuOpen ? "menu-open" : ""}`.trim()}
+  class={`session-item ${active ? "active" : ""} ${showingThreadSurface ? "active-thread" : ""} ${session.isArchived ? "archived" : ""} ${paneLocations.length > 0 ? "open-in-pane" : ""}`.trim()}
 >
   <button
     class="session-main"
@@ -197,52 +176,87 @@
     {/if}
   </button>
 
-  <div
-    bind:this={menuRoot}
-    class="session-menu-wrap"
-    onfocusout={(event) => closeIfFocusLeaves(event.relatedTarget)}
-  >
+  <div class="session-inline-actions" role="toolbar" aria-label={`Actions for ${session.title}`}>
     <Button
       variant="ghost"
-      size="sm"
-      class="session-menu-trigger"
-      aria-label={`Session actions for ${session.title}`}
+      size="xs"
+      iconOnly
+      class="session-inline-action"
+      aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
+      title={session.isPinned ? "Unpin" : "Pin"}
+      data-tooltip={session.isPinned ? "Unpin" : "Pin"}
       onclick={(event) => {
         event.stopPropagation();
-        if (!menuOpen) {
-          window.dispatchEvent(new CustomEvent(SESSION_MENU_OPEN_EVENT, { detail: { sessionId: session.id } }));
+        if (session.isPinned) {
+          onUnpin();
+        } else {
+          onPin();
         }
-        menuOpen = !menuOpen;
       }}
     >
-      <EllipsisVerticalIcon aria-hidden="true" size={15} strokeWidth={1.9} />
+      {#if session.isPinned}
+        <PinOffIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {:else}
+        <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {/if}
     </Button>
 
-    {#if menuOpen}
-      <div class="session-menu" role="menu" aria-label={`Actions for ${session.title}`}>
-        {#if session.isArchived}
-          <button role="menuitem" type="button" onclick={() => { menuOpen = false; onUnarchive(); }}>Unarchive</button>
-        {:else}
-          {#if session.isPinned}
-            <button role="menuitem" type="button" onclick={() => { menuOpen = false; onUnpin(); }}>Unpin</button>
-          {:else}
-            <button role="menuitem" type="button" onclick={() => { menuOpen = false; onPin(); }}>Pin</button>
-          {/if}
-          <button role="menuitem" type="button" onclick={() => { menuOpen = false; onArchive(); }}>Archive</button>
-        {/if}
-        <button
-          role="menuitem"
-          type="button"
-          disabled={renameLocked}
-          title={renameLocked ? "Title generation is running" : "Rename"}
-          onclick={() => { menuOpen = false; onRename(); }}
-        >
-          Rename
-        </button>
-        <button role="menuitem" type="button" onclick={() => { menuOpen = false; onFork(); }}>Fork</button>
-        <button class="danger" role="menuitem" type="button" onclick={() => { menuOpen = false; onDelete(); }}>Delete</button>
-      </div>
-    {/if}
+    <Button
+      variant="ghost"
+      size="xs"
+      iconOnly
+      class="session-inline-action"
+      aria-label={session.isArchived ? `Unarchive ${session.title}` : `Archive ${session.title}`}
+      title={session.isArchived ? "Unarchive" : "Archive"}
+      data-tooltip={session.isArchived ? "Unarchive" : "Archive"}
+      onclick={(event) => {
+        event.stopPropagation();
+        if (session.isArchived) {
+          onUnarchive();
+        } else {
+          onArchive();
+        }
+      }}
+    >
+      {#if session.isArchived}
+        <ArchiveRestoreIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {:else}
+        <ArchiveIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {/if}
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="xs"
+      iconOnly
+      class="session-inline-action"
+      aria-label={`Fork ${session.title}`}
+      title="Fork"
+      data-tooltip="Fork"
+      onclick={(event) => {
+        event.stopPropagation();
+        onFork();
+      }}
+    >
+      <GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+    </Button>
+
+    <Button
+      variant="ghost"
+      size="xs"
+      iconOnly
+      class="session-inline-action"
+      aria-label={`Rename ${session.title}`}
+      disabled={renameLocked}
+      title={renameLocked ? "Title generation is running" : "Rename"}
+      data-tooltip={renameLocked ? "Title generation is running" : "Rename"}
+      onclick={(event) => {
+        event.stopPropagation();
+        onRename();
+      }}
+    >
+      <PencilIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+    </Button>
   </div>
 </article>
 
@@ -250,14 +264,18 @@
   .session-item {
     position: relative;
     display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
     border-radius: var(--ui-radius-md);
   }
 
   .session-main {
     position: relative;
+    box-sizing: border-box;
     width: 100%;
     min-width: 0;
-    padding: 0.42rem 2rem 0.44rem 0.9rem;
+    padding: 0.42rem 0.58rem 0.44rem 0.9rem;
     border-radius: var(--ui-radius-md);
     border: 1px solid transparent;
     background: transparent;
@@ -350,6 +368,15 @@
     font-family: var(--font-mono);
     font-size: 0.54rem;
     color: var(--ui-text-tertiary);
+    transition:
+      opacity 120ms cubic-bezier(0.19, 1, 0.22, 1),
+      visibility 120ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .session-item:hover .session-main-top-meta,
+  .session-item:focus-within .session-main-top-meta {
+    opacity: 0;
+    visibility: hidden;
   }
 
   .session-main-top-meta span {
@@ -467,134 +494,93 @@
     text-overflow: ellipsis;
   }
 
-  .session-menu-wrap {
+  .session-inline-actions {
     position: absolute;
     top: 0.32rem;
     right: 0.32rem;
     z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.08rem;
+    padding: 0.08rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
+    border-radius: var(--ui-radius-md);
+    background: color-mix(in oklab, var(--ui-surface-raised) 72%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ui-surface) 58%, transparent);
+    backdrop-filter: blur(10px);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 140ms cubic-bezier(0.19, 1, 0.22, 1);
+    transform: translateY(-0.08rem);
+    transition:
+      opacity 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 140ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  .session-item:hover .session-menu-wrap,
-  .session-item:focus-within .session-menu-wrap,
-  .session-item.menu-open .session-menu-wrap {
+  .session-item:hover .session-inline-actions,
+  .session-item:focus-within .session-inline-actions {
     opacity: 1;
     pointer-events: auto;
+    transform: translateY(0);
   }
 
-  .session-menu-trigger {
-    min-width: 1.42rem;
-    min-height: 1.42rem;
-    padding-inline: 0.16rem;
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-surface-raised) 64%, transparent);
+  .session-inline-action {
+    min-width: 1.3rem;
+    min-height: 1.3rem;
     color: var(--ui-text-tertiary);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-    backdrop-filter: blur(10px);
+    border-radius: var(--ui-radius-sm);
   }
 
-  .session-menu-trigger:hover,
-  .session-menu-trigger:focus-visible {
+  .session-inline-action:hover,
+  .session-inline-action:focus-visible {
+    background: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .session-inline-action::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.42rem);
+    z-index: var(--ui-z-overlay);
+    width: max-content;
+    max-width: 10rem;
+    padding: 0.26rem 0.38rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
+    border-radius: var(--ui-radius-sm);
     background: var(--ui-surface-raised);
     color: var(--ui-text-primary);
-  }
-
-  .session-menu {
-    position: absolute;
-    top: calc(100% + 0.24rem);
-    right: 0;
-    z-index: var(--ui-z-overlay);
-    display: grid;
-    gap: 0.08rem;
-    min-width: 9.2rem;
-    padding: 0.28rem;
-    border-radius: var(--ui-radius-md);
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in oklab, var(--ui-surface-raised) 96%, white 4%),
-        var(--ui-surface-raised)
-      );
     box-shadow:
-      0 18px 42px color-mix(in oklab, black 18%, transparent),
-      0 4px 14px color-mix(in oklab, black 12%, transparent);
-    transform-origin: top right;
-    animation: session-menu-enter 150ms cubic-bezier(0.19, 1, 0.22, 1);
-  }
-
-  .session-menu button {
-    display: flex;
-    align-items: center;
-    min-height: 1.72rem;
-    padding: 0.34rem 0.48rem;
-    border: 1px solid transparent;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-secondary);
-    font-size: 0.62rem;
+      0 10px 24px color-mix(in oklab, black 18%, transparent),
+      0 2px 8px color-mix(in oklab, black 12%, transparent);
+    font-size: 0.58rem;
     font-weight: 560;
-    line-height: 1.1;
-    text-align: left;
-    cursor: pointer;
+    line-height: 1;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(0.12rem);
     transition:
-      border-color 120ms cubic-bezier(0.19, 1, 0.22, 1),
-      background-color 120ms cubic-bezier(0.19, 1, 0.22, 1),
-      color 120ms cubic-bezier(0.19, 1, 0.22, 1);
+      opacity 120ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  .session-menu button:hover:not(:disabled),
-  .session-menu button:focus-visible {
-    border-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 78%, transparent);
-    color: var(--ui-text-primary);
-    outline: none;
-  }
-
-  .session-menu button:disabled {
-    color: color-mix(in oklab, var(--ui-text-tertiary) 58%, transparent);
-    cursor: not-allowed;
-  }
-
-  .session-menu .danger {
-    color: color-mix(in oklab, var(--ui-danger) 86%, var(--ui-text-primary));
-  }
-
-  .session-menu .danger:hover,
-  .session-menu .danger:focus-visible {
-    border-color: color-mix(in oklab, var(--ui-danger) 24%, transparent);
-    background: color-mix(in oklab, var(--ui-danger) 10%, transparent);
-    color: color-mix(in oklab, var(--ui-danger) 92%, var(--ui-text-primary));
-  }
-
-  @keyframes session-menu-enter {
-    from {
-      opacity: 0;
-      transform: translateY(-0.18rem) scale(0.985);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+  .session-inline-action:hover::after,
+  .session-inline-action:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
   }
 
   @media (max-width: 760px) {
-    .session-menu-wrap {
+    .session-inline-actions {
       top: 0.24rem;
       right: 0.24rem;
       opacity: 1;
       pointer-events: auto;
+      transform: none;
     }
 
-    .session-menu-trigger {
+    .session-inline-action {
       min-width: 2.75rem;
-      min-height: 2.75rem;
-    }
-
-    .session-menu button {
       min-height: 2.75rem;
     }
   }
