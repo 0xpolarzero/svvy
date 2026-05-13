@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import PanelLeftCloseIcon from "@lucide/svelte/icons/panel-left-close";
-  import PanelLeftOpenIcon from "@lucide/svelte/icons/panel-left-open";
+  import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
+  import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
   import FileSearchIcon from "@lucide/svelte/icons/file-search";
   import SearchIcon from "@lucide/svelte/icons/search";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -1922,9 +1922,9 @@
         onclick={toggleSidebarVisibility}
       >
         {#if sidebarHidden}
-          <PanelLeftOpenIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+          <PanelLeftDashedIcon aria-hidden="true" size={16} strokeWidth={1.8} />
         {:else}
-          <PanelLeftCloseIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+          <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={1.8} />
         {/if}
       </button>
       <p class="workspace-titlebar-title">svvy</p>
@@ -1964,7 +1964,6 @@
         <div class="sidebar-surface">
           <SessionSidebar
             workspaceLabel={runtime.workspaceLabel}
-            branch={runtime.branch}
             navigation={sessionNavigation}
             {activeSessionId}
             activeSurface={currentSurface?.surface}
@@ -1981,6 +1980,8 @@
             onArchiveSession={handleArchiveSession}
             onUnarchiveSession={handleUnarchiveSession}
             onToggleArchivedGroup={handleToggleArchivedGroup}
+            onOpenSearch={() => openPalette("quick-open")}
+            onOpenCommandPalette={() => openPalette("actions")}
             onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
             onOpenSettings={onOpenSettings}
           />
@@ -2937,11 +2938,11 @@
     z-index: 12;
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 0.35rem;
-    width: var(--sidebar-width, 240px);
+    width: 7rem;
     height: 2.25rem;
-    padding: 0 0.35rem 0 0;
+    padding: 0 0 0 5.1rem;
     border: 0;
     background: transparent;
     pointer-events: auto;
@@ -3076,6 +3077,10 @@
     padding: 0 0.78rem;
     border-bottom: 1px solid var(--ui-border-soft);
     background: color-mix(in oklab, var(--ui-surface) 52%, transparent);
+  }
+
+  .chat-workspace.sidebar-hidden .workspace-main-header {
+    padding-left: 7.3rem;
   }
 
   .workspace-main-copy {

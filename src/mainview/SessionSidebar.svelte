@@ -1,19 +1,19 @@
 <script lang="ts">
   import PlusIcon from "@lucide/svelte/icons/plus";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
+  import SearchIcon from "@lucide/svelte/icons/search";
+  import CommandIcon from "@lucide/svelte/icons/command";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import ZapIcon from "@lucide/svelte/icons/zap";
   import { getKeybindingDisplayShortcut, getKeybindingShortcut } from "../shared/keybindings";
   import type { WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
   import SessionListItem from "./SessionListItem.svelte";
-  import Button from "./ui/Button.svelte";
 
   type Props = {
     workspaceLabel: string;
-    branch?: string;
     navigation: WorkspaceSessionNavigationReadModel;
     activeSessionId?: string;
     activeSurface?: "orchestrator" | "thread";
@@ -30,13 +30,14 @@
     onArchiveSession: (session: WorkspaceSessionSummary) => void;
     onUnarchiveSession: (session: WorkspaceSessionSummary) => void;
     onToggleArchivedGroup: (collapsed: boolean) => void;
+    onOpenSearch?: () => void;
+    onOpenCommandPalette?: () => void;
     onOpenWorkflowLibrary?: () => void;
     onOpenSettings?: () => void;
   };
 
   let {
     workspaceLabel,
-    branch,
     navigation,
     activeSessionId,
     activeSurface,
@@ -53,6 +54,8 @@
     onArchiveSession,
     onUnarchiveSession,
     onToggleArchivedGroup,
+    onOpenSearch,
+    onOpenCommandPalette,
     onOpenWorkflowLibrary,
     onOpenSettings,
   }: Props = $props();
@@ -62,12 +65,6 @@
   const dumbSessionShortcut = getKeybindingShortcut("session.dumb");
   const newSessionDisplayShortcut = getKeybindingDisplayShortcut("session.new");
   const dumbSessionDisplayShortcut = getKeybindingDisplayShortcut("session.dumb");
-
-  const sessionCount = $derived(
-    navigation.pinnedSessions.length +
-      navigation.activeSessions.length +
-      navigation.archived.sessions.length,
-  );
 
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
     const current = event.currentTarget as HTMLElement | null;
@@ -88,20 +85,7 @@
 <svelte:window onkeydown={handleWindowKeydown} />
 
 <div class="session-sidebar">
-  <header class="sidebar-header electrobun-webkit-app-region-drag">
-    <div class="sidebar-header-copy">
-      <div class="sidebar-brand-row">
-        <span class="sidebar-brand">svvy</span>
-      </div>
-      <h2 class="sidebar-workspace-heading" title={workspaceLabel}>{workspaceLabel}</h2>
-      <p class="sidebar-context">
-        {#if branch}
-          <span class="branch-pill"><GitBranchIcon size={9} aria-hidden="true" /> {branch.split("/").at(-1) ?? branch}</span>
-        {/if}
-        <span>{sessionCount} sessions</span>
-      </p>
-    </div>
-  </header>
+  <div class="sidebar-window-row electrobun-webkit-app-region-drag" aria-hidden="true"></div>
 
   <div class="sidebar-actions" aria-label="Session actions">
     <div
@@ -114,43 +98,54 @@
       onfocusin={() => (showNewSessionMenu = true)}
       onfocusout={handleNewSessionMenuFocusOut}
     >
-      <Button
-        variant="primary"
-        size="sm"
-        class="new-session"
-        onclick={() => {
-          showNewSessionMenu = false;
-          onCreateSession();
-        }}
-        disabled={busy}
-        aria-label="Create a new session"
-        title={`New Session (${newSessionShortcut})`}
-        aria-haspopup="menu"
-        aria-expanded={showNewSessionMenu}
-      >
-        <PlusIcon aria-hidden="true" size={13} strokeWidth={2} />
-        <span>New session</span>
-        <kbd>{newSessionDisplayShortcut}</kbd>
-        <ChevronDownIcon class="new-session-chevron" aria-hidden="true" size={12} strokeWidth={1.9} />
-      </Button>
-      {#if showNewSessionMenu}
-        <div class="new-session-menu" role="menu" aria-label="New session variants">
+      <div class="sidebar-action-row new-session-row">
+        <button
+          type="button"
+          class="sidebar-action-main"
+          onclick={() => {
+            showNewSessionMenu = false;
+            onCreateSession();
+          }}
+          disabled={busy}
+          aria-label="Create a new session"
+          title={`New Session (${newSessionShortcut})`}
+        >
+          <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
+          <span class="sidebar-action-label">New session</span>
+          <kbd class="sidebar-action-shortcut">{newSessionDisplayShortcut}</kbd>
+        </button>
+      </div>
+      <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
+        <div class="new-session-accordion-inner">
           <button
             type="button"
-            class="new-session-menu-item"
-            role="menuitem"
+            class="sidebar-action-row new-session-child"
             disabled={busy}
+            tabindex={showNewSessionMenu ? 0 : -1}
             onclick={() => {
               showNewSessionMenu = false;
               onCreateDumbSession();
             }}
           >
-            <span>New dumb session</span>
-            <kbd>{dumbSessionDisplayShortcut}</kbd>
+            <span class="sidebar-action-icon"><ZapIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">New dumb session</span>
+            <kbd class="sidebar-action-shortcut">{dumbSessionDisplayShortcut}</kbd>
           </button>
         </div>
-      {/if}
+      </div>
     </div>
+    {#if onOpenSearch}
+      <button class="sidebar-action-row" type="button" onclick={onOpenSearch}>
+        <span class="sidebar-action-icon"><SearchIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+        <span class="sidebar-action-label">Search</span>
+      </button>
+    {/if}
+    {#if onOpenCommandPalette}
+      <button class="sidebar-action-row" type="button" onclick={onOpenCommandPalette}>
+        <span class="sidebar-action-icon"><CommandIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+        <span class="sidebar-action-label">Command palette</span>
+      </button>
+    {/if}
   </div>
 
   {#if errorMessage}
@@ -241,18 +236,18 @@
         </section>
       {/if}
 
-      {#if onOpenWorkflowLibrary}
-        <section class="sidebar-section reference-nav-section" aria-label="Workflow library">
-          <button class="reference-nav-row" type="button" onclick={onOpenWorkflowLibrary}>
-            <WorkflowIcon size={13} aria-hidden="true" />
-            <span>Saved workflows</span>
-            <small>.svvy</small>
-          </button>
-        </section>
-      {/if}
-
     </div>
   </div>
+
+  {#if onOpenWorkflowLibrary}
+    <div class="sidebar-lower-nav">
+      <button class="sidebar-action-row reference-nav-row" type="button" onclick={onOpenWorkflowLibrary}>
+        <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+        <span class="sidebar-action-label">Saved workflows</span>
+        <small class="sidebar-action-shortcut">.svvy</small>
+      </button>
+    </div>
+  {/if}
 
   <footer class="sidebar-footer">
     <div class="workspace-path" title={workspaceLabel}>
@@ -282,80 +277,13 @@
     min-height: 0;
   }
 
-  .sidebar-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    min-height: 3.2rem;
-    padding: 0.38rem 0.72rem 0.42rem 4.35rem;
-    border-bottom: 1px solid var(--ui-shell-edge);
+  .sidebar-window-row {
+    flex: 0 0 auto;
+    min-height: 2.45rem;
   }
 
-  .sidebar-header-copy,
-  .sidebar-context,
   .sidebar-error {
     margin: 0;
-  }
-
-  .sidebar-header-copy {
-    display: grid;
-    gap: 0.1rem;
-    min-width: 0;
-  }
-
-  .sidebar-brand-row {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    min-width: 0;
-  }
-
-  .sidebar-brand {
-    flex: 0 0 auto;
-    color: var(--ui-accent);
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  .sidebar-workspace-heading {
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    color: var(--ui-text-primary);
-    font-size: 0.74rem;
-    font-weight: 650;
-    line-height: 1.12;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sidebar-context {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    flex-wrap: wrap;
-    font-family: var(--font-mono);
-    font-size: 0.56rem;
-    color: var(--ui-text-tertiary);
-  }
-
-  .branch-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.18rem;
-    max-width: 8rem;
-    min-height: 1rem;
-    padding: 0 0.28rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-sm);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .sidebar-error {
@@ -370,143 +298,161 @@
 
   .sidebar-actions {
     display: grid;
-    gap: 0.28rem;
-    padding: 0.5rem 0.72rem;
-    border-bottom: 1px solid var(--ui-shell-edge);
+    gap: 0.08rem;
+    padding: 0.2rem 0.72rem 0.7rem;
     position: relative;
     z-index: 8;
   }
 
   .new-session-menu-shell {
-    position: relative;
     display: grid;
     min-width: 0;
   }
 
-  :global(button.new-session) {
-    justify-content: flex-start;
+  .sidebar-action-row {
+    --sidebar-row-height: 1.82rem;
+    display: grid;
+    grid-template-columns: 1.1rem minmax(0, 1fr) minmax(1.24rem, auto);
+    align-items: center;
+    gap: 0.48rem;
     width: 100%;
-    min-height: 1.76rem;
-    padding-inline: 0.52rem;
-    border-radius: var(--ui-radius-md);
-    font-size: 0.68rem;
-  }
-
-  :global(button.new-session .new-session-chevron) {
-    flex: 0 0 auto;
-    transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .new-session-menu-shell.menu-open :global(button.new-session .new-session-chevron) {
-    transform: rotate(180deg);
-  }
-
-  :global(button.new-session span) {
-    flex: 1;
+    min-height: var(--sidebar-row-height);
+    padding: 0.26rem 0.34rem;
+    border: 0;
+    border-radius: var(--ui-radius-sm);
+    background: transparent;
+    color: var(--ui-text-secondary);
+    font-size: 0.76rem;
+    font-weight: 500;
+    line-height: 1.25;
     text-align: left;
+    cursor: pointer;
+    min-width: 0;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  :global(button.new-session kbd),
-  .new-session-menu-item kbd {
-    flex: 0 0 auto;
-    min-width: max-content;
-    padding: 0.08rem 0.26rem;
-    border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
-    border-radius: var(--ui-radius-xs);
-    background: color-mix(in oklab, currentColor 10%, transparent);
-    font-family: var(--font-mono);
-    font-size: 0.52rem;
-    font-weight: 650;
-    line-height: 1.2;
+  .sidebar-action-row:hover,
+  .sidebar-action-row:focus-visible,
+  .new-session-row:focus-within,
+  .new-session-menu-shell.menu-open .new-session-row {
+    outline: none;
+    background: color-mix(in oklab, var(--ui-surface-subtle) 68%, transparent);
+    color: var(--ui-text-primary);
   }
 
-  :global(button.new-session kbd) {
-    color: color-mix(in oklab, var(--ui-accent-ink) 86%, var(--ui-accent));
-  }
-
-  .new-session-menu-shell.menu-open :global(button.new-session) {
-    border-color: color-mix(in oklab, var(--ui-accent) 44%, var(--ui-border-soft));
+  .sidebar-action-row:focus-visible,
+  .new-session-row:has(:focus-visible) {
     box-shadow: var(--ui-focus-ring);
   }
 
-  .new-session-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    z-index: 12;
-    width: 100%;
-    padding-top: 0.28rem;
-    transform-origin: 50% 0;
-    animation: new-session-menu-in 150ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    will-change: opacity, transform;
+  .sidebar-action-row:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
-  .new-session-menu-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    width: 100%;
-    min-height: 1.82rem;
-    padding: 0.36rem 0.6rem;
-    border: 1px solid color-mix(in oklab, var(--ui-border-strong) 76%, transparent);
-    border-radius: var(--ui-radius-md);
-    background: linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--ui-panel) 98%, var(--ui-shell)),
-      color-mix(in oklab, var(--ui-panel) 90%, var(--ui-shell))
-    );
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, var(--ui-text-primary) 8%, transparent),
-      0 0.48rem 1.05rem color-mix(in oklab, var(--ui-bg) 45%, transparent);
-    color: var(--ui-text-secondary);
-    font-size: 0.66rem;
-    font-weight: 600;
-    text-align: left;
-    cursor: pointer;
-    transition:
-      border-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
-      background-color 170ms cubic-bezier(0.19, 1, 0.22, 1),
-      color 170ms cubic-bezier(0.19, 1, 0.22, 1),
-      box-shadow 170ms cubic-bezier(0.19, 1, 0.22, 1),
-      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  .sidebar-action-icon {
+    display: grid;
+    place-items: center;
+    width: 1.1rem;
+    color: inherit;
   }
 
-  .new-session-menu-item span {
+  .sidebar-action-label {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .new-session-menu-item:hover,
-  .new-session-menu-item:focus-visible {
-    outline: none;
-    border-color: color-mix(in oklab, var(--ui-accent) 42%, var(--ui-border-soft));
-    background: color-mix(in oklab, var(--ui-accent) 9%, var(--ui-panel));
-    box-shadow:
-      var(--ui-focus-ring),
-      inset 0 1px 0 color-mix(in oklab, var(--ui-text-primary) 9%, transparent),
-      0 0.55rem 1.2rem color-mix(in oklab, var(--ui-bg) 48%, transparent);
+  .sidebar-action-shortcut {
+    justify-self: end;
+    flex: 0 0 auto;
+    min-width: max-content;
+    max-width: 4.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 650;
+    line-height: 1.2;
+  }
+
+  kbd.sidebar-action-shortcut {
+    padding: 0.08rem 0.25rem;
+    border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, currentColor 10%, transparent);
+  }
+
+  .new-session-row {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
     color: var(--ui-text-primary);
-    transform: translateY(-1px);
   }
 
-  .new-session-menu-item:disabled {
-    cursor: default;
-    opacity: 0.55;
+  .sidebar-action-main {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1.1rem minmax(0, 1fr) minmax(1.24rem, auto);
+    align-items: center;
+    gap: 0.48rem;
+    width: 100%;
+    min-width: 0;
+    min-height: var(--sidebar-row-height);
+    padding: 0.26rem 0.34rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
 
-  @keyframes new-session-menu-in {
-    from {
-      opacity: 0;
-      transform: translateY(-0.22rem) scale(0.985);
-    }
+  .sidebar-action-main:focus-visible {
+    outline: none;
+  }
 
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+  .sidebar-action-main:disabled {
+    cursor: not-allowed;
+  }
+
+  .new-session-accordion {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transform: translateY(-0.16rem);
+    pointer-events: none;
+    transition:
+      grid-template-rows 170ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 140ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 170ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .new-session-menu-shell.menu-open .new-session-accordion {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .new-session-accordion-inner {
+    overflow: hidden;
+    min-height: 0;
+    padding: 0.08rem 0 0;
+  }
+
+  .new-session-child {
+    color: var(--ui-text-secondary);
+    font-size: 0.72rem;
+  }
+
+  .new-session-child .sidebar-action-icon {
+    color: var(--ui-text-tertiary);
   }
 
   .sidebar-sections {
@@ -514,7 +460,7 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    padding: 0.36rem 0.24rem 0.62rem;
+    padding: 0.16rem 0.24rem 0.62rem;
   }
 
   .sidebar-list {
@@ -567,50 +513,15 @@
     box-shadow: var(--ui-focus-ring);
   }
 
-  .reference-nav-section {
-    margin-top: 0.28rem;
-    padding-top: 0.18rem;
+  .sidebar-lower-nav {
+    display: grid;
+    flex: 0 0 auto;
+    padding: 0.25rem 0.72rem 0.42rem;
   }
 
   .reference-nav-row {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.38rem;
-    width: 100%;
-    min-height: 1.65rem;
-    padding: 0.24rem 0.72rem;
-    border: 1px solid transparent;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-secondary);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .reference-nav-row.static {
-    cursor: default;
-  }
-
-  .reference-nav-row:hover:not(.static) {
-    border-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 66%, transparent);
-    color: var(--ui-text-primary);
-  }
-
-  .reference-nav-row span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.62rem;
+    font-size: 0.76rem;
     font-weight: 500;
-  }
-
-  .reference-nav-row small {
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.52rem;
   }
 
   .sidebar-footer {
@@ -658,5 +569,13 @@
     outline: none;
     background: var(--ui-surface-subtle);
     color: var(--ui-text-primary);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-action-row,
+    .new-session-accordion {
+      transition: none;
+      animation: none;
+    }
   }
 </style>
