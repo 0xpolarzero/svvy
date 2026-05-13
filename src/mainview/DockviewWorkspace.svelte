@@ -1,7 +1,16 @@
 <script lang="ts">
   import { mount, unmount } from "svelte";
   import { onDestroy, onMount } from "svelte";
-  import { DockviewComponent, type IContentRenderer, type ITabRenderer, type GroupPanelPartInitParameters, type TabPartInitParameters, type SerializedDockview } from "dockview-core";
+  import {
+    DockviewComponent,
+    type GroupPanelPartInitParameters,
+    type IContentRenderer,
+    type IHeaderActionsRenderer,
+    type IDisposable,
+    type ITabRenderer,
+    type SerializedDockview,
+    type TabPartInitParameters,
+  } from "dockview-core";
   import "dockview-core/dist/styles/dockview.css";
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
   import type { ChatRuntime } from "./chat-runtime";
@@ -94,12 +103,90 @@
     }
   }
 
+  class SurfaceHeaderActionsRenderer implements IHeaderActionsRenderer {
+    readonly element = document.createElement("div");
+    private group: Parameters<IHeaderActionsRenderer["init"]>[0]["group"] | null = null;
+    private activePanelDisposable: IDisposable | null = null;
+
+    init(params: Parameters<IHeaderActionsRenderer["init"]>[0]): void {
+      this.group = params.group;
+      this.element.className = "dockview-surface-actions";
+      this.element.append(
+        this.createActionButton("Duplicate pane right", "split-right", () => this.duplicate("right")),
+        this.createActionButton("Duplicate pane below", "split-below", () => this.duplicate("below")),
+        this.createActionButton("Close pane", "close", () => this.close()),
+      );
+      this.syncDisabledState();
+      this.activePanelDisposable = params.api.onDidActivePanelChange(() => this.syncDisabledState());
+    }
+
+    dispose(): void {
+      this.activePanelDisposable?.dispose();
+      this.activePanelDisposable = null;
+      this.element.replaceChildren();
+      this.group = null;
+    }
+
+    private get activePanelId(): string | null {
+      return this.group?.activePanel?.id ?? null;
+    }
+
+    private createActionButton(
+      label: string,
+      icon: "split-right" | "split-below" | "close",
+      action: () => void,
+    ): HTMLButtonElement {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `dockview-surface-action action-${icon}`;
+      button.ariaLabel = label;
+      button.title = label;
+      button.innerHTML = getActionIcon(icon);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        action();
+      });
+      return button;
+    }
+
+    private duplicate(direction: "right" | "below"): void {
+      const panelId = this.activePanelId;
+      if (!panelId) return;
+      void runtime.splitPane(panelId, direction, { duplicateBinding: true });
+    }
+
+    private close(): void {
+      const panelId = this.activePanelId;
+      if (!panelId) return;
+      void runtime.closePane(panelId);
+    }
+
+    private syncDisabledState(): void {
+      const disabled = !this.activePanelId;
+      for (const child of this.element.querySelectorAll("button")) {
+        child.toggleAttribute("disabled", disabled);
+      }
+    }
+  }
+
+  function getActionIcon(icon: "split-right" | "split-below" | "close"): string {
+    if (icon === "close") {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.25 4.25 11.75 11.75M11.75 4.25 4.25 11.75" /></svg>';
+    }
+    if (icon === "split-below") {
+      return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.6" /><path d="M2.75 8h10.5" /><path d="M8 10.75v-2.5M6.75 9.5 8 10.75 9.25 9.5" /></svg>';
+    }
+    return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.6" /><path d="M8 2.75v10.5" /><path d="M10.75 8.1h-2.5M9.5 6.85l1.25 1.25L9.5 9.35" /></svg>';
+  }
+
   function createDockview(): void {
     if (!hostElement || dockview) return;
     dockview = new DockviewComponent(hostElement, {
       proportionalLayout: true,
       createComponent: () => new SurfaceContentRenderer(),
       createTabComponent: () => new SurfaceTabRenderer(),
+      createRightHeaderActionComponent: () => new SurfaceHeaderActionsRenderer(),
       defaultRenderer: "onlyWhenVisible",
       defaultTabComponent: "surfaceTab",
       noPanelsOverlay: "emptyGroup",
@@ -266,5 +353,53 @@
 
   :global(.dockview-surface-tab[data-focused="true"]) {
     color: var(--ui-accent);
+  }
+
+  :global(.dockview-surface-actions) {
+    display: flex;
+    align-items: center;
+    gap: 0.16rem;
+    height: 100%;
+    padding: 0 0.32rem 0 0.18rem;
+  }
+
+  :global(.dockview-surface-action) {
+    display: grid;
+    place-items: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 0;
+    border-radius: var(--ui-radius-sm);
+    background: transparent;
+    color: var(--ui-text-tertiary);
+    cursor: pointer;
+  }
+
+  :global(.dockview-surface-action:hover:not(:disabled)),
+  :global(.dockview-surface-action:focus-visible) {
+    background: color-mix(in oklab, var(--ui-surface-subtle) 84%, var(--ui-accent) 16%);
+    color: var(--ui-text-primary);
+    outline: none;
+  }
+
+  :global(.dockview-surface-action.action-close:hover:not(:disabled)),
+  :global(.dockview-surface-action.action-close:focus-visible) {
+    background: color-mix(in oklab, var(--ui-danger-soft) 72%, var(--ui-surface) 28%);
+    color: var(--ui-danger);
+  }
+
+  :global(.dockview-surface-action:disabled) {
+    cursor: default;
+    opacity: 0.36;
+  }
+
+  :global(.dockview-surface-action svg) {
+    width: 0.9rem;
+    height: 0.9rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.55;
   }
 </style>
