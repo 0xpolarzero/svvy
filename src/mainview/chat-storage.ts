@@ -1,5 +1,5 @@
 import type { Model } from "@mariozechner/pi-ai";
-import type { WorkspacePaneLayoutState } from "./pane-layout";
+import type { WorkspaceDockviewLayoutState } from "./pane-layout";
 import type { PromptHistoryEntry } from "./prompt-history";
 
 const DB_NAME = "svvy-desktop-chat";
@@ -180,8 +180,8 @@ export type WorkspaceInspectorSelection =
   | { kind: "ci-run"; ciRunId: string }
   | { kind: "project-ci-check"; checkResultId: string };
 
-export interface WorkspaceUiRestoreState extends WorkspacePaneLayoutState {
-  version: 2;
+export interface WorkspaceUiRestoreState extends WorkspaceDockviewLayoutState {
+  version: 3;
 }
 
 export class WorkspaceUiRestoreStore {
@@ -194,10 +194,9 @@ export class WorkspaceUiRestoreStore {
     );
     if (
       !state ||
-      state.version !== 2 ||
-      !Array.isArray(state.panes) ||
-      !Array.isArray(state.columns) ||
-      !Array.isArray(state.rows)
+      state.version !== 3 ||
+      !Array.isArray(state.panels) ||
+      !("dockview" in state)
     ) {
       return null;
     }

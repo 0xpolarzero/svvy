@@ -101,10 +101,6 @@ function createRuntime(): CommandRuntime & {
       target: runtime.paneTarget,
       inspectorSelection: null,
       scroll: null,
-      columnStart: 0,
-      columnEnd: 1,
-      rowStart: 0,
-      rowEnd: 1,
       timelineDensity: "comfortable" as const,
     }),
     createSession: async (request = {}, paneId: unknown = "primary") => {
@@ -140,13 +136,13 @@ function createRuntime(): CommandRuntime & {
       runtime.calls.push(
         `split:${paneId}:${direction}:${options.duplicateBinding ? "duplicate" : "empty"}`,
       );
-      return "new-pane";
+      return "new-panel";
+    },
+    focusPane: (paneId: string) => {
+      runtime.calls.push(`focus:${paneId}`);
     },
     closePane: async (paneId: string) => {
       runtime.calls.push(`close:${paneId}`);
-    },
-    movePaneToSpanningRow: (paneId: string, placement: "top" | "bottom" | "left" | "right") => {
-      runtime.calls.push(`span:${paneId}:${placement}`);
     },
     pinSession: async (sessionId: string) => {
       runtime.calls.push(`pin:${sessionId}`);
@@ -205,18 +201,18 @@ describe("command palette shortcuts", () => {
     expect(isQuickOpenShortcut(quickOpenEvent)).toBe(true);
   });
 
-  it("uses new panes by default and focused pane for Cmd+Enter", () => {
+  it("uses new panels by default and focused panel for Cmd+Enter", () => {
     expect(
       getCommandExecutionPaneId({
         placement: getCommandPalettePlacement(keyEvent({ key: "Enter" })),
-        focusedPaneId: "primary",
+        focusedPanelId: "primary",
         now: 1,
       }),
     ).toBe("command-palette-1");
     expect(
       getCommandExecutionPaneId({
         placement: getCommandPalettePlacement(keyEvent({ key: "Enter", metaKey: true })),
-        focusedPaneId: "primary",
+        focusedPanelId: "primary",
       }),
     ).toBe("primary");
   });
@@ -333,7 +329,7 @@ describe("buildCommandRegistry", () => {
     expect(actions.map((action) => action.id)).toContain("settings.open");
     expect(actions.map((action) => action.id)).toContain("workflow-library.open");
     expect(actions.map((action) => action.id)).toContain("pane.split-right");
-    expect(actions.map((action) => action.id)).toContain("pane.span-bottom");
+    expect(actions.map((action) => action.id)).toContain("pane.duplicate-below");
     expect(actions.map((action) => action.id)).toContain("project-ci.run");
     expect(actions.map((action) => action.id)).toContain("session.open.session-1");
     expect(actions.map((action) => action.id)).toContain("session.unarchive.session-2");
@@ -423,29 +419,25 @@ describe("executeCommandAction", () => {
     await executeCommandAction({
       runtime,
       action: actions.find((action) => action.id === "pane.split-right")!,
-      paneId: "focused-pane",
+      paneId: "focused-panel",
     });
     await executeCommandAction({
       runtime,
       action: actions.find((action) => action.id === "pane.duplicate-below")!,
-      paneId: "focused-pane",
-    });
-    await executeCommandAction({
-      runtime,
-      action: actions.find((action) => action.id === "pane.span-bottom")!,
-      paneId: "focused-pane",
+      paneId: "focused-panel",
     });
     await executeCommandAction({
       runtime,
       action: actions.find((action) => action.id === "pane.close")!,
-      paneId: "focused-pane",
+      paneId: "focused-panel",
     });
 
     expect(runtime.calls).toEqual([
-      "split:focused-pane:right:empty",
-      "split:focused-pane:below:duplicate",
-      "span:focused-pane:bottom",
-      "close:focused-pane",
+      "split:focused-panel:right:empty",
+      "focus:new-panel",
+      "split:focused-panel:below:duplicate",
+      "focus:new-panel",
+      "close:focused-panel",
     ]);
   });
 

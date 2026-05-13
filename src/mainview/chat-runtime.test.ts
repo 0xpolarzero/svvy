@@ -1283,7 +1283,7 @@ describe("createChatRuntime", () => {
     const controller = runtime.getPaneController(runtime.primaryPaneId);
 
     expect(runtime.sessions).toHaveLength(1);
-    expect(runtime.paneLayout.focusedPaneId).toBe(runtime.primaryPaneId);
+    expect(runtime.paneLayout.focusedPanelId).toBe(runtime.primaryPaneId);
     expect(runtime.getPane(runtime.primaryPaneId)?.target).toEqual(
       createOrchestratorTarget("session-1"),
     );
@@ -1327,7 +1327,7 @@ describe("createChatRuntime", () => {
     const primaryController = runtime.getPaneController(runtime.primaryPaneId);
     const secondaryController = runtime.getPaneController("secondary");
 
-    expect(runtime.paneLayout.focusedPaneId).toBe("secondary");
+    expect(runtime.paneLayout.focusedPanelId).toBe("secondary");
     expect(runtime.getPane(runtime.primaryPaneId)?.target).toEqual(
       createOrchestratorTarget("session-1"),
     );
@@ -1601,7 +1601,7 @@ describe("createChatRuntime", () => {
     );
 
     expect(runtime.getPane("secondary")?.target).toEqual(threadTarget);
-    expect(runtime.paneLayout.focusedPaneId).toBe("secondary");
+    expect(runtime.paneLayout.focusedPanelId).toBe("secondary");
     expect(harness.requestCounts.listSessions).toBe(1);
 
     runtime.dispose();
@@ -1756,12 +1756,10 @@ describe("createChatRuntime", () => {
     firstRuntime.dispose();
 
     const restoreState = await storage.workspaceUiRestore.get("/tmp/svvy");
-    expect(restoreState?.focusedPaneId).toBe("secondary");
-    expect(restoreState?.panes).toContainEqual(
+    expect(restoreState?.focusedPanelId).toBe("secondary");
+    expect(restoreState?.panels).toContainEqual(
       expect.objectContaining({
-        paneId: "secondary",
-        columnStart: 1,
-        columnEnd: 2,
+        panelId: "secondary",
         binding: threadTarget,
         localState: expect.objectContaining({
           inspectorSelection: { kind: "thread", threadId: "thread-123" },
@@ -1784,7 +1782,7 @@ describe("createChatRuntime", () => {
     });
     const secondRuntime = await createRuntime(secondHarness, storage);
 
-    expect(secondRuntime.paneLayout.focusedPaneId).toBe("secondary");
+    expect(secondRuntime.paneLayout.focusedPanelId).toBe("secondary");
     expect(secondRuntime.getPane("secondary")?.target).toEqual(threadTarget);
     expect(secondRuntime.getPane("secondary")?.inspectorSelection).toEqual({
       kind: "thread",
@@ -1804,21 +1802,12 @@ describe("createChatRuntime", () => {
       workflowRunId: "workflow-1",
     };
     await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 2,
-      columns: [
-        { id: "col-1", percent: 34 },
-        { id: "col-2", percent: 33 },
-        { id: "col-3", percent: 33 },
-      ],
-      rows: [{ id: "row-1", percent: 100 }],
+      version: 3,
+      dockview: null,
       compactSurfaces: [],
-      panes: [
+      panels: [
         {
-          paneId: "primary",
-          columnStart: 0,
-          columnEnd: 1,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "primary",
           binding: orchestratorTarget,
           localState: {
             inspectorSelection: null,
@@ -1827,11 +1816,7 @@ describe("createChatRuntime", () => {
           },
         },
         {
-          paneId: "thread-left",
-          columnStart: 1,
-          columnEnd: 2,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "thread-left",
           binding: threadTarget,
           localState: {
             inspectorSelection: { kind: "thread", threadId: "thread-123" },
@@ -1840,11 +1825,7 @@ describe("createChatRuntime", () => {
           },
         },
         {
-          paneId: "thread-right",
-          columnStart: 2,
-          columnEnd: 3,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "thread-right",
           binding: threadTarget,
           localState: {
             inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
@@ -1853,11 +1834,7 @@ describe("createChatRuntime", () => {
           },
         },
         {
-          paneId: "inspector",
-          columnStart: 0,
-          columnEnd: 3,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "inspector",
           binding: workflowInspectorTarget,
           localState: {
             inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
@@ -1866,7 +1843,7 @@ describe("createChatRuntime", () => {
           },
         },
       ],
-      focusedPaneId: "thread-right",
+      focusedPanelId: "thread-right",
       updatedAt: "2026-04-27T00:00:00.000Z",
     });
     const harness = createFakeRpc({
@@ -1885,7 +1862,7 @@ describe("createChatRuntime", () => {
 
     const runtime = await createRuntime(harness, storage);
 
-    expect(runtime.paneLayout.focusedPaneId).toBe("thread-right");
+    expect(runtime.paneLayout.focusedPanelId).toBe("thread-right");
     expect(runtime.getPane("primary")?.target).toEqual(orchestratorTarget);
     expect(runtime.getPane("thread-left")?.target).toEqual(threadTarget);
     expect(runtime.getPane("thread-right")?.target).toEqual(threadTarget);
@@ -1913,17 +1890,12 @@ describe("createChatRuntime", () => {
     const storage = createMemoryStorage();
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
     await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 2,
-      columns: [{ id: "col-1", percent: 100 }],
-      rows: [{ id: "row-1", percent: 100 }],
+      version: 3,
+      dockview: null,
       compactSurfaces: [],
-      panes: [
+      panels: [
         {
-          paneId: "primary",
-          columnStart: 0,
-          columnEnd: 1,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "primary",
           binding: threadTarget,
           localState: {
             inspectorSelection: null,
@@ -1932,7 +1904,7 @@ describe("createChatRuntime", () => {
           },
         },
       ],
-      focusedPaneId: "primary",
+      focusedPanelId: "primary",
       updatedAt: "2026-04-27T00:00:00.000Z",
     });
     const harness = createFakeRpc({
@@ -1959,20 +1931,12 @@ describe("createChatRuntime", () => {
   it("preserves restored empty panes and keeps focus on the restored pane", async () => {
     const storage = createMemoryStorage();
     await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 2,
-      columns: [
-        { id: "col-1", percent: 50 },
-        { id: "col-2", percent: 50 },
-      ],
-      rows: [{ id: "row-1", percent: 100 }],
+      version: 3,
+      dockview: null,
       compactSurfaces: [],
-      panes: [
+      panels: [
         {
-          paneId: "primary",
-          columnStart: 0,
-          columnEnd: 1,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "primary",
           binding: null,
           localState: {
             inspectorSelection: null,
@@ -1981,11 +1945,7 @@ describe("createChatRuntime", () => {
           },
         },
         {
-          paneId: "secondary",
-          columnStart: 1,
-          columnEnd: 2,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "secondary",
           binding: createOrchestratorTarget("session-1"),
           localState: {
             inspectorSelection: null,
@@ -1994,7 +1954,7 @@ describe("createChatRuntime", () => {
           },
         },
       ],
-      focusedPaneId: "primary",
+      focusedPanelId: "primary",
       updatedAt: "2026-04-27T00:00:00.000Z",
     });
     const harness = createFakeRpc({
@@ -2009,8 +1969,8 @@ describe("createChatRuntime", () => {
 
     const runtime = await createRuntime(harness, storage);
 
-    expect(runtime.paneLayout.panes).toHaveLength(2);
-    expect(runtime.paneLayout.focusedPaneId).toBe("primary");
+    expect(runtime.paneLayout.panels).toHaveLength(2);
+    expect(runtime.paneLayout.focusedPanelId).toBe("primary");
     expect(runtime.getPane("primary")?.target).toBeNull();
     expect(runtime.getPane("secondary")?.target).toEqual(createOrchestratorTarget("session-1"));
 
@@ -2020,17 +1980,12 @@ describe("createChatRuntime", () => {
   it("creates an initial session when a restored empty pane layout has no sessions", async () => {
     const storage = createMemoryStorage();
     await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 2,
-      columns: [{ id: "col-1", percent: 100 }],
-      rows: [{ id: "row-1", percent: 100 }],
+      version: 3,
+      dockview: null,
       compactSurfaces: [],
-      panes: [
+      panels: [
         {
-          paneId: "primary",
-          columnStart: 0,
-          columnEnd: 1,
-          rowStart: 0,
-          rowEnd: 1,
+          panelId: "primary",
           binding: null,
           localState: {
             inspectorSelection: null,
@@ -2039,7 +1994,7 @@ describe("createChatRuntime", () => {
           },
         },
       ],
-      focusedPaneId: "primary",
+      focusedPanelId: "primary",
       updatedAt: "2026-04-27T00:00:00.000Z",
     });
     const harness = createFakeRpc({ sessions: [], surfaces: [] });
@@ -2065,14 +2020,14 @@ describe("createChatRuntime", () => {
 
     const runtime = await createRuntime(harness);
     const initialSessionCount = runtime.sessions.length;
-    const initialPaneCount = runtime.paneLayout.panes.length;
+    const initialPaneCount = runtime.paneLayout.panels.length;
 
     await runtime.setSessionMode(runtime.primaryPaneId, "dumb");
 
     const focusedPane = runtime.getPane(runtime.primaryPaneId);
     const controller = runtime.getPaneController(runtime.primaryPaneId);
     expect(runtime.sessions).toHaveLength(initialSessionCount);
-    expect(runtime.paneLayout.panes).toHaveLength(initialPaneCount);
+    expect(runtime.paneLayout.panels).toHaveLength(initialPaneCount);
     expect(focusedPane?.target?.workspaceSessionId).toBe("session-1");
     expect(controller?.sessionMode).toBe("dumb");
     expect(controller?.sessionAgentKey).toBe("dumbOrchestrator");

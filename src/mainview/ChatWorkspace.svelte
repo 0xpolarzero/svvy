@@ -6,22 +6,14 @@
   import SearchIcon from "@lucide/svelte/icons/search";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
-  import GripVerticalIcon from "@lucide/svelte/icons/grip-vertical";
-  import PlusIcon from "@lucide/svelte/icons/plus";
-  import CopyPlusIcon from "@lucide/svelte/icons/copy-plus";
-  import CopyIcon from "@lucide/svelte/icons/copy";
-  import XIcon from "@lucide/svelte/icons/x";
   import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import type { SessionMode } from "../shared/agent-settings";
   import ArtifactsPanel from "./ArtifactsPanel.svelte";
   import { ArtifactsController, type ArtifactsSnapshot } from "./artifacts";
-  import ChatComposer from "./ChatComposer.svelte";
   import CommandPalette from "./CommandPalette.svelte";
   import ContextBudgetBar from "./ContextBudgetBar.svelte";
-  import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
-  import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
-  import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
+  import DockviewWorkspace from "./DockviewWorkspace.svelte";
   import { formatTimestamp, formatUsage } from "./chat-format";
   import {
     getCommandInspectorSections,
@@ -69,7 +61,6 @@
   } from "./sidebar-layout";
   import { getViewportClass, shouldUseDesktopInspectorSplit, shouldUseNarrowShell } from "./responsive-layout";
   import SessionSidebar from "./SessionSidebar.svelte";
-  import ChatTranscript from "./ChatTranscript.svelte";
   import {
     PRIMARY_CHAT_PANE_ID,
     type ChatRuntime,
@@ -79,13 +70,7 @@
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
-    getPaneGridSplitControls,
     getOpenPaneLocations,
-    type PaneGridSplitControl,
-    type PanePlacementZone,
-    type PaneResizeAxis,
-    type PaneSpanPlacement,
-    type PaneSplitDirection,
   } from "./pane-layout";
   import {
     buildCommandRegistry,
@@ -112,41 +97,12 @@
   import Badge from "./ui/Badge.svelte";
   import Button from "./ui/Button.svelte";
   import Input from "./ui/Input.svelte";
-  import MetadataChip from "./ui/MetadataChip.svelte";
 
   const DEFAULT_SIDEBAR_WIDTH = 240;
 
   type Props = {
     runtime: ChatRuntime;
     onOpenSettings?: () => void;
-  };
-
-  type ActivePaneResize = {
-    axis: PaneResizeAxis;
-    gridSizePx: number;
-    lastClientPosition: number;
-    pointerId: number;
-    trackIndex: number;
-  };
-
-  type ActivePaneDrag = {
-    hasMoved: boolean;
-    lastX: number;
-    lastY: number;
-    pointerId: number;
-    sourcePaneId: string;
-    startX: number;
-    startY: number;
-  };
-
-  type PaneSplitAction = {
-    direction: PaneSplitDirection;
-    paneId: string;
-  };
-
-  type PaneDropPreview = {
-    targetPaneId: string;
-    zone: PanePlacementZone;
   };
 
   let { runtime, onOpenSettings }: Props = $props();
@@ -182,34 +138,28 @@
   let activeSessionId = $state<string | undefined>(undefined);
   let paneLayout = $state<ChatPaneLayoutState>({
     ...createEmptyPaneLayout(),
-    focusedPaneId: PRIMARY_CHAT_PANE_ID,
+    focusedPanelId: PRIMARY_CHAT_PANE_ID,
   });
   let currentPane = $state<ChatPaneState | null>(null);
-  let focusedPaneId = $state(PRIMARY_CHAT_PANE_ID);
+  let focusedPanelId = $state(PRIMARY_CHAT_PANE_ID);
   let focusedSurfaceTarget = $state<PromptTarget | null>(null);
   let currentSurfaceController = $state<ChatSurfaceController | null>(null);
   let sidebarError = $state<string | undefined>(undefined);
   let sidebarHidden = $state(false);
   let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
   let sidebarResizing = $state(false);
-  let draggingPaneId = $state<string | null>(null);
-  let activePaneResize = $state<ActivePaneResize | null>(null);
-  let activePaneDrag = $state<ActivePaneDrag | null>(null);
-  let paneDropPreview = $state<PaneDropPreview | null>(null);
-  let paneSpanDropPreview = $state<PaneSpanPlacement | null>(null);
   let mutatingSession = $state(false);
   let sendingPrompt = $state(false);
   let renameTarget = $state<WorkspaceSessionSummary | null>(null);
   let renameValue = $state("");
   let sidebarResizeHandle = $state<HTMLDivElement | null>(null);
-  let paneGridElement = $state<HTMLElement | null>(null);
   let artifactSyncSessionId: string | undefined = undefined;
   let artifactSyncMessageCount = 0;
   let copyTranscriptState = $state<{
-    paneId: string | null;
+    panelId: string | null;
     status: "idle" | "copying" | "copied" | "error";
   }>({
-    paneId: null,
+    panelId: null,
     status: "idle",
   });
   let showCommandInspector = $state(false);
@@ -266,7 +216,6 @@
   const currentSession = $derived(sessions.find((session) => session.id === activeSessionId) ?? null);
   const currentCommandRollups = $derived(getVisibleCommandRollups(currentSession));
   const currentSurface = $derived(focusedSurfaceTarget);
-  const paneSplitControls = $derived.by(() => getPaneGridSplitControls(paneLayout));
   const paneLocationsBySessionId = $derived(
     Object.fromEntries(
       sessions.map((session) => [
@@ -335,26 +284,6 @@
     if (!model) return "No agent";
     return `${model.provider}/${model.id} · ${thinking}`;
   }
-  function formatPaneDropActionLabel(zone: PanePlacementZone): string {
-    switch (zone) {
-      case "left":
-        return "Place left";
-      case "right":
-        return "Place right";
-      case "above":
-        return "Place above";
-      case "below":
-        return "Place below";
-      case "replace":
-      default:
-        return "Replace pane";
-    }
-  }
-  function formatPaneDragSourceLabel(paneId: string | null): string {
-    if (!paneId) return "Pane";
-    const pane = paneLayout.panes.find((candidate) => candidate.paneId === paneId);
-    return formatPaneSurfaceLabel(runtime.getPaneController(paneId), pane?.binding ?? null);
-  }
   function formatPaneLocationMetadata(
     binding?: WorkspacePaneSurfaceTarget | null,
   ): { label: string; value: string } {
@@ -406,8 +335,8 @@
   const promptBusy = $derived(isStreaming || sendingPrompt);
   const workspaceStatusText = $derived(composerErrorMessage ? "Attention" : promptBusy ? "Streaming" : "Ready");
   const workspaceStatusTone = $derived(composerErrorMessage ? "danger" : promptBusy ? "warning" : "neutral");
-  function getCopyTranscriptLabel(paneId: string): string {
-    if (copyTranscriptState.paneId !== paneId) {
+  function getCopyTranscriptLabel(panelId: string): string {
+    if (copyTranscriptState.panelId !== panelId) {
       return "Copy pane transcript";
     }
     switch (copyTranscriptState.status) {
@@ -484,7 +413,7 @@
   function scheduleCopyTranscriptReset() {
     clearCopyTranscriptResetTimer();
     copyTranscriptResetTimer = window.setTimeout(() => {
-      copyTranscriptState = { paneId: null, status: "idle" };
+      copyTranscriptState = { panelId: null, status: "idle" };
       copyTranscriptResetTimer = null;
     }, 2400);
   }
@@ -686,33 +615,34 @@
   }
 
   async function handlePaletteExecute(action: CommandAction, event: KeyboardEvent | MouseEvent) {
-    const paneId =
-      action.category === "pane"
-        ? focusedPaneId
-        : getCommandExecutionPaneId({
-            placement: getCommandPalettePlacement(event),
-            focusedPaneId,
-          });
+    const placement = getCommandPalettePlacement(event);
     window.setTimeout(
       () =>
-        void runPaletteMutation(() =>
-          executeCommandAction({
+        void runPaletteMutation(() => {
+          const panelId =
+            action.category === "pane"
+              ? (runtime.paneLayout.focusedPanelId ?? focusedPanelId)
+              : getCommandExecutionPaneId({
+                  placement,
+                  focusedPanelId: runtime.paneLayout.focusedPanelId ?? focusedPanelId,
+                });
+          return executeCommandAction({
             runtime,
             action,
-            paneId,
+            panelId,
             onOpenSettings: () => onOpenSettings?.(),
             onOpenWorkflowTaskAttempt: ({ workspaceSessionId, workflowTaskAttemptId }) =>
               handleInspectWorkflowTaskAttempt({ workflowTaskAttemptId }, workspaceSessionId),
-          }),
-        ),
+          });
+        }),
       0,
     );
   }
 
   async function handlePaletteFallbackPrompt(prompt: string, event: KeyboardEvent) {
-    const paneId = getCommandExecutionPaneId({
+    const panelId = getCommandExecutionPaneId({
       placement: getCommandPalettePlacement(event),
-      focusedPaneId,
+      focusedPanelId,
     });
     window.setTimeout(
       () =>
@@ -720,7 +650,7 @@
           await executePaletteFallbackPrompt({
             runtime,
             prompt,
-            paneId,
+            panelId,
             onCreatedTarget: async (target) => {
               await runtime.storage.promptHistory.append({
                 text: prompt.trim(),
@@ -737,12 +667,12 @@
   }
 
   async function handleCreateSession() {
-    await runSessionMutation(() => runtime.createSession({}, { kind: "new-pane", direction: "right" }));
+    await runSessionMutation(() => runtime.createSession({}, { kind: "new-panel", direction: "right" }));
   }
 
   async function handleCreateDumbSession() {
     await runSessionMutation(() =>
-      runtime.createSession({ mode: "dumb" }, { kind: "new-pane", direction: "right" }),
+      runtime.createSession({ mode: "dumb" }, { kind: "new-panel", direction: "right" }),
     );
   }
 
@@ -750,7 +680,7 @@
     if (currentSessionMode === mode) {
       return;
     }
-    await runSessionMutation(() => runtime.setSessionMode(focusedPaneId, mode));
+    await runSessionMutation(() => runtime.setSessionMode(focusedPanelId, mode));
   }
 
   async function handleOpenSession(sessionId: string) {
@@ -761,7 +691,7 @@
     ) {
       return;
     }
-    await runSessionMutation(() => runtime.openSession(sessionId, { kind: "focused-pane" }));
+    await runSessionMutation(() => runtime.openSession(sessionId, { kind: "new-panel", direction: "right" }));
   }
 
   function handleRenameSession(session: WorkspaceSessionSummary) {
@@ -790,7 +720,7 @@
   }
 
   async function handleForkSession(session: WorkspaceSessionSummary) {
-    await runSessionMutation(() => runtime.forkSession(session.id, undefined, { kind: "new-pane", direction: "right" }));
+    await runSessionMutation(() => runtime.forkSession(session.id, undefined, { kind: "new-panel", direction: "right" }));
   }
 
   async function handleResetSurfaceTarget() {
@@ -798,321 +728,19 @@
     if (!session) {
       return;
     }
-    await runSessionMutation(() => runtime.openSession(session.id, { kind: "focused-pane" }));
+    await runSessionMutation(() => runtime.openSession(session.id, { kind: "focused-panel" }));
   }
 
-  async function handleFocusPane(paneId: string) {
-    runtime.focusPane(paneId);
+  async function handleFocusPane(panelId: string) {
+    runtime.focusPane(panelId);
     syncRuntimeState();
     resubscribeSurfaceController();
     syncSurfaceState();
     await syncArtifactsFromRuntime(true);
   }
 
-  async function handleDuplicatePane(paneId: string) {
-    await runSessionMutation(async () => {
-      const nextPaneId = await runtime.splitPane(paneId, "right", { duplicateBinding: true });
-      if (nextPaneId) {
-        runtime.focusPane(nextPaneId);
-      }
-    });
-  }
-
-  async function handleClosePane(paneId: string) {
-    await runSessionMutation(() => runtime.closePane(paneId));
-  }
-
-  function handleResizeTrack(axis: "column" | "row", index: number, deltaPercent: number) {
-    runtime.resizePaneTrack(axis, index, deltaPercent);
-    syncRuntimeState();
-  }
-
-  function getPaneSplitControlTestId(control: PaneGridSplitControl): string {
-    if (control.axis === "column") {
-      if (control.placement === "edge-start") return "pane-edge-add-left";
-      if (control.placement === "edge-end") return "pane-edge-add-right";
-      return "pane-divider-add-vertical";
-    }
-    if (control.placement === "edge-start") return "pane-edge-add-top";
-    if (control.placement === "edge-end") return "pane-edge-add-bottom";
-    return "pane-divider-add-horizontal";
-  }
-
-  function getPaneSplitControlLabel(control: PaneGridSplitControl): string {
-    if (control.axis === "column") {
-      if (control.placement === "edge-start") return "Add pane at left edge";
-      if (control.placement === "edge-end") return "Add pane at right edge";
-      return "Add pane at vertical divider";
-    }
-    if (control.placement === "edge-start") return "Add pane at top edge";
-    if (control.placement === "edge-end") return "Add pane at bottom edge";
-    return "Add pane at horizontal divider";
-  }
-
-  function formatPaneSplitControlStyle(control: PaneGridSplitControl): string {
-    const crossSize = Math.max(0, control.endPercent - control.startPercent);
-    if (control.axis === "column") {
-      return `left: ${control.positionPercent}%; top: ${control.startPercent}%; bottom: auto; height: ${crossSize}%;`;
-    }
-    return `top: ${control.positionPercent}%; left: ${control.startPercent}%; right: auto; width: ${crossSize}%;`;
-  }
-
-  function getPaneSplitActionForControl(control: PaneGridSplitControl): PaneSplitAction | null {
-    const focusedPane = paneLayout.panes.find((pane) => pane.paneId === focusedPaneId);
-    const touchingPanes = paneLayout.panes.filter((pane) => {
-      if (control.axis === "column") {
-        return (
-          (pane.columnEnd === control.index || pane.columnStart === control.index) &&
-          pane.rowStart < control.rangeEnd &&
-          pane.rowEnd > control.rangeStart
-        );
-      }
-      return (
-        (pane.rowEnd === control.index || pane.rowStart === control.index) &&
-        pane.columnStart < control.rangeEnd &&
-        pane.columnEnd > control.rangeStart
-      );
-    });
-    const candidate =
-      (focusedPane && touchingPanes.find((pane) => pane.paneId === focusedPane.paneId)) ??
-      touchingPanes.find((pane) =>
-        control.axis === "column"
-          ? pane.columnEnd === control.index
-          : pane.rowEnd === control.index,
-      ) ??
-      touchingPanes[0] ??
-      null;
-    if (!candidate) {
-      return null;
-    }
-
-    if (control.axis === "column") {
-      return {
-        paneId: candidate.paneId,
-        direction: candidate.columnEnd === control.index ? "right" : "left",
-      };
-    }
-    return {
-      paneId: candidate.paneId,
-      direction: candidate.rowEnd === control.index ? "below" : "above",
-    };
-  }
-
-  async function handleSplitAtControl(control: PaneGridSplitControl) {
-    const action = getPaneSplitActionForControl(control);
-    if (!action) {
-      return;
-    }
-    await runSessionMutation(async () => {
-      const paneId = await runtime.splitPane(action.paneId, action.direction);
-      if (paneId) {
-        runtime.focusPane(paneId);
-      }
-    });
-  }
-
-  function startPaneDividerResize(
-    event: PointerEvent,
-    axis: PaneResizeAxis,
-    dividerIndex: number,
-  ) {
-    if (event.button !== 0) {
-      return;
-    }
-    const gridRect = paneGridElement?.getBoundingClientRect();
-    if (!gridRect) {
-      return;
-    }
-    const gridSizePx = axis === "column" ? gridRect.width : gridRect.height;
-    if (gridSizePx <= 0) {
-      return;
-    }
-
-    event.preventDefault();
-    activePaneResize = {
-      axis,
-      gridSizePx,
-      lastClientPosition: axis === "column" ? event.clientX : event.clientY,
-      pointerId: event.pointerId,
-      trackIndex: dividerIndex - 1,
-    };
-    window.addEventListener("pointermove", handlePaneDividerResizeMove);
-    window.addEventListener("pointerup", stopPaneDividerResize);
-    window.addEventListener("pointercancel", stopPaneDividerResize);
-  }
-
-  function handlePaneDividerResizeMove(event: PointerEvent) {
-    const resize = activePaneResize;
-    if (!resize || resize.pointerId !== event.pointerId) {
-      return;
-    }
-    event.preventDefault();
-    const nextPosition = resize.axis === "column" ? event.clientX : event.clientY;
-    const deltaPx = nextPosition - resize.lastClientPosition;
-    const deltaPercent = (deltaPx / resize.gridSizePx) * 100;
-    if (Math.abs(deltaPercent) < 0.05) {
-      return;
-    }
-
-    runtime.resizePaneTrack(resize.axis, resize.trackIndex, deltaPercent);
-    activePaneResize = {
-      ...resize,
-      lastClientPosition: nextPosition,
-    };
-    syncRuntimeState();
-  }
-
-  function stopPaneDividerResize(event?: PointerEvent) {
-    if (event && activePaneResize && activePaneResize.pointerId !== event.pointerId) {
-      return;
-    }
-    activePaneResize = null;
-    window.removeEventListener("pointermove", handlePaneDividerResizeMove);
-    window.removeEventListener("pointerup", stopPaneDividerResize);
-    window.removeEventListener("pointercancel", stopPaneDividerResize);
-  }
-
-  function handlePaneDividerKeydown(
-    event: KeyboardEvent,
-    axis: PaneResizeAxis,
-    dividerIndex: number,
-  ) {
-    const forwardKey = axis === "column" ? "ArrowRight" : "ArrowDown";
-    const backwardKey = axis === "column" ? "ArrowLeft" : "ArrowUp";
-    if (event.key !== forwardKey && event.key !== backwardKey) {
-      return;
-    }
-    event.preventDefault();
-    handleResizeTrack(axis, dividerIndex - 1, event.key === forwardKey ? 3 : -3);
-  }
-
-  function getPanePlacementZoneForPoint(paneElement: HTMLElement, clientX: number, clientY: number): PanePlacementZone {
-    const rect = paneElement.getBoundingClientRect();
-    const edgeThreshold = Math.min(96, Math.max(44, Math.min(rect.width, rect.height) * 0.28));
-    const distances = [
-      { zone: "left" as const, value: clientX - rect.left },
-			{ zone: "right" as const, value: rect.right - clientX },
-			{ zone: "above" as const, value: clientY - rect.top },
-			{ zone: "below" as const, value: rect.bottom - clientY },
-		].toSorted((left, right) => left.value - right.value);
-
-    return distances[0]?.value <= edgeThreshold ? distances[0].zone : "replace";
-  }
-
-  function clearPaneDragListeners() {
-    window.removeEventListener("pointermove", handlePaneDragPointerMove);
-    window.removeEventListener("pointerup", stopPaneDrag);
-    window.removeEventListener("pointercancel", stopPaneDrag);
-  }
-
-  function clearPaneDragState() {
-    activePaneDrag = null;
-    draggingPaneId = null;
-    paneDropPreview = null;
-    paneSpanDropPreview = null;
-  }
-
-  function startPaneDrag(event: PointerEvent, paneId: string) {
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    void handleFocusPane(paneId);
-    activePaneDrag = {
-      hasMoved: false,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      pointerId: event.pointerId,
-      sourcePaneId: paneId,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-    draggingPaneId = paneId;
-    paneDropPreview = null;
-    paneSpanDropPreview = null;
-    window.addEventListener("pointermove", handlePaneDragPointerMove);
-    window.addEventListener("pointerup", stopPaneDrag);
-    window.addEventListener("pointercancel", stopPaneDrag);
-  }
-
-  function handlePaneDragPointerMove(event: PointerEvent) {
-    const drag = activePaneDrag;
-    if (!drag || drag.pointerId !== event.pointerId) {
-      return;
-    }
-
-    event.preventDefault();
-    const distanceX = Math.abs(event.clientX - drag.startX);
-    const distanceY = Math.abs(event.clientY - drag.startY);
-    const hasMoved = drag.hasMoved || distanceX > 4 || distanceY > 4;
-    if (!hasMoved) {
-      return;
-    }
-    activePaneDrag = { ...drag, hasMoved, lastX: event.clientX, lastY: event.clientY };
-
-    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
-    const spanDropElement = targetElement?.closest("[data-pane-span-drop]") as HTMLElement | null;
-    const spanDropPlacement = spanDropElement?.dataset.paneSpanDrop;
-    if (
-      spanDropPlacement === "top" ||
-      spanDropPlacement === "bottom" ||
-      spanDropPlacement === "left" ||
-      spanDropPlacement === "right"
-    ) {
-      paneSpanDropPreview = spanDropPlacement;
-      paneDropPreview = null;
-      return;
-    }
-
-    const paneElement = targetElement?.closest("[data-pane-id]") as HTMLElement | null;
-    const targetPaneId = paneElement?.dataset.paneId;
-    paneSpanDropPreview = null;
-    if (!paneElement || !targetPaneId || targetPaneId === drag.sourcePaneId) {
-      paneDropPreview = null;
-      return;
-    }
-
-    paneDropPreview = {
-      targetPaneId,
-      zone: getPanePlacementZoneForPoint(paneElement, event.clientX, event.clientY),
-    };
-  }
-
-  function stopPaneDrag(event?: PointerEvent) {
-    const drag = activePaneDrag;
-    if (event && drag && drag.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const preview = paneDropPreview;
-    const spanPreview = paneSpanDropPreview;
-    if (drag?.hasMoved) {
-      if (spanPreview) {
-        runtime.movePaneToSpanningRow(drag.sourcePaneId, spanPreview);
-        syncRuntimeState();
-        resubscribeSurfaceController();
-        syncSurfaceState();
-      } else if (preview) {
-        runtime.placePane(drag.sourcePaneId, preview.targetPaneId, preview.zone);
-        syncRuntimeState();
-        resubscribeSurfaceController();
-        syncSurfaceState();
-      }
-    }
-
-    clearPaneDragState();
-    clearPaneDragListeners();
-  }
-
-  function cancelPaneDrag() {
-    clearPaneDragState();
-    clearPaneDragListeners();
-  }
-
-  function handleTranscriptScrollState(paneId: string, scroll: { transcriptAnchorId: string | null; offsetPx: number }) {
-    runtime.setPaneScroll(paneId, scroll);
+  function handleTranscriptScrollState(panelId: string, scroll: { transcriptAnchorId: string | null; offsetPx: number }) {
+    runtime.setPaneScroll(panelId, scroll);
   }
 
   async function handlePinSession(session: WorkspaceSessionSummary) {
@@ -1150,17 +778,17 @@
   }
 
   async function handleSend(input: string): Promise<boolean> {
-    return handleSendToPane(focusedPaneId, input);
+    return handleSendToPane(focusedPanelId, input);
   }
 
-  async function handleSendToPane(paneId: string, input: string): Promise<boolean> {
-    const surface = runtime.getPaneController(paneId);
+  async function handleSendToPane(panelId: string, input: string): Promise<boolean> {
+    const surface = runtime.getPaneController(panelId);
     if (!input.trim() || !surface || surface.agent.state.isStreaming || sendingPrompt) return false;
 
     sendingPrompt = true;
     try {
-      if (paneId !== focusedPaneId) {
-        await runtime.focusPane(paneId);
+      if (panelId !== focusedPanelId) {
+        await runtime.focusPane(panelId);
         syncRuntimeState();
         resubscribeSurfaceController();
         syncSurfaceState();
@@ -1195,10 +823,10 @@
     }
   }
 
-  async function handleCopyPaneTranscript(paneId: string) {
+  async function handleCopyPaneTranscript(panelId: string) {
     if (copyTranscriptState.status === "copying") return;
 
-    const paneController = runtime.getPaneController(paneId);
+    const paneController = runtime.getPaneController(panelId);
     const agent = paneController?.agent;
     const activeModel = agent?.state.model;
     if (!paneController || !agent || !activeModel) {
@@ -1229,15 +857,15 @@
       streamMessage: agent.state.streamMessage?.role === "assistant" ? agent.state.streamMessage : null,
     });
 
-    copyTranscriptState = { paneId, status: "copying" };
+    copyTranscriptState = { panelId, status: "copying" };
 
     try {
       await copyTextToClipboard(exportText);
-      copyTranscriptState = { paneId, status: "copied" };
+      copyTranscriptState = { panelId, status: "copied" };
       scheduleCopyTranscriptReset();
     } catch (error) {
       console.error("Failed to copy transcript:", error);
-      copyTranscriptState = { paneId, status: "error" };
+      copyTranscriptState = { panelId, status: "error" };
       scheduleCopyTranscriptReset();
     }
   }
@@ -1258,7 +886,7 @@
     threadInspectorLoading = false;
     threadInspectorThreadId = null;
     threadInspectorSessionId = null;
-    runtime.setPaneInspectorSelection(focusedPaneId, null);
+    runtime.setPaneInspectorSelection(focusedPanelId, null);
   }
 
   function closeWorkflowTaskAttemptInspector() {
@@ -1568,7 +1196,7 @@
         surface: "workflow-inspector",
         workflowRunId,
       },
-      { kind: "split", paneId: focusedPaneId, direction: "right" },
+      { kind: "split", panelId: focusedPanelId, direction: "right" },
     );
   }
 
@@ -1579,7 +1207,7 @@
         workspaceSessionId: sessionId,
         surface: "saved-workflow-library",
       },
-      { kind: "split", paneId: focusedPaneId, direction: "right" },
+      { kind: "split", panelId: focusedPanelId, direction: "right" },
     );
   }
 
@@ -1702,7 +1330,7 @@
     });
     showArtifactsPanel = true;
     if (options.persistSelection ?? true) {
-      runtime.setPaneInspectorSelection(focusedPaneId, { kind: "artifact", artifactId });
+      runtime.setPaneInspectorSelection(focusedPanelId, { kind: "artifact", artifactId });
     }
   }
 
@@ -1771,7 +1399,7 @@
             surfacePiSessionId: thread.surfacePiSessionId,
             threadId: thread.threadId,
           },
-          { kind: "new-pane", direction: "right" },
+          { kind: "new-panel", direction: "right" },
         ),
       );
     }, 0);
@@ -1794,7 +1422,7 @@
     };
 
     await runSessionMutation(async () => {
-      await runtime.openSurface(target, focusedPaneId);
+      await runtime.openSurface(target, focusedPanelId);
       await runtime.sendPromptToTarget(target, prompt);
     });
   }
@@ -1862,7 +1490,7 @@
       return;
     }
 
-    runtime.setPaneInspectorSelection(focusedPaneId, { kind: "thread", threadId: thread.threadId });
+    runtime.setPaneInspectorSelection(focusedPanelId, { kind: "thread", threadId: thread.threadId });
     showThreadInspector = true;
     threadInspector = null;
     threadInspectorError = undefined;
@@ -2065,7 +1693,7 @@
       }
       restoredInspectorKey = key;
       if (projectCiStatus?.latestRun?.ciRunId !== selection.ciRunId) {
-        runtime.setPaneInspectorSelection(focusedPaneId, null);
+        runtime.setPaneInspectorSelection(focusedPanelId, null);
       }
       return;
     }
@@ -2082,7 +1710,7 @@
 
     if (selection.kind === "artifact") {
       void openStructuredArtifact(selection.artifactId, sessionId, { persistSelection: false }).catch(() => {
-        runtime.setPaneInspectorSelection(focusedPaneId, null);
+        runtime.setPaneInspectorSelection(focusedPanelId, null);
       });
     }
   });
@@ -2165,11 +1793,11 @@
     sessions = [...runtime.sessions];
     sessionNavigation = runtime.sessionNavigation;
     paneLayout = runtime.paneLayout;
-    focusedPaneId = paneLayout.focusedPaneId;
-    currentPane = runtime.getPane(focusedPaneId) ?? null;
+    focusedPanelId = paneLayout.focusedPanelId;
+    currentPane = runtime.getPane(focusedPanelId) ?? null;
     focusedSurfaceTarget = currentPane?.target ?? null;
     activeSessionId = currentPane?.target?.workspaceSessionId;
-    currentSurfaceController = runtime.getPaneController(focusedPaneId);
+    currentSurfaceController = runtime.getPaneController(focusedPanelId);
   }
 
   function resubscribeSurfaceController() {
@@ -2201,12 +1829,6 @@
       windowWidth = window.innerWidth;
     };
     const handleWindowKeydown = (event: KeyboardEvent) => {
-      if (activePaneDrag && event.key === "Escape") {
-        event.preventDefault();
-        cancelPaneDrag();
-        return;
-      }
-
       if (isCommandPaletteShortcut(event)) {
         event.preventDefault();
         openPalette("actions");
@@ -2279,8 +1901,6 @@
       unsubscribeSurfaceController?.();
       nextController.dispose();
       setSidebarResizing(false);
-      stopPaneDividerResize();
-      stopPaneDrag();
       clearCopyTranscriptResetTimer();
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("keydown", handleWindowKeydown);
@@ -2389,7 +2009,7 @@
           <button
             class="workspace-main-title-button"
             type="button"
-            aria-label="Open command palette"
+            aria-label="Search workspace from focused session title"
             title="Command Palette (Cmd+Shift+P)"
             onclick={() => openPalette("actions")}
           >
@@ -2464,493 +2084,14 @@
           {/if}
         </div>
       </header>
-
-      <section
-        bind:this={paneGridElement}
-        class={`pane-grid ${draggingPaneId ? "dragging-pane" : ""} ${activePaneResize ? "resizing-pane" : ""}`.trim()}
-        data-testid="pane-grid"
-        style={`grid-template-columns: ${paneLayout.columns.map((column) => `${column.percent}fr`).join(" ")}; grid-template-rows: ${paneLayout.rows.map((row) => `${row.percent}fr`).join(" ")}; --pane-drag-x: ${activePaneDrag?.lastX ?? 0}px; --pane-drag-y: ${activePaneDrag?.lastY ?? 0}px;`}
-      >
-        <button
-          class={`pane-span-drop-zone top ${paneSpanDropPreview === "top" ? "active" : ""}`.trim()}
-          type="button"
-          data-testid="pane-span-drop-top"
-          data-pane-span-drop="top"
-          aria-label="Move dragged pane to full-width top row"
-          title="Move pane to top"
-        ></button>
-        <button
-          class={`pane-span-drop-zone right ${paneSpanDropPreview === "right" ? "active" : ""}`.trim()}
-          type="button"
-          data-testid="pane-span-drop-right"
-          data-pane-span-drop="right"
-          aria-label="Move dragged pane to full-height right column"
-          title="Move pane to right"
-        ></button>
-        <button
-          class={`pane-span-drop-zone bottom ${paneSpanDropPreview === "bottom" ? "active" : ""}`.trim()}
-          type="button"
-          data-testid="pane-span-drop-bottom"
-          data-pane-span-drop="bottom"
-          aria-label="Move dragged pane to full-width bottom row"
-          title="Move pane to bottom"
-        ></button>
-        <button
-          class={`pane-span-drop-zone left ${paneSpanDropPreview === "left" ? "active" : ""}`.trim()}
-          type="button"
-          data-testid="pane-span-drop-left"
-          data-pane-span-drop="left"
-          aria-label="Move dragged pane to full-height left column"
-          title="Move pane to left"
-        ></button>
-        {#each paneLayout.panes as pane (pane.paneId)}
-          {@const paneController = runtime.getPaneController(pane.paneId)}
-          {@const paneContextBudget = getPaneContextBudget(paneController)}
-          {@const paneLocationMetadata = formatPaneLocationMetadata(pane.binding)}
-          <article
-            class={`workspace-pane ${pane.paneId === focusedPaneId ? "focused" : ""} ${draggingPaneId === pane.paneId ? "dragging-source" : ""} ${paneDropPreview?.targetPaneId === pane.paneId ? `drop-preview drop-${paneDropPreview.zone}` : ""}`.trim()}
-            data-testid="workspace-pane"
-            data-pane-id={pane.paneId}
-            aria-current={pane.paneId === focusedPaneId ? "true" : "false"}
-            style={`grid-column: ${pane.columnStart + 1} / ${pane.columnEnd + 1}; grid-row: ${pane.rowStart + 1} / ${pane.rowEnd + 1};`}
-          >
-            {#if activePaneDrag?.hasMoved && paneDropPreview?.targetPaneId === pane.paneId}
-              <div class={`pane-drop-callout ${paneDropPreview.zone}`.trim()}>
-                <span>{formatPaneDropActionLabel(paneDropPreview.zone)}</span>
-              </div>
-            {/if}
-            <header class="pane-chrome">
-              <button
-                class="pane-drag-handle"
-                type="button"
-                aria-label={`Move pane ${pane.paneId}`}
-                title="Drag to move pane"
-                onpointerdown={(event) => startPaneDrag(event, pane.paneId)}
-              >
-                <GripVerticalIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-              </button>
-              <button
-                class="pane-focus-button"
-                type="button"
-                aria-label={`Focus pane ${pane.paneId}`}
-                title="Focus pane"
-                onclick={() => void handleFocusPane(pane.paneId)}
-              >
-                <span class="pane-title-line">
-                  <span
-                    class="status-dot"
-                    class:pulse-dot={getPaneSurfaceStatus(paneController, pane.binding) === "running"}
-                    data-status={getPaneSurfaceStatus(paneController, pane.binding)}
-                    aria-hidden="true"
-                  ></span>
-                  <strong>{formatPaneSurfaceLabel(paneController, pane.binding)}</strong>
-                </span>
-                <span>{formatPaneAgentSummary(paneController, pane.binding)}</span>
-              </button>
-              <div class="pane-chrome-meta" aria-label="Pane metadata">
-                <MetadataChip label="target" value={pane.binding?.surface ?? "empty"} />
-                <MetadataChip label={paneLocationMetadata.label} value={paneLocationMetadata.value} tone="info" />
-                {#if paneContextBudget}
-                  <MetadataChip label="context" value={paneContextBudget.label} tone={paneContextBudget.tone === "red" ? "danger" : paneContextBudget.tone === "orange" ? "warning" : "neutral"} />
-                {/if}
-              </div>
-              <div class="pane-chrome-actions" role="toolbar" aria-label={`Pane ${pane.paneId} actions`}>
-                {#if paneController}
-                  <button
-                    type="button"
-                    data-testid="pane-copy-transcript-button"
-                    aria-label={`Copy transcript for pane ${pane.paneId}`}
-                    title={getCopyTranscriptLabel(pane.paneId)}
-                    disabled={copyTranscriptState.status === "copying"}
-                    onclick={(event) => {
-                      event.stopPropagation();
-                      void handleCopyPaneTranscript(pane.paneId);
-                    }}
-                  >
-                    <CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-                  </button>
-                {/if}
-                <button
-                  type="button"
-                  data-testid="pane-duplicate-button"
-                  aria-label={`Duplicate pane ${pane.paneId}`}
-                  title="Duplicate pane"
-                  disabled={mutatingSession || !pane.binding}
-                  onclick={(event) => {
-                    event.stopPropagation();
-                    window.setTimeout(() => void handleDuplicatePane(pane.paneId), 0);
-                  }}
-                >
-                  <CopyPlusIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-                </button>
-                <button
-                  type="button"
-                  data-testid="pane-close-button"
-                  aria-label={`Close pane ${pane.paneId}`}
-                  title="Close pane"
-                  onclick={(event) => {
-                    event.stopPropagation();
-                    window.setTimeout(() => void handleClosePane(pane.paneId), 0);
-                  }}
-                >
-                  <XIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-                </button>
-              </div>
-            </header>
-            {#if pane.paneId !== focusedPaneId && paneContextBudget}
-              <ContextBudgetBar budget={paneContextBudget} variant="compact" label="Context" />
-            {/if}
-            {#if pane.binding?.surface === "workflow-inspector"}
-              <WorkflowInspectorPane
-                {runtime}
-                sessionId={pane.binding.workspaceSessionId}
-                workflowRunId={pane.binding.workflowRunId}
-                paneId={pane.paneId}
-              />
-            {:else if pane.binding?.surface === "saved-workflow-library"}
-              <SavedWorkflowLibraryPane {runtime} />
-            {:else if pane.binding?.surface === "command" || pane.binding?.surface === "workflow-task-attempt" || pane.binding?.surface === "artifact" || pane.binding?.surface === "project-ci-check"}
-              <RelatedInspectorPane {runtime} target={pane.binding} />
-            {:else if pane.paneId === focusedPaneId}
-              <section class="chat-pane" id="conversation">
-                <div class="chat-pane-shell">
-          {#if showDetailedProjectCiPanel}
-            <section class="project-ci-panel" aria-label="Project CI">
-              <header class="project-ci-header">
-                <div>
-                  <p class="project-ci-eyebrow">Project CI</p>
-                  <h3>
-                  {#if projectCiStatus}
-                    {getProjectCiStatusLabel(projectCiStatus.status)}
-                  {:else}
-                    Unavailable
-                  {/if}
-                  </h3>
-                </div>
-                {#if projectCiStatus}
-                  <Badge tone={getProjectCiStatusTone(projectCiStatus.status)}>
-                    {getProjectCiStatusLabel(projectCiStatus.status)}
-                  </Badge>
-                {/if}
-              </header>
-
-              {#if projectCiError}
-                <p class="project-ci-empty error">{projectCiError}</p>
-              {:else if projectCiStatus}
-                <div class="project-ci-body">
-                  <p class="project-ci-summary">{projectCiStatus.summary}</p>
-
-                  {#if projectCiStatus.checks.length > 0}
-                    <VerificationCard result={getProjectCiVerification(projectCiStatus)} onreportopen={handleInspectLatestProjectCiRun} />
-                  {/if}
-
-                  {#if projectCiStatus.status === "not-configured"}
-                    <p class="project-ci-muted">Ask svvy to configure Project CI.</p>
-                  {/if}
-
-                  {#if projectCiStatus.entries.length > 0}
-                    <div class="project-ci-entries" aria-label="Configured Project CI entries">
-                      {#each projectCiStatus.entries as entry (entry.workflowId)}
-                        <div class="project-ci-entry">
-                          <strong>{entry.workflowId}</strong>
-                          <span>{entry.entryPath}</span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  {#if projectCiStatus.status === "configured"}
-                    <p class="project-ci-muted">No Project CI runs yet.</p>
-                  {/if}
-
-                  {#if projectCiStatus.activeWorkflowRun}
-                    <div class="project-ci-run-card">
-                      <div class="project-ci-run-card-top">
-                        <div>
-                          <strong>{projectCiStatus.activeWorkflowRun.workflowId}</strong>
-                          <span>
-                            {projectCiStatus.activeWorkflowRun.status === "waiting"
-                              ? "Workflow Blocked"
-                              : "Workflow Running"}
-                          </span>
-                        </div>
-                        <span>{formatTimestamp(projectCiStatus.activeWorkflowRun.updatedAt)}</span>
-                      </div>
-                      <p>{projectCiStatus.activeWorkflowRun.summary}</p>
-                      {#if projectCiStatus.activeWorkflowRun.entryPath}
-                        <code>{projectCiStatus.activeWorkflowRun.entryPath}</code>
-                      {/if}
-                    </div>
-                  {/if}
-
-                  {#if projectCiStatus.latestRun}
-                    <div class="project-ci-run-card">
-                      <div class="project-ci-run-card-top">
-                        <div>
-                          <strong>{projectCiStatus.latestRun.workflowId}</strong>
-                          <span>{projectCiStatus.latestRun.threadTitle}</span>
-                        </div>
-                        <span>{formatTimestamp(projectCiStatus.latestRun.updatedAt)}</span>
-                      </div>
-                      <p>{projectCiStatus.latestRun.summary}</p>
-                      <code>{projectCiStatus.latestRun.entryPath}</code>
-                    </div>
-                  {/if}
-
-                  {#if projectCiStatus.checks.length > 0}
-                    <div class="project-ci-check-list" aria-label="Project CI check results">
-                      {#each projectCiStatus.checks as check (check.checkResultId)}
-                        <article class="project-ci-check">
-                          <div class="project-ci-check-top">
-                            <div class="project-ci-check-copy">
-                              <strong>{check.label}</strong>
-                              <span>{check.kind} · {check.status}</span>
-                            </div>
-                            <Badge tone={getProjectCiStatusTone(check.status)}>
-                              {check.status}
-                            </Badge>
-                          </div>
-                          <p>{check.summary}</p>
-                          <div class="project-ci-check-meta">
-                            <span>{check.required ? "required" : "optional"}</span>
-                            {#if formatProjectCiCommand(check.command)}
-                              <code>{formatProjectCiCommand(check.command)}</code>
-                            {/if}
-                            {#if formatProjectCiExitCode(check.exitCode)}
-                              <span>{formatProjectCiExitCode(check.exitCode)}</span>
-                            {/if}
-                          </div>
-                          {#if check.artifacts.length > 0}
-                            <div class="command-inspector-artifact-list compact">
-                              {#each check.artifacts as artifact (artifact.artifactId)}
-                                <div class="command-inspector-artifact">
-                                  <div class="command-inspector-artifact-copy">
-                                    <strong>{artifact.name}</strong>
-                                    <span>{artifact.kind}</span>
-                                    {#if artifact.producerLabel}
-                                      <span>{artifact.producerLabel}</span>
-                                    {/if}
-                                    {#if artifact.missingFile}
-                                      <span class="artifact-missing">Missing file</span>
-                                    {/if}
-                                  </div>
-                                  {#if canOpenArtifactLink(artifact)}
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onclick={() => void handleOpenStructuredArtifact(artifact)}
-                                    >
-                                      Open
-                                    </Button>
-                                  {/if}
-                                </div>
-                              {/each}
-                            </div>
-                          {/if}
-                        </article>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-            </section>
-          {/if}
-
-          {#if showNewSessionEmptyState}
-            <section class="new-session-empty" aria-label="Start a session">
-              <div class="new-session-intro">
-                <p class="new-session-watermark">svvy</p>
-                <div class="new-session-heading">
-                  <h2>Start with the composer</h2>
-                  <p>Describe the repo work, attach file context, then send.</p>
-                </div>
-              </div>
-
-              <div class="new-session-controls">
-                <div class="new-session-mode-toggle" role="group" aria-label="Session type">
-                  <span>Mode</span>
-                  <div class="new-session-mode-buttons">
-                    <button
-                      type="button"
-                      class:active={currentSessionMode === "orchestrator"}
-                      aria-pressed={currentSessionMode === "orchestrator"}
-                      disabled={mutatingSession}
-                      onclick={() => void handleSelectCurrentSessionMode("orchestrator")}
-                    >
-                      Orchestrator
-                    </button>
-                    <button
-                      type="button"
-                      class:active={currentSessionMode === "dumb"}
-                      aria-pressed={currentSessionMode === "dumb"}
-                      disabled={mutatingSession}
-                      onclick={() => void handleSelectCurrentSessionMode("dumb")}
-                    >
-                      Dumb
-                    </button>
-                  </div>
-                </div>
-                <p class="new-session-mode-note">
-                  {currentSessionMode === "dumb"
-                    ? "Direct answers in this pane."
-                    : "Plans work, delegates handlers, and verifies outcomes."}
-                </p>
-              </div>
-
-              {#if recentSessionSuggestions.length > 0}
-                <div class="new-session-recent" aria-label="Recent sessions">
-                  <p>Recent</p>
-                  {#each recentSessionSuggestions as session (session.id)}
-                    <button type="button" onclick={() => void handleOpenSession(session.id)}>
-                      <span class="status-dot" data-status={session.status} aria-hidden="true"></span>
-                      <span>{session.title}</span>
-                      <small>{formatTimestamp(session.updatedAt)}</small>
-                    </button>
-                  {/each}
-                </div>
-              {/if}
-            </section>
-          {:else}
-            <ChatTranscript
-              {conversation}
-              sessionId={currentSurfaceController?.agent.sessionId ?? "no-surface"}
-              systemPrompt={currentSurfaceController?.resolvedSystemPrompt ?? ""}
-              streamMessage={streamMessage ?? undefined}
-              {pendingToolCalls}
-              {isStreaming}
-              {workspaceMentionPaths}
-              semanticBlocks={transcriptSemanticBlocks}
-              onOpenArtifact={handleOpenArtifact}
-              onOpenWorkspacePath={(path) => void handleOpenWorkspacePath(path)}
-              onInspectCommand={(commandId) => void handleInspectCommand(commandId)}
-              onOpenHandlerThread={(id) => {
-                const thread = handlerThreads.find((t) => t.threadId === id);
-                if (thread) void handleOpenHandlerThread(thread);
-              }}
-              onInspectWorkflowTaskAttempt={(id) => {
-                void handleInspectWorkflowTaskAttempt({ workflowTaskAttemptId: id }, activeSessionId);
-              }}
-              onInspectWorkflow={(id) => openWorkflowInspector(id, activeSessionId)}
-              onReplyToWait={(block, text) => void handleReplyToWait(block, text)}
-              onRetryFailure={(block) => void handleRetryFailure(block)}
-              onScrollStateChange={(scroll) => handleTranscriptScrollState(pane.paneId, scroll)}
-            />
-          {/if}
-          <ChatComposer
-            currentModel={currentModel}
-            thinkingLevel={currentThinkingLevel}
-            isStreaming={promptBusy}
-            errorMessage={composerErrorMessage}
-            {promptHistory}
-            usageText={usageText || undefined}
-            {contextBudget}
-            sessionName={currentSession?.title ?? "New Session"}
-            targetLabel={currentSurfaceLabel}
-            worktreeLabel={currentWorktreeSummary}
-            onAbort={() => void currentSurfaceController?.abort()}
-            onOpenModelPicker={() => void openModelSelector()}
-            onSend={handleSend}
-            onThinkingChange={(level) => {
-              currentThinkingLevel = level;
-              currentSurfaceController?.agent.setThinkingLevel(level);
-            }}
-            listWorkspacePaths={() => runtime.listWorkspacePaths()}
-            pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
-          />
-                </div>
-              </section>
-            {:else if paneController}
-              <section class="chat-pane" aria-label="Pane transcript preview">
-                <div class="chat-pane-shell">
-                  <ChatTranscript
-                    conversation={projectConversation(paneController.agent.state.messages)}
-                    sessionId={paneController.agent.sessionId ?? pane.binding?.surfacePiSessionId ?? "no-surface"}
-                    systemPrompt={paneController.resolvedSystemPrompt}
-                    streamMessage={paneController.agent.state.streamMessage?.role === "assistant" ? paneController.agent.state.streamMessage : undefined}
-                    pendingToolCalls={new Set(paneController.agent.state.pendingToolCalls)}
-                    isStreaming={paneController.agent.state.isStreaming || paneController.promptStatus === "streaming"}
-                    {workspaceMentionPaths}
-                    onOpenArtifact={handleOpenArtifact}
-                    onOpenWorkspacePath={(path) => void handleOpenWorkspacePath(path)}
-                    onScrollStateChange={(scroll) => handleTranscriptScrollState(pane.paneId, scroll)}
-                  />
-                  <ChatComposer
-                    currentModel={paneController.agent.state.model}
-                    thinkingLevel={paneController.agent.state.thinkingLevel}
-                    isStreaming={paneController.agent.state.isStreaming || paneController.promptStatus === "streaming"}
-                    errorMessage={paneController.agent.state.error}
-                    {promptHistory}
-                    usageText={formatUsage(projectConversation(paneController.agent.state.messages).usage) || undefined}
-                    contextBudget={paneContextBudget}
-                    sessionName={formatPaneSurfaceLabel(paneController, pane.binding)}
-                    targetLabel={formatPaneSurfaceLabel(paneController, pane.binding)}
-                    worktreeLabel={paneLocationMetadata.value}
-                    onAbort={() => void paneController.abort()}
-                    onOpenModelPicker={() => {
-                      void handleFocusPane(pane.paneId).then(() => openModelSelector());
-                    }}
-                    onSend={(input) => handleSendToPane(pane.paneId, input)}
-                    onThinkingChange={(level) => {
-                      paneController.agent.setThinkingLevel(level);
-                    }}
-                    listWorkspacePaths={() => runtime.listWorkspacePaths()}
-                    pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
-                  />
-                </div>
-              </section>
-            {:else}
-              <div class="pane-placeholder">
-                <p>{pane.binding ? "Surface unavailable" : "Empty pane"}</p>
-                {#if pane.binding}
-                  <span>{pane.binding.surfacePiSessionId}</span>
-                {/if}
-              </div>
-            {/if}
-          </article>
-        {/each}
-        {#if activePaneDrag?.hasMoved}
-          <div class="pane-drag-ghost" aria-hidden="true">
-            <span>Move</span>
-            <strong>{formatPaneDragSourceLabel(draggingPaneId)}</strong>
-          </div>
-        {/if}
-        {#each paneSplitControls as control (`${control.axis}-${control.index}-${control.placement}-${control.rangeStart}-${control.rangeEnd}`)}
-          <div
-            class={`pane-divider-shell ${control.axis === "column" ? "vertical" : "horizontal"} ${control.placement} ${control.placement === "divider" && activePaneResize?.axis === control.axis && activePaneResize?.trackIndex === control.index - 1 ? "active" : ""}`.trim()}
-            style={formatPaneSplitControlStyle(control)}
-          >
-            {#if control.placement === "divider"}
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-              <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-              <div
-                class="pane-divider-line"
-                data-testid={control.axis === "column" ? "pane-divider-vertical" : "pane-divider-horizontal"}
-                role="separator"
-                aria-orientation={control.axis === "column" ? "vertical" : "horizontal"}
-                aria-label={control.axis === "column" ? "Resize panes horizontally" : "Resize panes vertically"}
-                tabindex="0"
-                title="Drag to resize panes"
-                onpointerdown={(event) => startPaneDividerResize(event, control.axis, control.index)}
-                onkeydown={(event) => handlePaneDividerKeydown(event, control.axis, control.index)}
-              ></div>
-            {/if}
-            <button
-              class="pane-divider-split"
-              type="button"
-              data-testid={getPaneSplitControlTestId(control)}
-              aria-label={getPaneSplitControlLabel(control)}
-              title="Add pane here"
-              onpointerdown={(event) => event.stopPropagation()}
-              onclick={(event) => {
-                event.stopPropagation();
-                void handleSplitAtControl(control);
-              }}
-            >
-              <PlusIcon aria-hidden="true" size={13} strokeWidth={2.1} />
-            </button>
-          </div>
-        {/each}
-      </section>
+      <DockviewWorkspace
+        {runtime}
+        panels={paneLayout.panels}
+        dockviewLayout={paneLayout.dockview}
+        focusedPanelId={focusedPanelId}
+        onFocusPanel={(panelId) => void handleFocusPane(panelId)}
+        onPersistDockview={(dockview, panelId) => runtime.setDockviewLayout(dockview, panelId)}
+      />
     </section>
 
     {#if controller && hasArtifacts}
@@ -3926,582 +3067,6 @@
     padding: 0;
     background: var(--ui-bg);
   }
-
-  .pane-grid {
-    position: relative;
-    display: grid;
-    min-height: 0;
-    gap: 0.25rem;
-    overflow: hidden;
-    padding: 0.5rem;
-    --pane-drop-preview-color: color-mix(in oklab, var(--ui-accent) 58%, transparent);
-  }
-
-  .pane-grid.resizing-pane {
-    user-select: none;
-  }
-
-  .pane-span-drop-zone {
-    position: absolute;
-    z-index: 8;
-    border: 0;
-    background: color-mix(in oklab, var(--ui-accent) 16%, transparent);
-    opacity: 0;
-    pointer-events: none;
-    transition:
-      opacity 140ms cubic-bezier(0.19, 1, 0.22, 1),
-      background-color 140ms cubic-bezier(0.19, 1, 0.22, 1);
-  }
-
-  .pane-span-drop-zone.top,
-  .pane-span-drop-zone.bottom {
-    left: 0.8rem;
-    right: 0.8rem;
-    height: 1.45rem;
-  }
-
-  .pane-span-drop-zone.left,
-  .pane-span-drop-zone.right {
-    top: 0.8rem;
-    bottom: 0.8rem;
-    width: 1.45rem;
-  }
-
-  .pane-span-drop-zone.top {
-    top: 0.55rem;
-  }
-
-  .pane-span-drop-zone.right {
-    right: 0.55rem;
-  }
-
-  .pane-span-drop-zone.bottom {
-    bottom: 0.55rem;
-  }
-
-  .pane-span-drop-zone.left {
-    left: 0.55rem;
-  }
-
-  .pane-grid.dragging-pane .pane-span-drop-zone,
-  .pane-grid.dragging-pane .pane-span-drop-zone:focus-visible,
-  .pane-grid.dragging-pane .pane-span-drop-zone:hover,
-  .pane-grid.dragging-pane .pane-span-drop-zone.active {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .pane-grid.dragging-pane .pane-span-drop-zone:hover,
-  .pane-grid.dragging-pane .pane-span-drop-zone:focus-visible,
-  .pane-grid.dragging-pane .pane-span-drop-zone.active {
-    background: color-mix(in oklab, var(--ui-accent) 34%, transparent);
-  }
-
-  .workspace-pane {
-    position: relative;
-    container-type: inline-size;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-md);
-    background: var(--ui-bg);
-    animation: pane-enter 180ms cubic-bezier(0.22, 1, 0.36, 1);
-    transition:
-      border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
-      box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 150ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .workspace-pane.dragging-source {
-    opacity: 0.58;
-    transform: scale(0.992);
-  }
-
-  .pane-grid.dragging-pane .workspace-pane:not(.dragging-source):not(.drop-preview) {
-    opacity: 0.72;
-  }
-
-  .pane-grid.dragging-pane .workspace-pane {
-    user-select: none;
-  }
-
-  .workspace-pane.drop-preview {
-    border-color: color-mix(in oklab, var(--ui-accent) 58%, var(--ui-border-strong));
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-accent) 32%, transparent);
-    opacity: 1;
-  }
-
-  .workspace-pane.drop-preview::after {
-    position: absolute;
-    z-index: 6;
-    border: 2px solid var(--pane-drop-preview-color);
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-accent) 13%, transparent);
-    content: "";
-    pointer-events: none;
-    transition:
-      opacity 120ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .workspace-pane.drop-replace::after {
-    inset: 2.7rem 0.7rem 0.7rem;
-  }
-
-  .workspace-pane.drop-left::after {
-    inset: 2.7rem 50% 0.7rem 0.7rem;
-  }
-
-  .workspace-pane.drop-right::after {
-    inset: 2.7rem 0.7rem 0.7rem 50%;
-  }
-
-  .workspace-pane.drop-above::after {
-    inset: 2.7rem 0.7rem 50% 0.7rem;
-  }
-
-  .workspace-pane.drop-below::after {
-    inset: 50% 0.7rem 0.7rem;
-  }
-
-  .pane-drag-ghost {
-    position: fixed;
-    z-index: 60;
-    top: var(--pane-drag-y);
-    left: var(--pane-drag-x);
-    display: grid;
-    gap: 0.08rem;
-    min-width: 9rem;
-    max-width: 14rem;
-    padding: 0.45rem 0.58rem;
-    border: 1px solid color-mix(in oklab, var(--ui-accent) 46%, var(--ui-shell-edge));
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-shell) 91%, var(--ui-accent));
-    box-shadow: 0 0.72rem 1.8rem color-mix(in oklab, var(--ui-bg) 72%, transparent);
-    color: var(--ui-text-primary);
-    pointer-events: none;
-    transform: translate(0.7rem, 0.7rem);
-  }
-
-  .pane-drag-ghost span {
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.54rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .pane-drag-ghost strong {
-    overflow: hidden;
-    color: var(--ui-text-primary);
-    font-size: 0.72rem;
-    font-weight: 650;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .pane-drop-callout {
-    position: absolute;
-    z-index: 8;
-    display: grid;
-    place-items: center;
-    border-radius: var(--ui-radius-sm);
-    pointer-events: none;
-  }
-
-  .pane-drop-callout.replace {
-    inset: 2.7rem 0.7rem 0.7rem;
-  }
-
-  .pane-drop-callout.left {
-    inset: 2.7rem 50% 0.7rem 0.7rem;
-  }
-
-  .pane-drop-callout.right {
-    inset: 2.7rem 0.7rem 0.7rem 50%;
-  }
-
-  .pane-drop-callout.above {
-    inset: 2.7rem 0.7rem 50% 0.7rem;
-  }
-
-  .pane-drop-callout.below {
-    inset: 50% 0.7rem 0.7rem;
-  }
-
-  .pane-drop-callout span {
-    padding: 0.24rem 0.42rem;
-    border: 1px solid color-mix(in oklab, var(--ui-accent) 58%, var(--ui-shell-edge));
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-shell) 86%, var(--ui-accent));
-    box-shadow: 0 0.5rem 1.4rem color-mix(in oklab, var(--ui-bg) 62%, transparent);
-    color: var(--ui-text-primary);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    font-weight: 700;
-    text-transform: uppercase;
-  }
-
-  .workspace-pane.focused {
-    border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-strong));
-    box-shadow: inset 2px 0 0 var(--ui-accent);
-  }
-
-  .workspace-pane.focused .pane-chrome {
-    border-bottom-color: var(--ui-border-soft);
-    background: color-mix(in oklab, var(--ui-surface-muted) 34%, transparent);
-  }
-
-  .workspace-pane.focused .pane-focus-button strong {
-    color: var(--ui-text-primary);
-  }
-
-  .pane-chrome {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.38rem;
-    min-height: 1.78rem;
-    padding: 0.2rem 0.48rem;
-    border-bottom: 1px solid var(--ui-border-soft);
-    background: color-mix(in oklab, var(--ui-surface-muted) 26%, transparent);
-  }
-
-  .pane-drag-handle {
-    display: inline-grid;
-    place-items: center;
-    flex-shrink: 0;
-    width: 1.35rem;
-    height: 1.35rem;
-    border: 1px solid transparent;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-tertiary);
-    cursor: grab;
-    opacity: 0.64;
-    touch-action: none;
-    transition:
-      opacity 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-color 140ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .pane-drag-handle:hover,
-  .pane-drag-handle:focus-visible {
-    border-color: color-mix(in oklab, var(--ui-shell-edge) 78%, transparent);
-    background: color-mix(in oklab, var(--ui-surface-raised) 72%, transparent);
-    color: var(--ui-text-primary);
-    opacity: 1;
-  }
-
-  .pane-drag-handle:active,
-  .pane-grid.dragging-pane .pane-drag-handle {
-    cursor: grabbing;
-  }
-
-  .pane-focus-button {
-    display: grid;
-    gap: 0.1rem;
-    flex: 1;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .pane-focus-button strong,
-  .pane-focus-button > span:not(.pane-title-line),
-  .pane-title-line strong {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .pane-focus-button strong {
-    font-size: 0.68rem;
-    font-weight: 600;
-  }
-
-  .pane-focus-button span {
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    color: var(--ui-text-tertiary);
-  }
-
-  .pane-chrome-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    min-width: 0;
-    margin-left: auto;
-    overflow: hidden;
-    opacity: 0;
-    transition: opacity 140ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .workspace-pane:hover .pane-chrome-meta,
-  .workspace-pane:focus-within .pane-chrome-meta,
-  .workspace-pane.focused .pane-chrome-meta {
-    opacity: 1;
-  }
-
-  .pane-chrome-meta :global(.ui-metadata-chip) {
-    max-width: 9.6rem;
-  }
-
-  .pane-chrome-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.24rem;
-    flex-shrink: 0;
-    opacity: 0.72;
-    transition: opacity 140ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .workspace-pane:hover .pane-chrome-actions,
-  .workspace-pane:focus-within .pane-chrome-actions {
-    opacity: 1;
-  }
-
-  .pane-chrome-actions button {
-    display: inline-grid;
-    place-items: center;
-    width: 1.55rem;
-    height: 1.55rem;
-    border: 1px solid transparent;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-tertiary);
-    transition:
-      border-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      background-color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      color 140ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .pane-resize-button.vertical {
-    cursor: col-resize;
-  }
-
-  .pane-resize-button.horizontal {
-    cursor: row-resize;
-  }
-
-  .pane-chrome-actions button:hover {
-    border-color: color-mix(in oklab, var(--ui-shell-edge) 78%, transparent);
-    color: var(--ui-text-primary);
-    background: color-mix(in oklab, var(--ui-surface-raised) 72%, transparent);
-  }
-
-  .pane-chrome-actions button:active:not(:disabled) {
-    transform: translateY(1px) scale(0.94);
-  }
-
-  .pane-divider-shell {
-    position: absolute;
-    z-index: 10;
-    display: grid;
-    place-items: center;
-    outline: none;
-  }
-
-  .pane-divider-shell.vertical {
-    top: 0;
-    bottom: 0;
-    width: 0.7rem;
-    transform: translateX(-50%);
-    cursor: col-resize;
-  }
-
-  .pane-divider-shell.vertical.edge-start {
-    transform: none;
-  }
-
-  .pane-divider-shell.vertical.edge-end {
-    transform: translateX(-100%);
-  }
-
-  .pane-divider-shell.horizontal {
-    left: 0;
-    right: 0;
-    height: 0.7rem;
-    transform: translateY(-50%);
-    cursor: row-resize;
-  }
-
-  .pane-divider-shell.horizontal.edge-start {
-    transform: none;
-  }
-
-  .pane-divider-shell.horizontal.edge-end {
-    transform: translateY(-100%);
-  }
-
-  .pane-divider-shell.edge-start,
-  .pane-divider-shell.edge-end {
-    cursor: default;
-  }
-
-  .pane-divider-shell.vertical.edge-start .pane-divider-split {
-    left: calc(50% + 0.38rem);
-  }
-
-  .pane-divider-shell.vertical.edge-end .pane-divider-split {
-    left: calc(50% - 0.38rem);
-  }
-
-  .pane-divider-shell.horizontal.edge-start .pane-divider-split {
-    top: calc(50% + 0.38rem);
-  }
-
-  .pane-divider-shell.horizontal.edge-end .pane-divider-split {
-    top: calc(50% - 0.38rem);
-  }
-
-  .pane-divider-line {
-    position: absolute;
-    inset: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: inherit;
-  }
-
-  .pane-divider-line::before {
-    position: absolute;
-    background: currentColor;
-    content: "";
-    transition:
-      background-color 130ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 130ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .pane-divider-shell.vertical .pane-divider-line {
-    color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-  }
-
-  .pane-divider-shell.horizontal .pane-divider-line {
-    color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-  }
-
-  .pane-divider-shell.vertical .pane-divider-line::before {
-    top: 0;
-    bottom: 0;
-    left: calc(50% - 0.5px);
-    width: 1px;
-  }
-
-  .pane-divider-shell.horizontal .pane-divider-line::before {
-    top: calc(50% - 0.5px);
-    right: 0;
-    left: 0;
-    height: 1px;
-  }
-
-  .pane-divider-shell:hover .pane-divider-line,
-  .pane-divider-shell:focus-within .pane-divider-line,
-  .pane-divider-shell.active .pane-divider-line {
-    color: color-mix(in oklab, var(--ui-accent) 68%, var(--ui-border-strong));
-  }
-
-  .pane-divider-shell.vertical:hover .pane-divider-line::before,
-  .pane-divider-shell.vertical:focus-within .pane-divider-line::before,
-  .pane-divider-shell.vertical.active .pane-divider-line::before {
-    transform: scaleX(3);
-  }
-
-  .pane-divider-shell.horizontal:hover .pane-divider-line::before,
-  .pane-divider-shell.horizontal:focus-within .pane-divider-line::before,
-  .pane-divider-shell.horizontal.active .pane-divider-line::before {
-    transform: scaleY(3);
-  }
-
-  .pane-divider-split {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    z-index: 2;
-    display: grid;
-    place-items: center;
-    box-sizing: border-box;
-    width: 1.45rem;
-    height: 1.45rem;
-    padding: 0;
-    border: 1px solid color-mix(in oklab, var(--ui-accent) 42%, var(--ui-shell-edge));
-    border-radius: 50%;
-    background: color-mix(in oklab, var(--ui-shell) 88%, var(--ui-accent));
-    color: var(--ui-accent);
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.86);
-    transition:
-      opacity 130ms cubic-bezier(0.22, 1, 0.36, 1),
-      transform 130ms cubic-bezier(0.22, 1, 0.36, 1),
-      background-color 130ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .pane-divider-shell:hover .pane-divider-split,
-  .pane-divider-shell:focus-within .pane-divider-split,
-  .pane-divider-shell.active .pane-divider-split {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-
-  .pane-divider-split:hover,
-  .pane-divider-split:focus-visible {
-    background: color-mix(in oklab, var(--ui-accent) 18%, var(--ui-shell));
-    cursor: pointer;
-  }
-
-  .pane-focus-button:focus-visible,
-  .pane-drag-handle:focus-visible,
-  .pane-chrome-actions button:focus-visible,
-  .pane-span-drop-zone:focus-visible,
-  .pane-divider-line:focus-visible,
-  .pane-divider-split:focus-visible {
-    outline: none;
-    box-shadow: var(--ui-focus-ring);
-  }
-
-  @keyframes pane-enter {
-    from {
-      opacity: 0.7;
-      transform: scale(0.995);
-    }
-
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-
-  .pane-placeholder {
-    display: grid;
-    place-content: center;
-    gap: 0.3rem;
-    min-height: 0;
-    padding: 1rem;
-    color: var(--ui-text-tertiary);
-    text-align: center;
-  }
-
-  .pane-placeholder p {
-    margin: 0;
-    color: var(--ui-text-secondary);
-    font-weight: 700;
-  }
-
-  .pane-placeholder span {
-    font-size: 0.72rem;
-  }
-
   .workspace-main-header {
     display: flex;
     align-items: center;
@@ -5713,54 +4278,6 @@
       flex-wrap: wrap;
       justify-content: flex-start;
       padding: 0.38rem;
-    }
-
-    .pane-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 0.48rem;
-      overflow: auto;
-      padding-bottom: 0.28rem;
-    }
-
-    .workspace-pane {
-      min-height: min(34rem, calc(100dvh - 12rem));
-      border-radius: var(--ui-radius-md);
-    }
-
-    .pane-chrome {
-      align-items: flex-start;
-      gap: 0.44rem;
-      min-height: 2.75rem;
-      padding: 0.5rem;
-    }
-
-    .pane-focus-button {
-      min-height: 2.1rem;
-      justify-content: center;
-    }
-
-    .pane-focus-button > span:not(.pane-title-line) {
-      white-space: normal;
-      overflow-wrap: anywhere;
-    }
-
-    .pane-chrome-meta {
-      display: none;
-    }
-
-    .pane-drag-handle,
-    .pane-chrome-actions button,
-    .titlebar-icon {
-      width: 2.75rem;
-      min-width: 2.75rem;
-      height: 2.75rem;
-    }
-
-    .pane-divider-shell,
-    .pane-drag-ghost,
-    .pane-span-drop-zone {
-      display: none;
     }
 
     .new-session-empty {

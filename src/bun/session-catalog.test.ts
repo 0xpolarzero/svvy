@@ -115,6 +115,7 @@ function userMessage(text: string): Message {
 function assistantMessage(
   text: string,
   options: {
+    errorMessage?: string;
     stopReason?: StopReason;
     provider?: string;
     model?: string;
@@ -141,6 +142,7 @@ function assistantMessage(
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     },
     stopReason: options.stopReason ?? "stop",
+    errorMessage: options.errorMessage,
     content,
   };
 }
@@ -408,9 +410,9 @@ function hasAssistantReply(messages: readonly AgentMessage[], text: string): boo
 }
 
 describe("WorkspaceSessionCatalog", () => {
-  it("normalizes generated session titles without generic suffixes", () => {
-    expect(normalizeGeneratedTitle('"OAuth Login Session."')).toBe("OAuth login");
-    expect(normalizeGeneratedTitle("Project CI Thread")).toBe("Project CI");
+  it("normalizes generated session title casing and punctuation without deleting suffixes", () => {
+    expect(normalizeGeneratedTitle('"OAuth Login Session."')).toBe("OAuth login session");
+    expect(normalizeGeneratedTitle("Project CI Thread")).toBe("Project CI thread");
     expect(normalizeGeneratedTitle("Greeting Exchange")).toBe("greeting exchange");
     expect(normalizeGeneratedTitle("Session")).toBe("Session");
   });
@@ -544,6 +546,168 @@ describe("WorkspaceSessionCatalog", () => {
       }
 
       await waitFor(() => !orchestrator.activePrompt);
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("marks title generation failed instead of using the first message when the namer returns a generic title", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "New Session" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText.startsWith("First user message:")) {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("New Session")]);
+          return;
+        }
+
+        appendMessagesToSession(this, [
+          userMessage("investigate dockview streaming duplicates"),
+          assistantMessage("Done."),
+        ]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("investigate dockview streaming duplicates")],
+          onEvent: () => {},
+        });
+
+        await waitFor(
+          () =>
+            getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId).pi
+              .titleGenerationStatus === "failed",
+        );
+
+        const titleState = getStructuredSessionStore(catalog).getSessionState(
+          created.target.workspaceSessionId,
+        ).pi;
+        expect(titleState.title).toBe("New Session");
+        expect(titleState.titleGenerationError).toContain("generic title");
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("marks title generation failed instead of using the first message when the namer returns no title", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "New Session" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText.startsWith("First user message:")) {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("")]);
+          return;
+        }
+
+        appendMessagesToSession(this, [
+          userMessage("fix broken session naming"),
+          assistantMessage("Done."),
+        ]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("fix broken session naming")],
+          onEvent: () => {},
+        });
+
+        await waitFor(
+          () =>
+            getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId).pi
+              .titleGenerationStatus === "failed",
+        );
+
+        const titleState = getStructuredSessionStore(catalog).getSessionState(
+          created.target.workspaceSessionId,
+        ).pi;
+        expect(titleState.title).toBe("New Session");
+        expect(titleState.titleGenerationError).toContain("generic title");
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("surfaces namer model errors instead of using the first message as a title", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "New Session" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText.startsWith("First user message:")) {
+          appendMessagesToSession(this, [
+            userMessage(promptText),
+            assistantMessage("", {
+              stopReason: "error",
+              errorMessage: "Provided authentication token is expired.",
+            }),
+          ]);
+          return;
+        }
+
+        appendMessagesToSession(this, [
+          userMessage("debug session naming auth failures"),
+          assistantMessage("Done."),
+        ]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("debug session naming auth failures")],
+          onEvent: () => {},
+        });
+
+        await waitFor(
+          () =>
+            getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId).pi
+              .titleGenerationStatus === "failed",
+        );
+
+        const titleState = getStructuredSessionStore(catalog).getSessionState(
+          created.target.workspaceSessionId,
+        ).pi;
+        expect(titleState.title).toBe("New Session");
+        expect(titleState.titleGenerationError).toBe("Provided authentication token is expired.");
+      } finally {
+        promptSpy.mockRestore();
+      }
     } finally {
       await catalog.dispose();
     }

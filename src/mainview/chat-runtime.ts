@@ -38,24 +38,20 @@ import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-se
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
 import type { AppMenuAction } from "../shared/keybindings";
 import {
+  addDockviewPanel,
   bindPane,
   closePane,
   createEmptyPaneLayout,
   focusPane,
-  movePaneToSpanningRow,
   normalizePaneLayout,
-  placePane,
   PRIMARY_CHAT_PANE_ID,
-  resizeTrack,
+  setDockviewSerializedLayout,
   setPaneInspectorSelection as setLayoutPaneInspectorSelection,
   setPaneScroll as setLayoutPaneScroll,
   splitPane,
   type PaneOpenTarget,
-  type PanePlacementZone,
-  type PaneResizeAxis,
-  type PaneSpanPlacement,
-  type PaneSplitDirection,
-  type WorkspacePaneLayoutState,
+  type DockviewSplitDirection,
+  type WorkspaceDockviewLayoutState,
 } from "./pane-layout";
 import { rpc } from "./rpc";
 import { buildWorkspaceSessionNavigation } from "./session-state";
@@ -99,15 +95,11 @@ export interface ChatPaneState {
   id: string;
   target: WorkspacePaneSurfaceTarget | null;
   inspectorSelection: WorkspaceInspectorSelection | null;
-  scroll: ChatPaneLayoutState["panes"][number]["localState"]["scroll"];
-  columnStart: number;
-  columnEnd: number;
-  rowStart: number;
-  rowEnd: number;
+  scroll: ChatPaneLayoutState["panels"][number]["localState"]["scroll"];
   timelineDensity: "compact" | "comfortable";
 }
 
-export type ChatPaneLayoutState = WorkspacePaneLayoutState;
+export type ChatPaneLayoutState = WorkspaceDockviewLayoutState;
 
 export interface ChatSurfaceController {
   agent: Agent;
@@ -122,8 +114,8 @@ export interface ChatSurfaceController {
 }
 
 interface ChatSurfaceControllerInternal extends ChatSurfaceController {
-  attachPane: (paneId: string) => void;
-  detachPane: (paneId: string) => void;
+  attachPane: (panelId: string) => void;
+  detachPane: (panelId: string) => void;
   applySnapshot: (snapshot: ConversationSurfaceSnapshot) => void;
   dispose: () => void;
 }
@@ -199,24 +191,20 @@ export interface ChatRuntime {
   subscribe: (listener: ChatRuntimeListener) => () => void;
   subscribeAppMenuAction: (listener: (action: AppMenuAction) => void) => () => void;
   listSessions: () => Promise<WorkspaceSessionSummary[]>;
-  getPane: (paneId: string) => ChatPaneState | undefined;
-  getPaneController: (paneId: string) => ChatSurfaceController | null;
+  getPane: (panelId: string) => ChatPaneState | undefined;
+  getPaneController: (panelId: string) => ChatSurfaceController | null;
   getSurfaceController: (surfacePiSessionId: string) => ChatSurfaceController | null;
-  focusPane: (paneId: string) => void;
+  focusPane: (panelId: string) => void;
   splitPane: (
-    paneId: string,
-    direction: PaneSplitDirection,
+    panelId: string,
+    direction: DockviewSplitDirection,
     options?: { duplicateBinding?: boolean; size?: number },
   ) => Promise<string | null>;
-  movePaneToSpanningRow: (paneId: string, placement: PaneSpanPlacement) => void;
-  placePane: (
-    sourcePaneId: string,
-    targetPaneId: string,
-    zone: PanePlacementZone,
-    options?: { duplicateBinding?: boolean; size?: number },
+  closePane: (panelId: string) => Promise<void>;
+  setDockviewLayout: (
+    dockview: WorkspaceDockviewLayoutState["dockview"],
+    focusedPanelId?: string | null,
   ) => void;
-  resizePaneTrack: (axis: PaneResizeAxis, trackIndex: number, deltaPercent: number) => void;
-  closePane: (paneId: string) => Promise<void>;
   getCommandInspector: (
     commandId: string,
     sessionId?: string,
@@ -264,27 +252,27 @@ export interface ChatRuntime {
     target: WorkspacePaneSurfaceTarget,
     openTarget?: PaneOpenTarget | string,
   ) => Promise<void>;
-  closePaneSurface: (paneId: string) => Promise<void>;
+  closePaneSurface: (panelId: string) => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<void>;
-  setSessionMode: (paneId: string, mode: SessionMode) => Promise<void>;
+  setSessionMode: (panelId: string, mode: SessionMode) => Promise<void>;
   forkSession: (
     sessionId: string,
     title?: string,
     openTarget?: PaneOpenTarget | string,
   ) => Promise<void>;
-  deleteSession: (sessionId: string, paneId?: string) => Promise<void>;
+  deleteSession: (sessionId: string, panelId?: string) => Promise<void>;
   pinSession: (sessionId: string) => Promise<void>;
   unpinSession: (sessionId: string) => Promise<void>;
   archiveSession: (sessionId: string) => Promise<void>;
   unarchiveSession: (sessionId: string) => Promise<void>;
   setArchivedGroupCollapsed: (collapsed: boolean) => Promise<void>;
   setPaneInspectorSelection: (
-    paneId: string,
+    panelId: string,
     selection: WorkspaceInspectorSelection | null,
   ) => void;
   setPaneScroll: (
-    paneId: string,
-    scroll: ChatPaneLayoutState["panes"][number]["localState"]["scroll"],
+    panelId: string,
+    scroll: ChatPaneLayoutState["panels"][number]["localState"]["scroll"],
   ) => void;
   sendPromptToTarget: (target: PromptTarget, input: string) => Promise<void>;
   syncProviderAuth: (providerId: string) => Promise<boolean>;
@@ -392,7 +380,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   promptStatus: PromptStatus;
 
   private listeners = new Set<ChatRuntimeListener>();
-  private paneIds = new Set<string>();
+  private panelIds = new Set<string>();
   private disposed = false;
   private promptDispatchInFlight = false;
   private applyingSnapshot = false;
@@ -447,7 +435,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   }
 
   get ownerPaneIds(): string[] {
-    return Array.from(this.paneIds);
+    return Array.from(this.panelIds);
   }
 
   subscribe(listener: ChatRuntimeListener): () => void {
@@ -458,13 +446,13 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     };
   }
 
-  attachPane(paneId: string): void {
-    this.paneIds.add(paneId);
+  attachPane(panelId: string): void {
+    this.panelIds.add(panelId);
     this.emit();
   }
 
-  detachPane(paneId: string): void {
-    this.paneIds.delete(paneId);
+  detachPane(panelId: string): void {
+    this.panelIds.delete(panelId);
     this.emit();
   }
 
@@ -479,6 +467,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       this.target = normalizePromptTarget(snapshot.target);
       this.sessionMode = snapshot.sessionMode;
       this.sessionAgentKey = snapshot.sessionAgentKey;
+      this.promptStatus = snapshot.promptStatus;
       this.emit();
       return;
     }
@@ -720,12 +709,11 @@ export async function createChatRuntime(
     }
 
     const state: WorkspaceUiRestoreState = {
-      version: 2,
-      columns: paneLayout.columns,
-      rows: paneLayout.rows,
-      panes: paneLayout.panes,
+      version: 3,
+      dockview: paneLayout.dockview,
+      panels: paneLayout.panels,
       compactSurfaces: paneLayout.compactSurfaces,
-      focusedPaneId: paneLayout.focusedPaneId,
+      focusedPanelId: paneLayout.focusedPanelId,
       updatedAt: new Date().toISOString(),
     };
 
@@ -738,7 +726,7 @@ export async function createChatRuntime(
     const normalizedTarget = normalizePromptTarget(target);
     paneLayout = {
       ...paneLayout,
-      panes: paneLayout.panes.map((pane) =>
+      panels: paneLayout.panels.map((pane) =>
         isPromptTarget(pane.binding) &&
         pane.binding.surfacePiSessionId === normalizedTarget.surfacePiSessionId
           ? { ...pane, binding: normalizedTarget }
@@ -764,21 +752,21 @@ export async function createChatRuntime(
     return controller;
   };
 
-  const clearPaneBinding = (paneId: string): void => {
-    const target = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+  const clearPaneBinding = (panelId: string): void => {
+    const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     if (!target) {
       return;
     }
 
-    paneLayout = bindPane(paneLayout, paneId, null);
+    paneLayout = bindPane(paneLayout, panelId, null);
     if (isPromptTarget(target)) {
-      surfaceControllers.get(target.surfacePiSessionId)?.detachPane(paneId);
+      surfaceControllers.get(target.surfacePiSessionId)?.detachPane(panelId);
     }
     persistWorkspaceUiRestore();
   };
 
   const releasePaneSurface = async (
-    paneId: string,
+    panelId: string,
     target: WorkspacePaneSurfaceTarget | null,
   ): Promise<void> => {
     if (!isPromptTarget(target)) {
@@ -786,7 +774,7 @@ export async function createChatRuntime(
     }
 
     const controller = surfaceControllers.get(target.surfacePiSessionId);
-    controller?.detachPane(paneId);
+    controller?.detachPane(panelId);
     if (controller && controller.ownerPaneIds.length > 0) {
       return;
     }
@@ -798,41 +786,25 @@ export async function createChatRuntime(
     }
   };
 
-  const reconcileControllerPaneOwners = (
-    previousLayout: ChatPaneLayoutState,
-    nextLayout: ChatPaneLayoutState,
-  ): void => {
-    for (const pane of previousLayout.panes) {
-      if (isPromptTarget(pane.binding)) {
-        surfaceControllers.get(pane.binding.surfacePiSessionId)?.detachPane(pane.paneId);
-      }
-    }
-    for (const pane of nextLayout.panes) {
-      if (isPromptTarget(pane.binding)) {
-        surfaceControllers.get(pane.binding.surfacePiSessionId)?.attachPane(pane.paneId);
-      }
-    }
-  };
-
   const bindPaneToSnapshot = async (
-    paneId: string,
+    panelId: string,
     snapshot: ConversationSurfaceSnapshot,
     bindOptions: { focus?: boolean; persist?: boolean } = {},
   ): Promise<void> => {
     const focus = bindOptions.focus ?? true;
     const persist = bindOptions.persist ?? true;
-    const previousFocusedPaneId = paneLayout.focusedPaneId;
-    const previousTarget = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+    const previousFocusedPaneId = paneLayout.focusedPanelId;
+    const previousTarget = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     const nextTarget = normalizePromptTarget(snapshot.target);
     if (
       isPromptTarget(previousTarget) &&
       previousTarget.surfacePiSessionId === nextTarget.surfacePiSessionId
     ) {
-      paneLayout = bindPane(paneLayout, paneId, nextTarget);
+      paneLayout = bindPane(paneLayout, panelId, nextTarget);
       if (!focus) {
-        paneLayout = { ...paneLayout, focusedPaneId: previousFocusedPaneId };
+        paneLayout = { ...paneLayout, focusedPanelId: previousFocusedPaneId };
       }
-      upsertSurfaceController({ ...snapshot, target: nextTarget }).attachPane(paneId);
+      upsertSurfaceController({ ...snapshot, target: nextTarget }).attachPane(panelId);
       emit();
       if (persist) {
         persistWorkspaceUiRestore();
@@ -841,15 +813,15 @@ export async function createChatRuntime(
     }
 
     const controller = upsertSurfaceController({ ...snapshot, target: nextTarget });
-    paneLayout = bindPane(paneLayout, paneId, nextTarget);
+    paneLayout = bindPane(paneLayout, panelId, nextTarget);
     if (!focus) {
-      paneLayout = { ...paneLayout, focusedPaneId: previousFocusedPaneId };
+      paneLayout = { ...paneLayout, focusedPanelId: previousFocusedPaneId };
     }
-    controller.attachPane(paneId);
+    controller.attachPane(panelId);
     emit();
 
     if (isPromptTarget(previousTarget)) {
-      surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(paneId);
+      surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(panelId);
     }
     if (persist) {
       persistWorkspaceUiRestore();
@@ -857,20 +829,20 @@ export async function createChatRuntime(
   };
 
   const bindPaneToExistingController = (
-    paneId: string,
+    panelId: string,
     controller: ChatSurfaceControllerInternal,
   ): void => {
-    const previousTarget = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+    const previousTarget = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     const nextTarget = normalizePromptTarget(controller.target);
-    paneLayout = bindPane(paneLayout, paneId, nextTarget);
-    controller.attachPane(paneId);
+    paneLayout = bindPane(paneLayout, panelId, nextTarget);
+    controller.attachPane(panelId);
     emit();
 
     if (
       isPromptTarget(previousTarget) &&
       previousTarget.surfacePiSessionId !== nextTarget.surfacePiSessionId
     ) {
-      surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(paneId);
+      surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(panelId);
     }
     persistWorkspaceUiRestore();
   };
@@ -889,7 +861,7 @@ export async function createChatRuntime(
     }
 
     const focusedTarget =
-      paneLayout.panes.find((pane) => pane.paneId === paneLayout.focusedPaneId)?.binding ?? null;
+      paneLayout.panels.find((pane) => pane.panelId === paneLayout.focusedPanelId)?.binding ?? null;
     return focusedTarget?.workspaceSessionId;
   };
 
@@ -1070,52 +1042,49 @@ export async function createChatRuntime(
   };
 
   const resolveOpenTarget = (openTarget?: PaneOpenTarget | string): string => {
-    const getDefaultNewPaneDirection = (
-      requestedDirection: "right" | "below",
-    ): "right" | "below" => {
-      if (requestedDirection === "below") {
-        return "below";
-      }
-      if (paneLayout.columns.length >= 2) {
-        return "below";
-      }
-      return "right";
-    };
-
     if (typeof openTarget === "string") {
-      if (!paneLayout.panes.some((pane) => pane.paneId === openTarget)) {
-        const basePaneId =
-          paneLayout.focusedPaneId ?? paneLayout.panes[0]?.paneId ?? PRIMARY_CHAT_PANE_ID;
-        const direction = getDefaultNewPaneDirection("right");
-        paneLayout = splitPane(paneLayout, basePaneId, direction, { nextPaneId: openTarget });
+      if (!paneLayout.panels.some((pane) => pane.panelId === openTarget)) {
+        paneLayout = addDockviewPanel(paneLayout, null, openTarget);
         persistWorkspaceUiRestore();
         emit();
       }
       return openTarget;
     }
-    if (!openTarget || openTarget.kind === "focused-pane") {
-      return paneLayout.focusedPaneId ?? paneLayout.panes[0]?.paneId ?? PRIMARY_CHAT_PANE_ID;
+    if (!openTarget || openTarget.kind === "focused-panel") {
+      return paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
     }
-    if (openTarget.kind === "pane") {
-      return openTarget.paneId;
+    if (openTarget.kind === "panel") {
+      return openTarget.panelId;
     }
     if (openTarget.kind === "split") {
-      const before = new Set(paneLayout.panes.map((pane) => pane.paneId));
-      paneLayout = splitPane(paneLayout, openTarget.paneId, openTarget.direction, {
+      const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
+      paneLayout = splitPane(paneLayout, openTarget.panelId, openTarget.direction, {
         size: openTarget.size,
       });
       persistWorkspaceUiRestore();
       emit();
-      return paneLayout.panes.find((pane) => !before.has(pane.paneId))?.paneId ?? openTarget.paneId;
+      return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? openTarget.panelId;
+    }
+    if (openTarget.kind === "tab") {
+      paneLayout = addDockviewPanel(paneLayout);
+      persistWorkspaceUiRestore();
+      emit();
+      return paneLayout.focusedPanelId ?? paneLayout.panels.at(-1)?.panelId ?? PRIMARY_CHAT_PANE_ID;
     }
     const basePaneId =
-      paneLayout.focusedPaneId ?? paneLayout.panes[0]?.paneId ?? PRIMARY_CHAT_PANE_ID;
-    const before = new Set(paneLayout.panes.map((pane) => pane.paneId));
-    const direction = getDefaultNewPaneDirection(openTarget.direction);
-    paneLayout = splitPane(paneLayout, basePaneId, direction, { size: openTarget.size });
+      paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
+    const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
+    const direction =
+      openTarget.kind === "new-panel"
+        ? openTarget.direction
+        : openTarget.kind === "edge"
+          ? openTarget.direction
+          : "right";
+    const size = "size" in openTarget ? openTarget.size : undefined;
+    paneLayout = splitPane(paneLayout, basePaneId, direction, { size });
     persistWorkspaceUiRestore();
     emit();
-    return paneLayout.panes.find((pane) => !before.has(pane.paneId))?.paneId ?? basePaneId;
+    return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? basePaneId;
   };
 
   const [defaults, workspaceInfo, initialCatalog] = await Promise.all([
@@ -1136,22 +1105,22 @@ export async function createChatRuntime(
       return null;
     });
   let restoredPaneIds: string[] = [];
-  if (restoreState?.panes.length) {
+  if (restoreState?.panels.length) {
     const sessionIds = new Set(initialCatalog.sessions.map((session) => session.id));
     paneLayout = normalizePaneLayout(restoreState);
-    const hasOnlyRestorablePanes = paneLayout.panes.every(
+    const hasOnlyRestorablePanes = paneLayout.panels.every(
       (paneState) => !paneState.binding || sessionIds.has(paneState.binding.workspaceSessionId),
     );
     if (!hasOnlyRestorablePanes) {
       paneLayout = createEmptyPaneLayout();
     }
-    for (const paneState of paneLayout.panes) {
+    for (const paneState of paneLayout.panels) {
       if (!paneState.binding || !sessionIds.has(paneState.binding.workspaceSessionId)) {
         continue;
       }
 
       if (!isPromptTarget(paneState.binding)) {
-        restoredPaneIds.push(paneState.paneId);
+        restoredPaneIds.push(paneState.panelId);
         continue;
       }
 
@@ -1162,32 +1131,32 @@ export async function createChatRuntime(
           target.surface === "orchestrator"
             ? await rpcClient.request.openSession({ sessionId: target.workspaceSessionId })
             : await rpcClient.request.openSurface({ target });
-        await bindPaneToSnapshot(paneState.paneId, snapshot, { focus: false, persist: false });
-        restoredPaneIds.push(paneState.paneId);
+        await bindPaneToSnapshot(paneState.panelId, snapshot, { focus: false, persist: false });
+        restoredPaneIds.push(paneState.panelId);
       } catch (error) {
         console.error("Failed to restore workspace pane:", error);
-        restoredPaneIds.push(paneState.paneId);
+        restoredPaneIds.push(paneState.panelId);
       }
     }
-    if (restoredPaneIds.length === 0 && paneLayout.panes.every((paneState) => paneState.binding)) {
+    if (restoredPaneIds.length === 0 && paneLayout.panels.every((paneState) => paneState.binding)) {
       paneLayout = createEmptyPaneLayout();
     }
   }
 
-  if (restoreState?.panes.length && paneLayout.panes.some((paneState) => !paneState.binding)) {
-    const focusedPaneId =
-      restoreState.focusedPaneId &&
-      paneLayout.panes.some((pane) => pane.paneId === restoreState.focusedPaneId)
-        ? restoreState.focusedPaneId
-        : (paneLayout.panes[0]?.paneId ?? PRIMARY_CHAT_PANE_ID);
-    paneLayout = { ...paneLayout, focusedPaneId };
+  if (restoreState?.panels.length && paneLayout.panels.some((paneState) => !paneState.binding)) {
+    const focusedPanelId =
+      restoreState.focusedPanelId &&
+      paneLayout.panels.some((pane) => pane.panelId === restoreState.focusedPanelId)
+        ? restoreState.focusedPanelId
+        : (paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID);
+    paneLayout = { ...paneLayout, focusedPanelId };
     if (restoredPaneIds.length === 0 && initialCatalog.sessions.length > 0) {
       const [initialSession] = initialCatalog.sessions;
       const snapshot = await rpcClient.request.openSession({ sessionId: initialSession!.id });
-      await bindPaneToSnapshot(focusedPaneId, snapshot, { focus: true, persist: false });
+      await bindPaneToSnapshot(focusedPanelId, snapshot, { focus: true, persist: false });
     } else if (restoredPaneIds.length === 0) {
       const snapshot = await rpcClient.request.createSession({});
-      await bindPaneToSnapshot(focusedPaneId, snapshot, { focus: true, persist: false });
+      await bindPaneToSnapshot(focusedPanelId, snapshot, { focus: true, persist: false });
       await refreshSessions();
     }
     persistWorkspaceUiRestore();
@@ -1195,9 +1164,9 @@ export async function createChatRuntime(
   } else if (restoredPaneIds.length > 0) {
     paneLayout = {
       ...paneLayout,
-      focusedPaneId:
-        restoreState?.focusedPaneId && restoredPaneIds.includes(restoreState.focusedPaneId)
-          ? restoreState.focusedPaneId
+      focusedPanelId:
+        restoreState?.focusedPanelId && restoredPaneIds.includes(restoreState.focusedPanelId)
+          ? restoreState.focusedPanelId
           : restoredPaneIds[0]!,
     };
     persistWorkspaceUiRestore();
@@ -1225,12 +1194,12 @@ export async function createChatRuntime(
     syncPaneTargetForSurface(payload.target);
     persistWorkspaceUiRestore();
     if (payload.reason === "surface.closed") {
-      for (const pane of paneLayout.panes) {
+      for (const pane of paneLayout.panels) {
         if (
           isPromptTarget(pane.binding) &&
           pane.binding.surfacePiSessionId === payload.target.surfacePiSessionId
         ) {
-          clearPaneBinding(pane.paneId);
+          clearPaneBinding(pane.panelId);
         }
       }
 
@@ -1295,25 +1264,21 @@ export async function createChatRuntime(
       };
     },
     listSessions: refreshSessions,
-    getPane: (paneId) => {
-      const pane = paneLayout.panes.find((candidate) => candidate.paneId === paneId);
+    getPane: (panelId) => {
+      const pane = paneLayout.panels.find((candidate) => candidate.panelId === panelId);
       if (!pane) {
         return undefined;
       }
       return {
-        id: pane.paneId,
+        id: pane.panelId,
         target: pane.binding ? { ...pane.binding } : null,
         inspectorSelection: pane.localState.inspectorSelection,
         scroll: pane.localState.scroll,
-        columnStart: pane.columnStart,
-        columnEnd: pane.columnEnd,
-        rowStart: pane.rowStart,
-        rowEnd: pane.rowEnd,
         timelineDensity: pane.localState.timelineDensity,
       };
     },
-    getPaneController: (paneId) => {
-      const target = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+    getPaneController: (panelId) => {
+      const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
       if (!isPromptTarget(target)) {
         return null;
       }
@@ -1322,52 +1287,48 @@ export async function createChatRuntime(
     getSurfaceController: (surfacePiSessionId) => {
       return surfaceControllers.get(surfacePiSessionId) ?? null;
     },
-    focusPane: (paneId) => {
-      paneLayout = focusPane(paneLayout, paneId);
+    focusPane: (panelId) => {
+      paneLayout = focusPane(paneLayout, panelId);
       persistWorkspaceUiRestore();
       emit();
     },
-    splitPane: async (paneId, direction, splitOptions = {}) => {
-      const before = new Set(paneLayout.panes.map((pane) => pane.paneId));
+    splitPane: async (panelId, direction, splitOptions = {}) => {
+      const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
       const sourceBinding =
-        paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
-      paneLayout = splitPane(paneLayout, paneId, direction, splitOptions);
-      const newPane = paneLayout.panes.find((pane) => !before.has(pane.paneId)) ?? null;
+        paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
+      paneLayout = splitPane(paneLayout, panelId, direction, splitOptions);
+      const newPane = paneLayout.panels.find((pane) => !before.has(pane.panelId)) ?? null;
       if (!newPane) {
         return null;
       }
       if (splitOptions.duplicateBinding && isPromptTarget(sourceBinding)) {
-        surfaceControllers.get(sourceBinding.surfacePiSessionId)?.attachPane(newPane.paneId);
+        surfaceControllers.get(sourceBinding.surfacePiSessionId)?.attachPane(newPane.panelId);
       }
       persistWorkspaceUiRestore();
       emit();
-      return newPane.paneId;
+      return newPane.panelId;
     },
-    resizePaneTrack: (axis, trackIndex, deltaPercent) => {
-      paneLayout = resizeTrack(paneLayout, axis, trackIndex, deltaPercent);
+    closePane: async (panelId) => {
+      const targetPanelId = paneLayout.panels.some((pane) => pane.panelId === panelId)
+        ? panelId
+        : paneLayout.panels.some((pane) => pane.panelId === paneLayout.focusedPanelId)
+          ? paneLayout.focusedPanelId!
+          : (paneLayout.panels.at(-1)?.panelId ?? panelId);
+      const target =
+        paneLayout.panels.find((pane) => pane.panelId === targetPanelId)?.binding ?? null;
+      paneLayout = closePane(paneLayout, targetPanelId);
       persistWorkspaceUiRestore();
       emit();
+      await releasePaneSurface(targetPanelId, target);
     },
-    placePane: (sourcePaneId, targetPaneId, zone, placementOptions = {}) => {
-      const previousLayout = paneLayout;
-      paneLayout = placePane(paneLayout, sourcePaneId, targetPaneId, zone, placementOptions);
-      reconcileControllerPaneOwners(previousLayout, paneLayout);
+    setDockviewLayout: (dockview, focusedPanelId) => {
+      paneLayout = setDockviewSerializedLayout(
+        paneLayout,
+        dockview,
+        focusedPanelId ?? paneLayout.focusedPanelId,
+      );
       persistWorkspaceUiRestore();
       emit();
-    },
-    movePaneToSpanningRow: (paneId, placement) => {
-      const previousLayout = paneLayout;
-      paneLayout = movePaneToSpanningRow(paneLayout, paneId, placement);
-      reconcileControllerPaneOwners(previousLayout, paneLayout);
-      persistWorkspaceUiRestore();
-      emit();
-    },
-    closePane: async (paneId) => {
-      const target = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
-      paneLayout = closePane(paneLayout, paneId);
-      persistWorkspaceUiRestore();
-      emit();
-      await releasePaneSurface(paneId, target);
     },
     getCommandInspector,
     listHandlerThreads,
@@ -1386,7 +1347,7 @@ export async function createChatRuntime(
     openSession: async (sessionId, openTarget) => {
       const nextPaneId = resolveOpenTarget(openTarget);
       const currentTarget =
-        paneLayout.panes.find((pane) => pane.paneId === nextPaneId)?.binding ?? null;
+        paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
       if (
         currentTarget?.workspaceSessionId === sessionId &&
         currentTarget.surface === "orchestrator" &&
@@ -1419,7 +1380,7 @@ export async function createChatRuntime(
         target.surface === "saved-workflow-library"
       ) {
         const previousTarget =
-          paneLayout.panes.find((pane) => pane.paneId === nextPaneId)?.binding ?? null;
+          paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
         if (isPromptTarget(previousTarget)) {
           surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(nextPaneId);
         }
@@ -1430,7 +1391,7 @@ export async function createChatRuntime(
       }
       const normalizedTarget = normalizePromptTarget(target);
       const currentTarget =
-        paneLayout.panes.find((pane) => pane.paneId === nextPaneId)?.binding ?? null;
+        paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
       if (
         isPromptTarget(currentTarget) &&
         currentTarget.surfacePiSessionId === normalizedTarget.surfacePiSessionId
@@ -1451,22 +1412,22 @@ export async function createChatRuntime(
       const snapshot = await rpcClient.request.openSurface({ target: normalizedTarget });
       await bindPaneToSnapshot(nextPaneId, snapshot);
     },
-    closePaneSurface: async (paneId) => {
-      const target = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+    closePaneSurface: async (panelId) => {
+      const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
       if (!target) {
         return;
       }
 
-      clearPaneBinding(paneId);
+      clearPaneBinding(panelId);
       emit();
-      await releasePaneSurface(paneId, target);
+      await releasePaneSurface(panelId, target);
     },
     renameSession: async (sessionId, title) => {
       await rpcClient.request.renameSession({ sessionId, title });
       await refreshSessions();
     },
-    setSessionMode: async (paneId, mode) => {
-      const target = paneLayout.panes.find((pane) => pane.paneId === paneId)?.binding ?? null;
+    setSessionMode: async (panelId, mode) => {
+      const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
       if (!isPromptTarget(target) || target.surface !== "orchestrator") {
         return;
       }
@@ -1474,7 +1435,7 @@ export async function createChatRuntime(
       if (!response.ok || !response.snapshot) {
         throw new Error(response.error ?? "Session mode update failed.");
       }
-      await bindPaneToSnapshot(paneId, response.snapshot);
+      await bindPaneToSnapshot(panelId, response.snapshot);
       await refreshSessions();
     },
     forkSession: async (sessionId, title, openTarget) => {
@@ -1483,13 +1444,13 @@ export async function createChatRuntime(
       await bindPaneToSnapshot(nextPaneId, snapshot);
       await refreshSessions();
     },
-    deleteSession: async (sessionId, paneId) => {
+    deleteSession: async (sessionId, panelId) => {
       const fallbackPaneId =
-        paneId ?? paneLayout.focusedPaneId ?? paneLayout.panes[0]?.paneId ?? PRIMARY_CHAT_PANE_ID;
+        panelId ?? paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
       const affectedPaneIds = new Set<string>();
-      for (const pane of paneLayout.panes) {
+      for (const pane of paneLayout.panels) {
         if (pane.binding?.workspaceSessionId === sessionId) {
-          affectedPaneIds.add(pane.paneId);
+          affectedPaneIds.add(pane.panelId);
         }
       }
 
@@ -1542,13 +1503,13 @@ export async function createChatRuntime(
       await rpcClient.request.setArchivedGroupCollapsed({ collapsed });
       await refreshSessions();
     },
-    setPaneInspectorSelection: (paneId, selection) => {
-      paneLayout = setLayoutPaneInspectorSelection(paneLayout, paneId, selection);
+    setPaneInspectorSelection: (panelId, selection) => {
+      paneLayout = setLayoutPaneInspectorSelection(paneLayout, panelId, selection);
       persistWorkspaceUiRestore();
       emit();
     },
-    setPaneScroll: (paneId, scroll) => {
-      paneLayout = setLayoutPaneScroll(paneLayout, paneId, scroll);
+    setPaneScroll: (panelId, scroll) => {
+      paneLayout = setLayoutPaneScroll(paneLayout, panelId, scroll);
       persistWorkspaceUiRestore();
     },
     sendPromptToTarget: async (target, input) => {

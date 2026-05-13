@@ -1,3 +1,4 @@
+import type { SerializedDockview } from "dockview-core";
 import type { WorkspacePaneSurfaceTarget } from "../shared/workspace-contract";
 import type { WorkspaceInspectorSelection } from "./chat-storage";
 
@@ -5,16 +6,7 @@ export const PRIMARY_CHAT_PANE_ID = "primary";
 export const MIN_PANE_WIDTH_PX = 320;
 export const MIN_PANE_HEIGHT_PX = 260;
 
-export type PaneSplitDirection = "left" | "right" | "above" | "below";
-export type PanePlacementZone = "replace" | PaneSplitDirection;
-export type PaneSpanPlacement = "top" | "bottom" | "left" | "right";
-export type PaneResizeAxis = "column" | "row";
-export type PaneGridSplitControlPlacement = "edge-start" | "divider" | "edge-end";
-
-export interface PaneGridTrack {
-  id: string;
-  percent: number;
-}
+export type DockviewSplitDirection = "left" | "right" | "above" | "below";
 
 export interface PaneLocalState {
   scroll: null | {
@@ -25,32 +17,53 @@ export interface PaneLocalState {
   timelineDensity: "compact" | "comfortable";
 }
 
-export interface PaneGridPane {
-  paneId: string;
-  columnStart: number;
-  columnEnd: number;
-  rowStart: number;
-  rowEnd: number;
-  binding: WorkspacePaneSurfaceTarget | null;
-  localState: PaneLocalState;
+export type DockviewPanelChromeKind =
+  | "orchestrator"
+  | "handler-thread"
+  | "workflow-inspector"
+  | "artifact"
+  | "project-ci"
+  | "saved-workflow-library"
+  | "command"
+  | "workflow-task-attempt"
+  | "empty"
+  | "unavailable";
+
+export interface DockviewPanelChromeState {
+  title: string;
+  subtitle: string | null;
+  icon: string | null;
+  kind: DockviewPanelChromeKind;
+  closable: boolean;
+  floatable: boolean;
+  popoutable: boolean;
 }
 
-export interface PaneGridSplitControl {
-  axis: PaneResizeAxis;
-  endPercent: number;
-  index: number;
-  placement: PaneGridSplitControlPlacement;
-  positionPercent: number;
-  rangeEnd: number;
-  rangeStart: number;
-  startPercent: number;
+export interface DockviewPanelRestoreState {
+  unavailableReason: string | null;
+  lastKnownLocationLabel: string | null;
+}
+
+export interface DockviewPanelPlacementState {
+  referencePanelId: string;
+  direction: DockviewSplitDirection;
+  size?: number;
+}
+
+export interface WorkspaceDockviewPanelState {
+  panelId: string;
+  binding: WorkspacePaneSurfaceTarget | null;
+  localState: PaneLocalState;
+  chrome?: DockviewPanelChromeState;
+  placement?: DockviewPanelPlacementState | null;
+  restore?: DockviewPanelRestoreState;
 }
 
 export interface CompactThreadSurfaceState {
   kind: "compact-thread";
   workspaceSessionId: string;
   threadId: string;
-  paneId: string | null;
+  panelId: string | null;
   density: PaneLocalState["timelineDensity"];
 }
 
@@ -59,7 +72,7 @@ export interface CompactWorkflowRunSurfaceState {
   workspaceSessionId: string;
   threadId: string;
   workflowRunId: string;
-  paneId: string | null;
+  panelId: string | null;
   density: PaneLocalState["timelineDensity"];
 }
 
@@ -67,20 +80,27 @@ export type CompactWorkspaceSurfaceState =
   | CompactThreadSurfaceState
   | CompactWorkflowRunSurfaceState;
 
-export interface WorkspacePaneLayoutState {
-  columns: PaneGridTrack[];
-  rows: PaneGridTrack[];
-  panes: PaneGridPane[];
+export interface WorkspaceDockviewLayoutState {
+  dockview: SerializedDockview | null;
+  panels: WorkspaceDockviewPanelState[];
   compactSurfaces: CompactWorkspaceSurfaceState[];
-  focusedPaneId: string | null;
+  focusedPanelId: string | null;
   updatedAt: string;
 }
 
-export type PaneOpenTarget =
-  | { kind: "focused-pane" }
-  | { kind: "pane"; paneId: string }
-  | { kind: "split"; paneId: string; direction: PaneSplitDirection; size?: number }
-  | { kind: "new-pane"; direction: "right" | "below"; size?: number };
+export type WorkspacePaneLayoutState = WorkspaceDockviewLayoutState;
+
+export type DockviewOpenTarget =
+  | { kind: "focused-panel" }
+  | { kind: "panel"; panelId: string }
+  | { kind: "split"; panelId: string; direction: DockviewSplitDirection; size?: number }
+  | { kind: "tab"; groupId: string; index?: number }
+  | { kind: "new-panel"; direction: "right" | "below"; size?: number }
+  | { kind: "edge"; direction: DockviewSplitDirection; size?: number }
+  | { kind: "floating"; box?: { x: number; y: number; width: number; height: number } }
+  | { kind: "popout"; box?: { left: number; top: number; width: number; height: number } };
+
+export type PaneOpenTarget = DockviewOpenTarget;
 
 export function createDefaultPaneLocalState(): PaneLocalState {
   return {
@@ -90,1048 +110,308 @@ export function createDefaultPaneLocalState(): PaneLocalState {
   };
 }
 
-export function createEmptyPaneLayout(now = new Date().toISOString()): WorkspacePaneLayoutState {
+export function createPanelChrome(
+  binding: WorkspacePaneSurfaceTarget | null,
+): DockviewPanelChromeState {
+  if (!binding) {
+    return {
+      title: "Empty",
+      subtitle: null,
+      icon: null,
+      kind: "empty",
+      closable: true,
+      floatable: true,
+      popoutable: false,
+    };
+  }
+
+  switch (binding.surface) {
+    case "orchestrator":
+      return chrome("Orchestrator", binding.workspaceSessionId, "orchestrator", true);
+    case "thread":
+      return chrome("Handler Thread", binding.threadId ?? binding.surfacePiSessionId, "handler-thread", true);
+    case "workflow-inspector":
+      return chrome("Workflow Inspector", binding.workflowRunId, "workflow-inspector", true);
+    case "saved-workflow-library":
+      return chrome("Saved Workflow Library", ".svvy/workflows", "saved-workflow-library", true);
+    case "command":
+      return chrome("Command Inspector", binding.commandId, "command", true);
+    case "workflow-task-attempt":
+      return chrome("Workflow Task-Agent", binding.workflowTaskAttemptId, "workflow-task-attempt", true);
+    case "artifact":
+      return chrome("Artifact", binding.artifactId, "artifact", true);
+    case "project-ci-check":
+      return chrome("Project CI Check", binding.checkResultId, "project-ci", true);
+  }
+}
+
+export function createDockviewPanelState(
+  panelId: string,
+  binding: WorkspacePaneSurfaceTarget | null = null,
+  placement: DockviewPanelPlacementState | null = null,
+): WorkspaceDockviewPanelState {
   return {
-    columns: [{ id: "col-0", percent: 100 }],
-    rows: [{ id: "row-0", percent: 100 }],
-    panes: [
-      {
-        paneId: PRIMARY_CHAT_PANE_ID,
-        columnStart: 0,
-        columnEnd: 1,
-        rowStart: 0,
-        rowEnd: 1,
-        binding: null,
-        localState: createDefaultPaneLocalState(),
-      },
-    ],
+    panelId,
+    binding: binding ? { ...binding } : null,
+    localState: createDefaultPaneLocalState(),
+    chrome: createPanelChrome(binding),
+    placement: placement ? { ...placement } : null,
+    restore: {
+      unavailableReason: null,
+      lastKnownLocationLabel: null,
+    },
+  };
+}
+
+export function createEmptyPaneLayout(now = new Date().toISOString()): WorkspaceDockviewLayoutState {
+  return {
+    dockview: null,
+    panels: [createDockviewPanelState(PRIMARY_CHAT_PANE_ID)],
     compactSurfaces: [],
-    focusedPaneId: PRIMARY_CHAT_PANE_ID,
+    focusedPanelId: PRIMARY_CHAT_PANE_ID,
     updatedAt: now,
   };
 }
 
-export function normalizeTracks(tracks: PaneGridTrack[]): PaneGridTrack[] {
-  if (tracks.length === 0) {
-    return [];
-  }
-  const positiveTracks = tracks.map((track) => ({
-    ...track,
-    percent: Number.isFinite(track.percent) && track.percent > 0 ? track.percent : 1,
-  }));
-  const total = positiveTracks.reduce((sum, track) => sum + track.percent, 0);
-  return positiveTracks.map((track) => ({
-    ...track,
-    percent: (track.percent / total) * 100,
-  }));
-}
-
 export function normalizePaneLayout(
-  layout: WorkspacePaneLayoutState,
+  layout: Partial<WorkspaceDockviewLayoutState>,
   now = new Date().toISOString(),
-): WorkspacePaneLayoutState {
-  const columns = normalizeTracks(layout.columns);
-  const rows = normalizeTracks(layout.rows);
-  if (columns.length === 0 || rows.length === 0 || layout.panes.length === 0) {
+): WorkspaceDockviewLayoutState {
+  const rawPanels = Array.isArray(layout.panels) ? layout.panels : [];
+
+  if (rawPanels.length === 0) {
     return createEmptyPaneLayout(now);
   }
 
-  const panes = layout.panes.map((pane) => ({
-    ...pane,
-    columnStart: clampInteger(pane.columnStart, 0, columns.length - 1),
-    columnEnd: clampInteger(pane.columnEnd, pane.columnStart + 1, columns.length),
-    rowStart: clampInteger(pane.rowStart, 0, rows.length - 1),
-    rowEnd: clampInteger(pane.rowEnd, pane.rowStart + 1, rows.length),
-    binding: pane.binding ? { ...pane.binding } : null,
-    localState: {
-      ...createDefaultPaneLocalState(),
-      ...pane.localState,
-      inspectorSelection: pane.localState?.inspectorSelection ?? null,
-      scroll: pane.localState?.scroll ?? null,
-    },
-  }));
-  const focusedPaneId =
-    layout.focusedPaneId && panes.some((pane) => pane.paneId === layout.focusedPaneId)
-      ? layout.focusedPaneId
-      : (panes[0]?.paneId ?? null);
+  const panels = rawPanels.map((panel) => {
+    const next = panel as Partial<WorkspaceDockviewPanelState>;
+    const binding = next.binding ? { ...next.binding } : null;
+    return {
+      panelId: String(next.panelId ?? createPanelId()),
+      binding,
+      localState: {
+        ...createDefaultPaneLocalState(),
+        ...(next.localState ?? {}),
+        inspectorSelection: next.localState?.inspectorSelection ?? null,
+        scroll: next.localState?.scroll ?? null,
+      },
+      chrome: {
+        ...createPanelChrome(binding),
+        ...(next.chrome ?? {}),
+      },
+      placement: normalizePlacement(next.placement),
+      restore: {
+        unavailableReason: null,
+        lastKnownLocationLabel: null,
+        ...(next.restore ?? {}),
+      },
+    };
+  });
+
+  const focusedPanelId =
+    layout.focusedPanelId && panels.some((panel) => panel.panelId === layout.focusedPanelId)
+      ? layout.focusedPanelId
+      : panels[0]!.panelId;
+
   return {
-    columns,
-    rows,
-    panes,
+    dockview: isSerializedDockview(layout.dockview) ? layout.dockview : null,
+    panels,
     compactSurfaces: Array.isArray(layout.compactSurfaces)
       ? layout.compactSurfaces.map((surface) => ({ ...surface }))
       : [],
-    focusedPaneId,
+    focusedPanelId,
     updatedAt: now,
   };
 }
 
 export function bindPane(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
   binding: WorkspacePaneSurfaceTarget | null,
-): WorkspacePaneLayoutState {
+): WorkspaceDockviewLayoutState {
   return touch({
     ...layout,
-    panes: layout.panes.map((pane) =>
-      pane.paneId === paneId ? { ...pane, binding: binding ? { ...binding } : null } : pane,
+    panels: layout.panels.map((panel) =>
+      panel.panelId === panelId
+        ? { ...panel, binding: binding ? { ...binding } : null, chrome: createPanelChrome(binding) }
+        : panel,
     ),
-    focusedPaneId: paneId,
+    focusedPanelId: panelId,
   });
 }
 
 export function focusPane(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
-): WorkspacePaneLayoutState {
-  if (!layout.panes.some((pane) => pane.paneId === paneId)) {
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
+): WorkspaceDockviewLayoutState {
+  if (!layout.panels.some((panel) => panel.panelId === panelId)) {
     return layout;
   }
-  return touch({ ...layout, focusedPaneId: paneId });
+  return touch({ ...layout, focusedPanelId: panelId });
 }
 
 export function setPaneInspectorSelection(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
   selection: WorkspaceInspectorSelection | null,
-): WorkspacePaneLayoutState {
+): WorkspaceDockviewLayoutState {
   return touch({
     ...layout,
-    panes: layout.panes.map((pane) =>
-      pane.paneId === paneId
+    panels: layout.panels.map((panel) =>
+      panel.panelId === panelId
         ? {
-            ...pane,
+            ...panel,
             localState: {
-              ...pane.localState,
+              ...panel.localState,
               inspectorSelection: selection ? structuredClone(selection) : null,
             },
           }
-        : pane,
+        : panel,
     ),
   });
 }
 
 export function setPaneScroll(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
   scroll: PaneLocalState["scroll"],
-): WorkspacePaneLayoutState {
-  if (!layout.panes.some((pane) => pane.paneId === paneId)) {
-    return layout;
-  }
+): WorkspaceDockviewLayoutState {
   return touch({
     ...layout,
-    panes: layout.panes.map((pane) =>
-      pane.paneId === paneId
-        ? {
-            ...pane,
-            localState: {
-              ...pane.localState,
-              scroll: scroll ? { ...scroll } : null,
-            },
-          }
-        : pane,
+    panels: layout.panels.map((panel) =>
+      panel.panelId === panelId
+        ? { ...panel, localState: { ...panel.localState, scroll: scroll ? { ...scroll } : null } }
+        : panel,
     ),
+  });
+}
+
+export function addDockviewPanel(
+  layout: WorkspaceDockviewLayoutState,
+  binding: WorkspacePaneSurfaceTarget | null = null,
+  panelId = createPanelId(),
+  placement: DockviewPanelPlacementState | null = null,
+): WorkspaceDockviewLayoutState {
+  return touch({
+    ...layout,
+    panels: [...layout.panels, createDockviewPanelState(panelId, binding, placement)],
+    focusedPanelId: panelId,
+  });
+}
+
+export function removeDockviewPanel(
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
+): WorkspaceDockviewLayoutState {
+  if (layout.panels.length === 1) {
+    return bindPane(layout, panelId, null);
+  }
+  const panels = layout.panels.filter((panel) => panel.panelId !== panelId);
+  return touch({
+    ...layout,
+    panels,
+    focusedPanelId:
+      layout.focusedPanelId === panelId ? (panels[0]?.panelId ?? null) : layout.focusedPanelId,
   });
 }
 
 export function splitPane(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
-  direction: PaneSplitDirection,
-  options: { size?: number; duplicateBinding?: boolean; nextPaneId?: string } = {},
-): WorkspacePaneLayoutState {
-  const source = layout.panes.find((pane) => pane.paneId === paneId);
-  if (!source) {
-    return layout;
-  }
-
-  const nextPaneId = options.nextPaneId ?? createPaneId();
-  const size = clampSize(options.size ?? 0.5);
-  const splitColumn = direction === "left" || direction === "right";
-  const insertIndex = splitColumn
-    ? direction === "left"
-      ? source.columnStart
-      : source.columnEnd
-    : direction === "above"
-      ? source.rowStart
-      : source.rowEnd;
-
-  const tracks = splitColumn ? layout.columns : layout.rows;
-  const sourceTrackIndex = splitColumn
-    ? direction === "left"
-      ? source.columnStart
-      : source.columnEnd - 1
-    : direction === "above"
-      ? source.rowStart
-      : source.rowEnd - 1;
-  const sourceTrack = tracks[sourceTrackIndex];
-  if (!sourceTrack) {
-    return layout;
-  }
-
-  const newTrackPercent = sourceTrack.percent * size;
-  const oldTrackPercent = sourceTrack.percent - newTrackPercent;
-  const nextTracks = [
-    ...tracks.slice(0, insertIndex),
-    { id: `${splitColumn ? "col" : "row"}-${createPaneId()}`, percent: newTrackPercent },
-    ...tracks.slice(insertIndex),
-  ].map((track, index) =>
-    index === (insertIndex <= sourceTrackIndex ? sourceTrackIndex + 1 : sourceTrackIndex)
-      ? { ...track, percent: oldTrackPercent }
-      : track,
-  );
-
-  const shiftedPanes = layout.panes.map((pane) => {
-    if (splitColumn) {
-      if (
-        pane.paneId !== paneId &&
-        pane.columnStart <= sourceTrackIndex &&
-        pane.columnEnd > sourceTrackIndex
-      ) {
-        return {
-          ...pane,
-          columnEnd: pane.columnEnd + 1,
-        };
-      }
-      return {
-        ...pane,
-        columnStart: pane.columnStart >= insertIndex ? pane.columnStart + 1 : pane.columnStart,
-        columnEnd: pane.columnEnd >= insertIndex ? pane.columnEnd + 1 : pane.columnEnd,
-      };
-    }
-    if (
-      pane.paneId !== paneId &&
-      pane.rowStart <= sourceTrackIndex &&
-      pane.rowEnd > sourceTrackIndex
-    ) {
-      return {
-        ...pane,
-        rowEnd: pane.rowEnd + 1,
-      };
-    }
-    return {
-      ...pane,
-      rowStart: pane.rowStart >= insertIndex ? pane.rowStart + 1 : pane.rowStart,
-      rowEnd: pane.rowEnd >= insertIndex ? pane.rowEnd + 1 : pane.rowEnd,
-    };
-  });
-
-  const shiftedSource = shiftedPanes.find((pane) => pane.paneId === paneId)!;
-  const newPane: PaneGridPane = {
-    paneId: nextPaneId,
-    columnStart: splitColumn
-      ? direction === "left"
-        ? source.columnStart
-        : shiftedSource.columnEnd - 1
-      : shiftedSource.columnStart,
-    columnEnd: splitColumn
-      ? direction === "left"
-        ? source.columnStart + 1
-        : shiftedSource.columnEnd
-      : shiftedSource.columnEnd,
-    rowStart: splitColumn
-      ? shiftedSource.rowStart
-      : direction === "above"
-        ? source.rowStart
-        : shiftedSource.rowEnd - 1,
-    rowEnd: splitColumn
-      ? shiftedSource.rowEnd
-      : direction === "above"
-        ? source.rowStart + 1
-        : shiftedSource.rowEnd,
-    binding: options.duplicateBinding && source.binding ? { ...source.binding } : null,
-    localState: createDefaultPaneLocalState(),
-  };
-
-  const panes = shiftedPanes.map((pane) => {
-    if (pane.paneId !== paneId) {
-      return pane;
-    }
-    if (splitColumn) {
-      if (direction === "left") {
-        return pane;
-      }
-      return { ...pane, columnEnd: pane.columnEnd - 1 };
-    }
-    if (direction === "above") {
-      return pane;
-    }
-    return { ...pane, rowEnd: pane.rowEnd - 1 };
-  });
-
-  const nextLayout = normalizePaneLayout({
-    ...layout,
-    columns: splitColumn ? nextTracks : layout.columns,
-    rows: splitColumn ? layout.rows : nextTracks,
-    panes: [...panes, newPane],
-    focusedPaneId: nextPaneId,
-  });
-  return hasCompletePaneCoverage(nextLayout) ? nextLayout : layout;
-}
-
-export function placePane(
-  layout: WorkspacePaneLayoutState,
-  sourcePaneId: string,
-  targetPaneId: string,
-  zone: PanePlacementZone,
-  options: { duplicateBinding?: boolean; size?: number } = {},
-): WorkspacePaneLayoutState {
-  const source = layout.panes.find((pane) => pane.paneId === sourcePaneId);
-  const target = layout.panes.find((pane) => pane.paneId === targetPaneId);
-  if (!source || !target) {
-    return layout;
-  }
-  if (sourcePaneId === targetPaneId) {
-    return layout;
-  }
-  if (zone !== "replace" && isPaneAlreadyPlaced(source, target, zone)) {
-    return touch({ ...layout, focusedPaneId: sourcePaneId });
-  }
-
-  const movedBinding = source.binding ? { ...source.binding } : null;
-  const movedLocalState = structuredClone(source.localState);
-
-  if (zone === "replace") {
-    const nextLayout = touch({
-      ...layout,
-      panes: layout.panes.map((pane) => {
-        if (pane.paneId === targetPaneId) {
-          return {
-            ...pane,
-            binding: movedBinding,
-            localState: movedLocalState,
-          };
-        }
-        if (!options.duplicateBinding && pane.paneId === sourcePaneId) {
-          return {
-            ...pane,
-            binding: target.binding ? { ...target.binding } : null,
-            localState: structuredClone(target.localState),
-          };
-        }
-        return pane;
-      }),
-      focusedPaneId: targetPaneId,
-    });
-    return hasCompletePaneCoverage(nextLayout) ? nextLayout : layout;
-  }
-
-  const baseLayout = options.duplicateBinding ? layout : closePane(layout, sourcePaneId);
-  const targetAfterClose = baseLayout.panes.find((pane) => pane.paneId === targetPaneId);
-  if (!targetAfterClose) {
-    return layout;
-  }
-  const nextPaneId = options.duplicateBinding ? createPaneId() : sourcePaneId;
-  const splitLayout = splitPane(baseLayout, targetPaneId, zone, {
-    nextPaneId,
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
+  direction: DockviewSplitDirection,
+  options: { duplicateBinding?: boolean; size?: number; nextPaneId?: string } = {},
+): WorkspaceDockviewLayoutState {
+  const source = layout.panels.find((panel) => panel.panelId === panelId);
+  const binding = options.duplicateBinding && source?.binding ? { ...source.binding } : null;
+  return addDockviewPanel(layout, binding, options.nextPaneId ?? createPanelId(), {
+    referencePanelId: panelId,
+    direction,
     size: options.size,
   });
-  const nextLayout = normalizePaneLayout({
-    ...splitLayout,
-    panes: splitLayout.panes.map((pane) =>
-      pane.paneId === nextPaneId
-        ? {
-            ...pane,
-            binding: movedBinding,
-            localState: movedLocalState,
-          }
-        : pane,
-    ),
-    focusedPaneId: nextPaneId,
-  });
-  return hasCompletePaneCoverage(nextLayout) ? nextLayout : layout;
 }
 
 export function closePane(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
-): WorkspacePaneLayoutState {
-  const pane = layout.panes.find((candidate) => candidate.paneId === paneId);
-  if (!pane) {
-    return layout;
-  }
-  if (layout.panes.length === 1) {
-    return bindPane(layout, paneId, null);
-  }
-
-  const panes = expandAdjacentPaneIntoVacancy(
-    pane,
-    layout.panes.filter((candidate) => candidate.paneId !== paneId),
-  );
-  const focusedPaneId =
-    layout.focusedPaneId === paneId
-      ? (findNearestPane(pane, panes)?.paneId ?? panes[0]!.paneId)
-      : layout.focusedPaneId;
-  return compactUnusedPaneTracks(normalizePaneLayout({ ...layout, panes, focusedPaneId }));
+  layout: WorkspaceDockviewLayoutState,
+  panelId: string,
+): WorkspaceDockviewLayoutState {
+  return removeDockviewPanel(layout, panelId);
 }
 
-export function movePaneToSpanningRow(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
-  placement: PaneSpanPlacement,
-  options: { size?: number } = {},
-): WorkspacePaneLayoutState {
-  const pane = layout.panes.find((candidate) => candidate.paneId === paneId);
-  if (!pane || layout.panes.length === 1) {
-    return layout;
-  }
-  if (isPaneAlreadySpanningEdge(pane, layout, placement)) {
-    return touch({ ...layout, focusedPaneId: paneId });
-  }
-
-  if (placement === "left" || placement === "right") {
-    const columnIndex = placement === "left" ? 0 : layout.columns.length;
-    const sourceColumnIndex = placement === "left" ? 0 : layout.columns.length - 1;
-    const sourceColumn = layout.columns[sourceColumnIndex];
-    if (!sourceColumn) {
-      return layout;
-    }
-
-    const size = clampSize(options.size ?? 0.36);
-    const newTrackPercent = sourceColumn.percent * size;
-    const oldTrackPercent = sourceColumn.percent - newTrackPercent;
-    const nextColumns = [
-      ...layout.columns.slice(0, columnIndex),
-      { id: `col-${createPaneId()}`, percent: newTrackPercent },
-      ...layout.columns.slice(columnIndex),
-    ].map((column, index) =>
-      index === (columnIndex <= sourceColumnIndex ? sourceColumnIndex + 1 : sourceColumnIndex)
-        ? { ...column, percent: oldTrackPercent }
-        : column,
-    );
-
-    const repairedPanes = expandAdjacentPaneIntoVacancy(
-      pane,
-      layout.panes.filter((candidate) => candidate.paneId !== paneId),
-    ).map((candidate) => ({
-      ...candidate,
-      columnStart:
-        candidate.columnStart >= columnIndex ? candidate.columnStart + 1 : candidate.columnStart,
-      columnEnd: candidate.columnEnd > columnIndex ? candidate.columnEnd + 1 : candidate.columnEnd,
-    }));
-    const spanningPane: PaneGridPane = {
-      ...pane,
-      columnStart: columnIndex,
-      columnEnd: columnIndex + 1,
-      rowStart: 0,
-      rowEnd: layout.rows.length,
-    };
-
-    const nextLayout = normalizePaneLayout({
-      ...layout,
-      columns: nextColumns,
-      panes: [...repairedPanes, spanningPane],
-      focusedPaneId: paneId,
-    });
-    const compactedLayout = compactUnusedPaneTracks(nextLayout);
-    return hasCompletePaneCoverage(compactedLayout) ? compactedLayout : layout;
-  }
-
-  const rowIndex = placement === "top" ? 0 : layout.rows.length;
-  const sourceRowIndex = placement === "top" ? 0 : layout.rows.length - 1;
-  const sourceRow = layout.rows[sourceRowIndex];
-  if (!sourceRow) {
-    return layout;
-  }
-
-  const size = clampSize(options.size ?? 0.36);
-  const newTrackPercent = sourceRow.percent * size;
-  const oldTrackPercent = sourceRow.percent - newTrackPercent;
-  const nextRows = [
-    ...layout.rows.slice(0, rowIndex),
-    { id: `row-${createPaneId()}`, percent: newTrackPercent },
-    ...layout.rows.slice(rowIndex),
-  ].map((row, index) =>
-    index === (rowIndex <= sourceRowIndex ? sourceRowIndex + 1 : sourceRowIndex)
-      ? { ...row, percent: oldTrackPercent }
-      : row,
-  );
-
-  const repairedPanes = expandAdjacentPaneIntoVacancy(
-    pane,
-    layout.panes.filter((candidate) => candidate.paneId !== paneId),
-  ).map((candidate) => ({
-    ...candidate,
-    rowStart: candidate.rowStart >= rowIndex ? candidate.rowStart + 1 : candidate.rowStart,
-    rowEnd: candidate.rowEnd > rowIndex ? candidate.rowEnd + 1 : candidate.rowEnd,
-  }));
-  const spanningPane: PaneGridPane = {
-    ...pane,
-    columnStart: 0,
-    columnEnd: layout.columns.length,
-    rowStart: rowIndex,
-    rowEnd: rowIndex + 1,
-  };
-
-  const nextLayout = normalizePaneLayout({
+export function setDockviewSerializedLayout(
+  layout: WorkspaceDockviewLayoutState,
+  dockview: SerializedDockview | null,
+  focusedPanelId = layout.focusedPanelId,
+): WorkspaceDockviewLayoutState {
+  return touch({
     ...layout,
-    rows: nextRows,
-    panes: [...repairedPanes, spanningPane],
-    focusedPaneId: paneId,
+    dockview,
+    focusedPanelId,
   });
-  const compactedLayout = compactUnusedPaneTracks(nextLayout);
-  return hasCompletePaneCoverage(compactedLayout) ? compactedLayout : layout;
-}
-
-export function resizeTrack(
-  layout: WorkspacePaneLayoutState,
-  axis: PaneResizeAxis,
-  trackIndex: number,
-  deltaPercent: number,
-): WorkspacePaneLayoutState {
-  const tracks = axis === "column" ? layout.columns : layout.rows;
-  if (trackIndex < 0 || trackIndex >= tracks.length - 1) {
-    return layout;
-  }
-  const min = 8;
-  const left = tracks[trackIndex]!;
-  const right = tracks[trackIndex + 1]!;
-  const nextLeft = Math.max(min, left.percent + deltaPercent);
-  const nextRight = Math.max(min, right.percent - deltaPercent);
-  const consumed = nextLeft + nextRight;
-  const original = left.percent + right.percent;
-  const scaledLeft = (nextLeft / consumed) * original;
-  const scaledRight = (nextRight / consumed) * original;
-  const nextTracks = tracks.map((track, index) => {
-    if (index === trackIndex) return { ...track, percent: scaledLeft };
-    if (index === trackIndex + 1) return { ...track, percent: scaledRight };
-    return track;
-  });
-  return normalizePaneLayout({
-    ...layout,
-    columns: axis === "column" ? nextTracks : layout.columns,
-    rows: axis === "row" ? nextTracks : layout.rows,
-  });
-}
-
-export function getPaneGridSplitControls(layout: WorkspacePaneLayoutState): PaneGridSplitControl[] {
-  return [...getAxisSplitControls(layout, "column"), ...getAxisSplitControls(layout, "row")];
-}
-
-export function getPaneLocationLabel(
-  layout: WorkspacePaneLayoutState,
-  paneId: string,
-): string | null {
-  const pane = layout.panes.find((candidate) => candidate.paneId === paneId);
-  if (!pane) {
-    return null;
-  }
-  if (layout.columns.length === 1 && layout.rows.length === 1) {
-    return "Only";
-  }
-  if (layout.columns.length === 2 && layout.rows.length === 1) {
-    return pane.columnStart === 0 ? "Left" : "Right";
-  }
-  if (layout.rows.length === 2 && layout.columns.length === 1) {
-    return pane.rowStart === 0 ? "Top" : "Bottom";
-  }
-  return `R${pane.rowStart + 1}C${pane.columnStart + 1}`;
 }
 
 export function getOpenPaneLocations(
-  layout: WorkspacePaneLayoutState,
+  layout: WorkspaceDockviewLayoutState,
   predicate: (binding: WorkspacePaneSurfaceTarget) => boolean,
-): { paneId: string; label: string; focused: boolean }[] {
-  return layout.panes
-    .filter(
-      (pane): pane is PaneGridPane & { binding: WorkspacePaneSurfaceTarget } =>
-        !!pane.binding && predicate(pane.binding),
-    )
-    .map((pane) => ({
-      paneId: pane.paneId,
-      label: getPaneLocationLabel(layout, pane.paneId) ?? pane.paneId,
-      focused: pane.paneId === layout.focusedPaneId,
+): { paneId: string; panelId: string; label: string; focused: boolean }[] {
+  return layout.panels
+    .filter((panel) => panel.binding && predicate(panel.binding))
+    .map((panel, index) => ({
+      paneId: panel.panelId,
+      panelId: panel.panelId,
+      label: panel.restore?.lastKnownLocationLabel ?? (index === 0 ? "Docked" : `Docked ${index + 1}`),
+      focused: panel.panelId === layout.focusedPanelId,
     }));
 }
 
-function touch(layout: WorkspacePaneLayoutState): WorkspacePaneLayoutState {
-  return { ...layout, updatedAt: new Date().toISOString() };
-}
-
-function clampInteger(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.trunc(value)));
-}
-
-function clampSize(value: number): number {
-  return Math.min(0.8, Math.max(0.2, value));
-}
-
-function createPaneId(): string {
+export function createPanelId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `pane-${crypto.randomUUID()}`;
+    return `panel-${crypto.randomUUID()}`;
   }
-  return `pane-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `panel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function getAxisSplitControls(
-  layout: WorkspacePaneLayoutState,
-  axis: PaneResizeAxis,
-): PaneGridSplitControl[] {
-  const tracks = axis === "column" ? layout.columns : layout.rows;
-  const crossTracks = axis === "column" ? layout.rows : layout.columns;
-  if (tracks.length === 0 || crossTracks.length === 0) {
-    return [];
-  }
-
-  const linePercents = getTrackLinePercents(tracks);
-  const crossLinePercents = getTrackLinePercents(crossTracks);
-  const controls: PaneGridSplitControl[] = [];
-
-  for (const range of getPaneEdgeRanges(layout, axis, "start")) {
-    controls.push({
-      axis,
-      endPercent: crossLinePercents[range.end] ?? 100,
-      index: 0,
-      placement: "edge-start",
-      positionPercent: 0,
-      rangeEnd: range.end,
-      rangeStart: range.start,
-      startPercent: crossLinePercents[range.start] ?? 0,
-    });
-  }
-
-  for (let lineIndex = 1; lineIndex < tracks.length; lineIndex += 1) {
-    for (const range of getPaneBoundaryRanges(layout, axis, lineIndex)) {
-      controls.push({
-        axis,
-        endPercent: crossLinePercents[range.end] ?? 100,
-        index: lineIndex,
-        placement: "divider",
-        positionPercent: linePercents[lineIndex] ?? 0,
-        rangeEnd: range.end,
-        rangeStart: range.start,
-        startPercent: crossLinePercents[range.start] ?? 0,
-      });
-    }
-  }
-
-  for (const range of getPaneEdgeRanges(layout, axis, "end")) {
-    controls.push({
-      axis,
-      endPercent: crossLinePercents[range.end] ?? 100,
-      index: tracks.length,
-      placement: "edge-end",
-      positionPercent: 100,
-      rangeEnd: range.end,
-      rangeStart: range.start,
-      startPercent: crossLinePercents[range.start] ?? 0,
-    });
-  }
-  return controls;
-}
-
-function getTrackLinePercents(tracks: PaneGridTrack[]): number[] {
-  const total = tracks.reduce((sum, track) => sum + track.percent, 0);
-  if (total <= 0) {
-    return tracks.map((_, index) => (index / tracks.length) * 100).concat(100);
-  }
-
-  const lines = [0];
-  let position = 0;
-  for (const track of tracks) {
-    position += (track.percent / total) * 100;
-    lines.push(position);
-  }
-  lines[lines.length - 1] = 100;
-  return lines;
-}
-
-function getPaneBoundaryRanges(
-  layout: WorkspacePaneLayoutState,
-  axis: PaneResizeAxis,
-  lineIndex: number,
-): Array<{ start: number; end: number }> {
-  const crossTrackCount = axis === "column" ? layout.rows.length : layout.columns.length;
-  const ranges: Array<{ start: number; end: number }> = [];
-  let rangeStart: number | null = null;
-
-  for (let crossIndex = 0; crossIndex < crossTrackCount; crossIndex += 1) {
-    const beforePane =
-      axis === "column"
-        ? findPaneCoveringCell(layout, lineIndex - 1, crossIndex)
-        : findPaneCoveringCell(layout, crossIndex, lineIndex - 1);
-    const afterPane =
-      axis === "column"
-        ? findPaneCoveringCell(layout, lineIndex, crossIndex)
-        : findPaneCoveringCell(layout, crossIndex, lineIndex);
-    const isPaneBoundary = beforePane && afterPane && beforePane.paneId !== afterPane.paneId;
-
-    if (isPaneBoundary && rangeStart === null) {
-      rangeStart = crossIndex;
-    } else if (!isPaneBoundary && rangeStart !== null) {
-      ranges.push({ start: rangeStart, end: crossIndex });
-      rangeStart = null;
-    }
-  }
-
-  if (rangeStart !== null) {
-    ranges.push({ start: rangeStart, end: crossTrackCount });
-  }
-  return ranges;
-}
-
-function getPaneEdgeRanges(
-  layout: WorkspacePaneLayoutState,
-  axis: PaneResizeAxis,
-  edge: "start" | "end",
-): Array<{ start: number; end: number }> {
-  const crossTrackCount = axis === "column" ? layout.rows.length : layout.columns.length;
-  const edgeTrackIndex =
-    edge === "start" ? 0 : axis === "column" ? layout.columns.length - 1 : layout.rows.length - 1;
-  const ranges: Array<{ start: number; end: number }> = [];
-  let rangeStart: number | null = null;
-  let rangePaneId: string | null = null;
-
-  for (let crossIndex = 0; crossIndex < crossTrackCount; crossIndex += 1) {
-    const pane =
-      axis === "column"
-        ? findPaneCoveringCell(layout, edgeTrackIndex, crossIndex)
-        : findPaneCoveringCell(layout, crossIndex, edgeTrackIndex);
-    const nextPaneId = pane?.paneId ?? null;
-
-    if (nextPaneId && rangeStart === null) {
-      rangeStart = crossIndex;
-      rangePaneId = nextPaneId;
-    } else if (nextPaneId && rangePaneId !== nextPaneId && rangeStart !== null) {
-      ranges.push({ start: rangeStart, end: crossIndex });
-      rangeStart = crossIndex;
-      rangePaneId = nextPaneId;
-    } else if (!nextPaneId && rangeStart !== null) {
-      ranges.push({ start: rangeStart, end: crossIndex });
-      rangeStart = null;
-      rangePaneId = null;
-    }
-  }
-
-  if (rangeStart !== null) {
-    ranges.push({ start: rangeStart, end: crossTrackCount });
-  }
-  return ranges;
-}
-
-function findPaneCoveringCell(
-  layout: WorkspacePaneLayoutState,
-  column: number,
-  row: number,
-): PaneGridPane | null {
-  return (
-    layout.panes.find(
-      (pane) =>
-        pane.columnStart <= column &&
-        pane.columnEnd > column &&
-        pane.rowStart <= row &&
-        pane.rowEnd > row,
-    ) ?? null
-  );
-}
-
-function hasCompletePaneCoverage(layout: WorkspacePaneLayoutState): boolean {
-  if (layout.columns.length === 0 || layout.rows.length === 0 || layout.panes.length === 0) {
-    return false;
-  }
-
-  const occupiedCells = new Set<string>();
-  const paneIds = new Set<string>();
-  for (const pane of layout.panes) {
-    if (paneIds.has(pane.paneId)) {
-      return false;
-    }
-    paneIds.add(pane.paneId);
-    if (
-      pane.columnStart < 0 ||
-      pane.rowStart < 0 ||
-      pane.columnEnd > layout.columns.length ||
-      pane.rowEnd > layout.rows.length ||
-      pane.columnStart >= pane.columnEnd ||
-      pane.rowStart >= pane.rowEnd
-    ) {
-      return false;
-    }
-
-    for (let column = pane.columnStart; column < pane.columnEnd; column += 1) {
-      for (let row = pane.rowStart; row < pane.rowEnd; row += 1) {
-        const key = `${column}:${row}`;
-        if (occupiedCells.has(key)) {
-          return false;
-        }
-        occupiedCells.add(key);
-      }
-    }
-  }
-
-  return occupiedCells.size === layout.columns.length * layout.rows.length;
-}
-
-function isPaneAlreadyPlaced(
-  source: PaneGridPane,
-  target: PaneGridPane,
-  zone: PaneSplitDirection,
-): boolean {
-  switch (zone) {
-    case "left":
-      return (
-        source.columnEnd === target.columnStart &&
-        source.rowStart === target.rowStart &&
-        source.rowEnd === target.rowEnd
-      );
-    case "right":
-      return (
-        source.columnStart === target.columnEnd &&
-        source.rowStart === target.rowStart &&
-        source.rowEnd === target.rowEnd
-      );
-    case "above":
-      return (
-        source.rowEnd === target.rowStart &&
-        source.columnStart === target.columnStart &&
-        source.columnEnd === target.columnEnd
-      );
-    case "below":
-      return (
-        source.rowStart === target.rowEnd &&
-        source.columnStart === target.columnStart &&
-        source.columnEnd === target.columnEnd
-      );
-  }
-}
-
-function isPaneAlreadySpanningEdge(
-  pane: PaneGridPane,
-  layout: WorkspacePaneLayoutState,
-  placement: PaneSpanPlacement,
-): boolean {
-  switch (placement) {
-    case "left":
-      return (
-        pane.columnStart === 0 &&
-        pane.columnEnd === 1 &&
-        pane.rowStart === 0 &&
-        pane.rowEnd === layout.rows.length
-      );
-    case "right":
-      return (
-        pane.columnStart === layout.columns.length - 1 &&
-        pane.columnEnd === layout.columns.length &&
-        pane.rowStart === 0 &&
-        pane.rowEnd === layout.rows.length
-      );
-    case "top":
-      return (
-        pane.rowStart === 0 &&
-        pane.rowEnd === 1 &&
-        pane.columnStart === 0 &&
-        pane.columnEnd === layout.columns.length
-      );
-    case "bottom":
-      return (
-        pane.rowStart === layout.rows.length - 1 &&
-        pane.rowEnd === layout.rows.length &&
-        pane.columnStart === 0 &&
-        pane.columnEnd === layout.columns.length
-      );
-  }
-}
-
-function compactUnusedPaneTracks(layout: WorkspacePaneLayoutState): WorkspacePaneLayoutState {
-  let columns = layout.columns.map((column) => ({ ...column }));
-  let rows = layout.rows.map((row) => ({ ...row }));
-  let panes = layout.panes.map((pane) => ({ ...pane }));
-
-  ({ tracks: columns, panes } = compactUnusedAxisTracks(columns, panes, "column"));
-  ({ tracks: rows, panes } = compactUnusedAxisTracks(rows, panes, "row"));
-
+function chrome(
+  title: string,
+  subtitle: string | null,
+  kind: DockviewPanelChromeKind,
+  floatable: boolean,
+): DockviewPanelChromeState {
   return {
-    ...layout,
-    columns: normalizeTracks(columns),
-    rows: normalizeTracks(rows),
-    panes,
+    title,
+    subtitle,
+    icon: null,
+    kind,
+    closable: true,
+    floatable,
+    popoutable: false,
   };
 }
 
-function compactUnusedAxisTracks(
-  tracks: PaneGridTrack[],
-  panes: PaneGridPane[],
-  axis: PaneResizeAxis,
-): { tracks: PaneGridTrack[]; panes: PaneGridPane[] } {
-  let nextTracks = tracks;
-  let nextPanes = panes;
-  let lineIndex = 1;
-
-  while (lineIndex < nextTracks.length) {
-    const lineIsPaneBoundary = nextPanes.some((pane) =>
-      axis === "column"
-        ? pane.columnStart === lineIndex || pane.columnEnd === lineIndex
-        : pane.rowStart === lineIndex || pane.rowEnd === lineIndex,
-    );
-    if (lineIsPaneBoundary) {
-      lineIndex += 1;
-      continue;
-    }
-
-    nextTracks = [
-      ...nextTracks.slice(0, lineIndex - 1),
-      {
-        ...nextTracks[lineIndex - 1]!,
-        percent: nextTracks[lineIndex - 1]!.percent + nextTracks[lineIndex]!.percent,
-      },
-      ...nextTracks.slice(lineIndex + 1),
-    ];
-    nextPanes = nextPanes.map((pane) =>
-      axis === "column"
-        ? {
-            ...pane,
-            columnStart: pane.columnStart > lineIndex ? pane.columnStart - 1 : pane.columnStart,
-            columnEnd: pane.columnEnd > lineIndex ? pane.columnEnd - 1 : pane.columnEnd,
-          }
-        : {
-            ...pane,
-            rowStart: pane.rowStart > lineIndex ? pane.rowStart - 1 : pane.rowStart,
-            rowEnd: pane.rowEnd > lineIndex ? pane.rowEnd - 1 : pane.rowEnd,
-          },
-    );
-  }
-
-  return { tracks: nextTracks, panes: nextPanes };
+function touch(layout: WorkspaceDockviewLayoutState): WorkspaceDockviewLayoutState {
+  return {
+    ...layout,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
-function findNearestPane(source: PaneGridPane, panes: PaneGridPane[]): PaneGridPane | null {
-  let nearest: PaneGridPane | null = null;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (const pane of panes) {
-    const distance =
-      Math.abs(pane.columnStart - source.columnStart) + Math.abs(pane.rowStart - source.rowStart);
-    if (distance < nearestDistance) {
-      nearest = pane;
-      nearestDistance = distance;
-    }
-  }
-  return nearest;
-}
-
-function expandAdjacentPaneIntoVacancy(
-  closedPane: PaneGridPane,
-  panes: PaneGridPane[],
-): PaneGridPane[] {
-  const rightStrip = findCoveringAdjacentStrip(
-    panes.filter((pane) => pane.columnStart === closedPane.columnEnd),
-    "row",
-    closedPane.rowStart,
-    closedPane.rowEnd,
-  );
-  if (rightStrip) {
-    return panes.map((pane) =>
-      rightStrip.has(pane.paneId) ? { ...pane, columnStart: closedPane.columnStart } : pane,
-    );
-  }
-
-  const leftStrip = findCoveringAdjacentStrip(
-    panes.filter((pane) => pane.columnEnd === closedPane.columnStart),
-    "row",
-    closedPane.rowStart,
-    closedPane.rowEnd,
-  );
-  if (leftStrip) {
-    return panes.map((pane) =>
-      leftStrip.has(pane.paneId) ? { ...pane, columnEnd: closedPane.columnEnd } : pane,
-    );
-  }
-
-  const belowStrip = findCoveringAdjacentStrip(
-    panes.filter((pane) => pane.rowStart === closedPane.rowEnd),
-    "column",
-    closedPane.columnStart,
-    closedPane.columnEnd,
-  );
-  if (belowStrip) {
-    return panes.map((pane) =>
-      belowStrip.has(pane.paneId) ? { ...pane, rowStart: closedPane.rowStart } : pane,
-    );
-  }
-
-  const aboveStrip = findCoveringAdjacentStrip(
-    panes.filter((pane) => pane.rowEnd === closedPane.rowStart),
-    "column",
-    closedPane.columnStart,
-    closedPane.columnEnd,
-  );
-  if (aboveStrip) {
-    return panes.map((pane) =>
-      aboveStrip.has(pane.paneId) ? { ...pane, rowEnd: closedPane.rowEnd } : pane,
-    );
-  }
-
-  const verticalCandidate = panes.find(
-    (pane) =>
-      pane.columnStart === closedPane.columnStart &&
-      pane.columnEnd === closedPane.columnEnd &&
-      (pane.rowEnd === closedPane.rowStart || pane.rowStart === closedPane.rowEnd),
-  );
-  if (verticalCandidate) {
-    return panes.map((pane) =>
-      pane.paneId === verticalCandidate.paneId
-        ? {
-            ...pane,
-            rowStart: Math.min(pane.rowStart, closedPane.rowStart),
-            rowEnd: Math.max(pane.rowEnd, closedPane.rowEnd),
-          }
-        : pane,
-    );
-  }
-
-  const horizontalCandidate = panes.find(
-    (pane) =>
-      pane.rowStart === closedPane.rowStart &&
-      pane.rowEnd === closedPane.rowEnd &&
-      (pane.columnEnd === closedPane.columnStart || pane.columnStart === closedPane.columnEnd),
-  );
-  if (horizontalCandidate) {
-    return panes.map((pane) =>
-      pane.paneId === horizontalCandidate.paneId
-        ? {
-            ...pane,
-            columnStart: Math.min(pane.columnStart, closedPane.columnStart),
-            columnEnd: Math.max(pane.columnEnd, closedPane.columnEnd),
-          }
-        : pane,
-    );
-  }
-
-  return panes;
-}
-
-function findCoveringAdjacentStrip(
-  candidates: PaneGridPane[],
-  axis: "column" | "row",
-  rangeStart: number,
-  rangeEnd: number,
-): Set<string> | null {
-  const coveringPanes = candidates
-    .filter((pane) =>
-      axis === "column"
-        ? pane.columnStart >= rangeStart && pane.columnEnd <= rangeEnd
-        : pane.rowStart >= rangeStart && pane.rowEnd <= rangeEnd,
-    )
-    .toSorted((left, right) =>
-      axis === "column" ? left.columnStart - right.columnStart : left.rowStart - right.rowStart,
-    );
-  if (coveringPanes.length === 0) {
+function normalizePlacement(value: unknown): DockviewPanelPlacementState | null {
+  if (!value || typeof value !== "object") {
     return null;
   }
-
-  let cursor = rangeStart;
-  for (const pane of coveringPanes) {
-    const start = axis === "column" ? pane.columnStart : pane.rowStart;
-    const end = axis === "column" ? pane.columnEnd : pane.rowEnd;
-    if (start !== cursor) {
-      return null;
-    }
-    cursor = end;
-  }
-
-  if (cursor !== rangeEnd) {
+  const candidate = value as Partial<DockviewPanelPlacementState>;
+  if (
+    typeof candidate.referencePanelId !== "string" ||
+    !["left", "right", "above", "below"].includes(String(candidate.direction))
+  ) {
     return null;
   }
+  return {
+    referencePanelId: candidate.referencePanelId,
+    direction: candidate.direction as DockviewSplitDirection,
+    size: typeof candidate.size === "number" ? candidate.size : undefined,
+  };
+}
 
-  return new Set(coveringPanes.map((pane) => pane.paneId));
+function isSerializedDockview(value: unknown): value is SerializedDockview {
+  return !!value && typeof value === "object" && "grid" in value && "panels" in value;
 }

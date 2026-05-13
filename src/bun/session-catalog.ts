@@ -1839,8 +1839,15 @@ export class WorkspaceSessionCatalog {
       const prompt = [`${input.promptLabel}:`, input.text.trim() || "New session"].join("\n");
       await namer.session.prompt(prompt, { expandPromptTemplates: false });
       const response = getLatestAssistantMessage(namer.session.agent.state.messages);
+      if (response?.stopReason === "error") {
+        throw new Error(response.errorMessage || "Namer model failed.");
+      }
       const text = extractAssistantText(response).trim();
-      return normalizeGeneratedTitle(text);
+      const title = normalizeGeneratedTitle(text);
+      if (isGenericGeneratedTitle(title)) {
+        throw new Error(`Namer returned a generic title: ${title}`);
+      }
+      return title;
     } finally {
       namer.session.dispose();
       this.managedSurfaces.delete(namer.sessionId);
@@ -3139,11 +3146,14 @@ export function normalizeGeneratedTitle(input: string): string {
   const title = (firstLine ?? "New Session")
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/[.。]+$/g, "")
-    .replace(/\s+(Session|Chat|Conversation|Thread|Request|Task)$/i, "")
     .trim()
     .slice(0, 80)
     .trim();
   return normalizeTitleCasing(title) || "New Session";
+}
+
+function isGenericGeneratedTitle(title: string): boolean {
+  return /^(New|New Session|Session|Chat|Conversation|Request|Task)$/i.test(title.trim());
 }
 
 function normalizeTitleCasing(title: string): string {

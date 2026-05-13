@@ -27,7 +27,7 @@ export type CommandAvailability =
   | { kind: "disabled"; reason: string }
   | { kind: "hidden" };
 
-export type CommandPlacement = "new-pane" | "focused-pane";
+export type CommandPlacement = "new-panel" | "focused-panel";
 
 export type CommandExecutionTarget =
   | { kind: "create-session"; mode?: "orchestrator" | "dumb"; initialPrompt?: string }
@@ -53,9 +53,7 @@ export type CommandExecutionTarget =
         | "split-below"
         | "duplicate-right"
         | "duplicate-below"
-        | "close"
-        | "span-top"
-        | "span-bottom";
+        | "close";
     };
 
 export type CommandAction = {
@@ -94,12 +92,12 @@ export type CommandRuntime = Pick<
   | "createSession"
   | "closePane"
   | "getPane"
-  | "movePaneToSpanningRow"
   | "openSession"
   | "pinSession"
   | "unpinSession"
   | "archiveSession"
   | "unarchiveSession"
+  | "focusPane"
   | "splitPane"
   | "sendPromptToTarget"
 > & {
@@ -179,16 +177,16 @@ export function createCommandPalettePaneId(now = Date.now()): string {
 export function getCommandPalettePlacement(
   event: Pick<KeyboardEvent, "metaKey" | "ctrlKey">,
 ): CommandPlacement {
-  return event.metaKey || event.ctrlKey ? "focused-pane" : "new-pane";
+  return event.metaKey || event.ctrlKey ? "focused-panel" : "new-panel";
 }
 
 export function getCommandExecutionPaneId(input: {
   placement: CommandPlacement;
-  focusedPaneId?: string | null;
+  focusedPanelId?: string | null;
   now?: number;
 }): string {
-  if (input.placement === "focused-pane") {
-    return input.focusedPaneId ?? PRIMARY_COMMAND_PANE_ID;
+  if (input.placement === "focused-panel") {
+    return input.focusedPanelId ?? PRIMARY_COMMAND_PANE_ID;
   }
 
   return createCommandPalettePaneId(input.now);
@@ -285,24 +283,6 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       shortcut: null,
       availability: { kind: "available" },
       execute: { kind: "pane-action", action: "close" },
-    },
-    {
-      id: "pane.span-top",
-      label: "Move Pane To Full-Width Top Row",
-      category: "pane",
-      aliases: ["span top", "full width top", "move pane top"],
-      shortcut: null,
-      availability: { kind: "available" },
-      execute: { kind: "pane-action", action: "span-top" },
-    },
-    {
-      id: "pane.span-bottom",
-      label: "Move Pane To Full-Width Bottom Row",
-      category: "pane",
-      aliases: ["span bottom", "full width bottom", "move pane bottom"],
-      shortcut: null,
-      availability: { kind: "available" },
-      execute: { kind: "pane-action", action: "span-bottom" },
     },
     {
       id: "project-ci.run",
@@ -636,17 +616,23 @@ export async function executeCommandAction(input: {
       input.onOpenSettings?.(target.target);
       return;
     case "pane-action":
-      if (target.action === "split-right") await runtime.splitPane(paneId, "right");
-      if (target.action === "split-below") await runtime.splitPane(paneId, "below");
+      if (target.action === "split-right") {
+        const nextPanelId = await runtime.splitPane(paneId, "right");
+        if (nextPanelId) runtime.focusPane(nextPanelId);
+      }
+      if (target.action === "split-below") {
+        const nextPanelId = await runtime.splitPane(paneId, "below");
+        if (nextPanelId) runtime.focusPane(nextPanelId);
+      }
       if (target.action === "duplicate-right") {
-        await runtime.splitPane(paneId, "right", { duplicateBinding: true });
+        const nextPanelId = await runtime.splitPane(paneId, "right", { duplicateBinding: true });
+        if (nextPanelId) runtime.focusPane(nextPanelId);
       }
       if (target.action === "duplicate-below") {
-        await runtime.splitPane(paneId, "below", { duplicateBinding: true });
+        const nextPanelId = await runtime.splitPane(paneId, "below", { duplicateBinding: true });
+        if (nextPanelId) runtime.focusPane(nextPanelId);
       }
       if (target.action === "close") await runtime.closePane(paneId);
-      if (target.action === "span-top") runtime.movePaneToSpanningRow(paneId, "top");
-      if (target.action === "span-bottom") runtime.movePaneToSpanningRow(paneId, "bottom");
       return;
   }
 }

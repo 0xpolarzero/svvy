@@ -14,6 +14,7 @@
 		deriveTranscriptUserScrollState,
 	} from "./transcript-scroll";
 	import { TranscriptVirtualizer } from "./transcript-virtualizer";
+	import AssistantMarkdown from "./AssistantMarkdown.svelte";
 	import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
 	import FailedCard from "./reference-cards/FailedCard.svelte";
 	import type { ReferenceStatus } from "./reference-cards/StatusBadge.svelte";
@@ -563,7 +564,9 @@
 
 						{#each message.content as block, blockIndex (`${message.timestamp}:block:${blockIndex}`)}
 							{#if block.type === "text"}
-								<div class="message-text">{block.text}</div>
+								<div class="message-text">
+									<AssistantMarkdown content={block.text} isFinished={true} />
+								</div>
 							{:else if block.type === "thinking"}
 								<details class="thinking-block">
 									<summary>Reasoning trace</summary>
@@ -636,7 +639,9 @@
 
 					{#each streamingAssistant.content as block, blockIndex (`streaming:${blockIndex}`)}
 						{#if block.type === "text"}
-							<div class="message-text">{block.text}</div>
+							<div class="message-text">
+								<AssistantMarkdown content={block.text} isFinished={false} />
+							</div>
 						{:else if block.type === "thinking"}
 							<details class="thinking-block">
 								<summary>Reasoning trace</summary>
