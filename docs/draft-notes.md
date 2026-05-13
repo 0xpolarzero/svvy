@@ -95,3 +95,5 @@
     - orchestrator has full context of the discussion and previous plans/thread results when making up a new plan and gives precise tasks to handlers (drive)
     - or orchestrator is focused on high-level design and keeps implementation/details isolated from its context, with more freedom for each handler to tinker (design)
     - counter-intuitive because of bad naming, but "design" probably needs more work for better results (more need to steer handlers instead of steering orchestrator "once" and let it compound) but better upside because of more fine-grained orchestrator pollution
+
+- saved messages; for messages that are frequently sent you can just save them and then have a picker + autocomplete proposition; avoids storing everything in AGENTS.md when something can be specific for one task that is often asked
