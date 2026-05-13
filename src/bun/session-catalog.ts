@@ -724,11 +724,9 @@ export class WorkspaceSessionCatalog {
       return this.createSession({ title: request.title }, fallbackDefaults);
     }
 
-    const forkedSessionManager = SessionManager.forkFrom(
-      sourceSessionFile,
-      this.cwd,
-      this.sessionDir,
-    );
+    const forkedSessionManager = request.messageTimestamp
+      ? createBranchedSessionManager(sourceSessionFile, this.sessionDir, request.messageTimestamp)
+      : SessionManager.forkFrom(sourceSessionFile, this.cwd, this.sessionDir);
     if (request.title?.trim()) {
       forkedSessionManager.appendSessionInfo(request.title);
     }
@@ -2901,6 +2899,33 @@ function readRestoredSessionMetadata(sessionManager: SessionManager): {
   }
 
   return { provider, model, thinkingLevel };
+}
+
+function createBranchedSessionManager(
+  sourceSessionFile: string,
+  sessionDir: string,
+  messageTimestamp: string | number,
+): SessionManager {
+  const sourceSessionManager = SessionManager.open(sourceSessionFile, sessionDir);
+  const targetTimestamp = String(messageTimestamp);
+  const branchEntry = sourceSessionManager.getBranch().find((entry) => {
+    return (
+      entry.type === "message" &&
+      entry.message.role === "assistant" &&
+      String(entry.message.timestamp) === targetTimestamp
+    );
+  });
+
+  if (!branchEntry) {
+    throw new Error("Unable to fork: assistant message was not found in the session branch.");
+  }
+
+  const branchedSessionFile = sourceSessionManager.createBranchedSession(branchEntry.id);
+  if (!branchedSessionFile) {
+    throw new Error("Unable to fork: branched session file was not created.");
+  }
+
+  return sourceSessionManager;
 }
 
 function resolveRegisteredModel(modelRegistry: ModelRegistry, provider: string, model: string) {

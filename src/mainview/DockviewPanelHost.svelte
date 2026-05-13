@@ -85,6 +85,16 @@
     return true;
   }
 
+  async function forkFromAssistantMessage(messageTimestamp: string | number): Promise<void> {
+    if (!controller) return;
+    await runtime.forkSession(
+      controller.target.workspaceSessionId,
+      undefined,
+      { kind: "new-panel", direction: "right" },
+      { messageTimestamp },
+    );
+  }
+
   onMount(() => {
     syncPanel();
     unsubscribeRuntime = runtime.subscribe(syncPanel);
@@ -123,6 +133,7 @@
       {isStreaming}
       workspaceMentionPaths={new Set()}
       onScrollStateChange={(scroll) => runtime.setPaneScroll(panelId, scroll)}
+      onForkAssistantMessage={(message) => void forkFromAssistantMessage(message.timestamp)}
     />
     <ChatComposer
       currentModel={currentModel ?? controller.agent.state.model}

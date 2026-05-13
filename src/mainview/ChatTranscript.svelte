@@ -1,6 +1,9 @@
 <script lang="ts">
 	import type { AssistantMessage, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
-	import { onMount, tick } from "svelte";
+	import CheckIcon from "@lucide/svelte/icons/check";
+	import CopyIcon from "@lucide/svelte/icons/copy";
+	import GitForkIcon from "@lucide/svelte/icons/git-fork";
+	import { onDestroy, onMount, tick } from "svelte";
 	import { parseArtifactsParams } from "./artifacts";
 	import { formatTimestamp, formatUsage } from "./chat-format";
 	import { parseTranscriptMentionLinks } from "./composer-mentions";
@@ -23,6 +26,7 @@
 	import WaitingCard from "./reference-cards/WaitingCard.svelte";
 	import WorkflowCard, { type ReferenceWorkflow } from "./reference-cards/WorkflowCard.svelte";
 	import type { WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
+	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
 
 	const DEFAULT_TRANSCRIPT_ROW_GAP = 16;
@@ -43,6 +47,7 @@
 		onOpenHandlerThread?: (threadId: string) => void;
 		onInspectWorkflow?: (workflowId: string) => void;
 		onInspectWorkflowTaskAttempt?: (workflowTaskAttemptId: string) => void;
+		onForkAssistantMessage?: (message: AssistantMessage) => void;
 		onReplyToWait?: (block: TranscriptSemanticBlock & { kind: "wait" }, text: string) => void;
 		onRetryFailure?: (block: TranscriptSemanticBlock & { kind: "failure" }) => void;
 		onScrollStateChange?: (scroll: { transcriptAnchorId: string | null; offsetPx: number }) => void;
@@ -63,6 +68,7 @@
 		onOpenHandlerThread,
 		onInspectWorkflow,
 		onInspectWorkflowTaskAttempt,
+		onForkAssistantMessage,
 		onReplyToWait,
 		onRetryFailure,
 		onScrollStateChange,
@@ -81,8 +87,10 @@
 		endIndex: 0,
 		totalHeight: 0,
 	});
+	let copiedAssistantMessageTimestamp = $state<string | null>(null);
 	let transcriptSessionId: string | undefined = undefined;
 	let transcriptSessionInitialized = false;
+	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let autoScroll = $state(true);
 	const virtualizer = new TranscriptVirtualizer({
@@ -126,6 +134,70 @@
 
 	function userLineSegments(line: string) {
 		return parseTranscriptMentionLinks(line, workspaceMentionPaths);
+	}
+
+	function assistantMessageText(message: AssistantMessage): string {
+		return message.content
+			.filter((block): block is { type: "text"; text: string } => block.type === "text")
+			.map((block) => block.text)
+			.join("\n\n")
+			.trim();
+	}
+
+	async function copyTextToClipboard(text: string): Promise<void> {
+		try {
+			await rpc.request.writeClipboardText({ text });
+			return;
+		} catch (rpcError) {
+			if (navigator.clipboard?.writeText) {
+				try {
+					await navigator.clipboard.writeText(text);
+					return;
+				} catch (clipboardError) {
+					throw new Error("Native and browser clipboard writes failed.", {
+						cause: { rpcError, clipboardError },
+					});
+				}
+			}
+
+			if (!document.queryCommandSupported?.("copy")) {
+				throw rpcError;
+			}
+		}
+
+		const fallback = document.createElement("textarea");
+		fallback.value = text;
+		fallback.setAttribute("readonly", "true");
+		fallback.style.position = "fixed";
+		fallback.style.top = "0";
+		fallback.style.left = "0";
+		fallback.style.opacity = "0";
+		document.body.appendChild(fallback);
+		fallback.focus();
+		fallback.select();
+
+		try {
+			const copied = document.execCommand("copy");
+			if (!copied) {
+				throw new Error("Document copy command was rejected.");
+			}
+		} finally {
+			document.body.removeChild(fallback);
+		}
+	}
+
+	async function handleCopyAssistantMessage(message: AssistantMessage) {
+		const text = assistantMessageText(message);
+		if (!text) return;
+		if (copyResetTimer) {
+			clearTimeout(copyResetTimer);
+		}
+		await copyTextToClipboard(text);
+		copiedAssistantMessageTimestamp = message.timestamp;
+		copyResetTimer = window.setTimeout(() => {
+			copiedAssistantMessageTimestamp = null;
+			copyResetTimer = null;
+		}, 1800);
 	}
 
 	function handleWorkspaceMentionClick(event: MouseEvent, path: string, missing?: boolean) {
@@ -383,6 +455,13 @@
 		};
 	});
 
+	onDestroy(() => {
+		if (copyResetTimer) {
+			clearTimeout(copyResetTimer);
+			copyResetTimer = null;
+		}
+	});
+
 	$effect(() => {
 		void sessionId;
 
@@ -595,6 +674,35 @@
 								/>
 							{/if}
 						{/each}
+						<div class="assistant-message-actions" aria-label="Assistant message actions">
+							<Button
+								variant="ghost"
+								size="xs"
+								iconOnly
+								aria-label="Fork session from this message"
+								title="Fork from this message"
+								data-tooltip="Fork from this message"
+								onclick={() => onForkAssistantMessage?.(message)}
+							>
+								<GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+							</Button>
+							<Button
+								variant="ghost"
+								size="xs"
+								iconOnly
+								aria-label="Copy assistant message"
+								title="Copy assistant message"
+								data-tooltip="Copy assistant message"
+								disabled={!assistantMessageText(message)}
+								onclick={() => void handleCopyAssistantMessage(message)}
+							>
+								{#if copiedAssistantMessageTimestamp === message.timestamp}
+									<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+								{:else}
+									<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+								{/if}
+							</Button>
+						</div>
 						</div>
 					</article>
 				{:else if message.role === "toolResult"}
@@ -863,6 +971,21 @@
 
 	.message-text + .message-text {
 		margin-top: 0.72rem;
+	}
+
+	.assistant-message-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.18rem;
+		margin-top: 0.55rem;
+		color: var(--ui-text-secondary);
+		opacity: 0.72;
+		transition: opacity 150ms ease;
+	}
+
+	.assistant-bubble:hover .assistant-message-actions,
+	.assistant-bubble:focus-within .assistant-message-actions {
+		opacity: 1;
 	}
 
 	.workspace-mention-link {

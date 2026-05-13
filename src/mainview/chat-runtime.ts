@@ -259,6 +259,7 @@ export interface ChatRuntime {
     sessionId: string,
     title?: string,
     openTarget?: PaneOpenTarget | string,
+    options?: { messageTimestamp?: string | number },
   ) => Promise<void>;
   deleteSession: (sessionId: string, panelId?: string) => Promise<void>;
   pinSession: (sessionId: string) => Promise<void>;
@@ -794,7 +795,8 @@ export async function createChatRuntime(
     const focus = bindOptions.focus ?? true;
     const persist = bindOptions.persist ?? true;
     const previousFocusedPaneId = paneLayout.focusedPanelId;
-    const previousTarget = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
+    const previousTarget =
+      paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     const nextTarget = normalizePromptTarget(snapshot.target);
     if (
       isPromptTarget(previousTarget) &&
@@ -832,7 +834,8 @@ export async function createChatRuntime(
     panelId: string,
     controller: ChatSurfaceControllerInternal,
   ): void => {
-    const previousTarget = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
+    const previousTarget =
+      paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     const nextTarget = normalizePromptTarget(controller.target);
     paneLayout = bindPane(paneLayout, panelId, nextTarget);
     controller.attachPane(panelId);
@@ -1063,7 +1066,9 @@ export async function createChatRuntime(
       });
       persistWorkspaceUiRestore();
       emit();
-      return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? openTarget.panelId;
+      return (
+        paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? openTarget.panelId
+      );
     }
     if (openTarget.kind === "tab") {
       paneLayout = addDockviewPanel(paneLayout);
@@ -1438,15 +1443,22 @@ export async function createChatRuntime(
       await bindPaneToSnapshot(panelId, response.snapshot);
       await refreshSessions();
     },
-    forkSession: async (sessionId, title, openTarget) => {
+    forkSession: async (sessionId, title, openTarget, options) => {
       const nextPaneId = resolveOpenTarget(openTarget);
-      const snapshot = await rpcClient.request.forkSession({ sessionId, title });
+      const snapshot = await rpcClient.request.forkSession({
+        sessionId,
+        title,
+        messageTimestamp: options?.messageTimestamp,
+      });
       await bindPaneToSnapshot(nextPaneId, snapshot);
       await refreshSessions();
     },
     deleteSession: async (sessionId, panelId) => {
       const fallbackPaneId =
-        panelId ?? paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
+        panelId ??
+        paneLayout.focusedPanelId ??
+        paneLayout.panels[0]?.panelId ??
+        PRIMARY_CHAT_PANE_ID;
       const affectedPaneIds = new Set<string>();
       for (const pane of paneLayout.panels) {
         if (pane.binding?.workspaceSessionId === sessionId) {

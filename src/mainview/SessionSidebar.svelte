@@ -24,7 +24,6 @@
     onCreateDumbSession: () => void;
     onOpenSession: (sessionId: string) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
-    onForkSession: (session: WorkspaceSessionSummary) => void;
     onPinSession: (session: WorkspaceSessionSummary) => void;
     onUnpinSession: (session: WorkspaceSessionSummary) => void;
     onArchiveSession: (session: WorkspaceSessionSummary) => void;
@@ -48,7 +47,6 @@
     onCreateDumbSession,
     onOpenSession,
     onRenameSession,
-    onForkSession,
     onPinSession,
     onUnpinSession,
     onArchiveSession,
@@ -166,7 +164,6 @@
               {session}
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
-              onFork={() => onForkSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
               onArchive={() => onArchiveSession(session)}
@@ -188,7 +185,6 @@
               {session}
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
-              onFork={() => onForkSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
               onArchive={() => onArchiveSession(session)}
@@ -225,7 +221,6 @@
                 {session}
                 onOpen={() => onOpenSession(session.id)}
                 onRename={() => onRenameSession(session)}
-                onFork={() => onForkSession(session)}
                 onPin={() => onPinSession(session)}
                 onUnpin={() => onUnpinSession(session)}
                 onArchive={() => onArchiveSession(session)}

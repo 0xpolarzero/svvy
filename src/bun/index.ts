@@ -662,14 +662,23 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         }
         return result;
       },
-      forkSession: async ({ sessionId, title }: { sessionId: string; title?: string }) => {
+      forkSession: async ({
+        sessionId,
+        title,
+        messageTimestamp,
+      }: {
+        sessionId: string;
+        title?: string;
+        messageTimestamp?: string | number;
+      }) => {
         const session = await workspaceSessionCatalog.forkSession(
-          { sessionId, title },
+          { sessionId, title, messageTimestamp },
           getSessionDefaults(),
         );
         recordBridgeEvent("session.forked", {
           sessionId,
           targetSessionId: session.target.workspaceSessionId,
+          messageTimestamp: messageTimestamp ?? null,
           title: title?.trim() || null,
         });
         return session;

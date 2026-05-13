@@ -1,10 +1,8 @@
 <script lang="ts">
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import ArchiveRestoreIcon from "@lucide/svelte/icons/archive-restore";
-  import GitForkIcon from "@lucide/svelte/icons/git-fork";
   import PinIcon from "@lucide/svelte/icons/pin";
   import PinOffIcon from "@lucide/svelte/icons/pin-off";
-  import PencilIcon from "@lucide/svelte/icons/pencil";
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
   import { formatRelativeSessionTime, formatSessionStatusLabel } from "./session-format";
   import Button from "./ui/Button.svelte";
@@ -17,7 +15,6 @@
     disabled?: boolean;
     onOpen: () => void;
     onRename: () => void;
-    onFork: () => void;
     onPin: () => void;
     onUnpin: () => void;
     onArchive: () => void;
@@ -34,7 +31,6 @@
     disabled = false,
     onOpen,
     onRename,
-    onFork,
     onPin,
     onUnpin,
     onArchive,
@@ -119,8 +115,9 @@
     aria-current={active ? "true" : undefined}
     disabled={disabled}
     onclick={onOpen}
+    ondblclick={onRename}
     onkeydown={handleKeydown}
-    title={session.title}
+    title={renameLocked ? session.title : `${session.title} · double-click to rename`}
   >
     <div class="session-main-top">
       <strong>{session.title}</strong>
@@ -182,30 +179,6 @@
       size="xs"
       iconOnly
       class="session-inline-action"
-      aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
-      title={session.isPinned ? "Unpin" : "Pin"}
-      data-tooltip={session.isPinned ? "Unpin" : "Pin"}
-      onclick={(event) => {
-        event.stopPropagation();
-        if (session.isPinned) {
-          onUnpin();
-        } else {
-          onPin();
-        }
-      }}
-    >
-      {#if session.isPinned}
-        <PinOffIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {:else}
-        <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-      {/if}
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="xs"
-      iconOnly
-      class="session-inline-action"
       aria-label={session.isArchived ? `Unarchive ${session.title}` : `Archive ${session.title}`}
       title={session.isArchived ? "Unarchive" : "Archive"}
       data-tooltip={session.isArchived ? "Unarchive" : "Archive"}
@@ -230,32 +203,23 @@
       size="xs"
       iconOnly
       class="session-inline-action"
-      aria-label={`Fork ${session.title}`}
-      title="Fork"
-      data-tooltip="Fork"
+      aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
+      title={session.isPinned ? "Unpin" : "Pin"}
+      data-tooltip={session.isPinned ? "Unpin" : "Pin"}
       onclick={(event) => {
         event.stopPropagation();
-        onFork();
+        if (session.isPinned) {
+          onUnpin();
+        } else {
+          onPin();
+        }
       }}
     >
-      <GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-    </Button>
-
-    <Button
-      variant="ghost"
-      size="xs"
-      iconOnly
-      class="session-inline-action"
-      aria-label={`Rename ${session.title}`}
-      disabled={renameLocked}
-      title={renameLocked ? "Title generation is running" : "Rename"}
-      data-tooltip={renameLocked ? "Title generation is running" : "Rename"}
-      onclick={(event) => {
-        event.stopPropagation();
-        onRename();
-      }}
-    >
-      <PencilIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {#if session.isPinned}
+        <PinOffIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {:else}
+        <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+      {/if}
     </Button>
   </div>
 </article>

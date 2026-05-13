@@ -784,6 +784,7 @@ export interface RenameSessionRequest {
 export interface ForkSessionRequest {
   sessionId: string;
   title?: string;
+  messageTimestamp?: string | number;
 }
 
 export interface WorkspaceMutationResponse {

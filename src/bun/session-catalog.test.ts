@@ -452,6 +452,52 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("forks a workspace session from a selected assistant message", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const sourceSessionManager = SessionManager.create(cwd, sessionDir);
+    sourceSessionManager.appendSessionInfo("Branch Source");
+    sourceSessionManager.appendMessage(userMessage("first question"));
+    const firstAssistant = {
+      ...assistantMessage("first answer"),
+      timestamp: 1_111,
+    };
+    sourceSessionManager.appendMessage(firstAssistant);
+    sourceSessionManager.appendMessage(userMessage("second question"));
+    sourceSessionManager.appendMessage({
+      ...assistantMessage("second answer"),
+      timestamp: 2_222,
+    });
+
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const forked = await catalog.forkSession(
+        {
+          sessionId: sourceSessionManager.getSessionId(),
+          messageTimestamp: firstAssistant.timestamp,
+        },
+        DEFAULTS,
+      );
+      const forkedSurface = getManagedSurface(catalog, forked.target.surfacePiSessionId);
+      const forkedSessionManager = (
+        forkedSurface.session as unknown as { sessionManager: SessionManager }
+      ).sessionManager;
+      const messages = forkedSessionManager.buildSessionContext().messages;
+
+      expect(messages.map((message) => message.role)).toEqual(["user", "assistant"]);
+      expect((messages[0] as Message).content).toEqual([{ type: "text", text: "first question" }]);
+      expect((messages[1] as AssistantMessage).content[0]).toEqual({
+        type: "text",
+        text: "first answer",
+      });
+      expect(forkedSessionManager.getHeader()?.parentSession).toBe(
+        sourceSessionManager.getSessionFile(),
+      );
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("restores workflow supervision with pending handler attention delivery when a tracked session opens", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);

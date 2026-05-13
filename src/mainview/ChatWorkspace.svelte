@@ -719,10 +719,6 @@
     });
   }
 
-  async function handleForkSession(session: WorkspaceSessionSummary) {
-    await runSessionMutation(() => runtime.forkSession(session.id, undefined, { kind: "new-panel", direction: "right" }));
-  }
-
   async function handleResetSurfaceTarget() {
     const session = currentSession;
     if (!session) {
@@ -1974,7 +1970,6 @@
             onCreateDumbSession={handleCreateDumbSession}
             onOpenSession={handleOpenSession}
             onRenameSession={handleRenameSession}
-            onForkSession={handleForkSession}
             onPinSession={handlePinSession}
             onUnpinSession={handleUnpinSession}
             onArchiveSession={handleArchiveSession}
