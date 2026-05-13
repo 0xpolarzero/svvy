@@ -790,6 +790,10 @@ export interface WorkspaceMutationResponse {
   ok: boolean;
 }
 
+export interface WriteClipboardTextRequest {
+  text: string;
+}
+
 export interface SurfaceMutationResponse {
   ok: boolean;
   target: PromptTarget;
@@ -829,6 +833,10 @@ export interface ChatRPCSchema {
       getWorkspaceInfo: {
         params: undefined;
         response: WorkspaceInfoResponse;
+      };
+      writeClipboardText: {
+        params: WriteClipboardTextRequest;
+        response: WorkspaceMutationResponse;
       };
       listWorkspacePaths: {
         params: { refresh?: boolean } | undefined;

@@ -963,6 +963,8 @@ The main orchestrator surface and a handler thread surface should use the same c
 - artifacts
 - status
 
+Assistant transcript messages render Markdown suitable for coding-agent output, including compact prose, lists, tables, fenced code with syntax highlighting and copy actions, inline and block math, Mermaid diagrams, and escaped raw HTML rather than executable HTML.
+
 Message targeting is simple:
 
 - sending a message from a panel sends it to the surface shown in that panel

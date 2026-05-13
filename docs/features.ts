@@ -150,6 +150,14 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     sourceSpecs: ["docs/specs/composer-mention-links.spec.md", "docs/progress.md"],
   },
   {
+    id: "assistant-markdown-rendering",
+    name: "Assistant Markdown Rendering",
+    status: "shipped",
+    summary:
+      "Renders streamed assistant transcript Markdown with compact prose spacing, reliable list markers, GitHub-style tables and task lists, syntax-highlighted fenced code blocks with copy actions, inline and display math through KaTeX, Mermaid diagrams rendered as SVG with source copy fallback, and escaped raw HTML so assistant output cannot inject executable markup.",
+    sourceSpecs: ["docs/prd.md"],
+  },
+  {
     id: "workspace-navigation-core-projection",
     name: "Workspace Navigation And Core Projection",
     status: "shipped",

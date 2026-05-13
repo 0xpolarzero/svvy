@@ -1,5 +1,14 @@
 <script lang="ts">
-	import { Marked, Renderer, type Tokens } from "marked";
+	import { tick } from "svelte";
+	import { katex } from "@mdit/plugin-katex";
+	import "katex/dist/katex.min.css";
+	import MarkdownIt from "markdown-it";
+	import type Token from "markdown-it/lib/token.mjs";
+	import abbr from "markdown-it-abbr";
+	import deflist from "markdown-it-deflist";
+	import footnote from "markdown-it-footnote";
+	import taskLists from "markdown-it-task-lists";
+	import { rpc } from "./rpc";
 
 	type Props = {
 		content: string;
@@ -8,14 +17,37 @@
 
 	let { content, isFinished }: Props = $props();
 
-	const renderer = new Renderer();
-	const markdown = new Marked({
-		async: false,
-		breaks: false,
-		gfm: true,
-		pedantic: false,
-		renderer,
-	});
+	let highlightedCode = $state<Record<string, string>>({});
+	let containerElement = $state<HTMLDivElement | null>(null);
+	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+	let mermaidRenderCounter = 0;
+
+	let markdown: MarkdownIt;
+	let codeToHighlightedHtmlPromise:
+		| Promise<(code: string, lang: HighlightLanguage) => Promise<string>>
+		| undefined;
+
+	const supportedHighlightLanguages = [
+		"bash",
+		"css",
+		"diff",
+		"go",
+		"html",
+		"javascript",
+		"json",
+		"jsx",
+		"markdown",
+		"python",
+		"rust",
+		"svelte",
+		"text",
+		"toml",
+		"tsx",
+		"typescript",
+		"yaml",
+	] as const;
+	type HighlightLanguage = (typeof supportedHighlightLanguages)[number];
+	const supportedHighlightLanguageSet = new Set<string>(supportedHighlightLanguages);
 
 	function escapeHtml(value: string) {
 		return value
@@ -26,39 +58,300 @@
 			.replaceAll("'", "&#39;");
 	}
 
-	function safeUrl(value: string) {
-		try {
-			const parsed = new URL(value, "https://svvy.local");
-			if (["http:", "https:", "mailto:"].includes(parsed.protocol)) {
-				return value;
-			}
-		} catch {
-			if (value.startsWith("#") || value.startsWith("/")) {
-				return value;
-			}
-		}
-		return "";
+	function codeKey(text: string, lang: string | undefined) {
+		return `${lang ?? "text"}\u0000${text}`;
 	}
 
-	renderer.html = ({ text }) => escapeHtml(text);
-	renderer.link = ({ href, title, tokens }: Tokens.Link) => {
-		const safeHref = safeUrl(href);
-		const label = markdown.parseInline(tokens) as string;
-		if (!safeHref) return label;
-		const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-		return `<a href="${escapeHtml(safeHref)}"${titleAttribute} target="_blank" rel="noreferrer">${label}</a>`;
-	};
-	renderer.image = ({ href, title, text }: Tokens.Image) => {
-		const safeHref = safeUrl(href);
-		if (!safeHref) return escapeHtml(text);
-		const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-		return `<img src="${escapeHtml(safeHref)}" alt="${escapeHtml(text)}"${titleAttribute} loading="lazy" />`;
-	};
+	function normalizeLanguage(lang: string | undefined) {
+		const normalized = lang?.trim().toLowerCase() ?? "";
+		if (!normalized) return "text";
+		if (normalized === "sh" || normalized === "shell") return "bash";
+		if (normalized === "md") return "markdown";
+		if (normalized === "ts") return "typescript";
+		if (normalized === "js") return "javascript";
+		return normalized;
+	}
 
-	const renderedHtml = $derived(markdown.parse(content) as string);
+	function toHighlightLanguage(lang: string): HighlightLanguage {
+		return supportedHighlightLanguageSet.has(lang) ? (lang as HighlightLanguage) : "text";
+	}
+
+	function renderCodeFrame(code: string, normalizedLanguage: string, codeHtml: string) {
+		return `<div class="code-block-frame" data-language="${escapeHtml(normalizedLanguage)}"><div class="code-block-toolbar"><span>${escapeHtml(normalizedLanguage)}</span><button class="code-copy-button" type="button" aria-label="Copy code" title="Copy code" data-copy-default-label="Copy code" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div>${codeHtml}</div>`;
+	}
+
+	function renderMermaidFrame(code: string) {
+		return `<div class="code-block-frame mermaid-block-frame" data-language="mermaid"><div class="code-block-toolbar"><span>mermaid</span><button class="code-copy-button" type="button" aria-label="Copy diagram source" title="Copy diagram source" data-copy-default-label="Copy diagram source" data-copy-code="${encodeURIComponent(code)}"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-label">Copy</span></button></div><div class="mermaid-block" data-mermaid-source="${encodeURIComponent(code)}"><pre class="shiki shiki-fallback mermaid-fallback"><code>${escapeHtml(code)}</code></pre></div></div>`;
+	}
+
+	async function copyTextToClipboard(text: string): Promise<void> {
+		try {
+			await rpc.request.writeClipboardText({ text });
+			return;
+		} catch (rpcError) {
+			if (navigator.clipboard?.writeText) {
+				try {
+					await navigator.clipboard.writeText(text);
+					return;
+				} catch (clipboardError) {
+					throw new Error("Native and browser clipboard writes failed.", {
+						cause: { rpcError, clipboardError },
+					});
+				}
+			}
+
+			if (!document.queryCommandSupported?.("copy")) {
+				throw rpcError;
+			}
+		}
+
+		const fallback = document.createElement("textarea");
+		fallback.value = text;
+		fallback.setAttribute("readonly", "true");
+		fallback.style.position = "fixed";
+		fallback.style.top = "0";
+		fallback.style.left = "0";
+		fallback.style.opacity = "0";
+		document.body.appendChild(fallback);
+		fallback.focus();
+		fallback.select();
+
+		try {
+			const copied = document.execCommand("copy");
+			if (!copied) {
+				throw new Error("Document copy command was rejected.");
+			}
+		} finally {
+			document.body.removeChild(fallback);
+		}
+	}
+
+	function resetCopyButton(button: HTMLButtonElement) {
+		button.classList.remove("copied", "copy-error");
+		const defaultLabel = button.dataset.copyDefaultLabel ?? "Copy code";
+		button.setAttribute("aria-label", defaultLabel);
+		button.setAttribute("title", defaultLabel);
+		const label = button.querySelector(".code-copy-label");
+		if (label) label.textContent = "Copy";
+	}
+
+	async function handleMarkdownClick(event: MouseEvent) {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const button = target.closest<HTMLButtonElement>(".code-copy-button");
+		if (!button || !containerElement?.contains(button)) return;
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		if (copyResetTimer) {
+			clearTimeout(copyResetTimer);
+			copyResetTimer = null;
+		}
+
+		containerElement.querySelectorAll<HTMLButtonElement>(".code-copy-button").forEach(resetCopyButton);
+
+		try {
+			await copyTextToClipboard(decodeURIComponent(button.dataset.copyCode ?? ""));
+			button.classList.add("copied");
+			button.setAttribute("aria-label", "Copied code");
+			button.setAttribute("title", "Copied code");
+			const label = button.querySelector(".code-copy-label");
+			if (label) label.textContent = "Copied";
+		} catch (error) {
+			console.error("Failed to copy code block:", error);
+			button.classList.add("copy-error");
+			button.setAttribute("aria-label", "Copy failed");
+			button.setAttribute("title", "Copy failed");
+			const label = button.querySelector(".code-copy-label");
+			if (label) label.textContent = "Failed";
+		}
+
+		copyResetTimer = window.setTimeout(() => {
+			resetCopyButton(button);
+			copyResetTimer = null;
+		}, 1800);
+	}
+
+	function getCodeToHighlightedHtml() {
+		codeToHighlightedHtmlPromise ??= (async () => {
+			const { createBundledHighlighter, createSingletonShorthands } = await import("shiki/core");
+			const { createJavaScriptRegexEngine } = await import("shiki/engine/javascript");
+			const createHighlighter = createBundledHighlighter({
+				langs: {
+					bash: () => import("shiki/langs/bash"),
+					css: () => import("shiki/langs/css"),
+					diff: () => import("shiki/langs/diff"),
+					go: () => import("shiki/langs/go"),
+					html: () => import("shiki/langs/html"),
+					javascript: () => import("shiki/langs/javascript"),
+					json: () => import("shiki/langs/json"),
+					jsx: () => import("shiki/langs/jsx"),
+					markdown: () => import("shiki/langs/markdown"),
+					python: () => import("shiki/langs/python"),
+					rust: () => import("shiki/langs/rust"),
+					svelte: () => import("shiki/langs/svelte"),
+					toml: () => import("shiki/langs/toml"),
+					tsx: () => import("shiki/langs/tsx"),
+					typescript: () => import("shiki/langs/typescript"),
+					yaml: () => import("shiki/langs/yaml"),
+				},
+				themes: {
+					"github-dark": () => import("shiki/themes/github-dark"),
+				},
+				engine: () => createJavaScriptRegexEngine(),
+			});
+			const { codeToHtml } = createSingletonShorthands(createHighlighter);
+			return (code: string, lang: HighlightLanguage) =>
+				codeToHtml(code, {
+					lang,
+					theme: "github-dark",
+				});
+		})();
+		return codeToHighlightedHtmlPromise;
+	}
+
+	markdown = new MarkdownIt({
+		html: false,
+		linkify: false,
+		breaks: false,
+		typographer: false,
+		highlight(text, lang) {
+			const normalizedLanguage = normalizeLanguage(lang);
+			if (normalizedLanguage === "mermaid") return renderMermaidFrame(text);
+			const highlighted = highlightedCode[codeKey(text, normalizedLanguage)];
+			if (highlighted) return renderCodeFrame(text, normalizedLanguage, highlighted);
+			return renderCodeFrame(
+				text,
+				normalizedLanguage,
+				`<pre class="shiki shiki-fallback"><code>${escapeHtml(text)}</code></pre>`,
+			);
+		},
+	})
+		.use(footnote)
+		.use(deflist)
+		.use(abbr)
+		.use(katex, {
+			throwOnError: false,
+			output: "html",
+		})
+		.use(taskLists, { enabled: false });
+
+	$effect(() => {
+		const tokens = markdown.parse(content, {});
+		const codeBlocks: Array<{ text: string; lang?: string }> = [];
+
+		function collectCodeBlocks(items: Token[]) {
+			for (const item of items) {
+				if (item.type === "fence" || item.type === "code_block") {
+					codeBlocks.push({ text: item.content, lang: item.info });
+				}
+				if (Array.isArray(item.children)) collectCodeBlocks(item.children);
+			}
+		}
+
+		collectCodeBlocks(tokens);
+		if (codeBlocks.length === 0) return;
+
+		let cancelled = false;
+		void (async () => {
+			const codeToHighlightedHtml = await getCodeToHighlightedHtml();
+			const nextHighlighted: Record<string, string> = {};
+
+			for (const block of codeBlocks) {
+				const normalizedLanguage = normalizeLanguage(block.lang);
+				if (normalizedLanguage === "mermaid") continue;
+				const lang = toHighlightLanguage(normalizedLanguage);
+				const key = codeKey(block.text, normalizedLanguage);
+				nextHighlighted[key] = await codeToHighlightedHtml(block.text, lang);
+			}
+
+			if (!cancelled) highlightedCode = nextHighlighted;
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	$effect(() => {
+		return () => {
+			if (copyResetTimer) {
+				clearTimeout(copyResetTimer);
+				copyResetTimer = null;
+			}
+		};
+	});
+
+	const renderedHtml = $derived(markdown.render(content));
+
+	$effect(() => {
+		const root = containerElement;
+		if (!root) return;
+
+		root.addEventListener("click", handleMarkdownClick);
+		return () => {
+			root.removeEventListener("click", handleMarkdownClick);
+		};
+	});
+
+	$effect(() => {
+		const root = containerElement;
+		const html = renderedHtml;
+		if (!root || !html) return;
+
+		let cancelled = false;
+		void (async () => {
+			await tick();
+			const blocks = [...root.querySelectorAll<HTMLElement>(".mermaid-block[data-mermaid-source]")];
+			if (blocks.length === 0) return;
+
+			const { default: mermaid } = await import("mermaid");
+			mermaid.initialize({
+				startOnLoad: false,
+				securityLevel: "strict",
+				theme: "dark",
+				themeVariables: {
+					background: "transparent",
+					mainBkg: "#1b1e24",
+					primaryColor: "#1b1e24",
+					primaryTextColor: "#d8dee9",
+					primaryBorderColor: "#667085",
+					lineColor: "#9aa4b2",
+					secondaryColor: "#252a32",
+					tertiaryColor: "#12151a",
+					fontFamily: "Inter, system-ui, sans-serif",
+				},
+			});
+
+			for (const [index, block] of blocks.entries()) {
+				const sourceAttribute = block.dataset.mermaidSource;
+				if (!sourceAttribute || block.dataset.rendered === "true") continue;
+				const source = decodeURIComponent(sourceAttribute);
+				try {
+					const id = `assistant-mermaid-${++mermaidRenderCounter}-${index}`;
+					const { svg, bindFunctions } = await mermaid.render(id, source);
+					if (cancelled) return;
+					block.innerHTML = `<div class="mermaid-rendered">${svg}</div>`;
+					bindFunctions?.(block);
+					block.dataset.rendered = "true";
+				} catch {
+					block.classList.add("mermaid-error");
+				}
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	});
 </script>
 
-<div class="assistant-markdown" data-finished={isFinished}>
+<div
+	bind:this={containerElement}
+	class="assistant-markdown"
+	data-finished={isFinished}
+>
 	{@html renderedHtml}
 </div>
 
@@ -67,6 +360,7 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 		word-break: break-word;
+		white-space: normal;
 		font-size: 0.81rem;
 		line-height: 1.58;
 		color: var(--ui-text-primary);
@@ -123,20 +417,57 @@
 
 	.assistant-markdown :global(ul),
 	.assistant-markdown :global(ol) {
-		margin: 0.52rem 0 0;
+		margin: 0.42rem 0 0;
 		padding-left: 1.15rem;
+		list-style-position: outside;
+		white-space: normal;
+	}
+
+	.assistant-markdown :global(li::marker) {
+		color: var(--ui-text-tertiary);
 	}
 
 	.assistant-markdown :global(ul ul),
 	.assistant-markdown :global(ul ol),
 	.assistant-markdown :global(ol ul),
 	.assistant-markdown :global(ol ol) {
-		margin-top: 0.22rem;
+		margin-top: 0.12rem;
 	}
 
 	.assistant-markdown :global(li) {
-		margin: 0.22rem 0;
+		margin: 0;
 		padding-left: 0.08rem;
+	}
+
+	.assistant-markdown :global(li + li) {
+		margin-top: 0.12rem;
+	}
+
+	.assistant-markdown :global(li > p) {
+		margin: 0;
+		white-space: normal;
+	}
+
+	.assistant-markdown :global(li > p + p) {
+		margin-top: 0.38rem;
+	}
+
+	.assistant-markdown :global(dl) {
+		margin: 0.72rem 0 0;
+		white-space: normal;
+	}
+
+	.assistant-markdown :global(dt) {
+		margin-top: 0.48rem;
+		font-weight: 680;
+		color: var(--ui-text-primary);
+	}
+
+	.assistant-markdown :global(dd) {
+		margin: 0.16rem 0 0 0.88rem;
+		padding-left: 0.58rem;
+		border-left: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
+		color: var(--ui-text-secondary);
 	}
 
 	.assistant-markdown :global(.contains-task-list),
@@ -170,13 +501,145 @@
 		color: color-mix(in oklab, var(--ui-text-primary) 94%, var(--ui-accent));
 	}
 
-	.assistant-markdown :global(pre) {
+	.assistant-markdown :global(.code-block-frame) {
 		margin: 0.72rem 0 0;
-		overflow-x: auto;
+		overflow: hidden;
 		border-radius: var(--ui-radius-sm);
 		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 84%, transparent);
 		background: color-mix(in oklab, var(--ui-code) 92%, var(--ui-surface));
+	}
+
+	.assistant-markdown :global(.mermaid-block) {
+		min-height: 3rem;
+		overflow-x: auto;
+		background: color-mix(in oklab, var(--ui-code) 92%, var(--ui-surface));
+	}
+
+	.assistant-markdown :global(.mermaid-rendered) {
+		display: flex;
+		justify-content: center;
+		min-width: max-content;
+		padding: 0.85rem;
+	}
+
+	.assistant-markdown :global(.mermaid-rendered),
+	.assistant-markdown :global(.mermaid-rendered *) {
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+
+	.assistant-markdown :global(.mermaid-rendered p) {
+		white-space: normal;
+	}
+
+	.assistant-markdown :global(.mermaid-rendered svg) {
+		display: block;
+		max-width: min(100%, 48rem);
+		height: auto;
+	}
+
+	.assistant-markdown :global(.mermaid-error .mermaid-fallback) {
+		display: block;
+	}
+
+	.assistant-markdown :global(.katex) {
+		color: var(--ui-text-primary);
+		font-size: 1em;
+	}
+
+	.assistant-markdown :global(.katex-display) {
+		margin: 0.72rem 0;
+		overflow-x: auto;
+		overflow-y: hidden;
+		padding: 0.35rem 0;
+	}
+
+	.assistant-markdown :global(.code-block-toolbar) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.6rem;
+		min-height: 1.9rem;
+		padding: 0.28rem 0.44rem 0.28rem 0.62rem;
+		border-bottom: 1px solid color-mix(in oklab, var(--ui-border-soft) 68%, transparent);
+		background: color-mix(in oklab, var(--ui-surface-muted) 38%, transparent);
+		color: var(--ui-text-tertiary);
+		font-family: var(--font-mono);
+		font-size: 0.62rem;
+		line-height: 1;
+	}
+
+	.assistant-markdown :global(.code-copy-button) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		min-width: 4.2rem;
+		height: 1.38rem;
+		padding: 0 0.42rem;
+		border-radius: var(--ui-radius-xs);
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
+		background: color-mix(in oklab, var(--ui-surface-subtle) 60%, transparent);
+		color: var(--ui-text-secondary);
+		font: inherit;
+		cursor: pointer;
+		transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+	}
+
+	.assistant-markdown :global(.code-copy-button:hover),
+	.assistant-markdown :global(.code-copy-button:focus-visible) {
+		border-color: color-mix(in oklab, var(--ui-accent) 44%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-accent-soft) 42%, var(--ui-surface-subtle));
+		color: var(--ui-text-primary);
+	}
+
+	.assistant-markdown :global(.code-copy-button:focus-visible) {
+		outline: none;
+		box-shadow: var(--ui-focus-ring);
+	}
+
+	.assistant-markdown :global(.code-copy-button.copied) {
+		border-color: color-mix(in oklab, var(--ui-success) 42%, var(--ui-border-soft));
+		color: color-mix(in oklab, var(--ui-success) 82%, var(--ui-text-primary));
+	}
+
+	.assistant-markdown :global(.code-copy-button.copy-error) {
+		border-color: color-mix(in oklab, var(--ui-danger) 48%, var(--ui-border-soft));
+		color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
+	}
+
+	.assistant-markdown :global(.code-copy-icon) {
+		position: relative;
+		width: 0.72rem;
+		height: 0.72rem;
+	}
+
+	.assistant-markdown :global(.code-copy-icon::before),
+	.assistant-markdown :global(.code-copy-icon::after) {
+		content: "";
+		position: absolute;
+		border: 1.5px solid currentColor;
+		border-radius: 2px;
+	}
+
+	.assistant-markdown :global(.code-copy-icon::before) {
+		inset: 0.18rem 0 0 0.14rem;
+	}
+
+	.assistant-markdown :global(.code-copy-icon::after) {
+		inset: 0 0.16rem 0.18rem 0;
+		background: color-mix(in oklab, var(--ui-surface-subtle) 60%, transparent);
+	}
+
+	.assistant-markdown :global(pre) {
+		margin: 0;
+		overflow-x: auto;
+		background: color-mix(in oklab, var(--ui-code) 92%, var(--ui-surface));
 		padding: 0.62rem 0.68rem;
+	}
+
+	.assistant-markdown :global(.shiki) {
+		background: color-mix(in oklab, var(--ui-code) 92%, var(--ui-surface)) !important;
 	}
 
 	.assistant-markdown :global(pre code) {
@@ -201,6 +664,30 @@
 
 	.assistant-markdown :global(blockquote p) {
 		white-space: normal;
+	}
+
+	.assistant-markdown :global(.footnotes) {
+		margin-top: 0.9rem;
+		padding-top: 0.62rem;
+		border-top: 1px solid color-mix(in oklab, var(--ui-border-soft) 84%, transparent);
+		color: var(--ui-text-secondary);
+		font-size: 0.76rem;
+	}
+
+	.assistant-markdown :global(.footnotes ol) {
+		margin-top: 0.34rem;
+	}
+
+	.assistant-markdown :global(.footnote-ref a),
+	.assistant-markdown :global(.footnote-backref) {
+		color: color-mix(in oklab, var(--ui-accent) 76%, var(--ui-text-primary));
+		text-decoration: none;
+	}
+
+	.assistant-markdown :global(abbr[title]) {
+		text-decoration: underline dotted color-mix(in oklab, var(--ui-text-tertiary) 72%, transparent);
+		text-underline-offset: 0.16em;
+		cursor: help;
 	}
 
 	.assistant-markdown :global(table) {

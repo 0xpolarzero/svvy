@@ -421,6 +421,10 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           branch: getWorkspaceBranch(cwd),
         };
       },
+      writeClipboardText: ({ text }) => {
+        Utils.clipboardWriteText(text);
+        return { ok: true };
+      },
       listWorkspacePaths: ({ refresh } = {}) => {
         return refresh ? workspacePathIndex.refresh() : workspacePathIndex.list();
       },
