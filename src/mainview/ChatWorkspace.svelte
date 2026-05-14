@@ -2028,9 +2028,9 @@
         >
           <span class="titlebar-icon-glyph">
             {#if sidebarHidden}
-              <PanelLeftDashedIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+              <PanelLeftDashedIcon aria-hidden="true" size={14} strokeWidth={1.85} />
             {:else}
-              <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={1.8} />
+              <PanelLeftIcon aria-hidden="true" size={14} strokeWidth={1.85} />
             {/if}
           </span>
         </button>
@@ -3066,8 +3066,8 @@
   }
 
   .titlebar-icon {
-    width: var(--workspace-chrome-control-size);
-    height: var(--workspace-chrome-control-size);
+    width: 1.45rem;
+    height: 1.45rem;
   }
 
   .chat-workspace {
