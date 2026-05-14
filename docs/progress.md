@@ -309,10 +309,10 @@ This UI should land first as a read-only workflow-library browser with an extern
 
 Current product decisions for this section are specified in `docs/specs/app-logs.spec.md`.
 
-- [x] Build a workspace-scoped app log store with structured info, warning, and error entries, monotonic sequence numbers, unread counts, seen state, bounded retention, SQLite persistence, and secret redaction. Commit(s): pending.
-- [x] Expose app log read, summary, mark-seen, and live-update contracts through the Bun bridge and renderer runtime without polling. Commit(s): pending.
-- [x] Route product observability through one app logger that also preserves Electrobun browser-tools bridge telemetry where useful. Commit(s): pending.
-- [x] Emit targeted app logs for app lifecycle, provider auth, RPC failures, sessions, title generation, surfaces, prompts, handler threads, Smithers workflow supervision, saved workflow validation, direct tools, `execute_typescript`, artifacts, Project CI projection, external editor handoff, and renderer bridge issues. Commit(s): pending.
-- [x] Add a `Logs` sidebar button directly above `Saved workflows` with compact unread counts by info, warning, and error category. Commit(s): pending.
-- [x] Render a dense app logs pane with level filters, source filtering, search, mark-all-read, live tail behavior, expandable details, stack traces, and links to related sessions, threads, workflow runs, commands, workflow task attempts, and artifacts where available. Commit(s): pending.
-- [x] Add store, RPC, renderer, sidebar, pane, redaction, and representative integration tests for app logs. Commit(s): pending.
+- [x] Build a workspace-scoped app log store with structured info, warning, and error entries, monotonic sequence numbers, unread counts, seen state, bounded retention, SQLite persistence, and secret redaction. Commit(s): `dab04ac`.
+- [x] Expose app log read, summary, mark-seen, and live-update contracts through the Bun bridge and renderer runtime without polling. Commit(s): `dab04ac`.
+- [x] Route product observability through one app logger that also preserves Electrobun browser-tools bridge telemetry where useful. Commit(s): `dab04ac`.
+- [x] Emit targeted app logs for app lifecycle, provider auth, RPC failures, sessions, title generation, surfaces, prompts, handler threads, Smithers workflow supervision, saved workflow validation, direct tools, `execute_typescript`, artifacts, Project CI projection, external editor handoff, and renderer bridge issues. Commit(s): `dab04ac`.
+- [x] Add a `Logs` sidebar button directly above `Saved workflows` with compact unread counts by info, warning, and error category. Commit(s): `dab04ac`.
+- [x] Render a dense app logs pane with level filters, source filtering, search, mark-all-read, live tail behavior, expandable details, stack traces, and links to related sessions, threads, workflow runs, commands, workflow task attempts, and artifacts where available. Commit(s): `dab04ac`.
+- [x] Add store, RPC, renderer, sidebar, pane, redaction, and representative integration tests for app logs. Commit(s): `dab04ac`.
