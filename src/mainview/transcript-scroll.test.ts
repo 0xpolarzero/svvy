@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
-  compensateTranscriptScrollForMeasuredRow,
   deriveTranscriptUserScrollState,
+  shouldAdjustTranscriptScrollForMeasuredItem,
 } from "./transcript-scroll";
 
 describe("transcript scroll policy", () => {
@@ -39,45 +39,31 @@ describe("transcript scroll policy", () => {
     });
   });
 
-  it("compensates scroll position for measured rows above the anchor", () => {
-    const firstCompensation = compensateTranscriptScrollForMeasuredRow({
-      scrollTop: 960,
-      delta: 24,
-      index: 5,
-      anchorIndex: 18,
-      stickToBottom: false,
-    });
-    const secondCompensation = compensateTranscriptScrollForMeasuredRow({
-      scrollTop: firstCompensation ?? 0,
-      delta: -10,
-      index: 9,
-      anchorIndex: 18,
-      stickToBottom: false,
-    });
-
-    expect(firstCompensation).toBe(984);
-    expect(secondCompensation).toBe(974);
+  it("lets TanStack adjust scroll only for measured rows above the current anchor", () => {
+    expect(
+      shouldAdjustTranscriptScrollForMeasuredItem({
+        index: 5,
+        anchorIndex: 18,
+        stickToBottom: false,
+      }),
+    ).toBe(true);
   });
 
   it("ignores measurement churn at or below the anchor and while pinned to bottom", () => {
     expect(
-      compensateTranscriptScrollForMeasuredRow({
-        scrollTop: 960,
-        delta: 24,
+      shouldAdjustTranscriptScrollForMeasuredItem({
         index: 18,
         anchorIndex: 18,
         stickToBottom: false,
       }),
-    ).toBeNull();
+    ).toBe(false);
 
     expect(
-      compensateTranscriptScrollForMeasuredRow({
-        scrollTop: 960,
-        delta: 24,
+      shouldAdjustTranscriptScrollForMeasuredItem({
         index: 5,
         anchorIndex: 18,
         stickToBottom: true,
       }),
-    ).toBeNull();
+    ).toBe(false);
   });
 });

@@ -17,7 +17,8 @@ const DEFAULT_RETENTION_DAYS = 7;
 const REDACTED = "[REDACTED]";
 const SECRET_KEY_PATTERN =
   /(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|auth|authorization|cookie|secret|password|token|key)/i;
-const HIGH_ENTROPY_CONTEXT_PATTERN = /(auth|authorization|provider|api[-_ ]?key|secret|token|password|cookie|credential)/i;
+const HIGH_ENTROPY_CONTEXT_PATTERN =
+  /(auth|authorization|provider|api[-_ ]?key|secret|token|password|cookie|credential)/i;
 const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi;
 const KEY_VALUE_SECRET_PATTERN =
   /\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|AUTH)[A-Z0-9_]*)\s*=\s*([^\s"'`]{6,}|["'`][^"'`]{6,}["'`])/gi;
@@ -257,6 +258,10 @@ class SqliteAppLogStore implements AppLogStore {
     if (query.afterSeq !== undefined) {
       clauses.push("seq > ?");
       params.push(Math.trunc(query.afterSeq));
+    }
+    if (query.beforeSeq !== undefined) {
+      clauses.push("seq < ?");
+      params.push(Math.trunc(query.beforeSeq));
     }
     if (query.levels?.length) {
       clauses.push(`level IN (${query.levels.map(() => "?").join(", ")})`);

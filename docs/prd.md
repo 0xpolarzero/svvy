@@ -41,7 +41,7 @@ The shipped product must let a user:
 - open a local repository in a native desktop app and work in long-lived coding sessions
 - keep important sessions visible through pinning and move old sessions into a single collapsed archive without deleting their history
 - understand what the system is doing without reconstructing state from raw logs
-- inspect structured app logs with unread counts, filters, live updates, redacted details, normalized errors, and related product links when app behavior needs attention
+- inspect structured app logs with unread counts, filters, virtualized long-scroll browsing, explicit Live/Frozen tail behavior, redacted details, normalized errors, and related product links when app behavior needs attention
 - inspect durable outputs from each meaningful unit of work
 - delegate bounded work while keeping top-level strategy and state visible
 - talk directly inside delegated thread surfaces when that work needs clarification or follow-up
@@ -967,7 +967,7 @@ The main orchestrator surface and a handler thread surface should use the same c
 - artifacts
 - status
 
-Assistant transcript messages render Markdown suitable for coding-agent output, including compact prose, lists, tables, fenced code with syntax highlighting and copy actions, inline and block math, Mermaid diagrams, and escaped raw HTML rather than executable HTML.
+Assistant transcript messages render Markdown suitable for coding-agent output, including compact prose, lists, tables, fenced code with syntax highlighting and copy actions, inline and block math, Mermaid diagrams, and escaped raw HTML rather than executable HTML. Long transcript surfaces use TanStack Virtual over system metadata, semantic projection cards, durable messages, tool rows, and active streaming rows so variable-height content preserves pane-local scroll anchors while following the bottom only when the user is pinned there.
 
 Message targeting is simple:
 

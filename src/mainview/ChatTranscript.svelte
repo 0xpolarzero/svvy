@@ -3,7 +3,9 @@
 	import CheckIcon from "@lucide/svelte/icons/check";
 	import CopyIcon from "@lucide/svelte/icons/copy";
 	import GitForkIcon from "@lucide/svelte/icons/git-fork";
+	import { createVirtualizer } from "@tanstack/svelte-virtual";
 	import { onDestroy, onMount, tick } from "svelte";
+	import { get } from "svelte/store";
 	import { parseArtifactsParams } from "./artifacts";
 	import { formatTimestamp, formatUsage } from "./chat-format";
 	import { parseTranscriptMentionLinks } from "./composer-mentions";
@@ -13,10 +15,9 @@
 		type TranscriptSemanticBlock,
 	} from "./transcript-projection";
 	import {
-		compensateTranscriptScrollForMeasuredRow,
 		deriveTranscriptUserScrollState,
+		shouldAdjustTranscriptScrollForMeasuredItem,
 	} from "./transcript-scroll";
-	import { TranscriptVirtualizer } from "./transcript-virtualizer";
 	import AssistantMarkdown from "./AssistantMarkdown.svelte";
 	import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
 	import FailedCard from "./reference-cards/FailedCard.svelte";
@@ -31,7 +32,6 @@
 	import Tooltip from "./ui/Tooltip.svelte";
 
 	const DEFAULT_TRANSCRIPT_ROW_GAP = 16;
-	const MIN_VIRTUALIZED_MESSAGES = 40;
 
 	type Props = {
 		conversation: ConversationProjection;
@@ -51,6 +51,7 @@
 		onForkAssistantMessage?: (message: AssistantMessage) => void;
 		onReplyToWait?: (block: TranscriptSemanticBlock & { kind: "wait" }, text: string) => void;
 		onRetryFailure?: (block: TranscriptSemanticBlock & { kind: "failure" }) => void;
+		initialScroll?: { transcriptAnchorId: string | null; offsetPx: number } | null;
 		onScrollStateChange?: (scroll: { transcriptAnchorId: string | null; offsetPx: number }) => void;
 	};
 
@@ -72,6 +73,7 @@
 		onForkAssistantMessage,
 		onReplyToWait,
 		onRetryFailure,
+		initialScroll,
 		onScrollStateChange,
 	}: Props = $props();
 
@@ -82,35 +84,64 @@
 	let transcriptRowGap = $state(DEFAULT_TRANSCRIPT_ROW_GAP);
 	let transcriptStickToBottom = $state(true);
 	let transcriptAnchorIndex = $state(0);
-	let transcriptRevision = $state(0);
-	let transcriptWindow = $state({
-		startIndex: 0,
-		endIndex: 0,
-		totalHeight: 0,
-	});
 	let copiedAssistantMessageTimestamp = $state<string | null>(null);
 	let transcriptSessionId: string | undefined = undefined;
 	let transcriptSessionInitialized = false;
+	let restoredInitialScrollForSession: string | undefined = undefined;
 	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let autoScroll = $state(true);
-	const virtualizer = new TranscriptVirtualizer({
-		estimatedRowHeight: 132,
-		rowGapPx: DEFAULT_TRANSCRIPT_ROW_GAP,
-	});
-	const shouldVirtualize = $derived(
-		conversation.visibleMessages.length >= MIN_VIRTUALIZED_MESSAGES,
-	);
 	const resolvedSystemPrompt = $derived(systemPrompt?.trim() || null);
-	const windowedMessages = $derived(
-		shouldVirtualize
-			? conversation.visibleMessages.slice(
-					transcriptWindow.startIndex,
-					transcriptWindow.endIndex,
-				)
-			: conversation.visibleMessages,
-	);
 	const streamingAssistant = $derived(streamMessage ?? null);
+	type TranscriptRow =
+		| { kind: "system"; key: string; systemPrompt: string }
+		| { kind: "semantic"; key: string; block: TranscriptSemanticBlock }
+		| { kind: "message"; key: string; message: UserMessage | AssistantMessage | ToolResultMessage }
+		| { kind: "streaming"; key: string; message: AssistantMessage };
+	const transcriptRows = $derived.by<TranscriptRow[]>(() => {
+		const rows: TranscriptRow[] = [];
+		if (resolvedSystemPrompt) {
+			rows.push({ kind: "system", key: "system-prompt", systemPrompt: resolvedSystemPrompt });
+		}
+		for (const block of semanticBlocks) {
+			rows.push({ kind: "semantic", key: `semantic:${block.key}`, block });
+		}
+		for (const message of conversation.visibleMessages) {
+			rows.push({ kind: "message", key: `${message.role}:${message.timestamp}`, message });
+		}
+		if (streamingAssistant) {
+			rows.push({ kind: "streaming", key: `streaming:${streamingAssistant.timestamp}`, message: streamingAssistant });
+		}
+		return rows;
+	});
+	const shouldVirtualize = true;
+	const transcriptVirtualizer = createVirtualizer<HTMLDivElement, HTMLElement>({
+		count: 0,
+		getScrollElement: () => scroller,
+		estimateSize: (index) => estimateTranscriptRowSize(transcriptRows[index]),
+		getItemKey: (index) => transcriptRows[index]?.key ?? index,
+		overscan: 10,
+		gap: DEFAULT_TRANSCRIPT_ROW_GAP,
+		enabled: true,
+		shouldAdjustScrollPositionOnItemSizeChange: (item) =>
+			shouldAdjustTranscriptScrollForMeasuredItem({
+				index: item.index,
+				anchorIndex: transcriptAnchorIndex,
+				stickToBottom: transcriptStickToBottom,
+			}),
+	});
+	const virtualRows = $derived($transcriptVirtualizer.getVirtualItems());
+	const totalTranscriptSize = $derived($transcriptVirtualizer.getTotalSize());
+
+	function estimateTranscriptRowSize(row: TranscriptRow | undefined): number {
+		if (!row) return 132;
+		if (row.kind === "system") return 92;
+		if (row.kind === "semantic") return 156;
+		if (row.kind === "streaming") return 180;
+		if (row.message.role === "user") return 96;
+		if (row.message.role === "toolResult") return 148;
+		return 172;
+	}
 
 	function userLines(message: UserMessage): string[] {
 		if (typeof message.content === "string") return [stripUserDisplayWrapper(message.content)];
@@ -355,13 +386,13 @@
 			clientHeight: scroller.clientHeight,
 			shouldVirtualize,
 			currentAnchorIndex: transcriptAnchorIndex,
-			getIndexAtOffset: (offset) => virtualizer.getIndexAtOffset(offset),
+			getIndexAtOffset: (offset) => $transcriptVirtualizer.getVirtualItemForOffset(offset)?.index ?? 0,
 		});
 		transcriptStickToBottom = scrollState.stickToBottom;
 		autoScroll = scrollState.autoScroll;
 		transcriptAnchorIndex = scrollState.anchorIndex;
 		onScrollStateChange?.({
-			transcriptAnchorId: conversation.visibleMessages[scrollState.anchorIndex]?.timestamp ?? null,
+			transcriptAnchorId: transcriptRows[scrollState.anchorIndex]?.key ?? null,
 			offsetPx: scroller.scrollTop,
 		});
 	}
@@ -377,67 +408,15 @@
 		}
 	}
 
-	function updateWindowState() {
-		if (!shouldVirtualize) {
-			transcriptWindow = {
-				startIndex: 0,
-				endIndex: conversation.visibleMessages.length,
-				totalHeight: 0,
-			};
-			return;
-		}
-
-		virtualizer.setRowGap(transcriptRowGap);
-		virtualizer.setItemCount(conversation.visibleMessages.length);
-		transcriptWindow = virtualizer.getWindow(transcriptScrollTop, transcriptViewportHeight);
-	}
-
-	function recordRowHeight(index: number, height: number) {
-		if (!shouldVirtualize) return;
-
-		const delta = virtualizer.recordHeight(index, height);
-		if (!delta) return;
-
-		transcriptRevision += 1;
-		if (!scroller || transcriptStickToBottom) return;
-		const compensatedScrollTop = compensateTranscriptScrollForMeasuredRow({
-			scrollTop: scroller.scrollTop,
-			delta,
-			index,
-			anchorIndex: transcriptAnchorIndex,
-			stickToBottom: transcriptStickToBottom,
-		});
-		if (compensatedScrollTop !== null) {
-			// Keep the last user-selected anchor stable while rows above it settle.
-			scroller.scrollTop = compensatedScrollTop;
-			transcriptScrollTop = compensatedScrollTop;
-		}
-	}
-
-	function trackRowHeight(node: HTMLElement, index: number | undefined) {
-		if (typeof index !== "number") {
-			return {
-				destroy() {},
-			};
-		}
-
-		const measure = () => recordRowHeight(index, node.getBoundingClientRect().height);
-
-		if (typeof ResizeObserver === "undefined") {
-			measure();
-			return {
-				destroy() {},
-			};
-		}
-
-		const observer = new ResizeObserver(measure);
-		observer.observe(node);
-		measure();
-
+	function measureTranscriptRow(node: HTMLElement) {
+		$transcriptVirtualizer.measureElement(node);
 		return {
-			destroy() {
-				observer.disconnect();
+			update() {
+				$transcriptVirtualizer.measureElement(node);
 			},
+			destroy() {
+				$transcriptVirtualizer.measureElement(null);
+			}
 		};
 	}
 
@@ -469,28 +448,45 @@
 		if (transcriptSessionInitialized && sessionId === transcriptSessionId) return;
 		transcriptSessionInitialized = true;
 		transcriptSessionId = sessionId;
-		virtualizer.reset();
-		virtualizer.setRowGap(transcriptRowGap);
-		virtualizer.setItemCount(conversation.visibleMessages.length);
 		transcriptScrollTop = 0;
 		transcriptAnchorIndex = 0;
 		transcriptStickToBottom = true;
 		autoScroll = true;
-		transcriptWindow = virtualizer.getWindow(0, transcriptViewportHeight);
 	}
 	);
 
 	$effect(() => {
-		void conversation.visibleMessages.length;
-		void shouldVirtualize;
-		void transcriptViewportHeight;
+		void transcriptRows.length;
+		void transcriptRows;
 		void transcriptRowGap;
-		void transcriptScrollTop;
-		void transcriptRevision;
-
-		updateWindowState();
+		void scroller;
+		get(transcriptVirtualizer).setOptions({
+			count: transcriptRows.length,
+			getScrollElement: () => scroller,
+			estimateSize: (index) => estimateTranscriptRowSize(transcriptRows[index]),
+			getItemKey: (index) => transcriptRows[index]?.key ?? index,
+			gap: transcriptRowGap,
+			enabled: true,
+		});
 	}
 	);
+
+	$effect(() => {
+		void initialScroll;
+		void sessionId;
+		void transcriptRows.length;
+		if (!scroller || !initialScroll || restoredInitialScrollForSession === sessionId) return;
+		restoredInitialScrollForSession = sessionId;
+		const anchorIndex = initialScroll.transcriptAnchorId
+			? transcriptRows.findIndex((row) => row.key === initialScroll.transcriptAnchorId)
+			: -1;
+		if (anchorIndex >= 0) {
+			get(transcriptVirtualizer).scrollToIndex(anchorIndex, { align: "start" });
+		} else {
+			scroller.scrollTop = Math.max(0, initialScroll.offsetPx);
+		}
+		transcriptScrollTop = scroller.scrollTop;
+	});
 
 	$effect(() => {
 		void conversation.visibleMessages.length;
@@ -502,7 +498,9 @@
 		if (!scroller || !autoScroll) return;
 		void tick().then(() => {
 			if (!scroller) return;
-			scroller.scrollTop = scroller.scrollHeight;
+			get(transcriptVirtualizer).scrollToIndex(Math.max(0, transcriptRows.length - 1), {
+				align: "end",
+			});
 			transcriptScrollTop = scroller.scrollTop;
 		});
 	});
@@ -510,89 +508,89 @@
 
 <div bind:this={scroller} class="chat-transcript" onscroll={handleScroll}>
 	<div bind:this={threadElement} class="chat-thread">
-		{#if resolvedSystemPrompt}
-			<article class="message-row system-row">
-				<div class="message-bubble assistant-bubble system-bubble">
-					<details class="thinking-block system-prompt-block">
-						<summary>Surface system prompt metadata</summary>
-						<pre>{resolvedSystemPrompt}</pre>
-					</details>
-				</div>
-			</article>
-		{/if}
-
-		{#if semanticBlocks.length > 0}
-			<section class="transcript-semantic-stack" aria-label="Structured transcript projection">
-				{#each semanticBlocks as block (block.key)}
-					{#if block.kind === "wait"}
-						<WaitingCard
-							context={`${block.summary} · resume ${block.resumeWhen} · since ${formatTimestamp(block.since)}`}
-							question={block.reason}
-							onreply={(text) => onReplyToWait?.(block, text)}
-						/>
-					{:else if block.kind === "failure"}
-						<FailedCard
-							title={block.title}
-							testsPassed={0}
-							testsTotal={1}
-							errorSnippet={block.summary}
-							onretry={onRetryFailure ? () => onRetryFailure(block) : undefined}
-						/>
-					{:else if block.kind === "command-rollup"}
-						<div class="reference-command-block">
-							<WorkflowCard
-								workflow={commandRollupReference(block)}
-								onclick={() => onInspectCommand?.(block.command.commandId)}
-							/>
-							{#if block.command.summaryChildren.length > 0}
-								<div class="reference-command-children" aria-label="Summary command details">
-									{#each block.command.summaryChildren as child (child.commandId)}
-										<div class="reference-command-child">
-											<strong>{child.title}</strong>
-											<span>{child.summary}</span>
-										</div>
-									{/each}
-								</div>
-							{/if}
-							{#if onInspectCommand}
-								<Button size="sm" variant="ghost" onclick={() => onInspectCommand?.(block.command.commandId)}>
-									Inspect {commandStatusLabel(block.command.status)}
-								</Button>
-							{/if}
-						</div>
-					{:else if block.kind === "handoff-episode"}
-						<EpisodeCard
-							episode={episodeReference(block)}
-							onartifactopen={(artifact) => onOpenArtifact(artifact.name)}
-						/>
-					{:else if block.kind === "thread"}
-						<ThreadCard
-							thread={threadReference(block.thread)}
-							subagents={subagentReferences(block.thread)}
-							onopen={() => onOpenHandlerThread?.(block.thread.threadId)}
-							onworkflowopen={(workflow) => onInspectWorkflow?.(workflow.id)}
-							onsubagentopen={(agent) => onInspectWorkflowTaskAttempt?.(agent.id)}
-						/>
-					{/if}
-				{/each}
-			</section>
-		{/if}
-
-		<div
-			class:chat-thread-virtual={shouldVirtualize}
-			style={shouldVirtualize ? `height: ${transcriptWindow.totalHeight}px;` : undefined}
-		>
-			{#each windowedMessages as message, index (`${message.role}:${message.timestamp}:${transcriptWindow.startIndex + index}`)}
-				{@const rowIndex = shouldVirtualize ? transcriptWindow.startIndex + index : index}
-				{#if message.role === "user"}
+		<div class="chat-thread-virtual" style={`height: ${totalTranscriptSize}px;`}>
+			{#each virtualRows as virtualRow (virtualRow.key)}
+				{@const row = transcriptRows[virtualRow.index]}
+				{#if row?.kind === "system"}
 					<article
-						class={`message-row ${shouldVirtualize ? "virtual-row " : ""}user-row`.trim()}
-						use:trackRowHeight={shouldVirtualize ? rowIndex : undefined}
-						style={
-							shouldVirtualize
-								? `transform: translate3d(0, ${virtualizer.getOffsetForIndex(rowIndex)}px, 0);`
-								: undefined
-						}
+						data-index={virtualRow.index}
+						use:measureTranscriptRow
+						class="message-row virtual-row system-row"
+						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
+					>
+						<div class="message-bubble assistant-bubble system-bubble">
+							<details class="thinking-block system-prompt-block">
+								<summary>Surface system prompt metadata</summary>
+								<pre>{row.systemPrompt}</pre>
+							</details>
+						</div>
+					</article>
+				{:else if row?.kind === "semantic"}
+					<section
+						data-index={virtualRow.index}
+						use:measureTranscriptRow
+						class="transcript-semantic-stack virtual-row"
+						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
+						aria-label="Structured transcript projection"
+					>
+						{#if row.block.kind === "wait"}
+							<WaitingCard
+								context={`${row.block.summary} · resume ${row.block.resumeWhen} · since ${formatTimestamp(row.block.since)}`}
+								question={row.block.reason}
+								onreply={(text) => row.block.kind === "wait" && onReplyToWait?.(row.block, text)}
+							/>
+						{:else if row.block.kind === "failure"}
+							<FailedCard
+								title={row.block.title}
+								testsPassed={0}
+								testsTotal={1}
+								errorSnippet={row.block.summary}
+								onretry={onRetryFailure ? () => row.block.kind === "failure" && onRetryFailure(row.block) : undefined}
+							/>
+						{:else if row.block.kind === "command-rollup"}
+							<div class="reference-command-block">
+								<WorkflowCard
+									workflow={commandRollupReference(row.block)}
+									onclick={() => row.block.kind === "command-rollup" && onInspectCommand?.(row.block.command.commandId)}
+								/>
+								{#if row.block.command.summaryChildren.length > 0}
+									<div class="reference-command-children" aria-label="Summary command details">
+										{#each row.block.command.summaryChildren as child (child.commandId)}
+											<div class="reference-command-child">
+												<strong>{child.title}</strong>
+												<span>{child.summary}</span>
+											</div>
+										{/each}
+									</div>
+								{/if}
+								{#if onInspectCommand}
+									<Button size="sm" variant="ghost" onclick={() => row.block.kind === "command-rollup" && onInspectCommand?.(row.block.command.commandId)}>
+										Inspect {commandStatusLabel(row.block.command.status)}
+									</Button>
+								{/if}
+							</div>
+						{:else if row.block.kind === "handoff-episode"}
+							<EpisodeCard
+								episode={episodeReference(row.block)}
+								onartifactopen={(artifact) => onOpenArtifact(artifact.name)}
+							/>
+						{:else if row.block.kind === "thread"}
+							<ThreadCard
+								thread={threadReference(row.block.thread)}
+								subagents={subagentReferences(row.block.thread)}
+								onopen={() => row.block.kind === "thread" && onOpenHandlerThread?.(row.block.thread.threadId)}
+								onworkflowopen={(workflow) => onInspectWorkflow?.(workflow.id)}
+								onsubagentopen={(agent) => onInspectWorkflowTaskAttempt?.(agent.id)}
+							/>
+						{/if}
+					</section>
+				{:else if row?.kind === "message" && row.message.role === "user"}
+					{@const message = row.message}
+					<article
+						data-index={virtualRow.index}
+						use:measureTranscriptRow
+						class="message-row virtual-row user-row"
+						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
 					>
 					<div class="message-bubble user-bubble">
 						<header>
@@ -618,15 +616,13 @@
 						{/each}
 					</div>
 				</article>
-				{:else if message.role === "assistant"}
+				{:else if row?.kind === "message" && row.message.role === "assistant"}
+					{@const message = row.message}
 					<article
-						class={`message-row ${shouldVirtualize ? "virtual-row " : ""}assistant-row`.trim()}
-						use:trackRowHeight={shouldVirtualize ? rowIndex : undefined}
-						style={
-							shouldVirtualize
-								? `transform: translate3d(0, ${virtualizer.getOffsetForIndex(rowIndex)}px, 0);`
-								: undefined
-						}
+						data-index={virtualRow.index}
+						use:measureTranscriptRow
+						class="message-row virtual-row assistant-row"
+						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
 					>
 					<div class="message-bubble assistant-bubble">
 						<header>
@@ -706,47 +702,44 @@
 						</div>
 						</div>
 					</article>
-				{:else if message.role === "toolResult"}
-					{@const projectedToolCall = conversation.toolCallsById.get(message.toolCallId)}
-					{#if !projectedToolCall}
-						<article
-							class={`message-row ${shouldVirtualize ? "virtual-row " : ""}tool-row`.trim()}
-							use:trackRowHeight={shouldVirtualize ? rowIndex : undefined}
-							style={
-								shouldVirtualize
-									? `transform: translate3d(0, ${virtualizer.getOffsetForIndex(rowIndex)}px, 0);`
-									: undefined
-							}
-						>
-							<ToolCallCard
-								toolCall={{
-									id: message.toolCallId,
-									name: message.toolName,
-									status: message.isError ? "failed" : "done",
-									body: toolInputBody(message.toolName, undefined),
-									result: toolResultPreview(message),
-									isError: message.isError,
-								}}
-								onopen={onOpenArtifact}
-							/>
-						</article>
-					{/if}
-				{/if}
-			{/each}
-		</div>
-
-		{#if streamingAssistant}
-			<article class="message-row assistant-row">
+				{:else if row?.kind === "message" && row.message.role === "toolResult"}
+					{@const message = row.message}
+					<article
+						data-index={virtualRow.index}
+						use:measureTranscriptRow
+						class="message-row virtual-row tool-row"
+						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
+					>
+						<ToolCallCard
+							toolCall={{
+								id: message.toolCallId,
+								name: message.toolName,
+								status: message.isError ? "failed" : "done",
+								body: toolInputBody(message.toolName, undefined),
+								result: toolResultPreview(message),
+								isError: message.isError,
+							}}
+							onopen={onOpenArtifact}
+						/>
+					</article>
+				{:else if row?.kind === "streaming"}
+					{@const message = row.message}
+			<article
+				data-index={virtualRow.index}
+				use:measureTranscriptRow
+				class="message-row virtual-row assistant-row"
+				style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
+			>
 				<div class="message-bubble assistant-bubble streaming">
 					<header>
 						<div>
 							<span>svvy</span>
-							<small>{streamingAssistant.provider} · {streamingAssistant.model}</small>
+							<small>{message.provider} · {message.model}</small>
 						</div>
 						<span class="tool-status tone-warning">Streaming</span>
 					</header>
 
-					{#each streamingAssistant.content as block, blockIndex (`streaming:${blockIndex}`)}
+					{#each message.content as block, blockIndex (`streaming:${blockIndex}`)}
 						{#if block.type === "text"}
 							<div class="message-text">
 								<AssistantMarkdown content={block.text} isFinished={false} />
@@ -773,7 +766,9 @@
 					{/each}
 				</div>
 			</article>
-		{/if}
+				{/if}
+			{/each}
+		</div>
 	</div>
 </div>
 

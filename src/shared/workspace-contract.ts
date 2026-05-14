@@ -84,6 +84,7 @@ export interface AppLogQuery {
   sources?: AppLogSource[];
   query?: string;
   afterSeq?: number;
+  beforeSeq?: number;
   limit?: number;
 }
 

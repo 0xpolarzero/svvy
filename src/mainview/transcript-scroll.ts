@@ -16,11 +16,9 @@ export interface TranscriptUserScrollState {
   stickToBottom: boolean;
 }
 
-export interface TranscriptMeasurementCompensationInput {
+export interface TranscriptMeasurementAdjustmentInput {
   anchorIndex: number;
-  delta: number;
   index: number;
-  scrollTop: number;
   stickToBottom: boolean;
 }
 
@@ -41,12 +39,8 @@ export function deriveTranscriptUserScrollState(
   };
 }
 
-export function compensateTranscriptScrollForMeasuredRow(
-  input: TranscriptMeasurementCompensationInput,
-): number | null {
-  if (!input.delta || input.stickToBottom || input.index >= input.anchorIndex) {
-    return null;
-  }
-
-  return input.scrollTop + input.delta;
+export function shouldAdjustTranscriptScrollForMeasuredItem(
+  input: TranscriptMeasurementAdjustmentInput,
+): boolean {
+  return !input.stickToBottom && input.index < input.anchorIndex;
 }

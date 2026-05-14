@@ -135,6 +135,7 @@
       {pendingToolCalls}
       {isStreaming}
       workspaceMentionPaths={new Set()}
+      initialScroll={pane?.scroll ?? null}
       onScrollStateChange={(scroll) => runtime.setPaneScroll(panelId, scroll)}
       onForkAssistantMessage={(message) => void forkFromAssistantMessage(message.timestamp)}
     />

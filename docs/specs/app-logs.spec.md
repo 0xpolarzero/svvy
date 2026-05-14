@@ -273,7 +273,16 @@ Toolbar:
 - `Mark all read`
 - `Copy all logs` icon button with the shared tooltip treatment and a first-use warning dialog that tells the user to review copied logs before public sharing because automated redaction is best-effort
 - the copy-all warning includes a `Don't show this again` checkbox that suppresses future warnings on that device
-- `Live` / `Frozen` toggle button for explicit tail-following control
+- `Live` / `Frozen` toggle button for explicit tail-following control, defaulting to `Live`
+
+Virtualized list behavior:
+
+- render the log row list with TanStack Virtual so retained histories can be browsed without mounting every row
+- use a stable virtual item key derived from the log entry sequence number
+- support variable-height rows because expanded details, stack traces, JSON details, and related chips can change row height
+- remeasure rows after expansion, collapse, filtering, search changes, older-page loading, and live entry insertion
+- preserve the user's scroll anchor when filters change, rows expand or collapse, older entries load, or entries arrive while the pane is frozen or not pinned to bottom
+- keep keyboard focus, row expansion state, copy controls, and related-link actions stable across virtual row recycling
 
 List rows:
 
@@ -301,11 +310,13 @@ Expanded row details:
 
 Live behavior:
 
-- `Live` mode follows the tail when the user is at the bottom
+- `Live` mode means the pane follows the tail only while the user is pinned to the bottom
+- scrolling only changes derived bottom-pinned viewport state and never toggles `Live` or `Frozen`
 - `Frozen` mode keeps the visible list stable while new entries accumulate behind the `New logs` affordance
-- if the user is at the bottom, new entries keep the list pinned to the live tail
-- if the user has scrolled away from bottom, new entries do not steal scroll
-- show a compact `New logs` affordance when entries arrive while not pinned or while frozen
+- if the user is at the bottom in `Live` mode, new entries keep the virtual list pinned to the live tail
+- if the user scrolls away from bottom in `Live` mode, new entries do not steal scroll and the pane shows the `New logs` affordance
+- if the user switches to `Frozen`, new entries never move the current viewport until the user explicitly resumes live tailing or activates `New logs`
+- activating `New logs` scrolls to the newest matching entry and returns the pane to tail-following `Live` behavior
 - opening or focusing the pane marks logs seen through the current latest sequence
 
 Empty states:

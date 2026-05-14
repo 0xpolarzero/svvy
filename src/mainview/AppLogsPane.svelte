@@ -6,7 +6,9 @@
   import PauseIcon from "@lucide/svelte/icons/pause";
   import RadioIcon from "@lucide/svelte/icons/radio";
   import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
-  import { onMount } from "svelte";
+  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { onMount, tick, untrack } from "svelte";
+  import { get } from "svelte/store";
   import type {
     AppLogEntry,
     AppLogLevel,
@@ -14,6 +16,11 @@
     AppLogSource,
   } from "../shared/workspace-contract";
   import type { ChatRuntime } from "./chat-runtime";
+  import {
+    deriveAppLogUpdatePolicy,
+    isAppLogViewportBottomPinned,
+    type AppLogLiveMode,
+  } from "./app-log-scroll";
   import { APP_LOG_SOURCES, filterAppLogEntries, formatAppLogCount } from "./app-logs";
   import Badge from "./ui/Badge.svelte";
   import Button from "./ui/Button.svelte";
@@ -44,8 +51,11 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let newLogsWhileAway = $state(0);
-  let followingTail = $state(true);
+  let liveMode = $state<AppLogLiveMode>("live");
+  let bottomPinned = $state(true);
   let listElement = $state<HTMLDivElement | null>(null);
+  let loadingOlder = $state(false);
+  let hasOlderLogs = $state(true);
   let copiedTarget = $state<"all" | string | null>(null);
   let showCopyAllWarning = $state(false);
   let skipCopyAllWarning = $state(false);
@@ -54,11 +64,12 @@
   let unsubscribeLogUpdate: (() => void) | null = null;
   let unsubscribeRuntime: (() => void) | null = null;
 
-  const LOG_TAIL_THRESHOLD_PX = 40;
   const LOG_LIST_LIMIT = 600;
-  const LOG_SCROLLBACK_LIMIT = 900;
+  const LOG_PAGE_LIMIT = 300;
+  const LOG_MAX_LOADED = 2_000;
   const LOG_COPY_LIMIT = 10_000;
   const COPY_ALL_WARNING_STORAGE_KEY = "svvy.appLogs.copyAllWarningDismissed";
+  const LOG_ROW_ESTIMATE_PX = 76;
 
   const visibleEntries = $derived(
     filterAppLogEntries(readModel?.entries ?? [], {
@@ -70,6 +81,16 @@
   const selectedEntry = $derived(
     visibleEntries.find((entry) => entry.id === selectedId) ?? visibleEntries.at(-1) ?? null,
   );
+  const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: 0,
+    getScrollElement: () => listElement,
+    estimateSize: () => LOG_ROW_ESTIMATE_PX,
+    getItemKey: (index) => visibleEntries[index]?.seq ?? index,
+    overscan: 12,
+    gap: 8,
+  });
+  const virtualRows = $derived($virtualizer.getVirtualItems());
+  const totalVirtualSize = $derived($virtualizer.getTotalSize());
 
   function levelTone(level: AppLogLevel): "info" | "warning" | "danger" {
     if (level === "error") return "danger";
@@ -164,6 +185,7 @@
       next.add(id);
     }
     expandedIds = next;
+    void measureVisibleLogRows();
   }
 
   function toggleLogRow(entry: AppLogEntry) {
@@ -178,16 +200,14 @@
     }
   }
 
-  function isNearTail(): boolean {
-    if (!listElement) return true;
-    const remaining = listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight;
-    return remaining <= LOG_TAIL_THRESHOLD_PX;
-  }
-
   function syncTailFollowState() {
-    const nearTail = isNearTail();
-    followingTail = nearTail;
-    if (nearTail) {
+    if (!listElement) return;
+    bottomPinned = isAppLogViewportBottomPinned({
+      scrollOffset: listElement.scrollTop,
+      totalSize: totalVirtualSize,
+      viewportSize: listElement.clientHeight,
+    });
+    if (bottomPinned) {
       newLogsWhileAway = 0;
     }
   }
@@ -199,6 +219,9 @@
     scrollStateFrame = requestAnimationFrame(() => {
       scrollStateFrame = null;
       syncTailFollowState();
+      if (listElement && listElement.scrollTop < 120) {
+        void loadOlderLogs();
+      }
     });
   }
 
@@ -210,10 +233,10 @@
     const { smooth = false, markRead = true } = options;
     requestAnimationFrame(() => {
       if (!listElement) return;
-      followingTail = true;
+      bottomPinned = true;
       newLogsWhileAway = 0;
-      listElement.scrollTo({
-        top: listElement.scrollHeight,
+      $virtualizer.scrollToIndex(Math.max(0, visibleEntries.length - 1), {
+        align: "end",
         behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto",
       });
       if (markRead) {
@@ -224,16 +247,17 @@
 
   function setLiveMode(nextLive: boolean) {
     if (nextLive) {
-      followingTail = true;
+      liveMode = "live";
+      bottomPinned = true;
       newLogsWhileAway = 0;
       void loadLogs({ forceTail: true });
       return;
     }
-    followingTail = false;
+    liveMode = "frozen";
   }
 
   function toggleLiveMode() {
-    setLiveMode(!followingTail);
+    setLiveMode(liveMode !== "live");
   }
 
   async function markReadThroughLatest() {
@@ -255,13 +279,19 @@
   }
 
   async function loadLogs(options: { forceTail?: boolean } = {}) {
-    const shouldFollowTail = options.forceTail === undefined ? followingTail : options.forceTail;
-    const bottomOffset = shouldFollowTail || !listElement ? 0 : listElement.scrollHeight - listElement.scrollTop;
+    const shouldFollowTail = options.forceTail === undefined ? liveMode === "live" && bottomPinned : options.forceTail;
+    const bottomOffset = shouldFollowTail || !listElement ? 0 : totalVirtualSize - listElement.scrollTop;
     loading = true;
     error = null;
     try {
-      const next = await runtime.getAppLogs({ limit: LOG_LIST_LIMIT });
+      const next = await runtime.getAppLogs({
+        limit: LOG_LIST_LIMIT,
+        levels: levelFilter === "all" ? undefined : [levelFilter],
+        sources: sourceFilter === "all" ? undefined : [sourceFilter],
+        query: query.trim() || undefined,
+      });
       readModel = next;
+      hasOlderLogs = next.entries.length >= LOG_LIST_LIMIT;
       if (!selectedId || !next.entries.some((entry) => entry.id === selectedId)) {
         selectedId = next.entries.at(-1)?.id ?? null;
       }
@@ -292,6 +322,48 @@
       blocks.push(`error=${JSON.stringify(entry.error, null, 2)}`);
     }
     return blocks.join("\n");
+  }
+
+  function mergeLogEntries(current: AppLogEntry[], incoming: AppLogEntry[]): AppLogEntry[] {
+    const bySeq = new Map<number, AppLogEntry>();
+    for (const entry of current) bySeq.set(entry.seq, entry);
+    for (const entry of incoming) bySeq.set(entry.seq, entry);
+    return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+  }
+
+  async function loadOlderLogs() {
+    if (!readModel || loadingOlder || !hasOlderLogs || visibleEntries.length === 0) return;
+    const firstSeq = readModel.entries[0]?.seq;
+    if (!firstSeq) return;
+    loadingOlder = true;
+    const previousTotalSize = totalVirtualSize;
+    const previousScrollTop = listElement?.scrollTop ?? 0;
+    try {
+      const older = await runtime.getAppLogs({
+        limit: LOG_PAGE_LIMIT,
+        beforeSeq: firstSeq,
+        levels: levelFilter === "all" ? undefined : [levelFilter],
+        sources: sourceFilter === "all" ? undefined : [sourceFilter],
+        query: query.trim() || undefined,
+      });
+      hasOlderLogs = older.entries.length >= LOG_PAGE_LIMIT;
+      if (older.entries.length === 0) return;
+      readModel = {
+        entries: mergeLogEntries(readModel.entries, older.entries).slice(-LOG_MAX_LOADED),
+        summary: older.summary,
+      };
+      requestAnimationFrame(() => {
+        if (!listElement) return;
+        listElement.scrollTop = listElement.scrollTop + (totalVirtualSize - previousTotalSize);
+        if (listElement.scrollTop < previousScrollTop) {
+          listElement.scrollTop = previousScrollTop;
+        }
+      });
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Unable to load older app logs.";
+    } finally {
+      loadingOlder = false;
+    }
   }
 
   async function copyTextToClipboard(text: string): Promise<void> {
@@ -388,16 +460,28 @@
       if (!readModel) return;
       const known = new Set(readModel.entries.map((entry) => entry.id));
       const appendedEntries = payload.entries.filter((entry) => !known.has(entry.id));
-      const shouldFollowTail = followingTail && isNearTail();
-      const nextEntries = shouldFollowTail
-        ? [...readModel.entries, ...appendedEntries].slice(-LOG_LIST_LIMIT)
-        : readModel.entries.slice(-LOG_SCROLLBACK_LIMIT);
-      readModel = { entries: nextEntries, summary: payload.summary };
-      if (shouldFollowTail) {
+      const matchingEntries = filterAppLogEntries(appendedEntries, {
+        level: levelFilter,
+        source: sourceFilter,
+        query,
+      });
+      const policy = deriveAppLogUpdatePolicy({
+        liveMode,
+        bottomPinned,
+        incomingCount: matchingEntries.length,
+      });
+      if (policy.appendToViewport) {
+        readModel = {
+          entries: mergeLogEntries(readModel.entries, matchingEntries).slice(-LOG_MAX_LOADED),
+          summary: payload.summary,
+        };
+      } else {
+        readModel = { ...readModel, summary: payload.summary };
+      }
+      if (policy.scrollToTail) {
         scrollToTail();
-      } else if (appendedEntries.length > 0) {
-        followingTail = false;
-        newLogsWhileAway += appendedEntries.length;
+      } else if (policy.showJumpAffordance) {
+        newLogsWhileAway += matchingEntries.length;
       }
     });
     unsubscribeRuntime = runtime.subscribe(() => {
@@ -416,6 +500,55 @@
       unsubscribeRuntime?.();
     };
   });
+
+  async function measureVisibleLogRows() {
+    await tick();
+    requestAnimationFrame(() => {
+      const instance = get(virtualizer);
+      for (const node of listElement?.querySelectorAll<HTMLDivElement>(".log-row[data-index]") ?? []) {
+        instance.measureElement(node);
+      }
+    });
+  }
+
+  function measureLogRow(node: HTMLDivElement) {
+    const measure = () => get(virtualizer).measureElement(node);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return {
+      update() {
+        measure();
+      },
+      destroy() {
+        observer.disconnect();
+      },
+    };
+  }
+
+  $effect(() => {
+    void visibleEntries.length;
+    void listElement;
+    get(virtualizer).setOptions({
+      count: visibleEntries.length,
+      getScrollElement: () => listElement,
+      getItemKey: (index) => visibleEntries[index]?.seq ?? index,
+    });
+  });
+
+  $effect(() => {
+    void levelFilter;
+    void sourceFilter;
+    void query;
+    untrack(() => {
+      void loadLogs({ forceTail: liveMode === "live" && bottomPinned });
+    });
+  });
+
+  $effect(() => {
+    void expandedIds;
+    void measureVisibleLogRows();
+  });
 </script>
 
 <section class="app-logs-pane" aria-label="App logs">
@@ -425,15 +558,15 @@
       <h2>{readModel ? `${readModel.summary.totals.total} entries` : "Loading logs"}</h2>
     </div>
     <div class="header-actions">
-      <Tooltip label={followingTail ? "Freeze log updates" : "Resume live log updates"}>
+      <Tooltip label={liveMode === "live" ? "Freeze log updates" : "Resume live log updates"}>
         <Button
           size="sm"
-          variant={followingTail ? "primary" : "secondary"}
-          aria-pressed={followingTail}
-          aria-label={followingTail ? "Freeze log updates" : "Resume live log updates"}
+          variant={liveMode === "live" ? "primary" : "secondary"}
+          aria-pressed={liveMode === "live"}
+          aria-label={liveMode === "live" ? "Freeze log updates" : "Resume live log updates"}
           onclick={toggleLiveMode}
         >
-          {#if followingTail}
+          {#if liveMode === "live"}
             <RadioIcon aria-hidden="true" size={14} />
             Live
           {:else}
@@ -491,7 +624,7 @@
 
   {#if error}
     <p class="logs-message error">{error}</p>
-  {:else if loading}
+  {:else if loading && !readModel}
     <p class="logs-message">Loading app logs...</p>
   {:else if readModel}
     <div class="logs-body">
@@ -501,14 +634,23 @@
         {:else if visibleEntries.length === 0}
           <p class="logs-empty">No logs match these filters.</p>
         {/if}
-        {#each visibleEntries as entry (entry.id)}
+        {#if loadingOlder}
+          <p class="logs-loading-older">Loading older logs...</p>
+        {/if}
+        <div class="logs-virtual-spacer" style={`height: ${totalVirtualSize}px;`}>
+        {#each virtualRows as row (row.key)}
+          {@const entry = visibleEntries[row.index]}
+          {#if entry}
           <div
+            data-index={row.index}
+            use:measureLogRow
             class:active={selectedEntry?.id === entry.id}
             class:expanded={expandedIds.has(entry.id)}
             class={`log-row level-${entry.level}`.trim()}
             role="button"
             tabindex="0"
             aria-expanded={expandedIds.has(entry.id)}
+            style={`transform: translate3d(0, ${row.start}px, 0);`}
             onclick={() => toggleLogRow(entry)}
             onkeydown={(event) => handleLogRowKeydown(event, entry)}
           >
@@ -583,7 +725,9 @@
               </div>
             {/if}
           </div>
+          {/if}
         {/each}
+        </div>
         {#if newLogsWhileAway > 0}
           <button type="button" class="new-logs-button" onclick={() => setLiveMode(true)}>
             {formatAppLogCount(newLogsWhileAway)} new logs. Jump to latest
@@ -829,9 +973,6 @@
 
   .logs-list {
     position: relative;
-    display: grid;
-    align-content: start;
-    gap: 0.12rem;
     min-height: 0;
     overflow: auto;
     overscroll-behavior: contain;
@@ -839,9 +980,33 @@
     border-right: 1px solid var(--ui-border-soft);
   }
 
+  .logs-virtual-spacer {
+    position: relative;
+    min-height: 100%;
+  }
+
+  .logs-loading-older {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0;
+    padding: 0.35rem;
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-raised);
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    text-align: center;
+  }
+
   .log-row {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    box-sizing: border-box;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
     border: 1px solid transparent;
     border-radius: var(--ui-radius-sm);
     background: transparent;
@@ -1079,7 +1244,10 @@
   .new-logs-button {
     position: sticky;
     bottom: 0.55rem;
+    left: 50%;
+    transform: translateX(-50%);
     justify-self: center;
+    z-index: 3;
     border: 1px solid var(--ui-border-accent);
     border-radius: var(--ui-radius-sm);
     background: var(--ui-surface-raised);

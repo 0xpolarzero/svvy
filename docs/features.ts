@@ -154,7 +154,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Assistant Markdown Rendering",
     status: "shipped",
     summary:
-      "Renders streamed assistant transcript Markdown with compact prose spacing, reliable list markers, GitHub-style tables and task lists, syntax-highlighted fenced code blocks with copy actions, inline and display math through KaTeX, Mermaid diagrams rendered as SVG with source copy fallback, and escaped raw HTML so assistant output cannot inject executable markup.",
+      "Renders streamed assistant transcript Markdown inside a TanStack Virtual transcript surface with compact prose spacing, reliable list markers, GitHub-style tables and task lists, syntax-highlighted fenced code blocks with copy actions, inline and display math through KaTeX, Mermaid diagrams rendered as SVG with source copy fallback, escaped raw HTML so assistant output cannot inject executable markup, variable-height row measurement, pane-local scroll restoration, and bottom-following only while the user is pinned there.",
     sourceSpecs: ["docs/prd.md"],
   },
   {
@@ -306,7 +306,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "App Logs Surface",
     status: "shipped",
     summary:
-      "Provides workspace-scoped product observability through structured, redacted, persisted app logs with monotonic sequence numbers, unread state, live renderer updates, a sidebar Logs entry with per-level unread counts, and a dense Dockview logs pane for level/source/search filtering, mark-read behavior, expandable details, normalized errors, stack traces, and related session, surface, thread, workflow, task, command, and artifact ids without making logs canonical product state.",
+      "Provides workspace-scoped product observability through structured, redacted, persisted app logs with monotonic sequence numbers, unread state, live renderer updates, a sidebar Logs entry with per-level unread counts, and a dense Dockview logs pane with TanStack Virtual long-scroll rendering, older-page loading, level/source/search filtering, mark-read behavior, explicit Live/Frozen tail control, expandable details, normalized errors, stack traces, and related session, surface, thread, workflow, task, command, and artifact ids without making logs canonical product state.",
     sourceSpecs: ["docs/specs/app-logs.spec.md"],
   },
 ];

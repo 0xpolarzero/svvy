@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AppLogEntry } from "../shared/workspace-contract";
+import { deriveAppLogUpdatePolicy, isAppLogViewportBottomPinned } from "./app-log-scroll";
 import { filterAppLogEntries, formatAppLogCount } from "./app-logs";
 
 function entry(overrides: Partial<AppLogEntry>): AppLogEntry {
@@ -58,5 +59,36 @@ describe("filterAppLogEntries", () => {
     expect(filterAppLogEntries(entries, { level: "all", source: "all", query: "cmd-1" })).toEqual([
       entries[2]!,
     ]);
+  });
+});
+
+describe("app log scroll policy", () => {
+  it("derives bottom-pinned viewport state independently from live mode", () => {
+    expect(
+      isAppLogViewportBottomPinned({ scrollOffset: 560, totalSize: 1000, viewportSize: 400 }),
+    ).toBe(true);
+    expect(
+      isAppLogViewportBottomPinned({ scrollOffset: 480, totalSize: 1000, viewportSize: 400 }),
+    ).toBe(false);
+  });
+
+  it("appends live updates without forcing tail when the viewport is away from bottom", () => {
+    expect(
+      deriveAppLogUpdatePolicy({ liveMode: "live", bottomPinned: false, incomingCount: 3 }),
+    ).toEqual({
+      appendToViewport: true,
+      showJumpAffordance: true,
+      scrollToTail: false,
+    });
+  });
+
+  it("keeps frozen viewport snapshots stable until live is explicitly resumed", () => {
+    expect(
+      deriveAppLogUpdatePolicy({ liveMode: "frozen", bottomPinned: true, incomingCount: 2 }),
+    ).toEqual({
+      appendToViewport: false,
+      showJumpAffordance: true,
+      scrollToTail: false,
+    });
   });
 });

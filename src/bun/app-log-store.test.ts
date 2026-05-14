@@ -32,20 +32,25 @@ describe("app log store", () => {
     store.close();
   });
 
-  it("filters by level, source, query, and afterSeq", () => {
+  it("filters by level, source, query, afterSeq, and beforeSeq", () => {
     const store = createAppLogStore({ now: clock() });
     store.append({ level: "info", source: "workspace", message: "cwd resolved" });
-    store.append({ level: "warning", source: "workflow.library", message: "validation diagnostics" });
+    store.append({
+      level: "warning",
+      source: "workflow.library",
+      message: "validation diagnostics",
+    });
     store.append({ level: "error", source: "execute-typescript", message: "compile failed" });
 
     expect(store.query({ levels: ["warning"] }).entries.map((entry) => entry.source)).toEqual([
       "workflow.library",
     ]);
-    expect(store.query({ sources: ["execute-typescript"] }).entries.map((entry) => entry.level)).toEqual([
-      "error",
-    ]);
+    expect(
+      store.query({ sources: ["execute-typescript"] }).entries.map((entry) => entry.level),
+    ).toEqual(["error"]);
     expect(store.query({ query: "diagnostics" }).entries.map((entry) => entry.seq)).toEqual([2]);
     expect(store.query({ afterSeq: 1 }).entries.map((entry) => entry.seq)).toEqual([2, 3]);
+    expect(store.query({ beforeSeq: 3 }).entries.map((entry) => entry.seq)).toEqual([1, 2]);
     store.close();
   });
 
@@ -71,7 +76,9 @@ describe("app log store", () => {
     const persisted = store.query().entries[0]!;
     expect(JSON.stringify(entry)).not.toContain("abcdefghijklmnopqrstuvwxyzABCDEF1234567890");
     expect(JSON.stringify(persisted)).not.toContain("abcdefghijklmnopqrstuvwxyzABCDEF1234567890");
-    expect(JSON.stringify(delivered[0])).not.toContain("abcdefghijklmnopqrstuvwxyzABCDEF1234567890");
+    expect(JSON.stringify(delivered[0])).not.toContain(
+      "abcdefghijklmnopqrstuvwxyzABCDEF1234567890",
+    );
     expect(persisted.details).toMatchObject({
       apiKey: "[REDACTED]",
       nested: { cookie: "[REDACTED]", harmless: "visible" },
@@ -113,7 +120,11 @@ describe("app log store", () => {
     expect(secondStore.summary()).toMatchObject({ latestSeq: 2, seenSeq: 2 });
     const next = secondStore.append({ level: "info", source: "workspace", message: "three" });
     expect(next.seq).toBe(3);
-    expect(secondStore.query().entries.map((entry) => entry.message)).toEqual(["one", "two", "three"]);
+    expect(secondStore.query().entries.map((entry) => entry.message)).toEqual([
+      "one",
+      "two",
+      "three",
+    ]);
     secondStore.close();
   });
 
