@@ -24,7 +24,7 @@ The renderer token layer mirrors the artifact color roles while preserving svvy 
 - `--ui-text-primary`, `--ui-text-secondary`, and `--ui-text-tertiary` define the text hierarchy.
 - `--ui-border-soft`, `--ui-border-strong`, and `--ui-border-accent` define low-contrast workbench separators and orange emphasis.
 - `--ui-accent` is the artifact orange, used for primary actions, active selection rails, focus rings, streaming cursors, live progress, and pane resize affordances.
-- `--ui-success`, `--ui-warning`, `--ui-danger`, and `--ui-info` define semantic status families with matching soft backgrounds.
+- `--ui-success`, `--ui-warning`, `--ui-danger`, and `--ui-info` define semantic status families with matching soft backgrounds; waiting-specific UI uses `--ui-status-waiting` and `--ui-status-waiting-soft`, which resolve to the blue info family.
 
 Do not introduce unrelated one-off hue families for product state unless a new semantic state needs them. Prefer extending the semantic tokens first.
 
@@ -44,7 +44,7 @@ Use these color mappings consistently across sessions, surfaces, handler threads
 
 - Running, active, streaming, retrying, primary progress: orange, with pulse only while live.
 - Completed, verified, connected, passed, clean: emerald/success.
-- Waiting, blocked, needs input, approval pending, disconnected but recoverable: amber/warning.
+- Waiting, blocked, needs input, approval pending, disconnected but recoverable: blue/waiting.
 - Failed, invalid, destructive, cancelled by error, missing required provider: red/danger.
 - Idle, archived, unavailable, inactive, placeholder, no-op: neutral.
 - Informational metadata, selected non-live technical state: blue/info only when neutral text is insufficient.

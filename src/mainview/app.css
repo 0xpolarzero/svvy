@@ -79,8 +79,8 @@
   --ui-status-active-soft: var(--ui-accent-soft);
   --ui-status-success: var(--ui-success);
   --ui-status-success-soft: var(--ui-success-soft);
-  --ui-status-waiting: var(--ui-warning);
-  --ui-status-waiting-soft: var(--ui-warning-soft);
+  --ui-status-waiting: var(--ui-info);
+  --ui-status-waiting-soft: var(--ui-info-soft);
   --ui-status-danger: var(--ui-danger);
   --ui-status-danger-soft: var(--ui-danger-soft);
   --ui-status-idle: hsl(215 14% 52%);
@@ -436,7 +436,7 @@ summary {
 }
 
 .workflow-descendant.waiting {
-  color: var(--ui-warning);
+  color: var(--ui-status-waiting);
 }
 
 .workflow-node-meta,

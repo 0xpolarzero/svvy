@@ -3,7 +3,6 @@
   import { createHotkeys } from "@tanstack/svelte-hotkeys";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
-  import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -20,7 +19,6 @@
     getWorkspaceCommandStatusPresentation,
   } from "./command-inspector";
   import {
-    buildContextBudgetFromUsage,
     buildSurfaceContextBudget,
     type ContextBudget,
   } from "./context-budget";
@@ -114,7 +112,6 @@
 
   let { runtime, shortcutsEnabled = true, onOpenSettings }: Props = $props();
   const sidebarToggleShortcut = getShortcutReadable("sidebar.toggle");
-  const commandPaletteShortcut = getShortcutReadable("commandPalette.open");
 
   let controller = $state<ArtifactsController | null>(null);
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
@@ -257,7 +254,6 @@
 
     return "Messaging orchestrator";
   });
-  const currentWorktreeSummary = $derived(runtime.branch ? runtime.branch : "workspace");
   function formatPaneSurfaceLabel(
     paneController: ChatSurfaceController | null,
     binding?: WorkspacePaneSurfaceTarget | null,
@@ -345,9 +341,6 @@
     );
   }
   const usageText = $derived(formatUsage(conversation.usage));
-  const contextBudget = $derived(
-    buildContextBudgetFromUsage(conversationSummary.latestContextUsage, currentModel?.contextWindow),
-  );
   const summaryMessageCount = $derived(conversationSummary.messageCount);
   const composerErrorMessage = $derived.by(() => {
     const message =
@@ -359,8 +352,6 @@
     return message;
   });
   const promptBusy = $derived(isStreaming || sendingPrompt);
-  const workspaceStatusText = $derived(composerErrorMessage ? "Attention" : promptBusy ? "Streaming" : "Ready");
-  const workspaceStatusTone = $derived(composerErrorMessage ? "danger" : promptBusy ? "warning" : "neutral");
   function getCopyTranscriptLabel(panelId: string): string {
     if (copyTranscriptState.panelId !== panelId) {
       return "Copy pane transcript";
@@ -1059,7 +1050,7 @@
       case "running-workflow":
         return "info";
       case "waiting":
-        return "warning";
+        return "info";
       case "completed":
         return "success";
       case "continued":
@@ -1230,7 +1221,7 @@
       case "cancelled":
         return "neutral";
       case "blocked":
-        return "warning";
+        return "info";
       case "failed":
         return "danger";
       default:
@@ -1357,7 +1348,7 @@
       case "running":
         return "info";
       case "waiting":
-        return "warning";
+        return "info";
       case "completed":
         return "success";
       case "failed":
@@ -2095,25 +2086,6 @@
 
     <section class="workspace-main">
       <header class="workspace-main-header">
-        <div class="workspace-main-copy">
-          <Tooltip label="Search commands from the focused session" shortcut={commandPaletteShortcut} side="bottom">
-            <button
-              class="workspace-main-title-button"
-              type="button"
-              aria-label="Search workspace from focused session title"
-              onclick={() => openPalette("commands")}
-            >
-              <span class="workspace-main-title">{currentSession?.title ?? "New Session"}</span>
-            </button>
-          </Tooltip>
-          <Badge tone={workspaceStatusTone}>{workspaceStatusText}</Badge>
-          <span class="workspace-main-separator">/</span>
-          <span class="workspace-main-branch">
-            <GitBranchIcon aria-hidden="true" size={10} strokeWidth={1.8} />
-            {currentWorktreeSummary}
-          </span>
-        </div>
-
         <div class="workspace-main-meta" role="toolbar" aria-label="Workspace actions">
           {#if currentSurface?.surface === "thread"}
             <Button
@@ -2125,7 +2097,6 @@
               Return to orchestrator
             </Button>
           {/if}
-          <ContextBudgetBar budget={contextBudget} variant="compact" label="Focused context" />
           <Tooltip label={showArtifactsPanel ? "Hide artifacts inspector" : "Show artifacts inspector"} side="bottom" disabled={!hasArtifacts}>
             <button
               class="header-icon-button"
@@ -3173,7 +3144,7 @@
   .workspace-main-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 0.75rem;
     min-height: var(--workspace-chrome-height);
     height: var(--workspace-chrome-height);
@@ -3185,78 +3156,6 @@
 
   .chat-workspace.sidebar-hidden .workspace-main-header {
     padding-left: 7.3rem;
-  }
-
-  .workspace-main-copy {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 0.48rem;
-    min-height: var(--workspace-chrome-control-size);
-    min-width: 0;
-  }
-
-  .workspace-main-title-button {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-    min-height: var(--workspace-chrome-control-size);
-    max-width: 24rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    cursor: pointer;
-  }
-
-  .workspace-main-title-button:hover .workspace-main-title {
-    color: color-mix(in oklab, var(--ui-text-primary) 86%, var(--ui-accent));
-  }
-
-  .workspace-main-title-row,
-  .pane-title-line {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    gap: 0.42rem;
-  }
-
-  .workspace-main-title-row .status-dot,
-  .pane-title-line .status-dot {
-    flex: 0 0 auto;
-  }
-
-  .workspace-main-title {
-    margin: 0;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: 0;
-  }
-
-  .workspace-main-separator {
-    color: var(--ui-border-strong);
-    font-size: 0.68rem;
-    line-height: 1;
-  }
-
-  .workspace-main-branch {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.22rem;
-    min-width: 0;
-    max-width: 15rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    line-height: 1;
   }
 
   .workspace-main-meta {
@@ -3886,6 +3785,10 @@
     color: color-mix(in oklab, var(--ui-success) 78%, var(--ui-text-primary));
   }
 
+  .structured-command-status.tone-info {
+    color: color-mix(in oklab, var(--ui-status-waiting) 78%, var(--ui-text-primary));
+  }
+
   .structured-command-status.tone-warning {
     color: color-mix(in oklab, var(--ui-warning) 84%, var(--ui-text-primary));
   }
@@ -4071,9 +3974,9 @@
     display: grid;
     gap: 0.2rem;
     padding: 0.64rem 0.7rem;
-    border: 1px solid color-mix(in oklab, var(--ui-warning) 38%, var(--ui-border-soft));
+    border: 1px solid color-mix(in oklab, var(--ui-status-waiting) 38%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-warning-soft) 58%, var(--ui-surface));
+    background: color-mix(in oklab, var(--ui-status-waiting-soft) 58%, var(--ui-surface));
   }
 
   .thread-inspector-wait strong,
@@ -4355,16 +4258,6 @@
     .workspace-main-header {
       gap: 0.52rem;
       padding: 0;
-    }
-
-    .workspace-main-title-row {
-      max-width: 100%;
-    }
-
-    .workspace-main-title {
-      font-size: 0.86rem;
-      white-space: normal;
-      overflow-wrap: anywhere;
     }
 
     .workspace-main-subtitle {

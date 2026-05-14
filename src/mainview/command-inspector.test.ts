@@ -170,7 +170,7 @@ describe("command inspector helpers", () => {
     });
     expect(getWorkspaceCommandStatusPresentation("waiting")).toEqual({
       label: "Waiting",
-      tone: "warning",
+      tone: "info",
     });
   });
 });

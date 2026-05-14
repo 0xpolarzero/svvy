@@ -36,11 +36,12 @@ export function formatRelativeSessionTime(value: string | number | Date): string
   return formatRelativeUnit(diffDays, "day");
 }
 
-export function sessionStatusTone(status: SessionStatus): "neutral" | "warning" | "danger" {
+export function sessionStatusTone(status: SessionStatus): "neutral" | "info" | "warning" | "danger" {
   switch (status) {
     case "running":
-    case "waiting":
       return "warning";
+    case "waiting":
+      return "info";
     case "error":
       return "danger";
     default:

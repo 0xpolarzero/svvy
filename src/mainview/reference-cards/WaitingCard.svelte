@@ -45,9 +45,9 @@
 
 <style>
   .reference-waiting-card {
-    border: 1px solid color-mix(in oklab, var(--ui-warning) 34%, var(--ui-border-soft));
+    border: 1px solid color-mix(in oklab, var(--ui-status-waiting) 34%, var(--ui-border-soft));
     border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface) 94%, var(--ui-warning-soft));
+    background: color-mix(in oklab, var(--ui-surface) 94%, var(--ui-status-waiting-soft));
     overflow: hidden;
   }
 
@@ -61,14 +61,14 @@
     gap: 0.45rem;
     padding: 0.62rem 0.72rem;
     border-bottom: 1px solid var(--ui-border-soft);
-    color: color-mix(in oklab, var(--ui-warning) 84%, var(--ui-text-primary));
+    color: color-mix(in oklab, var(--ui-status-waiting) 84%, var(--ui-text-primary));
   }
 
   .pulse-dot {
     width: 0.42rem;
     height: 0.42rem;
     border-radius: 999px;
-    background: var(--ui-warning);
+    background: var(--ui-status-waiting);
     animation: pulse-dot 1.4s ease-in-out infinite;
   }
 

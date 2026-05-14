@@ -7,7 +7,7 @@ import type {
 
 export interface WorkspaceCommandStatusPresentation {
   label: string;
-  tone: "neutral" | "success" | "warning" | "danger";
+  tone: "neutral" | "info" | "success" | "warning" | "danger";
 }
 
 export interface WorkspaceCommandInspectorSection {
@@ -34,7 +34,7 @@ export function getWorkspaceCommandStatusPresentation(
     case "running":
       return { label: "Running", tone: "warning" };
     case "waiting":
-      return { label: "Waiting", tone: "warning" };
+      return { label: "Waiting", tone: "info" };
     case "cancelled":
       return { label: "Cancelled", tone: "neutral" };
     default:

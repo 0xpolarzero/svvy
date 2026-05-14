@@ -223,9 +223,10 @@
     return formatElapsed(Math.max(0, finished - started));
   }
 
-  function statusTone(status: string): "neutral" | "success" | "warning" | "danger" {
+  function statusTone(status: string): "neutral" | "info" | "success" | "warning" | "danger" {
     if (status === "completed" || status === "passed") return "success";
-    if (status === "running" || status === "waiting" || status === "retrying") return "warning";
+    if (status === "waiting") return "info";
+    if (status === "running" || status === "retrying") return "warning";
     if (status === "failed" || status === "cancelled") return "danger";
     return "neutral";
   }
@@ -707,7 +708,7 @@
   }
 
   .status-waiting .workflow-tree-status-dot {
-    background: var(--ui-warning);
+    background: var(--ui-status-waiting);
   }
 
   .status-failed .workflow-tree-status-dot,
@@ -744,7 +745,7 @@
   }
 
   .workflow-descendant.waiting {
-    color: color-mix(in oklab, var(--ui-warning) 84%, var(--ui-text-primary));
+    color: color-mix(in oklab, var(--ui-status-waiting) 84%, var(--ui-text-primary));
   }
 
   .workflow-node-inspector {
@@ -793,7 +794,7 @@
   }
 
   .workflow-node-wait {
-    color: color-mix(in oklab, var(--ui-warning) 84%, var(--ui-text-primary));
+    color: color-mix(in oklab, var(--ui-status-waiting) 84%, var(--ui-text-primary));
   }
 
   .workflow-node-related {

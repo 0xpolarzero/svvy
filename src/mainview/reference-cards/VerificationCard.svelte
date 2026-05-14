@@ -123,7 +123,7 @@
   }
 
   .check-row.status-blocked {
-    color: color-mix(in oklab, var(--ui-warning) 86%, var(--ui-text-primary));
+    color: color-mix(in oklab, var(--ui-status-waiting) 86%, var(--ui-text-primary));
   }
 
   .check-row.status-cancelled {

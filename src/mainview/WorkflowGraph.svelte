@@ -211,6 +211,7 @@
 
   .workflow-edge.waiting {
     stroke-dasharray: 4 4;
+    stroke: color-mix(in oklab, var(--ui-status-waiting) 58%, transparent);
   }
 
   .workflow-graph-node {
@@ -326,6 +327,7 @@
   }
 
   .status-waiting {
+    border-color: color-mix(in oklab, var(--ui-status-waiting) 58%, var(--ui-border-soft));
     opacity: 0.72;
   }
 
@@ -343,7 +345,10 @@
   }
 
   .type-wait .workflow-graph-icon,
-  .type-approval .workflow-graph-icon,
+  .type-approval .workflow-graph-icon {
+    color: color-mix(in oklab, var(--ui-status-waiting) 76%, var(--ui-text-primary));
+  }
+
   .type-retry .workflow-graph-icon {
     color: color-mix(in oklab, var(--ui-warning) 76%, var(--ui-text-primary));
   }

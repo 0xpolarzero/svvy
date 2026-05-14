@@ -41,6 +41,16 @@
   let dockview: DockviewComponent | null = null;
   let applying = false;
   let layoutFrame: number | null = null;
+  let unsubscribeRuntime: (() => void) | null = null;
+  const tabRenderers = new Set<SurfaceTabRenderer>();
+
+  type PaneTabState = "waiting" | "streaming" | "error" | null;
+
+  type PaneTabPresentation = {
+    title: string;
+    typeLabel: string;
+    state: PaneTabState;
+  };
 
   class SurfaceContentRenderer implements IContentRenderer {
     readonly element = document.createElement("div");
@@ -89,6 +99,7 @@
       this.element.type = "button";
       this.element.className = "dockview-surface-tab";
       this.element.addEventListener("click", this.focus);
+      tabRenderers.add(this);
       this.render();
     }
 
@@ -98,6 +109,7 @@
 
     dispose(): void {
       this.element.removeEventListener("click", this.focus);
+      tabRenderers.delete(this);
     }
 
     private focus = (): void => {
@@ -106,11 +118,109 @@
       onFocusPanel(this.params.api.id);
     };
 
-    private render(): void {
-      const panel = panels.find((candidate) => candidate.panelId === this.params?.api.id);
-      this.element.textContent = panel?.chrome?.title ?? this.params?.title ?? "Surface";
+    render(): void {
+      const panelId = this.params?.api.id ?? "";
+      const panel = panels.find((candidate) => candidate.panelId === panelId);
+      const presentation = getPaneTabPresentation(panelId);
+
+      this.element.replaceChildren();
+      this.element.title = `${presentation.title} · ${presentation.typeLabel}${
+        presentation.state ? ` · ${presentation.state}` : ""
+      }`;
+      this.element.ariaLabel = this.element.title;
       this.element.dataset.focused = panel?.panelId === focusedPanelId ? "true" : "false";
+      this.element.dataset.state = presentation.state ?? "idle";
+
+      const title = document.createElement("span");
+      title.className = "dockview-surface-tab-title";
+      title.textContent = presentation.title;
+
+      const type = document.createElement("span");
+      type.className = "dockview-surface-tab-type";
+      type.textContent = presentation.typeLabel;
+
+      this.element.append(title, type);
+
+      if (presentation.state) {
+        const statePin = document.createElement("span");
+        statePin.className = "dockview-surface-tab-state";
+        statePin.dataset.state = presentation.state;
+        statePin.ariaHidden = "true";
+        this.element.append(statePin);
+      }
     }
+  }
+
+  function refreshSurfaceTabs(): void {
+    for (const renderer of tabRenderers) {
+      renderer.render();
+    }
+  }
+
+  function getPaneTabPresentation(panelId: string): PaneTabPresentation {
+    const panel = panels.find((candidate) => candidate.panelId === panelId) ?? null;
+    const binding = panel?.binding ?? null;
+    const session = binding?.workspaceSessionId
+      ? runtime.sessions.find((candidate) => candidate.id === binding.workspaceSessionId) ?? null
+      : null;
+    const controller = runtime.getPaneController(panelId);
+    const typeLabel = getPaneTypeLabel(panel);
+    const title = session?.title ?? panel?.chrome?.title ?? "Surface";
+
+    return {
+      title,
+      typeLabel,
+      state: getPaneTabState(panel, session, controller),
+    };
+  }
+
+  function getPaneTypeLabel(panel: WorkspaceDockviewPanelState | null): string {
+    switch (panel?.binding?.surface) {
+      case "orchestrator":
+        return "orchestrator";
+      case "thread":
+        return "handler";
+      case "workflow-inspector":
+        return "workflow";
+      case "saved-workflow-library":
+        return "library";
+      case "app-logs":
+        return "logs";
+      case "command":
+        return "command";
+      case "workflow-task-attempt":
+        return "task";
+      case "artifact":
+        return "artifact";
+      case "project-ci-check":
+        return "ci";
+      default:
+        return "empty";
+    }
+  }
+
+  function getPaneTabState(
+    panel: WorkspaceDockviewPanelState | null,
+    session: ChatRuntime["sessions"][number] | null,
+    controller: ReturnType<ChatRuntime["getPaneController"]>,
+  ): PaneTabState {
+    if (controller?.agent.state.error || session?.status === "error") {
+      return "error";
+    }
+    if (controller?.agent.state.isStreaming || controller?.promptStatus === "streaming") {
+      return "streaming";
+    }
+    if (panel?.binding?.surface === "thread") {
+      const threadId = panel.binding.threadId;
+      if (threadId && session?.threadIdsByStatus?.waiting.includes(threadId)) {
+        return "waiting";
+      }
+      return null;
+    }
+    if (panel?.binding?.surface === "orchestrator" && session?.status === "waiting") {
+      return "waiting";
+    }
+    return null;
   }
 
   class SurfaceHeaderActionsRenderer implements IHeaderActionsRenderer {
@@ -370,6 +480,7 @@
     panels;
     focusedPanelId;
     syncDockviewPanels();
+    refreshSurfaceTabs();
   });
 
   $effect(() => {
@@ -379,9 +490,12 @@
 
   onMount(() => {
     createDockview();
+    unsubscribeRuntime = runtime.subscribe(refreshSurfaceTabs);
   });
 
   onDestroy(() => {
+    unsubscribeRuntime?.();
+    unsubscribeRuntime = null;
     if (layoutFrame !== null) {
       window.cancelAnimationFrame(layoutFrame);
       layoutFrame = null;
@@ -418,6 +532,9 @@
   }
 
   :global(.dockview-surface-tab) {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.38rem;
     height: 100%;
     min-width: 0;
     border: 0;
@@ -433,6 +550,70 @@
 
   :global(.dockview-surface-tab[data-focused="true"]) {
     color: var(--ui-accent);
+  }
+
+  :global(.dockview-surface-tab-title) {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 580;
+    color: var(--ui-text-primary);
+  }
+
+  :global(.dockview-surface-tab-type) {
+    flex: 0 0 auto;
+    padding: 0.08rem 0.26rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-strong) 58%, transparent);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 72%, transparent);
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 650;
+    line-height: 1.15;
+  }
+
+  :global(.dockview-surface-tab-state) {
+    flex: 0 0 auto;
+    width: 0.43rem;
+    height: 0.43rem;
+    border-radius: 999px;
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ui-panel) 86%, transparent);
+  }
+
+  :global(.dockview-surface-tab-state[data-state="streaming"]) {
+    background: var(--ui-accent);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--ui-accent) 42%, transparent),
+      0 0 0.45rem color-mix(in oklab, var(--ui-accent) 42%, transparent);
+    animation: dockview-state-pulse 1.4s ease-in-out infinite;
+  }
+
+  :global(.dockview-surface-tab-state[data-state="waiting"]) {
+    background: var(--ui-status-waiting);
+  }
+
+  :global(.dockview-surface-tab-state[data-state="error"]) {
+    background: var(--ui-danger);
+  }
+
+  @keyframes dockview-state-pulse {
+    0%,
+    100% {
+      opacity: 0.62;
+      transform: scale(0.92);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.dockview-surface-tab-state[data-state="streaming"]) {
+      animation: none;
+    }
   }
 
   :global(.dockview-surface-actions) {
