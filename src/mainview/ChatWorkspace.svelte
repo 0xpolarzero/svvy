@@ -574,24 +574,6 @@
     pulseDockviewLayout();
   }
 
-  function closeWindow() {
-    void rpc.request.closeWindow().catch((error) => {
-      console.error("Failed to close window:", error);
-    });
-  }
-
-  function minimizeWindow() {
-    void rpc.request.minimizeWindow().catch((error) => {
-      console.error("Failed to minimize window:", error);
-    });
-  }
-
-  function toggleMaximizeWindow() {
-    void rpc.request.toggleMaximizeWindow().catch((error) => {
-      console.error("Failed to toggle window zoom:", error);
-    });
-  }
-
   function setSidebarResizing(nextValue: boolean) {
     sidebarResizing = nextValue;
     document.body.classList.toggle("sidebar-resizing", nextValue);
@@ -2006,39 +1988,11 @@
   });
 </script>
 
-<div class="workspace-shell" style={`--sidebar-width: ${effectiveSidebarWidth}px;`}>
+<div class={`workspace-shell ${isMacWindowChrome ? "mac-window-chrome" : ""}`.trim()} style={`--sidebar-width: ${effectiveSidebarWidth}px;`}>
   <header
     class={`workspace-titlebar electrobun-webkit-app-region-drag ${sidebarHidden ? "sidebar-titlebar-hidden" : ""}`.trim()}
   >
     <div class="workspace-titlebar-start">
-      {#if isMacWindowChrome}
-        <div class="window-controls electrobun-webkit-app-region-no-drag" aria-label="Window controls">
-          <Tooltip label="Close window" side="bottom">
-            <button
-              class="window-control close"
-              type="button"
-              aria-label="Close window"
-              onclick={closeWindow}
-            ></button>
-          </Tooltip>
-          <Tooltip label="Minimize window" side="bottom">
-            <button
-              class="window-control minimize"
-              type="button"
-              aria-label="Minimize window"
-              onclick={minimizeWindow}
-            ></button>
-          </Tooltip>
-          <Tooltip label="Zoom window" side="bottom">
-            <button
-              class="window-control maximize"
-              type="button"
-              aria-label="Zoom window"
-              onclick={toggleMaximizeWindow}
-            ></button>
-          </Tooltip>
-        </div>
-      {/if}
       <Tooltip
         class="electrobun-webkit-app-region-no-drag"
         label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
@@ -3033,6 +2987,7 @@
 
   .workspace-titlebar {
     --titlebar-inline-padding: 0.72rem;
+    --mac-titlebar-control-offset: 5.25rem;
     position: absolute;
     top: 0;
     left: 0;
@@ -3042,7 +2997,7 @@
     justify-content: flex-start;
     gap: 0.35rem;
     width: var(--sidebar-width, 240px);
-    height: 2.25rem;
+    height: 2.45rem;
     padding: 0 var(--titlebar-inline-padding);
     border: 0;
     background: transparent;
@@ -3054,6 +3009,10 @@
     width: 7.25rem;
   }
 
+  .workspace-shell.mac-window-chrome .workspace-titlebar {
+    padding-left: max(var(--titlebar-inline-padding), var(--mac-titlebar-control-offset));
+  }
+
   .workspace-titlebar-start {
     display: flex;
     align-items: center;
@@ -3062,59 +3021,6 @@
 
   .workspace-titlebar-title {
     display: none;
-  }
-
-  .window-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.48rem;
-    flex: 0 0 auto;
-  }
-
-  .window-control {
-    display: inline-flex;
-    width: 0.76rem;
-    height: 0.76rem;
-    padding: 0;
-    border: 1px solid color-mix(in oklab, var(--window-control-color) 82%, var(--ui-bg));
-    border-radius: 999px;
-    background: var(--window-control-color);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-text-primary) 12%, transparent);
-    cursor: pointer;
-    opacity: 0.92;
-    transition:
-      filter 150ms cubic-bezier(0.19, 1, 0.22, 1),
-      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1),
-      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .window-control.close {
-    --window-control-color: #ff5f57;
-  }
-
-  .window-control.minimize {
-    --window-control-color: #febc2e;
-  }
-
-  .window-control.maximize {
-    --window-control-color: #28c840;
-  }
-
-  .window-control:hover,
-  .window-control:focus-visible {
-    outline: none;
-    filter: saturate(1.08) brightness(1.04);
-    opacity: 1;
-  }
-
-  .window-control:focus-visible {
-    box-shadow:
-      var(--ui-focus-ring),
-      inset 0 0 0 1px color-mix(in oklab, var(--ui-text-primary) 12%, transparent);
-  }
-
-  .window-control:active {
-    transform: scale(0.94);
   }
 
   .titlebar-icon {
@@ -4315,7 +4221,6 @@
     .workspace-titlebar,
     .workspace-sidebar,
     .sidebar-surface,
-    .window-control,
     .titlebar-icon,
     .header-icon-button,
     .pane-chrome-actions button {
@@ -4329,7 +4234,6 @@
         opacity 0.01ms linear;
     }
 
-    .window-control:active:not(:disabled),
     .titlebar-icon:active:not(:disabled),
     .header-icon-button:active:not(:disabled),
     .pane-chrome-actions button:active:not(:disabled) {

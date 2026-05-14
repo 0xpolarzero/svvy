@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { resolveElectrobunAppCodeDir } from "electrobun-e2e/electrobun-paths";
 
@@ -18,10 +19,38 @@ const nodeModulesDest = join(appCodeDir, "node_modules");
 const projectRoot = join(import.meta.dir, "..");
 const nodeModulesSource = join(projectRoot, "node_modules");
 const src = (rel: string) => join(projectRoot, "node_modules", rel);
+const nativeWindowControlsLibrary = join(projectRoot, "build", "native", "libSvvyWindowControls.dylib");
+
+function ensureNativeWindowControlsLibrary(): void {
+  if (process.platform !== "darwin") return;
+
+  const result = spawnSync(process.execPath, [join(projectRoot, "scripts", "build-native-window-controls.ts")], {
+    cwd: projectRoot,
+    stdio: "inherit",
+  });
+
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+function copyNativeWindowControlsLibrary(): void {
+  if (process.platform !== "darwin") return;
+
+  ensureNativeWindowControlsLibrary();
+  if (!existsSync(nativeWindowControlsLibrary)) {
+    console.error(`postbuild: missing native window-controls library at ${nativeWindowControlsLibrary}`);
+    process.exit(1);
+  }
+
+  const appContentsDir = join(appCodeDir, "..", "..");
+  cpSync(nativeWindowControlsLibrary, join(appContentsDir, "MacOS", "libSvvyWindowControls.dylib"));
+}
 
 if (buildEnv === "dev") {
   mkdirSync(appCodeDir, { recursive: true });
   symlinkSync(nodeModulesSource, nodeModulesDest, "dir");
+  copyNativeWindowControlsLibrary();
   console.log("postbuild: linked repo node_modules into dev bundle");
   process.exit(0);
 }
@@ -125,4 +154,5 @@ while (pendingPackages.length > 0) {
   }
 }
 
+copyNativeWindowControlsLibrary();
 console.log(`postbuild: copied ${copied} packages to bundle`);

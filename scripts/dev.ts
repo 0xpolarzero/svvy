@@ -8,6 +8,7 @@ const DEV_SERVER_POLL_INTERVAL_MS = 250;
 
 const VITE_DEV_COMMAND = [process.execPath, "x", "vite", "--port", "5173"];
 const VITE_BUILD_COMMAND = [process.execPath, "x", "vite", "build"];
+const NATIVE_WINDOW_CONTROLS_BUILD_COMMAND = [process.execPath, "scripts/build-native-window-controls.ts"];
 const ELECTROBUN_DEV_COMMAND = [process.execPath, "x", "electrobun", "dev", "--watch"];
 const DEV_WORKSPACE_PREFIX = "svvy-dev-workspace-";
 
@@ -79,6 +80,8 @@ try {
   const projectCwd = process.cwd();
   const workspaceCwd =
     process.env.SVVY_DEV_WORKSPACE_CWD ?? (await mkdtemp(join(tmpdir(), DEV_WORKSPACE_PREFIX)));
+
+  await runChecked(NATIVE_WINDOW_CONTROLS_BUILD_COMMAND);
 
   viteProcess = Bun.spawn(VITE_DEV_COMMAND, {
     cwd: projectCwd,

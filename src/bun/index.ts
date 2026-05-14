@@ -50,6 +50,7 @@ import { resolveWorkspaceCwd } from "./workspace-context";
 import { WorkspacePathIndex } from "./workspace-path-index";
 import { createAppLogger } from "./app-logger";
 import { createAppLogStore } from "./app-log-store";
+import { positionNativeTrafficLights } from "./native-window-controls";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -82,6 +83,11 @@ const agentSettingsStore = createSessionAgentSettingsStore({
 const appLogStore = createAppLogStore({
   databasePath: join(resolveWorkspaceCwd(), ".svvy", "app-logs-v1.sqlite"),
 });
+
+const NATIVE_TRAFFIC_LIGHT_POSITION = {
+  leading: 18,
+  top: 13,
+} as const;
 
 function appMenuItem(action: AppMenuAction): {
   label: string;
@@ -478,22 +484,6 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       markAppLogsSeen: ({ throughSeq }) => appLogStore.markSeen(throughSeq),
       writeClipboardText: ({ text }) => {
         Utils.clipboardWriteText(text);
-        return { ok: true };
-      },
-      closeWindow: () => {
-        mainWindow?.close();
-        return { ok: true };
-      },
-      minimizeWindow: () => {
-        mainWindow?.minimize();
-        return { ok: true };
-      },
-      toggleMaximizeWindow: () => {
-        if (mainWindow?.isMaximized()) {
-          mainWindow.unmaximize();
-        } else {
-          mainWindow?.maximize();
-        }
         return { ok: true };
       },
       listWorkspacePaths: ({ refresh } = {}) => {
@@ -1159,12 +1149,16 @@ mainWindow = new BrowserWindow({
     width: 1180,
     height: 820,
   },
-  titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+  titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
   rpc,
 });
 
 const mountedToolBridge = await svvyToolBridge.mount(mainWindow);
 mainWindow.webview.loadURL(url);
+positionNativeTrafficLights(mainWindow.ptr, NATIVE_TRAFFIC_LIGHT_POSITION);
+setTimeout(() => {
+  positionNativeTrafficLights(mainWindow?.ptr, NATIVE_TRAFFIC_LIGHT_POSITION);
+}, 250);
 
 recordBridgeEvent("app.ready", {
   bridgeUrl: mountedToolBridge.url ?? null,
