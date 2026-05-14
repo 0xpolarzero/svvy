@@ -1329,10 +1329,26 @@ describe("WorkspaceSessionCatalog", () => {
         const surface = findManagedSurfaceBySession(catalog, this);
         if (surface?.actorKind === "handler") {
           handlerPrompts.push(promptText);
+          const partial = assistantMessage("I started the delegated objective.");
+          const emit = (
+            this as PromptableSession & {
+              _emit?: (event: unknown) => void;
+            }
+          )._emit;
           appendMessagesToSession(this, [
             userMessage("Inspect the repository and report the result."),
-            assistantMessage("I started the delegated objective."),
           ]);
+          emit?.call(this, {
+            type: "message_update",
+            message: partial,
+            assistantMessageEvent: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "I started the delegated objective.",
+              partial,
+            },
+          });
+          appendMessagesToSession(this, [partial]);
           return;
         }
 
@@ -1401,12 +1417,53 @@ describe("WorkspaceSessionCatalog", () => {
         expect(userMessageText(startedSnapshot?.pendingUserMessage)).toBe(
           "Inspect the repository and report the result.",
         );
+        await waitFor(() =>
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "surface.updated" &&
+              payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId &&
+              payload.snapshot?.streamMessage?.content.some(
+                (block) =>
+                  block.type === "text" && block.text === "I started the delegated objective.",
+              ),
+          ),
+        );
+        await waitFor(() =>
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "surface.updated" &&
+              payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId &&
+              payload.snapshot?.pendingUserMessage === null &&
+              payload.snapshot.messages.some(
+                (message) =>
+                  message.role === "user" &&
+                  userMessageText(message) === "Inspect the repository and report the result.",
+              ),
+          ),
+        );
         await waitFor(
           () =>
             store
               .getSessionState(created.target.workspaceSessionId)
               .threads.find((thread) => thread.id === handlerThread.id)?.status === "idle",
         );
+        const settledSnapshot = surfaceSyncs.findLast(
+          (payload) =>
+            payload.reason === "prompt.settled" &&
+            payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId,
+        )?.snapshot;
+        expect(settledSnapshot?.streamMessage).toBeNull();
+        expect(settledSnapshot?.pendingUserMessage).toBeNull();
+        expect(
+          settledSnapshot?.messages.filter(
+            (message) =>
+              message.role === "assistant" &&
+              message.content.some(
+                (block) =>
+                  block.type === "text" && block.text === "I started the delegated objective.",
+              ),
+          ),
+        ).toHaveLength(1);
       } finally {
         promptSpy.mockRestore();
       }

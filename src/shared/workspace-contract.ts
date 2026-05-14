@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AssistantMessageEvent, Message } from "@mariozechner/pi-ai";
+import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type {
   AgentDefaults,
   AgentSettingsState,
@@ -139,7 +139,6 @@ export type WorkspacePaneSurfaceTarget =
   | StaticInspectorPaneTarget;
 
 export interface SendPromptRequest {
-  streamId: string;
   messages: Message[];
   provider?: string;
   model?: string;
@@ -176,11 +175,6 @@ export interface SetSessionModeResponse {
   ok: boolean;
   snapshot?: ConversationSurfaceSnapshot;
   error?: string;
-}
-
-export interface StreamEventMessage {
-  streamId: string;
-  event: AssistantMessageEvent;
 }
 
 export interface WorkspaceSyncMessage {
@@ -852,6 +846,7 @@ export interface ConversationSurfaceSnapshot {
   target: PromptTarget;
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
+  streamMessage?: AssistantMessage | null;
   provider: string;
   model: string;
   reasoningEffort: ReasoningEffort;
@@ -1143,7 +1138,6 @@ export interface ChatRPCSchema {
   webview: {
     requests: Record<string, never>;
     messages: {
-      sendStreamEvent: StreamEventMessage;
       sendWorkspaceSync: WorkspaceSyncMessage;
       sendSurfaceSync: SurfaceSyncMessage;
       sendAppLogUpdate: AppLogUpdateMessage;

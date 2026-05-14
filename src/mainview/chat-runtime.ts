@@ -3,7 +3,6 @@ import {
   createAssistantMessageEventStream,
   getModel,
   type AssistantMessage,
-  type AssistantMessageEvent,
   type Message,
 } from "@mariozechner/pi-ai";
 import type {
@@ -114,6 +113,7 @@ export interface ChatSurfaceController {
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
   ownerPaneIds: string[];
+  sendPrompt: (input: string) => Promise<void>;
   abort: () => Promise<void>;
   subscribe: (listener: ChatRuntimeListener) => () => void;
 }
@@ -302,13 +302,6 @@ export interface ChatRuntime {
   openWorkflowSourceInEditor: (path: string) => Promise<boolean>;
 }
 
-function createRpcStreamId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 function createFailureMessage(
   error: unknown,
   provider: string,
@@ -365,6 +358,8 @@ function applySurfaceSnapshotToAgent(agent: Agent, payload: ConversationSurfaceS
   );
   agent.setThinkingLevel(payload.reasoningEffort);
   agent.replaceMessages(buildDisplayMessages(payload));
+  agent.state.streamMessage = payload.streamMessage ? structuredClone(payload.streamMessage) : null;
+  agent.state.isStreaming = payload.promptStatus === "streaming";
   agent.setTools(currentTools);
 }
 
@@ -378,6 +373,8 @@ function createInitialAgent(snapshot: ConversationSurfaceSnapshot, streamFn: Str
       ),
       thinkingLevel: snapshot.reasoningEffort,
       messages: buildDisplayMessages(snapshot),
+      streamMessage: snapshot.streamMessage ? structuredClone(snapshot.streamMessage) : null,
+      isStreaming: snapshot.promptStatus === "streaming",
       tools: [],
     },
     convertToLlm,
@@ -392,36 +389,7 @@ function buildDisplayMessages(snapshot: ConversationSurfaceSnapshot): AgentMessa
   if (!snapshot.pendingUserMessage) {
     return messages;
   }
-
-  const pending = structuredClone(snapshot.pendingUserMessage);
-  const pendingText = messageSignatureText(pending);
-  const alreadyVisible = messages.some(
-    (message) =>
-      message.role === pending.role &&
-      message.timestamp === pending.timestamp &&
-      messageSignatureText(message) === pendingText,
-  );
-  return alreadyVisible ? messages : [...messages, pending];
-}
-
-function messageSignatureText(message: AgentMessage): string {
-  if (!("content" in message)) {
-    return "";
-  }
-  if (typeof message.content === "string") {
-    return message.content;
-  }
-  if (!Array.isArray(message.content)) {
-    return "";
-  }
-  return message.content
-    .map((block) => {
-      if (block && typeof block === "object" && "text" in block && typeof block.text === "string") {
-        return block.text;
-      }
-      return "";
-    })
-    .join("\n");
+  return [...messages, structuredClone(snapshot.pendingUserMessage)];
 }
 
 class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
@@ -438,7 +406,6 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   private promptDispatchInFlight = false;
   private applyingSnapshot = false;
   private suppressSurfaceMutationSync = false;
-  private pendingSnapshot: ConversationSurfaceSnapshot | null = null;
 
   constructor(
     snapshot: ConversationSurfaceSnapshot,
@@ -469,17 +436,6 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.agent.subscribe(() => {
       if (this.disposed || this.applyingSnapshot) {
-        return;
-      }
-
-      if (!this.promptDispatchInFlight) {
-        this.promptStatus = this.agent.state.isStreaming ? "streaming" : "idle";
-      }
-
-      if (!this.agent.state.isStreaming && this.pendingSnapshot) {
-        const pendingSnapshot = this.pendingSnapshot;
-        this.pendingSnapshot = null;
-        this.applySnapshot(pendingSnapshot);
         return;
       }
 
@@ -514,18 +470,6 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       return;
     }
 
-    if (this.promptDispatchInFlight) {
-      this.pendingSnapshot = structuredClone(snapshot);
-      this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
-      this.target = normalizePromptTarget(snapshot.target);
-      this.sessionMode = snapshot.sessionMode;
-      this.sessionAgentKey = snapshot.sessionAgentKey;
-      this.promptStatus = snapshot.promptStatus;
-      this.emit();
-      return;
-    }
-
-    this.pendingSnapshot = null;
     this.target = normalizePromptTarget(snapshot.target);
     this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
     this.sessionMode = snapshot.sessionMode;
@@ -553,6 +497,57 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     }
   }
 
+  async sendPrompt(input: string): Promise<void> {
+    const text = input.trim();
+    if (!text || this.promptDispatchInFlight || this.promptStatus === "streaming") {
+      return;
+    }
+
+    const userMessage: Message = {
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    };
+    const provider = this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider;
+    const model = this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model;
+    const reasoningEffort =
+      (this.agent.state.thinkingLevel as ReasoningEffort | undefined) ??
+      DEFAULT_AGENT_SETTINGS.reasoningEffort;
+    const request: SendPromptRequest = {
+      messages: [...(this.agent.state.messages as Message[]), userMessage],
+      provider,
+      model,
+      reasoningEffort,
+      target: this.target,
+      systemPrompt: this.agent.state.systemPrompt,
+    };
+
+    this.promptDispatchInFlight = true;
+    this.promptStatus = "streaming";
+    this.agent.state.isStreaming = true;
+    this.agent.state.streamMessage = null;
+    this.agent.replaceMessages(
+      buildDisplayMessages({ ...this.snapshotFromState(), pendingUserMessage: userMessage }),
+    );
+    this.emit();
+
+    try {
+      const response = await this.rpcClient.request.sendPrompt(request);
+      this.target = normalizePromptTarget(response.target);
+      this.agent.sessionId = response.target.surfacePiSessionId;
+    } catch (error) {
+      const failure = createFailureMessage(error, provider, model, "error");
+      this.agent.state.error = failure.errorMessage;
+      this.promptStatus = "idle";
+      this.agent.state.isStreaming = false;
+      this.agent.state.streamMessage = null;
+      throw error;
+    } finally {
+      this.promptDispatchInFlight = false;
+      this.emit();
+    }
+  }
+
   dispose(): void {
     this.disposed = true;
     this.listeners.clear();
@@ -569,133 +564,47 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   }
 
   private createStreamFn(): StreamFn {
-    return async (model, context, streamOptions) => {
+    return async (model) => {
       const stream = createAssistantMessageEventStream();
-      const reasoningEffort =
-        (streamOptions?.reasoning as ReasoningEffort | undefined) ??
-        DEFAULT_AGENT_SETTINGS.reasoningEffort;
-      const request: SendPromptRequest = {
-        streamId: createRpcStreamId(),
-        messages: context.messages as Message[],
-        provider: model.provider,
-        model: model.id,
-        reasoningEffort,
-        target: this.target,
-        systemPrompt: context.systemPrompt,
-      };
-      const provider = request.provider ?? DEFAULT_AGENT_SETTINGS.provider;
-      const modelId = request.model ?? DEFAULT_AGENT_SETTINGS.model;
-      if (this.promptDispatchInFlight) {
-        queueMicrotask(() => {
-          const failure = createFailureMessage(
-            new Error("Prompt dispatch already in flight."),
-            provider,
-            modelId,
-            "error",
-          );
-          this.agent.state.error = failure.errorMessage;
-          stream.push({
-            type: "error",
-            reason: "error",
-            error: failure,
-          });
-        });
-        return stream;
-      }
-
-      const activeStreamId = request.streamId;
-      let completed = false;
-
-      const cleanup = () => {
-        this.rpcClient.removeMessageListener("sendStreamEvent", streamListener);
-        if (streamOptions?.signal) {
-          streamOptions.signal.removeEventListener("abort", abort);
-        }
-      };
-
-      const finish = (): void => {
-        this.promptDispatchInFlight = false;
-        this.promptStatus = this.agent.state.isStreaming ? "streaming" : "idle";
-        if (!this.agent.state.isStreaming && this.pendingSnapshot) {
-          const pendingSnapshot = this.pendingSnapshot;
-          this.pendingSnapshot = null;
-          this.applySnapshot(pendingSnapshot);
-          return;
-        }
-        this.emit();
-      };
-
-      const finishWithError = (stopReason: "aborted" | "error", error: unknown): void => {
-        if (completed) {
-          return;
-        }
-        completed = true;
-        cleanup();
-        const failure = createFailureMessage(error, provider, modelId, stopReason);
-        this.agent.state.error = failure.errorMessage;
+      Promise.resolve().then(() => {
+        const failure = createFailureMessage(
+          new Error("Surface prompts are dispatched through the surface controller."),
+          model.provider,
+          model.id,
+          "error",
+        );
         this.promptDispatchInFlight = false;
         this.promptStatus = "idle";
         stream.push({
           type: "error",
-          reason: stopReason,
+          reason: "error",
           error: failure,
         });
         this.emit();
-      };
-
-      const handleStreamPayload = (payload: { streamId: string; event: AssistantMessageEvent }) => {
-        if (completed || payload.streamId !== activeStreamId) {
-          return;
-        }
-
-        stream.push(payload.event);
-        if (payload.event.type === "done" || payload.event.type === "error") {
-          completed = true;
-          cleanup();
-          finish();
-        }
-      };
-
-      const streamListener = (payload: { streamId: string; event: AssistantMessageEvent }) => {
-        handleStreamPayload(payload);
-      };
-
-      const abort = (): void => {
-        if (completed) {
-          return;
-        }
-        void this.rpcClient.request.cancelPrompt({ target: this.target });
-        finishWithError("aborted", new Error("Request aborted by user"));
-      };
-
-      this.promptDispatchInFlight = true;
-      this.promptStatus = "streaming";
-      this.emit();
-
-      this.rpcClient.addMessageListener("sendStreamEvent", streamListener);
-      if (streamOptions?.signal) {
-        streamOptions.signal.addEventListener("abort", abort, { once: true });
-        if (streamOptions.signal.aborted) {
-          abort();
-        }
-      }
-
-      void (async () => {
-        try {
-          const response = await this.rpcClient.request.sendPrompt(request);
-          this.target = normalizePromptTarget(response.target);
-          this.agent.sessionId = response.target.surfacePiSessionId;
-          this.emit();
-
-          if (streamOptions?.signal?.aborted) {
-            abort();
-          }
-        } catch (error) {
-          finishWithError("error", error);
-        }
-      })();
-
+      });
       return stream;
+    };
+  }
+
+  private snapshotFromState(): ConversationSurfaceSnapshot {
+    return {
+      target: this.target,
+      messages: structuredClone(this.agent.state.messages),
+      pendingUserMessage: null,
+      streamMessage:
+        this.agent.state.streamMessage?.role === "assistant"
+          ? structuredClone(this.agent.state.streamMessage)
+          : null,
+      provider: this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider,
+      model: this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model,
+      reasoningEffort:
+        (this.agent.state.thinkingLevel as ReasoningEffort | undefined) ??
+        DEFAULT_AGENT_SETTINGS.reasoningEffort,
+      sessionMode: this.sessionMode,
+      sessionAgentKey: this.sessionAgentKey,
+      systemPrompt: this.agent.state.systemPrompt,
+      resolvedSystemPrompt: this.resolvedSystemPrompt,
+      promptStatus: this.promptStatus,
     };
   }
 
@@ -838,7 +747,6 @@ export async function createChatRuntime(
     if (controller && controller.ownerPaneIds.length > 0) {
       return;
     }
-
     try {
       await rpcClient.request.closeSurface({ target });
     } catch (error) {
@@ -1527,6 +1435,11 @@ export async function createChatRuntime(
 
       const existingController = surfaceControllers.get(normalizedTarget.surfacePiSessionId);
       if (existingController) {
+        if (existingController.ownerPaneIds.length === 0) {
+          const snapshot = await rpcClient.request.openSurface({ target: normalizedTarget });
+          await bindPaneToSnapshot(nextPaneId, snapshot);
+          return;
+        }
         bindPaneToExistingController(nextPaneId, existingController);
         return;
       }
@@ -1647,7 +1560,6 @@ export async function createChatRuntime(
         return;
       }
       await rpcClient.request.sendPrompt({
-        streamId: createRpcStreamId(),
         messages: [{ role: "user", content: text } as Message],
         target: normalizePromptTarget(target),
       });

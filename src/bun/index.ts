@@ -948,7 +948,6 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 threadId: payload.target.threadId ?? null,
               });
             }
-            rpc.send.sendStreamEvent({ streamId: payload.streamId, event });
           },
         });
 

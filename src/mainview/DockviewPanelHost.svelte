@@ -90,7 +90,7 @@
       workspaceId: runtime.workspaceId,
       sessionId: controller.target.workspaceSessionId,
     });
-    await controller.agent.prompt(input);
+    await controller.sendPrompt(input);
     return true;
   }
 

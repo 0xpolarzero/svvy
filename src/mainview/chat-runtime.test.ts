@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { getModel, type AssistantMessage, type AssistantMessageEvent } from "@mariozechner/pi-ai";
+import { getModel, type AssistantMessage } from "@mariozechner/pi-ai";
 import type { ChatStorage, CustomProvider } from "./chat-storage";
 import type {
   AppLogEntry,
@@ -224,6 +224,7 @@ function createSurfaceSnapshot(input: {
   target: PromptTarget;
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
+  streamMessage?: AssistantMessage | null;
   provider?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
@@ -238,6 +239,7 @@ function createSurfaceSnapshot(input: {
     target: structuredClone(input.target),
     messages: structuredClone(input.messages),
     pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
+    streamMessage: input.streamMessage ? structuredClone(input.streamMessage) : null,
     provider: input.provider ?? "openai",
     model: input.model ?? "gpt-4o",
     reasoningEffort: input.reasoningEffort ?? "medium",
@@ -559,9 +561,6 @@ function createFakeRpc(input: {
   workflowTaskAttemptInspector?: WorkspaceWorkflowTaskAttemptInspector;
   projectCiStatus?: WorkspaceProjectCiStatusPanel;
 }): FakeRpcHarness {
-  const streamListeners = new Set<
-    (payload: { streamId: string; event: AssistantMessageEvent }) => void
-  >();
   const workspaceSyncListeners = new Set<(payload: WorkspaceSyncMessage) => void>();
   const surfaceSyncListeners = new Set<(payload: SurfaceSyncMessage) => void>();
   const appLogUpdateListeners = new Set<(payload: AppLogUpdateMessage) => void>();
@@ -575,8 +574,8 @@ function createFakeRpc(input: {
     ]),
   );
   const promptHandlers = new Map<string, PromptHandler>();
-  const pendingPromptIdsBySurface = new Map<string, string>();
-  const cancelledPromptIds = new Set<string>();
+  const pendingPromptSurfaces = new Set<string>();
+  const cancelledPromptSurfaces = new Set<string>();
   let archivedGroupCollapsed = true;
   const openedTargets: PromptTarget[] = [];
   const closeRequests: PromptTarget[] = [];
@@ -691,42 +690,25 @@ function createFakeRpc(input: {
   };
 
   const emitAssistantStream = (
-    streamId: string,
+    target: PromptTarget,
     text: string,
     provider: string,
     model: string,
   ): void => {
     const partial = assistantMessage("", { provider, model });
-    const complete = assistantMessage(text, { provider, model });
-    for (const listener of streamListeners) {
-      listener({ streamId, event: { type: "start", partial } });
-      listener({
-        streamId,
-        event: { type: "text_start", contentIndex: 0, partial },
-      });
-      listener({
-        streamId,
-        event: {
-          type: "text_delta",
-          contentIndex: 0,
-          delta: text,
-          partial,
-        },
-      });
-      listener({
-        streamId,
-        event: {
-          type: "text_end",
-          contentIndex: 0,
-          content: text,
-          partial,
-        },
-      });
-      listener({
-        streamId,
-        event: { type: "done", reason: "stop", message: complete },
-      });
-    }
+    partial.content = [{ type: "text", text }];
+    const record = getSurfaceRecord(target.surfacePiSessionId);
+    record.snapshot = {
+      ...record.snapshot,
+      target: cloneTarget(target),
+      streamMessage: partial,
+      promptStatus: "streaming",
+    };
+    emitSurfaceSync({
+      reason: "surface.updated",
+      target: cloneTarget(target),
+      snapshot: structuredClone(record.snapshot),
+    });
   };
 
   const harness: FakeRpcHarness = {
@@ -1044,7 +1026,7 @@ function createFakeRpc(input: {
           closeRequests.push(cloneTarget(target));
           const record = getSurfaceRecord(target.surfacePiSessionId);
           record.retainCount = Math.max(0, record.retainCount - 1);
-          if (record.retainCount === 0) {
+          if (record.retainCount === 0 && record.snapshot.promptStatus !== "streaming") {
             queueMicrotask(() => {
               emitSurfaceSync({
                 reason: "surface.closed",
@@ -1146,18 +1128,35 @@ function createFakeRpc(input: {
         },
         sendPrompt: async (request) => {
           promptRequests.push(structuredClone(request));
-          pendingPromptIdsBySurface.set(request.target.surfacePiSessionId, request.streamId);
+          pendingPromptSurfaces.add(request.target.surfacePiSessionId);
+          const record = getSurfaceRecord(request.target.surfacePiSessionId);
+          const pendingUserMessage =
+            (request.messages as AgentMessage[]).findLast((message) => message.role === "user") ??
+            null;
+          record.snapshot = {
+            ...record.snapshot,
+            target: cloneTarget(request.target),
+            pendingUserMessage: pendingUserMessage ? structuredClone(pendingUserMessage) : null,
+            streamMessage: null,
+            promptStatus: "streaming",
+          };
+          queueMicrotask(() => {
+            emitSurfaceSync({
+              reason: "background.started",
+              target: cloneTarget(request.target),
+              snapshot: structuredClone(record.snapshot),
+            });
+          });
           const promptHandler =
             promptHandlers.get(request.target.surfacePiSessionId) ?? defaultPromptHandler;
           const result = await promptHandler(structuredClone(request), harness);
-          const cancelled = cancelledPromptIds.has(request.streamId);
-          pendingPromptIdsBySurface.delete(request.target.surfacePiSessionId);
+          const cancelled = cancelledPromptSurfaces.has(request.target.surfacePiSessionId);
+          pendingPromptSurfaces.delete(request.target.surfacePiSessionId);
           if (cancelled) {
-            cancelledPromptIds.delete(request.streamId);
+            cancelledPromptSurfaces.delete(request.target.surfacePiSessionId);
             return { target: cloneTarget(request.target) };
           }
 
-          const record = getSurfaceRecord(request.target.surfacePiSessionId);
           const provider = request.provider ?? record.snapshot.provider;
           const model = request.model ?? record.snapshot.model;
           const nextMessages = [
@@ -1174,6 +1173,8 @@ function createFakeRpc(input: {
             model,
             reasoningEffort: request.reasoningEffort ?? record.snapshot.reasoningEffort,
             systemPrompt: request.systemPrompt ?? record.snapshot.systemPrompt,
+            pendingUserMessage: null,
+            streamMessage: null,
             promptStatus: "idle",
           };
 
@@ -1191,9 +1192,8 @@ function createFakeRpc(input: {
             };
             if (result.emitSurfaceSyncBeforeStreamDone) {
               emitSurfaceSync(surfaceSyncPayload);
-              emitAssistantStream(request.streamId, result.assistantText, provider, model);
             } else {
-              emitAssistantStream(request.streamId, result.assistantText, provider, model);
+              emitAssistantStream(request.target, result.assistantText, provider, model);
               emitSurfaceSync(surfaceSyncPayload);
             }
             emitWorkspaceSync("workspace.updated");
@@ -1247,10 +1247,23 @@ function createFakeRpc(input: {
         },
         cancelPrompt: async ({ target }) => {
           cancelRequests.push(cloneTarget(target));
-          const pendingStreamId = pendingPromptIdsBySurface.get(target.surfacePiSessionId);
-          if (pendingStreamId) {
-            cancelledPromptIds.add(pendingStreamId);
+          if (pendingPromptSurfaces.has(target.surfacePiSessionId)) {
+            cancelledPromptSurfaces.add(target.surfacePiSessionId);
           }
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          record.snapshot = {
+            ...record.snapshot,
+            pendingUserMessage: null,
+            streamMessage: null,
+            promptStatus: "idle",
+          };
+          queueMicrotask(() => {
+            emitSurfaceSync({
+              reason: "prompt.settled",
+              target: cloneTarget(target),
+              snapshot: structuredClone(record.snapshot),
+            });
+          });
           return { ok: true };
         },
         listProviderAuths: async () => [
@@ -1261,12 +1274,6 @@ function createFakeRpc(input: {
         removeProviderAuth: async () => ({ ok: true }),
       },
       addMessageListener: (messageName: string, listener: unknown) => {
-        if (messageName === "sendStreamEvent") {
-          streamListeners.add(
-            listener as (payload: { streamId: string; event: AssistantMessageEvent }) => void,
-          );
-          return;
-        }
         if (messageName === "sendWorkspaceSync") {
           workspaceSyncListeners.add(listener as (payload: WorkspaceSyncMessage) => void);
           return;
@@ -1280,12 +1287,6 @@ function createFakeRpc(input: {
         }
       },
       removeMessageListener: (messageName: string, listener: unknown) => {
-        if (messageName === "sendStreamEvent") {
-          streamListeners.delete(
-            listener as (payload: { streamId: string; event: AssistantMessageEvent }) => void,
-          );
-          return;
-        }
         if (messageName === "sendWorkspaceSync") {
           workspaceSyncListeners.delete(listener as (payload: WorkspaceSyncMessage) => void);
           return;
@@ -1455,6 +1456,58 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("releases a closed pane without disposing a streaming surface and reopens from a fresh snapshot", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const freshStreamMessage = assistantMessage("fresh worker state");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [userMessage("worker")],
+          streamMessage: assistantMessage("still working"),
+          promptStatus: "streaming",
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+
+    await runtime.closePaneSurface("secondary");
+
+    expect(runtime.getPane("secondary")?.target).toBeNull();
+    expect(harness.closeRequests).toHaveLength(1);
+    expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(0);
+    expect(runtime.getSurfaceController(threadTarget.surfacePiSessionId)?.promptStatus).toBe(
+      "streaming",
+    );
+
+    harness.emitSurfaceSync({
+      reason: "surface.updated",
+      target: threadTarget,
+      snapshot: createSurfaceSnapshot({
+        target: threadTarget,
+        messages: [userMessage("worker")],
+        streamMessage: freshStreamMessage,
+        promptStatus: "streaming",
+      }),
+    });
+    await runtime.openSurface(threadTarget, "secondary");
+    expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(1);
+    const reopenedStream = runtime.getPaneController("secondary")?.agent.state.streamMessage;
+    expect(reopenedStream?.role === "assistant" ? reopenedStream.content[0] : null).toMatchObject({
+      type: "text",
+      text: "fresh worker state",
+    });
+
+    runtime.dispose();
+  });
+
   it("removes the final pane instead of leaving an empty pane behind", async () => {
     const harness = createFakeRpc({
       sessions: [createSummary("session-1", "Orchestrator", "main reply")],
@@ -1520,8 +1573,8 @@ describe("createChatRuntime", () => {
       throw new Error("Expected both surface controllers.");
     }
 
-    const orchestratorPrompt = orchestratorController.agent.prompt("Continue orchestrating");
-    const handlerPrompt = handlerController.agent.prompt("Continue handling");
+    const orchestratorPrompt = orchestratorController.sendPrompt("Continue orchestrating");
+    const handlerPrompt = handlerController.sendPrompt("Continue handling");
 
     await waitFor(
       () =>
@@ -1585,8 +1638,15 @@ describe("createChatRuntime", () => {
       throw new Error("Expected an orchestrator controller.");
     }
 
-    await controller.agent.prompt("Greet me");
-    await controller.agent.waitForIdle();
+    await controller.sendPrompt("Greet me");
+    await waitFor(() =>
+      controller.agent.state.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.content[0]?.type === "text" &&
+          message.content[0].text === "Single settled reply.",
+      ),
+    );
 
     const replies = controller.agent.state.messages.filter(
       (message) =>
@@ -1595,6 +1655,75 @@ describe("createChatRuntime", () => {
         message.content[0].text === "Single settled reply.",
     );
     expect(replies).toHaveLength(1);
+
+    runtime.dispose();
+  });
+
+  it("renders pending user and surface-owned stream state from snapshots", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const pendingUser = userMessage("Inspect the repo");
+    const liveAssistant = assistantMessage("Scanning files now...");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Streaming Handler", "worker running")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [],
+        }),
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [],
+          pendingUserMessage: pendingUser,
+          streamMessage: liveAssistant,
+          promptStatus: "streaming",
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    const controller = runtime.getPaneController("secondary");
+    if (!controller) {
+      throw new Error("Expected a restored controller.");
+    }
+
+    expect(controller.promptStatus).toBe("streaming");
+    expect(
+      controller.agent.state.messages.some(
+        (message) =>
+          message.role === "user" &&
+          "content" in message &&
+          Array.isArray(message.content) &&
+          message.content[0]?.type === "text" &&
+          message.content[0].text === "Inspect the repo",
+      ),
+    ).toBe(true);
+    const streamMessage = controller.agent.state.streamMessage;
+    expect(streamMessage?.role).toBe("assistant");
+    expect(streamMessage?.role === "assistant" ? streamMessage.content[0] : null).toMatchObject({
+      type: "text",
+      text: "Scanning files now...",
+    });
+
+    harness.emitSurfaceSync({
+      reason: "prompt.settled",
+      target: threadTarget,
+      snapshot: createSurfaceSnapshot({
+        target: threadTarget,
+        messages: [pendingUser, liveAssistant],
+        promptStatus: "idle",
+      }),
+    });
+
+    expect(controller.agent.state.streamMessage).toBeNull();
+    expect(
+      controller.agent.state.messages.filter(
+        (message) =>
+          message.role === "assistant" &&
+          message.content[0]?.type === "text" &&
+          message.content[0].text === "Scanning files now...",
+      ),
+    ).toHaveLength(1);
 
     runtime.dispose();
   });
@@ -1648,9 +1777,9 @@ describe("createChatRuntime", () => {
     expect(orchestratorController.agent.state.model.id).toBe("gpt-4o");
     expect(orchestratorController.agent.state.thinkingLevel).toBe("medium");
 
-    const handlerPrompt = handlerController.agent.prompt("Continue handling");
+    const handlerPrompt = handlerController.sendPrompt("Continue handling");
     await waitFor(() => handlerController.promptStatus === "streaming");
-    handlerController.agent.abort();
+    await handlerController.abort();
     await waitFor(() => harness.cancelRequests.length === 1);
     handlerGate.resolve();
     await handlerPrompt;

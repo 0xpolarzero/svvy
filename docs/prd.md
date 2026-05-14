@@ -585,6 +585,11 @@ That live runtime owns:
 
 Live surface runtime is separate from both durable workspace state and Dockview layout state.
 
+Streaming state belongs to the live surface runtime, not to a Dockview panel or renderer prompt
+request. A surface may keep streaming with zero, one, or many attached panels, and a panel opened
+mid-stream renders the committed transcript, pending user message, and current assistant stream from
+the surface snapshot.
+
 ### Dockview Panel And Layout State
 
 Dockview panel and layout state is UI state.

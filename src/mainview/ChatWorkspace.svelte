@@ -972,7 +972,7 @@
 
   async function handleSendToPane(panelId: string, input: string): Promise<boolean> {
     const surface = runtime.getPaneController(panelId);
-    if (!input.trim() || !surface || surface.agent.state.isStreaming || sendingPrompt) return false;
+    if (!input.trim() || !surface || surface.promptStatus === "streaming" || sendingPrompt) return false;
 
     sendingPrompt = true;
     try {
@@ -988,7 +988,7 @@
       const hasProviderAccess = await runtime.requireProviderAccess(surface.agent.state.model.provider);
       if (!hasProviderAccess) return false;
 
-      await surface.agent.prompt(input);
+      await surface.sendPrompt(input);
       return true;
     } finally {
       sendingPrompt = false;

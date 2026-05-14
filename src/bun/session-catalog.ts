@@ -132,7 +132,8 @@ interface ManagedSession {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   activePrompt: boolean;
-  pendingUserMessage: Message | null;
+  pendingUserMessage: { turnId: string; message: Message } | null;
+  activeStreamMessage: AssistantMessage | null;
   recreateOnNextPrompt: boolean;
   abortRequested: boolean;
   retainCount: number;
@@ -152,7 +153,7 @@ export interface SessionDefaults {
 export interface SendAgentPromptOptions extends SessionDefaults {
   target: PromptTarget;
   messages: Message[];
-  onEvent: (event: AssistantMessageEvent) => void;
+  onEvent?: (event: AssistantMessageEvent) => void;
 }
 
 interface CreateManagedSessionOptions {
@@ -805,12 +806,19 @@ export class WorkspaceSessionCatalog {
       throw new Error(`Session ${session.sessionId} is already streaming.`);
     }
 
+    const promptExecution = this.createPromptExecutionContext(session, options);
     session.abortRequested = false;
     session.activePrompt = true;
-    const promptExecution = this.createPromptExecutionContext(session, options);
+    session.activeStreamMessage = null;
+    this.setPendingUserMessage(session, promptExecution, getLatestUserMessage(options.messages));
     if (options.target.surface === "orchestrator") {
       this.startTopLevelTitleGeneration(session, promptExecution);
     }
+    await this.emitSurfaceSync({
+      session,
+      reason: "background.started",
+      target: options.target,
+    });
 
     setTimeout(() => {
       void (async () => {
@@ -1224,7 +1232,10 @@ export class WorkspaceSessionCatalog {
       resolvedSystemPrompt: getResolvedSystemPrompt(session),
       messages: structuredClone(session.session.agent.state.messages),
       pendingUserMessage: session.pendingUserMessage
-        ? structuredClone(session.pendingUserMessage)
+        ? structuredClone(session.pendingUserMessage.message)
+        : null,
+      streamMessage: session.activeStreamMessage
+        ? structuredClone(session.activeStreamMessage)
         : null,
       promptStatus: session.activePrompt ? "streaming" : "idle",
     };
@@ -1528,6 +1539,31 @@ export class WorkspaceSessionCatalog {
     }
   }
 
+  private setPendingUserMessage(
+    session: ManagedSession,
+    promptContext: PromptExecutionContext | null,
+    message: Message | null,
+  ): void {
+    session.pendingUserMessage =
+      promptContext && message
+        ? { turnId: promptContext.turnId, message: structuredClone(message) }
+        : null;
+  }
+
+  private clearPendingUserMessage(
+    session: ManagedSession,
+    promptContext: PromptExecutionContext | null,
+  ): boolean {
+    if (!session.pendingUserMessage) {
+      return false;
+    }
+    if (promptContext && session.pendingUserMessage.turnId !== promptContext.turnId) {
+      return false;
+    }
+    session.pendingUserMessage = null;
+    return true;
+  }
+
   private getStructuredSnapshot(sessionId: string): StructuredSessionSnapshot | null {
     try {
       return this.structuredSessionStore.getSessionState(sessionId);
@@ -1770,12 +1806,6 @@ export class WorkspaceSessionCatalog {
       handlerSession.abortRequested = false;
       handlerSession.activePrompt = true;
       const initialMessage = createSyntheticUserMessage(buildInitialHandlerThreadPrompt(thread));
-      handlerSession.pendingUserMessage = initialMessage;
-      await this.emitSurfaceSync({
-        session: handlerSession,
-        reason: "background.started",
-        target,
-      });
       const options: SendAgentPromptOptions = {
         target,
         provider: handlerSession.provider,
@@ -1786,9 +1816,14 @@ export class WorkspaceSessionCatalog {
           ...convertToLlmMessages(handlerSession.session.agent.state.messages),
           initialMessage,
         ],
-        onEvent: () => {},
       };
       const promptContext = this.createPromptExecutionContext(handlerSession, options);
+      this.setPendingUserMessage(handlerSession, promptContext, initialMessage);
+      await this.emitSurfaceSync({
+        session: handlerSession,
+        reason: "background.started",
+        target,
+      });
       if (promptContext) {
         promptContext.durableSurfaceContext = undefined;
       }
@@ -1819,6 +1854,7 @@ export class WorkspaceSessionCatalog {
     } finally {
       if (handlerSession) {
         handlerSession.pendingUserMessage = null;
+        handlerSession.activeStreamMessage = null;
         await this.releaseManagedSurface(target.surfacePiSessionId, { emitClosed: false });
       }
     }
@@ -2023,12 +2059,62 @@ export class WorkspaceSessionCatalog {
           promptContext,
         })
       : null;
+    const onEvent = options.onEvent ?? (() => {});
+    const promptStartMessageCount = session.session.agent.state.messages.length;
+    const clearPendingIfUserMessageCommitted = (): boolean => {
+      if (!session.pendingUserMessage) {
+        return false;
+      }
+      const turnMessages = session.session.agent.state.messages.slice(promptStartMessageCount);
+      if (!turnMessages.some((message) => message.role === "user")) {
+        return false;
+      }
+      return this.clearPendingUserMessage(session, promptContext);
+    };
+    const publishPromptEvent = (event: AssistantMessageEvent): void => {
+      onEvent(event);
+      clearPendingIfUserMessageCommitted();
+      if (event.type === "start") {
+        session.activeStreamMessage = structuredClone(event.partial);
+      } else if (
+        event.type === "text_start" ||
+        event.type === "text_delta" ||
+        event.type === "text_end" ||
+        event.type === "thinking_start" ||
+        event.type === "thinking_delta" ||
+        event.type === "thinking_end" ||
+        event.type === "toolcall_start" ||
+        event.type === "toolcall_delta" ||
+        event.type === "toolcall_end"
+      ) {
+        session.activeStreamMessage = structuredClone(event.partial);
+      } else if (event.type === "done" || event.type === "error") {
+        session.activeStreamMessage = null;
+      }
+
+      void this.emitSurfaceSync({
+        session,
+        reason: "surface.updated",
+        target: options.target,
+      });
+    };
     try {
       const streamState = createVisibleStreamState(options.provider, options.model);
-      options.onEvent({ type: "start", partial: streamState.partial });
+      publishPromptEvent({ type: "start", partial: streamState.partial });
       const unsubscribe = session.session.subscribe((event) => {
+        if (event.type === "message_end" && event.message.role === "user") {
+          if (clearPendingIfUserMessageCommitted()) {
+            void this.emitSurfaceSync({
+              session,
+              reason: "surface.updated",
+              target: options.target,
+            });
+          }
+          return;
+        }
+
         if (event.type === "message_update") {
-          applyVisibleAssistantEvent(streamState, event.assistantMessageEvent, options.onEvent);
+          applyVisibleAssistantEvent(streamState, event.assistantMessageEvent, publishPromptEvent);
           return;
         }
 
@@ -2059,13 +2145,12 @@ export class WorkspaceSessionCatalog {
           throw new Error("No user message to send.");
         }
 
-        const previousMessageCount = session.session.agent.state.messages.length;
         await session.session.prompt(promptText, { expandPromptTemplates: false });
-        finishOpenVisibleBlocks(streamState, options.onEvent);
+        finishOpenVisibleBlocks(streamState, publishPromptEvent);
 
         const emittedMessage =
           getLatestAssistantMessage(
-            session.session.agent.state.messages.slice(previousMessageCount),
+            session.session.agent.state.messages.slice(promptStartMessageCount),
           ) ?? getLatestAssistantMessage(session.session.agent.state.messages);
 
         if (!emittedMessage) {
@@ -2080,13 +2165,13 @@ export class WorkspaceSessionCatalog {
         );
 
         if (visibleMessage.stopReason === "error" || visibleMessage.stopReason === "aborted") {
-          options.onEvent({
+          publishPromptEvent({
             type: "error",
             reason: visibleMessage.stopReason,
             error: visibleMessage,
           });
         } else {
-          options.onEvent({
+          publishPromptEvent({
             type: "done",
             reason: visibleMessage.stopReason === "toolUse" ? "stop" : visibleMessage.stopReason,
             message: visibleMessage,
@@ -2105,7 +2190,7 @@ export class WorkspaceSessionCatalog {
           status: reason === "aborted" ? "cancelled" : "failed",
           error: error instanceof Error ? error.message : "pi prompt failed.",
         });
-        finishOpenVisibleBlocks(streamState, options.onEvent);
+        finishOpenVisibleBlocks(streamState, publishPromptEvent);
         const failure = finalizeVisibleAssistantMessage(
           streamState,
           createErrorMessage(
@@ -2118,7 +2203,7 @@ export class WorkspaceSessionCatalog {
           options.model,
         );
 
-        options.onEvent({
+        publishPromptEvent({
           type: "error",
           reason,
           error: failure,
@@ -2138,6 +2223,7 @@ export class WorkspaceSessionCatalog {
         session.abortRequested = false;
         session.activePrompt = false;
         session.pendingUserMessage = null;
+        session.activeStreamMessage = null;
         this.syncManagedState(session);
         if (options.target.surface === "orchestrator") {
           this.syncStructuredPiSessionFromOrchestratorSession(session);
@@ -2244,7 +2330,6 @@ export class WorkspaceSessionCatalog {
           ...convertToLlmMessages(orchestratorSession.session.agent.state.messages),
           resumeMessage,
         ],
-        onEvent: () => {},
       };
       const orchestratorPromptContext = this.createPromptExecutionContext(
         orchestratorSession,
@@ -2314,7 +2399,6 @@ export class WorkspaceSessionCatalog {
           ...convertToLlmMessages(handlerSession.session.agent.state.messages),
           resumeMessage,
         ],
-        onEvent: () => {},
       };
       const handlerPromptContext = this.createPromptExecutionContext(handlerSession, options);
       if (handlerPromptContext) {
@@ -2646,6 +2730,7 @@ async function createManagedSession(
     modelRegistry,
     activePrompt: false,
     pendingUserMessage: null,
+    activeStreamMessage: null,
     recreateOnNextPrompt: false,
     abortRequested: false,
     retainCount: 0,
@@ -3290,8 +3375,17 @@ function applyVisibleAssistantEvent(
 
     case "toolcall_start":
     case "toolcall_delta":
+      finishOpenVisibleBlocks(streamState, onEvent);
+      onEvent(event);
+      return;
+
     case "toolcall_end":
       finishOpenVisibleBlocks(streamState, onEvent);
+      streamState.partial.content[event.contentIndex] = structuredClone(event.toolCall);
+      onEvent({
+        ...event,
+        partial: streamState.partial,
+      });
       return;
 
     case "start":
@@ -3374,6 +3468,11 @@ function getLatestAssistantMessage(messages: AgentMessage[]): AssistantMessage |
     (message): message is AssistantMessage => message.role === "assistant",
   );
   return assistantMessages.at(-1);
+}
+
+function getLatestUserMessage(messages: readonly Message[]): Message | null {
+  const message = messages.findLast((entry) => entry.role === "user") ?? null;
+  return message ? structuredClone(message) : null;
 }
 
 function extractAssistantText(message: AssistantMessage | undefined): string {
