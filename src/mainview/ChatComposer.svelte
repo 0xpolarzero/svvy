@@ -47,7 +47,7 @@
 		onOpenModelPicker: () => void;
 		onSend: (input: string) => Promise<boolean> | boolean;
 		onThinkingChange: (level: ThinkingLevel) => void;
-		listWorkspacePaths: () => Promise<WorkspacePathIndexEntry[]>;
+		listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
 		pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
 	};
 
@@ -87,6 +87,7 @@
 	let activeMentionIndex = $state(0);
 	let caretPosition = $state(0);
 	let dismissedMentionQueryKey = $state<string | null>(null);
+	let workspacePathTargetKey = $state("");
 	const availableThinkingLevels = $derived(
 		currentModel && supportsXhigh(currentModel) ? [...BASE_LEVELS, "xhigh"] : BASE_LEVELS,
 	);
@@ -105,6 +106,7 @@
 	const mentionResults = $derived<MentionPickerResult[]>(
 		mentionQuery && workspacePathsLoaded ? searchMentionPaths(workspacePaths, mentionQuery.query, 10) : [],
 	);
+	const canSubmit = $derived(Boolean(draft.trim() || selectedMentions.length > 0));
 	const showMentionPicker = $derived(
 		Boolean(
 			mentionQuery &&
@@ -116,13 +118,38 @@
 
 	$effect(() => {
 		const targetKey = `${sessionName}\u0000${targetLabel}\u0000${worktreeLabel}`;
-		void targetKey;
+		if (targetKey !== workspacePathTargetKey) {
+			workspacePathTargetKey = targetKey;
+			workspacePaths = [];
+			workspacePathsLoaded = false;
+			mentionLoading = false;
+			mentionError = null;
+			activeMentionIndex = 0;
+			dismissedMentionQueryKey = null;
+		}
 		void tick().then(() => {
 			draftElement?.focus();
 		});
 	});
 
+	$effect(() => {
+		void draft;
+		void tick().then(syncDraftTextareaHeight);
+	});
+
+	$effect(() => {
+		if (mentionResults.length === 0) {
+			activeMentionIndex = 0;
+			return;
+		}
+		if (activeMentionIndex >= mentionResults.length) {
+			activeMentionIndex = mentionResults.length - 1;
+		}
+	});
+
 	onMount(() => {
+		syncDraftTextareaHeight();
+
 		const handlePointerDown = (event: PointerEvent) => {
 			const target = event.target;
 			if (!(target instanceof Node)) return;
@@ -163,6 +190,7 @@
 		draftElement?.focus();
 		draftElement?.setSelectionRange(value.length, value.length);
 		caretPosition = value.length;
+		syncDraftTextareaHeight();
 	}
 
 	function syncCaretFromTextarea(target: EventTarget | null) {
@@ -173,12 +201,34 @@
 		}
 	}
 
+	function syncDraftTextareaHeight() {
+		if (!draftElement) return;
+
+		draftElement.style.height = "auto";
+		const maxHeight = Number.parseFloat(getComputedStyle(draftElement).maxHeight);
+		const resolvedMaxHeight = Number.isFinite(maxHeight) ? maxHeight : Number.POSITIVE_INFINITY;
+		const nextHeight = Math.min(draftElement.scrollHeight, resolvedMaxHeight);
+		draftElement.style.height = `${nextHeight}px`;
+		draftElement.style.overflowY = draftElement.scrollHeight > resolvedMaxHeight ? "auto" : "hidden";
+	}
+
+	function handleDraftInput(event: Event) {
+		syncCaretFromTextarea(event.currentTarget);
+		syncDraftTextareaHeight();
+	}
+
+	async function scrollActiveMentionIntoView() {
+		await tick();
+		const activeOption = mentionRoot?.querySelector<HTMLElement>(".mention-option.active");
+		activeOption?.scrollIntoView({ block: "nearest" });
+	}
+
 	async function ensureWorkspacePaths() {
 		if (workspacePathsLoaded || mentionLoading) return;
 		mentionLoading = true;
 		mentionError = null;
 		try {
-			workspacePaths = await listWorkspacePaths();
+			workspacePaths = await listWorkspacePaths({ refresh: true });
 			workspacePathsLoaded = true;
 		} catch (error) {
 			mentionError = error instanceof Error ? error.message : "Workspace paths unavailable.";
@@ -196,14 +246,8 @@
 		if (!mentionQuery) return;
 		const selection = selectMentionPath(draft, mentionQuery, result);
 		draft = selection.draft;
-		selectedMentions = [
-			...selectedMentions.filter(
-				(mention) => mention.workspaceRelativePath !== selection.mention.workspaceRelativePath,
-			),
-			selection.mention,
-		];
 		activeMentionIndex = 0;
-		dismissedMentionQueryKey = `${mentionQuery.start}:${selection.mention.workspaceRelativePath}`;
+		dismissedMentionQueryKey = `${mentionQuery.start}:${result.workspaceRelativePath}`;
 		await tick();
 		draftElement?.focus();
 		draftElement?.setSelectionRange(selection.caret, selection.caret);
@@ -228,8 +272,10 @@
 	}
 
 	async function submit() {
-		if (!draft.trim() || isStreaming || isSubmitting) return;
-		const nextDraft = serializeComposerDraft(draft);
+		if (!canSubmit || isStreaming || isSubmitting) return;
+		const nextDraft = serializeComposerDraft(draft, selectedMentions);
+		const nextVisibleDraft = draft;
+		const nextVisibleMentions = selectedMentions;
 		draft = "";
 		selectedMentions = [];
 		isSubmitting = true;
@@ -239,10 +285,12 @@
 			if (sent) {
 				resetHistoryNavigation();
 			} else {
-				await restoreDraftBuffer(nextDraft);
+				await restoreDraftBuffer(nextVisibleDraft);
+				selectedMentions = nextVisibleMentions;
 			}
 		} catch {
-			await restoreDraftBuffer(nextDraft);
+			await restoreDraftBuffer(nextVisibleDraft);
+			selectedMentions = nextVisibleMentions;
 		} finally {
 			isSubmitting = false;
 		}
@@ -256,6 +304,7 @@
 				const direction = event.key === "ArrowDown" ? 1 : -1;
 				activeMentionIndex =
 					(mentionResults.length + activeMentionIndex + direction) % Math.max(mentionResults.length, 1);
+				void scrollActiveMentionIntoView();
 				return;
 			}
 			if ((event.key === "Enter" || event.key === "Tab") && mentionResults[activeMentionIndex]) {
@@ -312,13 +361,8 @@
 				return;
 			}
 
-			let nextDraft = draft.trimEnd();
 			const nextMentions = new Map(selectedMentions.map((mention) => [mention.id, mention]));
 			for (const entry of entries) {
-				const mentionText = `@${entry.workspaceRelativePath}`;
-				if (!nextDraft.includes(mentionText)) {
-					nextDraft = nextDraft ? `${nextDraft} ${mentionText}` : mentionText;
-				}
 				nextMentions.set(`${entry.kind}:${entry.workspaceRelativePath}`, {
 					id: `${entry.kind}:${entry.workspaceRelativePath}`,
 					kind: entry.kind,
@@ -326,10 +370,9 @@
 					workspaceRelativePath: entry.workspaceRelativePath,
 				});
 			}
-			draft = nextDraft;
 			selectedMentions = [...nextMentions.values()];
 			await tick();
-			moveCaretToDraftEnd(draft);
+			draftElement?.focus();
 		} catch {
 			draftElement?.focus();
 		}
@@ -341,130 +384,6 @@
 		{#if errorMessage}
 			<p class="composer-error">{errorMessage}</p>
 		{/if}
-
-		<div class="composer-main-row">
-			<div class="composer-input-wrap">
-				{#if selectedMentions.length > 0}
-					<section class="composer-context-row" aria-label="Attached file and context items">
-						<div class="mention-chip-row">
-							{#each selectedMentions as mention (mention.id)}
-								<Tooltip label={`Remove ${mention.workspaceRelativePath}`}>
-									<button
-										class="mention-chip"
-										type="button"
-										aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
-										onclick={() => void removeMention(mention)}
-									>
-										{#if mention.kind === "folder"}
-											<FolderIcon size={12} aria-hidden="true" />
-										{:else}
-											<FileIcon size={12} aria-hidden="true" />
-										{/if}
-										<span>{mention.workspaceRelativePath}</span>
-										<XIcon size={11} aria-hidden="true" />
-									</button>
-								</Tooltip>
-							{/each}
-						</div>
-					</section>
-				{/if}
-				<TextArea
-					bind:value={draft}
-					bind:element={draftElement}
-					resize="vertical"
-					rows={4}
-					placeholder="Ask svvy to inspect the repo, make a change, or run Project CI."
-					onkeydown={handleKeydown}
-					oninput={(event) => syncCaretFromTextarea(event.currentTarget)}
-					onkeyup={(event) => syncCaretFromTextarea(event.currentTarget)}
-					onclick={(event) => syncCaretFromTextarea(event.currentTarget)}
-					onselect={(event) => syncCaretFromTextarea(event.currentTarget)}
-				/>
-			</div>
-
-			<div class="composer-row-actions">
-				<div class="composer-control-cluster" aria-label="Runtime controls">
-					<button
-						class="model-pill model-control"
-						type="button"
-						disabled={!currentModel}
-						onclick={() => onOpenModelPicker()}
-					>
-						<strong>{currentModel?.name ?? "No surface"}</strong>
-					</button>
-					<div bind:this={thinkingMenuRoot} class="thinking-wrap compact-thinking-wrap">
-						<button
-							class="model-pill thinking-field"
-							type="button"
-							aria-haspopup="listbox"
-							aria-expanded={showThinkingMenu}
-							aria-label="Thinking level"
-							onclick={() => (showThinkingMenu = !showThinkingMenu)}
-						>
-							<strong>{thinkingLevel}</strong>
-							<ChevronDownIcon
-								class={`thinking-chevron ${showThinkingMenu ? "open" : ""}`.trim()}
-								aria-hidden="true"
-								size={13}
-								strokeWidth={1.9}
-							/>
-						</button>
-						{#if showThinkingMenu}
-							<div class="thinking-menu" role="listbox" aria-label="Thinking level options">
-								{#each availableThinkingLevels as level}
-									<button
-										class={`thinking-option ${level === thinkingLevel ? "active" : ""}`.trim()}
-										type="button"
-										role="option"
-										aria-selected={level === thinkingLevel}
-										onclick={() => selectThinkingLevel(level)}
-									>
-										<span>{level}</span>
-										{#if level === thinkingLevel}
-											<span class="thinking-option-state">Current</span>
-										{/if}
-									</button>
-								{/each}
-							</div>
-						{/if}
-					</div>
-					<div class="compact-budget">
-						<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
-					</div>
-				</div>
-				<div class="composer-action-cluster" aria-label="Composer actions">
-					<Tooltip label="Attach file context">
-						<button
-							class="composer-icon-button"
-							type="button"
-							aria-label="Attach file context"
-							onclick={() => void attachPickedWorkspaceFiles()}
-						>
-							<PaperclipIcon size={15} aria-hidden="true" />
-						</button>
-					</Tooltip>
-					{#if isStreaming}
-						<Tooltip label="Stop generation">
-							<button class="composer-submit danger" type="button" aria-label="Stop" onclick={onAbort}>
-								<SquareIcon size={13} aria-hidden="true" />
-							</button>
-						</Tooltip>
-					{:else}
-						<Tooltip label="Send message" disabled={!currentModel || !draft.trim() || isSubmitting}>
-							<button
-								class="composer-submit"
-								type="button"
-								aria-label="Send"
-								onclick={() => void submit()}
-								disabled={!currentModel || !draft.trim() || isSubmitting}
-							>
-								<ArrowUpIcon size={15} aria-hidden="true" />
-							</button>
-						</Tooltip>
-					{/if}
-				</div>
-			</div>
-		</div>
 
 		{#if showMentionPicker}
 			<div bind:this={mentionRoot} class="mention-picker" role="listbox" aria-label="Workspace paths">
@@ -497,6 +416,127 @@
 			</div>
 		{/if}
 
+		<div class="composer-main-row">
+			<div class="composer-input-wrap">
+				{#if selectedMentions.length > 0}
+					<section class="composer-context-row" aria-label="Attached file and context items">
+						<div class="mention-chip-row">
+							{#each selectedMentions as mention (mention.id)}
+								<Tooltip label={`Remove ${mention.workspaceRelativePath}`}>
+									<button
+										class="mention-chip"
+										type="button"
+										aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
+										onclick={() => void removeMention(mention)}
+									>
+										{#if mention.kind === "folder"}
+											<FolderIcon size={12} aria-hidden="true" />
+										{:else}
+											<FileIcon size={12} aria-hidden="true" />
+										{/if}
+										<span>{mention.workspaceRelativePath}</span>
+										<XIcon size={11} aria-hidden="true" />
+									</button>
+								</Tooltip>
+							{/each}
+						</div>
+					</section>
+				{/if}
+				<TextArea
+					bind:value={draft}
+					bind:element={draftElement}
+					resize="vertical"
+					rows={1}
+					placeholder="Ask svvy to inspect the repo, make a change, or run Project CI."
+					onkeydown={handleKeydown}
+					oninput={handleDraftInput}
+					onkeyup={(event) => syncCaretFromTextarea(event.currentTarget)}
+					onclick={(event) => syncCaretFromTextarea(event.currentTarget)}
+					onselect={(event) => syncCaretFromTextarea(event.currentTarget)}
+				/>
+
+				<div class="composer-row-actions">
+					<div class="composer-control-cluster" aria-label="Runtime controls">
+						<button
+							class="model-pill model-control"
+							type="button"
+							disabled={!currentModel}
+							onclick={() => onOpenModelPicker()}
+						>
+							<strong>{currentModel?.name ?? "No surface"}</strong>
+						</button>
+						<div bind:this={thinkingMenuRoot} class="thinking-wrap compact-thinking-wrap">
+							<button
+								class="model-pill thinking-field"
+								type="button"
+								aria-haspopup="listbox"
+								aria-expanded={showThinkingMenu}
+								aria-label="Thinking level"
+								onclick={() => (showThinkingMenu = !showThinkingMenu)}
+							>
+								<strong>{thinkingLevel}</strong>
+								<ChevronDownIcon
+									class={`thinking-chevron ${showThinkingMenu ? "open" : ""}`.trim()}
+									aria-hidden="true"
+									size={13}
+									strokeWidth={1.9}
+								/>
+							</button>
+							{#if showThinkingMenu}
+								<div class="thinking-menu" role="listbox" aria-label="Thinking level options">
+									{#each availableThinkingLevels as level}
+										<button
+											class={`thinking-option ${level === thinkingLevel ? "active" : ""}`.trim()}
+											type="button"
+											role="option"
+											aria-selected={level === thinkingLevel}
+											onclick={() => selectThinkingLevel(level)}
+										>
+											<span>{level}</span>
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+						<div class="compact-budget">
+							<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
+						</div>
+					</div>
+					<div class="composer-action-cluster" aria-label="Composer actions">
+						<Tooltip label="Attach file context">
+							<button
+								class="composer-icon-button"
+								type="button"
+								aria-label="Attach file context"
+								onclick={() => void attachPickedWorkspaceFiles()}
+							>
+								<PaperclipIcon size={15} aria-hidden="true" />
+							</button>
+						</Tooltip>
+						{#if isStreaming}
+							<Tooltip label="Stop generation">
+								<button class="composer-submit danger" type="button" aria-label="Stop" onclick={onAbort}>
+									<SquareIcon size={13} aria-hidden="true" />
+								</button>
+							</Tooltip>
+						{:else}
+							<Tooltip label="Send message" disabled={!currentModel || !canSubmit || isSubmitting}>
+								<button
+									class="composer-submit"
+									type="button"
+									aria-label="Send"
+									onclick={() => void submit()}
+									disabled={!currentModel || !canSubmit || isSubmitting}
+								>
+									<ArrowUpIcon size={15} aria-hidden="true" />
+								</button>
+							</Tooltip>
+						{/if}
+					</div>
+				</div>
+			</div>
+		</div>
+
 		{#if usageText}
 			<div class="composer-status-row">
 				<p class="composer-usage">usage {usageText}</p>
@@ -519,18 +559,13 @@
 	.composer-shell {
 		container-type: inline-size;
 		padding: 0;
-		border-top: 1px solid color-mix(in oklab, var(--ui-border-soft) 92%, transparent);
-		background: var(--ui-surface);
+		background: transparent;
 	}
 
 	.composer-frame {
 		display: grid;
 		gap: 0;
 		transition: background-color 160ms cubic-bezier(0.19, 1, 0.22, 1);
-	}
-
-	.composer-frame:focus-within {
-		box-shadow: inset 0 1px 0 color-mix(in oklab, var(--ui-accent) 46%, transparent);
 	}
 
 	.composer-context-row,
@@ -540,7 +575,7 @@
 	}
 
 	.composer-context-row {
-		padding: 0 0 0.42rem;
+		padding: 0.42rem 0.52rem 0.38rem;
 		border-top: 0;
 		border-bottom: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
 	}
@@ -594,15 +629,18 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		align-items: start;
-		gap: 0.44rem;
+		width: min(100%, 45.5rem);
+		margin: 0 auto;
 		min-height: 0;
 		padding: 0.58rem 0.72rem 0.48rem;
 	}
 
 	.composer-input-wrap {
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
-		min-height: 4.95rem;
-		padding: 0.38rem 0.52rem;
+		min-height: 0;
+		overflow: visible;
 		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
 		border-radius: var(--ui-radius-md);
 		background: color-mix(in oklab, var(--ui-surface-subtle) 38%, transparent);
@@ -618,15 +656,16 @@
 	}
 
 	.composer-input-wrap:focus-within {
-		border-color: color-mix(in oklab, var(--ui-accent) 62%, var(--ui-border-accent));
-		background: var(--ui-surface);
-		box-shadow: var(--ui-focus-ring);
+		border-color: color-mix(in oklab, var(--ui-border-strong) 82%, var(--ui-accent));
+		background: color-mix(in oklab, var(--ui-surface) 86%, var(--ui-surface-subtle));
+		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-accent) 14%, transparent);
 	}
 
 	:global(.composer-shell .ui-textarea) {
-		min-height: 4.35rem;
-		max-height: 15rem;
-		padding: 0;
+		flex: 1 1 auto;
+		min-height: 2.35rem;
+		max-height: 10.5rem;
+		padding: 0.46rem 0.52rem 0.38rem;
 		border: 0;
 		border-radius: 0;
 		background: transparent;
@@ -653,6 +692,10 @@
 	}
 
 	.composer-row-actions {
+		margin-top: 0;
+		padding: 0.28rem 0.32rem 0.32rem 0.44rem;
+		border-radius: 0 0 var(--ui-radius-md) var(--ui-radius-md);
+		background: transparent;
 		justify-content: space-between;
 		align-content: center;
 		gap: 0.4rem;
@@ -664,18 +707,18 @@
 	.composer-action-cluster {
 		flex: 0 0 auto;
 		gap: 0.22rem;
-		padding: 0.16rem;
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 68%, transparent);
-		border-radius: var(--ui-radius-md);
-		background: color-mix(in oklab, var(--ui-surface-subtle) 42%, transparent);
+		padding: 0;
+		border: 0;
+		border-radius: 0;
+		background: transparent;
 	}
 
 	.composer-control-cluster {
-		max-width: 15.4rem;
+		max-width: 18rem;
 	}
 
 	.composer-action-cluster {
-		background: transparent;
+		margin-left: auto;
 	}
 
 	.composer-icon-button,
@@ -735,9 +778,9 @@
 		align-items: center;
 		gap: 0.28rem;
 		min-width: 0;
-		max-width: 10rem;
-		border: 1px solid var(--ui-border-soft);
-		border-radius: var(--ui-radius-sm);
+		max-width: 12.5rem;
+		border: 1px solid transparent;
+		border-radius: var(--ui-radius-md);
 		background: transparent;
 		color: var(--ui-text-tertiary);
 		font-family: var(--font-mono);
@@ -750,9 +793,13 @@
 
 	.model-pill {
 		position: relative;
-		min-height: 1.74rem;
-		padding: 0.22rem 0.48rem;
+		min-height: 1.9rem;
+		padding: 0.22rem 0.5rem;
 		cursor: pointer;
+		transition:
+			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+			background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+			color 150ms cubic-bezier(0.19, 1, 0.22, 1);
 	}
 
 	.model-pill strong {
@@ -766,15 +813,26 @@
 
 	.model-pill.thinking-field {
 		max-width: 7rem;
-		padding-right: 1.38rem;
+		padding-right: 1.62rem;
+	}
+
+	.model-control {
+		max-width: 12.5rem;
 	}
 
 	.model-pill:hover,
 	.model-pill:focus-visible {
 		outline: none;
-		border-color: color-mix(in oklab, var(--ui-accent) 52%, var(--ui-border-soft));
-		background: color-mix(in oklab, var(--ui-surface) 72%, transparent);
+		border-color: var(--ui-border-soft);
+		background: var(--ui-surface-subtle);
 		color: var(--ui-text-primary);
+	}
+
+	.model-pill:disabled {
+		border-color: var(--ui-border-soft);
+		background: var(--ui-surface-muted);
+		color: var(--ui-text-tertiary);
+		cursor: not-allowed;
 	}
 
 	.model-pill:focus-visible,
@@ -787,7 +845,7 @@
 	.compact-budget {
 		position: relative;
 		width: 5.8rem;
-		height: 1.74rem;
+		height: 1.9rem;
 	}
 
 	.compact-budget :global(.context-budget-compact) {
@@ -797,10 +855,10 @@
 	.mention-picker {
 		display: grid;
 		gap: 0.12rem;
-		width: min(calc(100% - 1.44rem), 34rem);
+		width: min(100%, 45.5rem);
 		max-height: 15rem;
 		overflow: auto;
-		margin: 0 0.72rem 0.55rem;
+		margin: 0 auto 0.35rem;
 		padding: 0.24rem;
 		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 92%, transparent);
 		border-radius: var(--ui-radius-md);
@@ -871,7 +929,7 @@
 
 	.thinking-field {
 		position: relative;
-		padding-right: 1.55rem;
+		padding-right: 1.62rem;
 	}
 
 	:global(.thinking-chevron) {
@@ -893,15 +951,17 @@
 		bottom: calc(100% + 0.35rem);
 		z-index: var(--ui-z-overlay);
 		display: grid;
-		min-width: max(11rem, 100%);
+		gap: 0;
+		min-width: max(11.5rem, 100%);
 		max-width: min(14rem, calc(100vw - 2rem));
 		padding: 0.28rem;
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 92%, transparent);
+		border: 1px solid var(--ui-border-soft);
 		border-radius: var(--ui-radius-md);
-		background:
-			linear-gradient(180deg, color-mix(in oklab, var(--ui-surface-raised) 86%, transparent), transparent),
-			var(--ui-surface-raised);
-		box-shadow: var(--ui-shadow-strong);
+		background: color-mix(in oklab, var(--ui-surface-raised) 96%, transparent);
+		box-shadow:
+			0 18px 48px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
+			0 0 0 1px color-mix(in oklab, var(--ui-surface) 60%, transparent);
+		backdrop-filter: blur(16px);
 		transform-origin: bottom right;
 	}
 
@@ -910,33 +970,30 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.8rem;
-		padding: 0.55rem 0.6rem;
-		border: 1px solid transparent;
+		min-height: 1.8rem;
+		padding: 0 0.56rem;
+		border: 0;
 		border-radius: var(--ui-radius-sm);
 		background: transparent;
-		color: var(--ui-text-primary);
+		color: var(--ui-text-secondary);
 		font: inherit;
-		font-size: 0.74rem;
-		font-weight: 600;
+		font-size: 0.72rem;
+		font-weight: 500;
 		text-transform: lowercase;
 		text-align: left;
 		cursor: pointer;
 	}
 
-	.thinking-option:hover,
-	.thinking-option:focus-visible,
 	.thinking-option.active {
-		outline: none;
-		border-color: color-mix(in oklab, var(--ui-border-accent) 72%, var(--ui-border-soft));
-		background: color-mix(in oklab, var(--ui-accent-soft) 68%, var(--ui-surface-raised));
+		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+		color: var(--ui-text-primary);
 	}
 
-	.thinking-option-state {
-		font-size: 0.64rem;
-		font-family: var(--font-mono);
-		color: var(--ui-text-secondary);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
+	.thinking-option:hover,
+	.thinking-option:focus-visible {
+		outline: none;
+		background: var(--ui-surface-subtle);
+		color: var(--ui-text-primary);
 	}
 
 	.composer-error {

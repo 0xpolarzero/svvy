@@ -18,9 +18,10 @@
   type Props = {
     runtime: ChatRuntime;
     panelId: string;
+    onOpenModelPicker: (panelId: string) => void;
   };
 
-  let { runtime, panelId }: Props = $props();
+  let { runtime, panelId, onOpenModelPicker }: Props = $props();
   let controller = $state<ChatSurfaceController | null>(null);
   let pane = $state<ReturnType<ChatRuntime["getPane"]> | null>(null);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
@@ -160,9 +161,10 @@
       targetLabel={pane?.target?.surface === "thread" ? "Messaging handler thread" : "Messaging orchestrator"}
       worktreeLabel={runtime.branch ?? runtime.workspaceLabel}
       onAbort={() => void controller?.abort()}
+      onOpenModelPicker={() => onOpenModelPicker(panelId)}
       onSend={send}
       onThinkingChange={(level) => controller?.agent.setThinkingLevel(level)}
-      listWorkspacePaths={() => runtime.listWorkspacePaths()}
+      listWorkspacePaths={(options) => runtime.listWorkspacePaths(options)}
       pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
     />
   </section>

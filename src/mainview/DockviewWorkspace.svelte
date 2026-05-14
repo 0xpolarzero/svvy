@@ -26,6 +26,7 @@
     focusedPanelId: string | null;
     layoutEpoch?: number;
     onFocusPanel: (panelId: string) => void;
+    onOpenModelPicker: (panelId: string) => void;
     onPersistDockview: (dockview: SerializedDockview | null, focusedPanelId: string | null) => void;
   };
 
@@ -36,6 +37,7 @@
     focusedPanelId,
     layoutEpoch = 0,
     onFocusPanel,
+    onOpenModelPicker,
     onPersistDockview,
   }: Props = $props();
   let hostElement = $state<HTMLDivElement | null>(null);
@@ -66,6 +68,7 @@
         props: {
           runtime,
           panelId: this.panelId,
+          onOpenModelPicker,
         },
       }) as Record<string, unknown>;
     }
@@ -78,6 +81,7 @@
         props: {
           runtime,
           panelId: this.panelId,
+          onOpenModelPicker,
         },
       }) as Record<string, unknown>;
     }

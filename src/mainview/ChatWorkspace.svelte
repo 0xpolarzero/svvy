@@ -956,6 +956,11 @@
     await syncArtifactsFromRuntime(true);
   }
 
+  async function handleOpenPaneModelPicker(panelId: string) {
+    await handleFocusPane(panelId);
+    await openModelSelector();
+  }
+
   function handleTranscriptScrollState(panelId: string, scroll: { transcriptAnchorId: string | null; offsetPx: number }) {
     runtime.setPaneScroll(panelId, scroll);
   }
@@ -2304,6 +2309,7 @@
         focusedPanelId={focusedPanelId}
         layoutEpoch={dockviewLayoutEpoch}
         onFocusPanel={(panelId) => void handleFocusPane(panelId)}
+        onOpenModelPicker={(panelId) => void handleOpenPaneModelPicker(panelId)}
         onPersistDockview={(dockview, panelId) => runtime.setDockviewLayout(dockview, panelId)}
       />
     </section>

@@ -70,22 +70,13 @@ export function selectMentionPath(
   value: string,
   query: MentionQuery,
   entry: WorkspacePathIndexEntry,
-): { draft: string; caret: number; mention: ComposerMentionLink } {
+): { draft: string; caret: number } {
   const mentionText = `@${entry.workspaceRelativePath}`;
   const needsSpace = value[query.end] && !/[\s.,;:!?)]/.test(value[query.end] ?? "");
   const replacement = `${mentionText}${needsSpace ? " " : ""}`;
   const draft = `${value.slice(0, query.start)}${replacement}${value.slice(query.end)}`;
   const caret = query.start + replacement.length;
-  return {
-    draft,
-    caret,
-    mention: {
-      id: `${entry.kind}:${entry.workspaceRelativePath}`,
-      kind: entry.kind,
-      label: basename(entry.workspaceRelativePath),
-      workspaceRelativePath: entry.workspaceRelativePath,
-    },
-  };
+  return { draft, caret };
 }
 
 export function removeMentionFromDraft(value: string, mention: ComposerMentionLink): string {
@@ -100,8 +91,16 @@ export function removeMentionFromDraft(value: string, mention: ComposerMentionLi
   return `${before} ${after}`;
 }
 
-export function serializeComposerDraft(value: string): string {
-  return value.trim();
+export function serializeComposerDraft(
+  value: string,
+  mentions: readonly ComposerMentionLink[] = [],
+): string {
+  const draft = value.trim();
+  const serializedMentions = mentions
+    .map((mention) => `@${mention.workspaceRelativePath}`)
+    .filter((mentionText) => !draft.includes(mentionText));
+  if (serializedMentions.length === 0) return draft;
+  return [draft, serializedMentions.join(" ")].filter(Boolean).join(" ");
 }
 
 export interface TranscriptMentionSegment {

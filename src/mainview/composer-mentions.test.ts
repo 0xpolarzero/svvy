@@ -60,7 +60,7 @@ describe("composer mention picker search", () => {
 });
 
 describe("composer mention serialization", () => {
-  it("selects a mention as normal @path text and removable chip metadata", () => {
+  it("selects a mention as normal inline @path text", () => {
     const draft = "Please inspect @prog.";
     const query = getActiveMentionQuery(draft, "Please inspect @prog".length);
     expect(query).not.toBeNull();
@@ -68,12 +68,6 @@ describe("composer mention serialization", () => {
     const selection = selectMentionPath(draft, query!, INDEX[0]!);
 
     expect(selection.draft).toBe("Please inspect @docs/progress.md.");
-    expect(selection.mention).toEqual({
-      id: "file:docs/progress.md",
-      kind: "file",
-      label: "progress.md",
-      workspaceRelativePath: "docs/progress.md",
-    });
     expect(serializeComposerDraft(selection.draft)).toBe("Please inspect @docs/progress.md.");
   });
 
@@ -125,5 +119,26 @@ describe("composer mentions stay agent-neutral", () => {
     expect(JSON.stringify({ role: "user", content: text })).not.toContain("contextTargets");
     expect(JSON.stringify({ role: "user", content: text })).not.toContain("fileContents");
     expect(JSON.stringify({ role: "user", content: text })).not.toContain("folderExpansion");
+  });
+
+  it("serializes chip-only attachments as ordinary mention text without duplicating visible mentions", () => {
+    const text = serializeComposerDraft("Please inspect @docs/progress.md", [
+      {
+        id: "file:docs/progress.md",
+        kind: "file",
+        label: "progress.md",
+        workspaceRelativePath: "docs/progress.md",
+      },
+      {
+        id: "file:src/mainview/ChatComposer.svelte",
+        kind: "file",
+        label: "ChatComposer.svelte",
+        workspaceRelativePath: "src/mainview/ChatComposer.svelte",
+      },
+    ]);
+
+    expect(text).toBe(
+      "Please inspect @docs/progress.md @src/mainview/ChatComposer.svelte",
+    );
   });
 });
