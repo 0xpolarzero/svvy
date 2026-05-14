@@ -1453,6 +1453,36 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("removes the final pane instead of leaving an empty pane behind", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+
+    await runtime.closePane(runtime.primaryPaneId);
+    await waitFor(() => runtime.getSurfaceController("session-1") === null);
+
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.paneLayout.focusedPanelId).toBeNull();
+    expect(runtime.paneLayout.dockview).toBeNull();
+    expect(harness.closeRequests).toHaveLength(1);
+
+    await runtime.createSession({}, { kind: "new-panel", direction: "right" });
+
+    expect(runtime.paneLayout.panels).toHaveLength(1);
+    expect(runtime.paneLayout.panels[0]?.binding).toEqual(createOrchestratorTarget("session-2"));
+    expect(runtime.paneLayout.panels.some((panel) => panel.binding === null)).toBe(false);
+
+    runtime.dispose();
+  });
+
   it("keeps prompt dispatch independent across concurrent surfaces", async () => {
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
     const orchestratorGate = createDeferred<void>();

@@ -22,7 +22,7 @@
     runtime: ChatRuntime;
     panels: WorkspaceDockviewPanelState[];
     dockviewLayout: SerializedDockview | null;
-    focusedPanelId: string;
+    focusedPanelId: string | null;
     layoutEpoch?: number;
     onFocusPanel: (panelId: string) => void;
     onPersistDockview: (dockview: SerializedDockview | null, focusedPanelId: string | null) => void;

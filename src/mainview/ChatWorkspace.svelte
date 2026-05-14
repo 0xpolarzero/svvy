@@ -1914,7 +1914,7 @@
     sessionNavigation = runtime.sessionNavigation;
     appLogSummary = runtime.appLogSummary;
     paneLayout = runtime.paneLayout;
-    focusedPanelId = paneLayout.focusedPanelId;
+    focusedPanelId = paneLayout.focusedPanelId ?? PRIMARY_CHAT_PANE_ID;
     currentPane = runtime.getPane(focusedPanelId) ?? null;
     focusedSurfaceTarget = currentPane?.target ?? null;
     activeSessionId = currentPane?.target?.workspaceSessionId;

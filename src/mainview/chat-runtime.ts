@@ -46,6 +46,7 @@ import {
   bindPane,
   closePane,
   createEmptyPaneLayout,
+  createPanelId,
   focusPane,
   normalizePaneLayout,
   PRIMARY_CHAT_PANE_ID,
@@ -1066,21 +1067,32 @@ export async function createChatRuntime(
   };
 
   const resolveOpenTarget = (openTarget?: PaneOpenTarget | string): string => {
+    const createPanelForOpen = (panelId = PRIMARY_CHAT_PANE_ID): string => {
+      paneLayout = addDockviewPanel(paneLayout, null, panelId);
+      persistWorkspaceUiRestore();
+      emit();
+      return panelId;
+    };
+
     if (typeof openTarget === "string") {
       if (!paneLayout.panels.some((pane) => pane.panelId === openTarget)) {
-        paneLayout = addDockviewPanel(paneLayout, null, openTarget);
-        persistWorkspaceUiRestore();
-        emit();
+        return createPanelForOpen(openTarget);
       }
       return openTarget;
     }
     if (!openTarget || openTarget.kind === "focused-panel") {
-      return paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
+      return paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? createPanelForOpen();
     }
     if (openTarget.kind === "panel") {
+      if (!paneLayout.panels.some((pane) => pane.panelId === openTarget.panelId)) {
+        return createPanelForOpen(openTarget.panelId);
+      }
       return openTarget.panelId;
     }
     if (openTarget.kind === "split") {
+      if (!paneLayout.panels.some((pane) => pane.panelId === openTarget.panelId)) {
+        return createPanelForOpen(openTarget.panelId);
+      }
       const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
       paneLayout = splitPane(paneLayout, openTarget.panelId, openTarget.direction, {
         size: openTarget.size,
@@ -1092,10 +1104,10 @@ export async function createChatRuntime(
       );
     }
     if (openTarget.kind === "tab") {
-      paneLayout = addDockviewPanel(paneLayout);
-      persistWorkspaceUiRestore();
-      emit();
-      return paneLayout.focusedPanelId ?? paneLayout.panels.at(-1)?.panelId ?? PRIMARY_CHAT_PANE_ID;
+      return createPanelForOpen(createPanelId());
+    }
+    if (paneLayout.panels.length === 0) {
+      return createPanelForOpen();
     }
     const basePaneId =
       paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
