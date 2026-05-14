@@ -2226,15 +2226,21 @@
       </div>
       <div class="workspace-layout-switcher" role="tablist" aria-label="Workspace layouts">
         {#each layoutSlots as slot (slot.id)}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={slot.id === activeLayoutId}
-            class={`workspace-layout-tab ${slot.id === activeLayoutId ? "active" : ""} ${slot.initialized ? "initialized" : "empty"}`.trim()}
-            onclick={() => void handleSwitchLayout(slot.id)}
+          <Tooltip
+            label={`Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`}
+            side="bottom"
           >
-            {slot.id}
-          </button>
+            <button
+              type="button"
+              role="tab"
+              aria-label={`Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`}
+              aria-selected={slot.id === activeLayoutId}
+              class={`workspace-layout-tab ${slot.id === activeLayoutId ? "active" : ""} ${slot.initialized ? "initialized" : "empty"}`.trim()}
+              onclick={() => void handleSwitchLayout(slot.id)}
+            >
+              {slot.id}
+            </button>
+          </Tooltip>
         {/each}
       </div>
     </div>

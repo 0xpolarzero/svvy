@@ -17,6 +17,8 @@
   import type { WorkspaceDockviewPanelState } from "./pane-layout";
   import { getSurfaceDisplayTitle } from "./surface-title";
 
+  const TOOLTIP_DELAY_MS = 500;
+
   type DockviewPanelRenderer = "onlyWhenVisible" | "always";
 
   type Props = {
@@ -313,6 +315,18 @@
     let timer: ReturnType<typeof setTimeout> | null = null;
     let tooltip: HTMLDivElement | null = null;
 
+    const removeAllDockviewTooltips = () => {
+      for (const existingTooltip of document.querySelectorAll(".imperative-action-tooltip")) {
+        existingTooltip.remove();
+      }
+    };
+
+    const handlePointerOverOutside = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && button.contains(target)) return;
+      remove();
+    };
+
     const remove = () => {
       if (timer) {
         clearTimeout(timer);
@@ -320,22 +334,41 @@
       }
       tooltip?.remove();
       tooltip = null;
+      document.removeEventListener("pointerover", handlePointerOverOutside, true);
     };
 
     const show = () => {
       if (button.disabled || tooltip) return;
+      removeAllDockviewTooltips();
       const rect = button.getBoundingClientRect();
+      const margin = 10;
+      const gap = 8;
       tooltip = document.createElement("div");
       tooltip.className = "imperative-action-tooltip";
       tooltip.textContent = label;
-      tooltip.style.left = `${Math.max(10, Math.min(window.innerWidth - 10, rect.left + rect.width / 2))}px`;
-      tooltip.style.top = `${Math.max(10, Math.min(window.innerHeight - 10, rect.bottom + 8))}px`;
+      tooltip.style.visibility = "hidden";
       document.body.append(tooltip);
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const preferredLeft = rect.left + rect.width / 2 - tooltipRect.width / 2;
+      const maxLeft = window.innerWidth - margin - tooltipRect.width;
+      if (maxLeft < margin) {
+        tooltip.style.left = `${margin}px`;
+        tooltip.style.right = `${margin}px`;
+      } else if (preferredLeft > maxLeft) {
+        tooltip.style.left = "";
+        tooltip.style.right = `${margin}px`;
+      } else {
+        tooltip.style.left = `${Math.max(margin, preferredLeft)}px`;
+        tooltip.style.right = "";
+      }
+      tooltip.style.top = `${Math.max(margin, Math.min(window.innerHeight - margin - tooltipRect.height, rect.bottom + gap))}px`;
+      tooltip.style.visibility = "visible";
     };
 
     const schedule = () => {
       remove();
-      timer = setTimeout(show, 1000);
+      document.addEventListener("pointerover", handlePointerOverOutside, true);
+      timer = setTimeout(show, TOOLTIP_DELAY_MS);
     };
 
     button.addEventListener("pointerenter", schedule);
@@ -739,6 +772,8 @@
   :global(.imperative-action-tooltip) {
     position: fixed;
     z-index: var(--ui-z-dialog);
+    width: max-content;
+    min-width: 8.5rem;
     max-width: min(18rem, calc(100vw - 1.25rem));
     padding: 0.34rem 0.46rem;
     border: 1px solid color-mix(in oklab, var(--ui-border-strong) 72%, transparent);
@@ -751,8 +786,9 @@
     font-size: 0.68rem;
     font-weight: 560;
     line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
     pointer-events: none;
-    transform: translate(-50%, 0);
     animation: dockview-tooltip-in 110ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
