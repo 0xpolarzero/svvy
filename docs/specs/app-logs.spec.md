@@ -176,7 +176,7 @@ Do not log full prompt text by default. Use a summary such as message count, cha
 
 ## Logger API
 
-Create one app logger and route product logs through it.
+Create one app logger per backend workspace runtime and route product logs through the runtime that owns the action.
 
 Suggested API:
 

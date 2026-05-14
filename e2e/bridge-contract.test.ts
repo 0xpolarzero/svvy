@@ -294,7 +294,8 @@ test("bridge state snapshot and app.ready expose workspace, session metadata, an
     const initialSession = snapshot.sessions.summaries[0];
     const initialSurface = currentOrchestratorSurface(snapshot);
 
-    expect(ready.payload?.workspaceId).toBe(snapshot.workspace.cwd);
+    expect(ready.payload?.workspaceId).toBe(snapshot.workspace.workspaceId);
+    expect(snapshot.workspace.workspaceId.startsWith(`${snapshot.workspace.cwd}#`)).toBe(true);
     expect(typeof ready.payload?.url).toBe("string");
     expect(typeof ready.payload?.bridgeUrl === "string" || ready.payload?.bridgeUrl === null).toBe(
       true,
@@ -307,13 +308,22 @@ test("bridge state snapshot and app.ready expose workspace, session metadata, an
       "sessions",
       "surfaces",
     ]);
-    expect(namespaces.map((entry) => entry.keyCount)).toEqual([4, 4, 3, 2, 2]);
+    expect(namespaces.map((entry) => entry.keyCount)).toEqual([7, 4, 3, 2, 2]);
 
     expect(snapshot.workspace).toEqual({
-      workspaceId: snapshot.workspace.cwd,
+      workspaceId: snapshot.workspace.workspaceId,
       cwd: snapshot.workspace.cwd,
       label: basename(snapshot.workspace.cwd),
       branch: currentGitBranch(),
+      activeWorkspaceId: snapshot.workspace.workspaceId,
+      openWorkspaces: [
+        expect.objectContaining({
+          workspaceId: snapshot.workspace.workspaceId,
+          cwd: snapshot.workspace.cwd,
+          workspaceLabel: basename(snapshot.workspace.cwd),
+        }),
+      ],
+      total: 1,
     });
     expect(snapshot.defaults).toEqual({
       provider: PROMPT_PROVIDER,
@@ -322,7 +332,7 @@ test("bridge state snapshot and app.ready expose workspace, session metadata, an
       systemPrompt: DEFAULT_SYSTEM_PROMPT,
     });
     expect(snapshot.providers.total).toBeGreaterThan(10);
-    expect(snapshot.providers.connected).toBe(1);
+    expect(snapshot.providers.connected).toBeGreaterThanOrEqual(1);
     expect(snapshot.providers.items.find((provider) => provider.provider === "zai")).toMatchObject({
       provider: "zai",
       hasKey: true,

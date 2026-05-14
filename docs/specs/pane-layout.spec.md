@@ -95,7 +95,21 @@ On restart, restoring a panel binding uses the same product open path used by an
 
 ## Stored Shape
 
-The workspace layout snapshot is durable workspace UI state:
+Each open workspace chrome tab has three fixed layout slots: `A`, `B`, and `C`. These slots are not user-renamable layouts. They are quick workspace arrangements for the same repository context and render as compact selectable controls pinned at the far right of the workspace chrome. Empty slots are visually muted, not disabled.
+
+The persisted workspace UI restore state is keyed by explicit `workspaceId` and owns that workspace's active slot plus each slot's layout snapshot:
+
+```ts
+type WorkspaceLayoutSlotId = "A" | "B" | "C";
+
+type WorkspaceUiRestoreState = {
+  version: 4;
+  activeLayoutId: WorkspaceLayoutSlotId;
+  layouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>;
+};
+```
+
+The workspace layout snapshot inside each slot is durable workspace UI state:
 
 ```ts
 type WorkspaceDockviewLayoutState = {
@@ -118,7 +132,14 @@ type DockviewPanelChromeState = {
   title: string;
   subtitle: string | null;
   icon: string | null;
-  kind: "orchestrator" | "handler-thread" | "workflow-inspector" | "artifact" | "project-ci" | "empty" | "unavailable";
+  kind:
+    | "orchestrator"
+    | "handler-thread"
+    | "workflow-inspector"
+    | "artifact"
+    | "project-ci"
+    | "empty"
+    | "unavailable";
   closable: boolean;
   floatable: boolean;
   popoutable: boolean;
@@ -134,7 +155,9 @@ type DockviewPanelRestoreState = {
 
 `panels` stores svvy product metadata keyed by Dockview panel id. Dockview panel ids must be stable and must not encode transient visual position. Product code must treat Dockview's serialized layout as the layout source of truth and svvy panel metadata as the product binding layer.
 
-If `dockview` is `null` or invalid, the workspace opens a single default Dockview panel bound to the primary orchestrator surface when one exists, or an empty panel otherwise.
+If `dockview` is `null` or invalid, the active slot opens a single default Dockview panel bound to the primary orchestrator surface when one exists, or an empty panel otherwise.
+
+A slot is initialized once its layout contains at least one bound product surface. Empty slots are muted in the layout switcher but remain selectable. Selecting an empty slot creates an empty single-panel Dockview layout so the user can build the arrangement from scratch.
 
 ## Dockview Panel Identity
 
@@ -429,7 +452,12 @@ Opening a surface requires a placement target:
 type DockviewOpenTarget =
   | { kind: "focused-panel" }
   | { kind: "panel"; panelId: string }
-  | { kind: "split"; panelId: string; direction: "left" | "right" | "above" | "below"; size?: number }
+  | {
+      kind: "split";
+      panelId: string;
+      direction: "left" | "right" | "above" | "below";
+      size?: number;
+    }
   | { kind: "tab"; groupId: string; index?: number }
   | { kind: "new-panel"; direction: "right" | "below"; size?: number }
   | { kind: "edge"; direction: "left" | "right" | "above" | "below"; size?: number }
@@ -698,12 +726,13 @@ The renderer persists layout after meaningful Dockview changes:
 - popout group moved or resized
 - edge-group visibility changed
 - tab group created, changed, collapsed, or destroyed
+- active `A`/`B`/`C` layout slot changed
 
-Dockview layout is restored with `fromJSON`. When existing renderer instances should be reused, the integration should use Dockview's existing-panel reuse path rather than tearing down live Svelte hosts unnecessarily. After `fromJSON`, `svvy` must reconcile the restored Dockview panel ids with svvy panel metadata, reapply constraints, reattach renderer subscriptions, and mark missing product targets as unavailable.
+Dockview layout is restored from the active workspace tab's active `A`/`B`/`C` slot with `fromJSON`. When existing renderer instances should be reused, the integration should use Dockview's existing-panel reuse path rather than tearing down live Svelte hosts unnecessarily. After `fromJSON`, `svvy` must reconcile the restored Dockview panel ids with svvy panel metadata, reapply constraints, reattach renderer subscriptions, and mark missing product targets as unavailable.
 
 Persistence should debounce high-frequency layout updates such as splitter movement and floating resize.
 
-The persisted snapshot must include both Dockview JSON and svvy panel metadata in one logical workspace UI update so layout and bindings do not drift.
+The persisted snapshot must include the workspace id, active slot id, and that slot's Dockview JSON and svvy panel metadata in one logical workspace UI update so layout and bindings do not drift across workspace tabs.
 
 ## Sidebar Indicators And Focus Highlight
 
@@ -808,7 +837,7 @@ Requirements:
 ## Invariants
 
 - Dockview is the canonical layout interaction engine.
-- Dockview serialized layout plus svvy panel metadata is the durable workspace UI layout state.
+- Dockview serialized layout plus svvy panel metadata is the durable workspace UI layout state inside fixed slots `A`, `B`, and `C`.
 - Panel metadata is separate from durable session/workflow state.
 - Panel metadata is separate from live surface runtime state.
 - Live runtime controllers are keyed by `surfacePiSessionId`.
@@ -819,6 +848,7 @@ Requirements:
 - Closing a panel does not delete the durable surface it showed.
 - Dockview floating and popout placement do not create duplicate product runtimes.
 - Restart restore never relies on transcript parsing.
+- Empty layout slots are selectable and muted, not disabled.
 - Missing restore targets render unavailable states instead of causing silent deletion.
 - Dockview layout changes must not mutate durable workspace/session/workflow records except through explicit product commands.
 - `svvy` must not maintain a parallel custom drag-preview system for Dockview-hosted pane movement.
@@ -843,5 +873,6 @@ This design is successful when:
 - duplicated panels show the same live surface without duplicating runtime controllers
 - panel-local UI state remains independent across duplicated views
 - restart restores the user's Dockview layout, occupancy, focus, durable bindings, and panel-local state without reviving stale transient UI state
+- users can switch among fixed layout slots `A`, `B`, and `C` from the far-right workspace chrome controls; initialized slots look normal and empty slots look muted while remaining selectable
 - sidebar indicators make open surface locations obvious across grid, tab, floating, popout, and edge-group placements
 - compact timeline cards expose delegated work without forcing the orchestrator to absorb raw workflow detail

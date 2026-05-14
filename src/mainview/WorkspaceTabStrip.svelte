@@ -1,0 +1,424 @@
+<script lang="ts">
+  import PlusIcon from "@lucide/svelte/icons/plus";
+  import XIcon from "@lucide/svelte/icons/x";
+  import { onDestroy } from "svelte";
+  import { flip } from "svelte/animate";
+  import type { WorkspaceTabInfo } from "../shared/workspace-contract";
+  import {
+    formatWorkspaceTabAriaLabel,
+    getVisibleWorkspaceTabCounts,
+    type WorkspaceTabCounts,
+  } from "./workspace-tabs";
+
+  export type WorkspaceTabStripItem = {
+    workspace: WorkspaceTabInfo;
+    counts: WorkspaceTabCounts;
+  };
+
+  type Props = {
+    tabs: WorkspaceTabStripItem[];
+    activeWorkspaceId: string | null;
+    openingWorkspace?: boolean;
+    onSelectWorkspace: (workspaceId: string) => void;
+    onCloseWorkspace: (workspaceId: string) => void;
+    onOpenWorkspace: () => void;
+    onReorderWorkspace?: (workspaceId: string, beforeWorkspaceId: string | null) => void;
+  };
+
+  let {
+    tabs,
+    activeWorkspaceId,
+    openingWorkspace = false,
+    onSelectWorkspace,
+    onCloseWorkspace,
+    onOpenWorkspace,
+    onReorderWorkspace,
+  }: Props = $props();
+
+  let tabsElement = $state<HTMLElement | null>(null);
+  let tabDrag = $state<{
+    workspaceId: string;
+    pointerId: number;
+    startX: number;
+    didMove: boolean;
+  } | null>(null);
+  let suppressClickWorkspaceId: string | null = null;
+  let draggedWorkspaceId = $state<string | null>(null);
+  let dropBeforeWorkspaceId = $state<string | null>(null);
+  let pendingDragClientX: number | null = null;
+  let dragAnimationFrame: number | null = null;
+
+  const workspaceTabLabel = (tab: WorkspaceTabStripItem): string =>
+    formatWorkspaceTabAriaLabel(tab.workspace, tab.counts);
+
+  function getDropTarget(clientX: number): string | null {
+    if (!tabsElement) return null;
+
+    const tabElements = Array.from(
+      tabsElement.querySelectorAll<HTMLElement>("[data-workspace-id]"),
+    );
+    for (const tabElement of tabElements) {
+      if (tabElement.dataset.workspaceId === draggedWorkspaceId) {
+        continue;
+      }
+
+      const bounds = tabElement.getBoundingClientRect();
+      if (clientX < bounds.left + bounds.width / 2) {
+        return tabElement.dataset.workspaceId ?? null;
+      }
+    }
+
+    return null;
+  }
+
+  function clearDragFrame() {
+    if (dragAnimationFrame === null) return;
+    window.cancelAnimationFrame(dragAnimationFrame);
+    dragAnimationFrame = null;
+    pendingDragClientX = null;
+  }
+
+  onDestroy(clearDragFrame);
+
+  function handlePointerDown(event: PointerEvent, workspaceId: string) {
+    if (event.button !== 0 || !event.isPrimary) return;
+    clearDragFrame();
+    tabDrag = {
+      workspaceId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      didMove: false,
+    };
+    draggedWorkspaceId = null;
+    dropBeforeWorkspaceId = null;
+    (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
+  }
+
+  function applyDragMove(clientX: number) {
+    if (!tabDrag) return;
+
+    const didMove = tabDrag.didMove || Math.abs(clientX - tabDrag.startX) > 5;
+    if (!didMove) return;
+
+    if (!tabDrag.didMove) {
+      draggedWorkspaceId = tabDrag.workspaceId;
+    }
+    const workspaceId = tabDrag.workspaceId;
+    tabDrag = { ...tabDrag, didMove: true };
+    const beforeWorkspaceId = getDropTarget(clientX);
+    if (beforeWorkspaceId !== dropBeforeWorkspaceId) {
+      dropBeforeWorkspaceId = beforeWorkspaceId;
+      onReorderWorkspace?.(workspaceId, beforeWorkspaceId);
+    }
+  }
+
+  function scheduleDragMove(clientX: number) {
+    pendingDragClientX = clientX;
+    if (dragAnimationFrame !== null) return;
+
+    dragAnimationFrame = window.requestAnimationFrame(() => {
+      dragAnimationFrame = null;
+      const nextClientX = pendingDragClientX;
+      pendingDragClientX = null;
+      if (nextClientX !== null) {
+        applyDragMove(nextClientX);
+      }
+    });
+  }
+
+  function handlePointerMove(event: PointerEvent) {
+    if (!tabDrag || event.pointerId !== tabDrag.pointerId) return;
+    scheduleDragMove(event.clientX);
+    if (tabDrag.didMove || Math.abs(event.clientX - tabDrag.startX) > 5) {
+      event.preventDefault();
+    }
+  }
+
+  function finishPointerDrag(event: PointerEvent, suppressClick: boolean) {
+    if (!tabDrag || event.pointerId !== tabDrag.pointerId) return;
+
+    applyDragMove(event.clientX);
+    clearDragFrame();
+
+    const completedDrag = tabDrag.didMove;
+    const workspaceId = tabDrag.workspaceId;
+    tabDrag = null;
+    draggedWorkspaceId = null;
+    dropBeforeWorkspaceId = null;
+    const target = event.currentTarget as HTMLButtonElement;
+    if (target.hasPointerCapture(event.pointerId)) {
+      target.releasePointerCapture(event.pointerId);
+    }
+
+    if (suppressClick && completedDrag) {
+      suppressClickWorkspaceId = workspaceId;
+      window.setTimeout(() => {
+        if (suppressClickWorkspaceId === workspaceId) {
+          suppressClickWorkspaceId = null;
+        }
+      });
+      event.preventDefault();
+    }
+  }
+
+  function handleSelectWorkspace(workspaceId: string) {
+    if (suppressClickWorkspaceId === workspaceId) {
+      suppressClickWorkspaceId = null;
+      return;
+    }
+    onSelectWorkspace(workspaceId);
+  }
+</script>
+
+<div class="workspace-tabs-strip electrobun-webkit-app-region-no-drag" aria-label="Workspace tabs">
+  <div class="workspace-tabs-scroll electrobun-webkit-app-region-no-drag" role="list" bind:this={tabsElement}>
+    {#each tabs as tab (tab.workspace.workspaceId)}
+      <div
+        class={`workspace-tab electrobun-webkit-app-region-no-drag ${tab.workspace.workspaceId === activeWorkspaceId ? "active" : ""} ${tab.workspace.workspaceId === draggedWorkspaceId ? "dragging" : ""}`.trim()}
+        data-workspace-id={tab.workspace.workspaceId}
+        role="listitem"
+        animate:flip={{ duration: 170 }}
+      >
+        <button
+          class="workspace-tab-main electrobun-webkit-app-region-no-drag"
+          type="button"
+          aria-current={tab.workspace.workspaceId === activeWorkspaceId ? "page" : undefined}
+          aria-label={workspaceTabLabel(tab)}
+          onpointerdown={(event) => handlePointerDown(event, tab.workspace.workspaceId)}
+          onpointermove={handlePointerMove}
+          onpointerup={(event) => finishPointerDrag(event, true)}
+          onpointercancel={(event) => finishPointerDrag(event, false)}
+          onclick={() => handleSelectWorkspace(tab.workspace.workspaceId)}
+        >
+          <span class="workspace-tab-label">{tab.workspace.workspaceLabel}</span>
+          <span class="workspace-tab-counts" aria-label="Workspace status counts">
+            {#each getVisibleWorkspaceTabCounts(tab.counts) as count}
+              <span class={`workspace-tab-count kind-${count.kind}`.trim()} title={`${count.value} ${count.label}`}>
+                {count.value}
+              </span>
+            {/each}
+          </span>
+        </button>
+        <button
+          class="workspace-tab-close electrobun-webkit-app-region-no-drag"
+          type="button"
+          aria-label={`Close ${tab.workspace.workspaceLabel}`}
+          title={`Close ${tab.workspace.workspaceLabel}`}
+          onclick={() => onCloseWorkspace(tab.workspace.workspaceId)}
+        >
+          <XIcon size={12} strokeWidth={2} aria-hidden="true" />
+        </button>
+      </div>
+    {/each}
+  </div>
+  <button
+    class="workspace-tab-add electrobun-webkit-app-region-no-drag"
+    type="button"
+    aria-label="Open workspace"
+    title="Open workspace"
+    disabled={openingWorkspace}
+    onclick={onOpenWorkspace}
+  >
+    <PlusIcon size={14} strokeWidth={2} aria-hidden="true" />
+  </button>
+</div>
+
+<style>
+  .workspace-tabs-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.24rem;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    pointer-events: auto;
+    user-select: none;
+  }
+
+  .workspace-tabs-scroll {
+    display: flex;
+    align-items: center;
+    gap: 0.24rem;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .workspace-tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-tab {
+    position: relative;
+    display: inline-grid;
+    grid-template-columns: minmax(0, 1fr) 1.18rem;
+    align-items: center;
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 6.15rem;
+    max-width: min(16rem, 32vw);
+    height: 1.68rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
+    border-radius: var(--ui-radius-md);
+    background: color-mix(in oklab, var(--ui-panel) 68%, transparent);
+    color: var(--ui-text-secondary);
+    -webkit-user-drag: none;
+    transition:
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 170ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .workspace-tab.dragging {
+    opacity: 0.58;
+  }
+
+  .workspace-tab.active {
+    border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-strong));
+    background: color-mix(in oklab, var(--ui-surface) 90%, var(--ui-accent) 10%);
+    color: var(--ui-text-primary);
+    box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--ui-accent) 34%, transparent);
+  }
+
+  .workspace-tab-main,
+  .workspace-tab-close,
+  .workspace-tab-add {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .workspace-tab-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    min-width: 0;
+    height: 100%;
+    padding: 0 0.34rem 0 0.56rem;
+    text-align: left;
+    cursor: grab;
+    touch-action: pan-y;
+  }
+
+  .workspace-tab.dragging .workspace-tab-main {
+    cursor: grabbing;
+  }
+
+  .workspace-tab-main:focus-visible,
+  .workspace-tab-close:focus-visible,
+  .workspace-tab-add:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .workspace-tab-label {
+    min-width: 0;
+    max-width: 8.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.7rem;
+    font-weight: 650;
+    line-height: 1;
+  }
+
+  .workspace-tab-counts {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18rem;
+    flex: 0 0 auto;
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .workspace-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0.82rem;
+    height: 0.94rem;
+    padding: 0 0.18rem;
+    border-radius: var(--ui-radius-sm);
+  }
+
+  .workspace-tab-count.kind-running {
+    color: var(--ui-accent);
+    background: color-mix(in oklab, var(--ui-accent) 14%, var(--ui-bg));
+  }
+
+  .workspace-tab-count.kind-unread,
+  .workspace-tab-count.kind-waiting {
+    color: var(--ui-status-waiting);
+    background: var(--ui-status-waiting-soft);
+  }
+
+  .workspace-tab-count.kind-error {
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
+  }
+
+  .workspace-tab-close {
+    display: inline-grid;
+    place-items: center;
+    width: 1.18rem;
+    height: 100%;
+    color: var(--ui-text-tertiary);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .workspace-tab:hover .workspace-tab-close,
+  .workspace-tab:focus-within .workspace-tab-close,
+  .workspace-tab.active .workspace-tab-close {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .workspace-tab-close:hover,
+  .workspace-tab-close:focus-visible {
+    background: color-mix(in oklab, var(--ui-surface-subtle) 76%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .workspace-tab-add {
+    display: inline-grid;
+    place-items: center;
+    width: 1.68rem;
+    height: 1.68rem;
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 78%, transparent);
+    border-radius: var(--ui-radius-md);
+    background: color-mix(in oklab, var(--ui-panel) 58%, transparent);
+    color: var(--ui-text-tertiary);
+    flex: 0 0 auto;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .workspace-tab-add:hover,
+  .workspace-tab-add:focus-visible {
+    border-color: var(--ui-border-strong);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 74%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .workspace-tab-add:disabled {
+    cursor: default;
+    opacity: 0.58;
+  }
+</style>

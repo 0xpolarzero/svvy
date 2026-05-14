@@ -158,7 +158,7 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Render archived sessions inside one Archived group in the session sidebar. Commit(s): `3855fe4`
 - [x] Persist the Archived group collapsed state per workspace. Commit(s): `3855fe4`
 - [x] Add session row actions for pin, unpin, archive, and unarchive. Commit(s): `3855fe4`
-- [ ] Land durable session unread state with sidebar timestamp dots, focus-to-read clearing, and session row context-menu actions for mark unread, pin, rename, and archive.
+- [ ] Keep durable unread state session-level with sidebar timestamp dots, focus-to-read clearing, and session row context-menu actions for mark unread, pin, rename, and archive; pane unread treatment, when present, reads from the same session metadata.
 - [x] Join session summaries, focused panel, and panel-to-surface bindings in one workspace-shell read model without depending on a global active surface. Commit(s): `9a21f87`, `b0ee858`
 - [x] Split workspace-summary updates from live surface transcript updates in the renderer runtime. Commit(s): `9a21f87`, `b0ee858`
 - [x] Manage open live surfaces in a shared registry keyed by `surfacePiSessionId`. Commit(s): `9a21f87`, `b0ee858`
@@ -169,6 +169,8 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Render thread- and workflow-run-linked artifacts before relying on transcript reconstruction. Commit(s): `3855fe4`
 - [x] Render the latest Project CI summary block for the focused surface or inspected thread. Commit(s): `3855fe4`
 - [x] Restore focused panel, panel-to-surface bindings, and inspector selection after restart. Commit(s): `3855fe4`
+- [ ] Keep open workspaces as left-aligned, horizontally scrollable, draggable app-chrome tabs backed by one backend workspace runtime per tab, with durable user-defined tab order, same-cwd duplicate tabs, compact icon controls, >0-only colored status count badges, and startup and new-tab flows using a workspace picker.
+- [ ] Route all workspace-scoped backend requests and renderer sync events through explicit `workspaceId` instead of process-global cwd.
 
 ## 9. Command Palette And Quick Open
 
@@ -195,6 +197,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [ ] Add `dockview-core` as the workspace layout engine and mount one Dockview workbench instance from the Svelte renderer.
 - [ ] Build the Svelte renderer adapter for Dockview content, tabs, header actions, context menu items, tab-group chips, watermark, and unavailable-surface panels.
 - [ ] Persist Dockview serialized layout state plus svvy panel metadata, including panel-to-surface bindings, panel-local state, chrome state, restore state, and minimum panel policy.
+- [ ] Persist fixed workspace layout slots `A`, `B`, and `C`, with the active slot autosaved on pane changes and empty slots rendered as muted but selectable controls pinned at the far right of workspace chrome.
 - [ ] Keep panel-to-surface bindings separate from live surface runtime state.
 - [ ] Support Dockview split, splitter resize, close, tab placement, panel and group drag placement, root-edge placement, edge groups, floating groups, and popout groups through svvy placement commands.
 - [ ] Configure Dockview drag/drop overlays and `dndEdges`, with svvy policy enforced through `onWillShowOverlay`, `onWillDrop`, `onDidDrop`, and `onUnhandledDragOverEvent`.

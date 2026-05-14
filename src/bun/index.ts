@@ -8,14 +8,16 @@ import {
 import { getModel, getModels, getProviders } from "@mariozechner/pi-ai";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import type {
+  AppLogUpdateMessage,
   AuthStateResponse,
   ChatRPCSchema,
   ComposerMentionKind,
   PromptTarget,
   ProviderAuthInfo,
   SendPromptRequest,
+  WorkspaceScopedRequest,
 } from "../shared/workspace-contract";
 import {
   getShortcut,
@@ -27,7 +29,6 @@ import {
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
   type AgentDefaults,
-  type ReasoningEffort,
   type SessionMode,
 } from "../shared/agent-settings";
 import {
@@ -39,23 +40,15 @@ import {
 } from "./auth-store";
 import { refreshIfNeeded, startOAuthLogin, supportsOAuth } from "./oauth-login";
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./default-system-prompt";
-import {
-  getSvvyAgentDir,
-  WorkspaceSessionCatalog,
-  type SessionDefaults,
-  type TitleGenerationLogEvent,
-} from "./session-catalog";
-import { createSessionAgentSettingsStore } from "./session-agent-settings";
+import { type SessionDefaults } from "./session-catalog";
 import {
   deleteSavedWorkflowLibraryPath,
   readSavedWorkflowLibraryReadModel,
 } from "./smithers-runtime/workflow-library";
 import { createSvvyToolBridge } from "./tool-bridge";
 import { resolveWorkspaceCwd } from "./workspace-context";
-import { WorkspacePathIndex } from "./workspace-path-index";
-import { createAppLogger } from "./app-logger";
-import { createAppLogStore } from "./app-log-store";
 import { positionNativeTrafficLights } from "./native-window-controls";
+import { WorkspaceRuntimeRegistry, type WorkspaceRuntime } from "./workspace-runtime-registry";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -79,15 +72,7 @@ const PREFERRED_MODEL_FRAGMENTS = [
 ];
 let resolvedDefaults: AgentDefaults | null = null;
 let mainWindow: BrowserWindow | null = null;
-const workspaceSessionCatalog = new WorkspaceSessionCatalog(resolveWorkspaceCwd());
-const workspacePathIndex = new WorkspacePathIndex(resolveWorkspaceCwd());
-const agentSettingsStore = createSessionAgentSettingsStore({
-  cwd: resolveWorkspaceCwd(),
-  agentDir: getSvvyAgentDir(),
-});
-const appLogStore = createAppLogStore({
-  databasePath: join(resolveWorkspaceCwd(), ".svvy", "app-logs-v1.sqlite"),
-});
+const startupWorkspaceCwd = resolveWorkspaceCwd();
 
 const NATIVE_TRAFFIC_LIGHT_POSITION = {
   leading: 18,
@@ -136,8 +121,7 @@ function loadEnvFile(filePath: string): void {
   }
 }
 
-function loadRuntimeEnv(): void {
-  const cwd = resolveWorkspaceCwd();
+function loadRuntimeEnv(cwd: string): void {
   for (const file of ENV_FILES) {
     loadEnvFile(join(cwd, file));
   }
@@ -212,8 +196,8 @@ async function getMainViewUrl(channelPromise: Promise<string>): Promise<string> 
   return "views://mainview/index.html";
 }
 
-function resolveSendDefaults(request: SendPromptRequest): AgentDefaults {
-  const defaults = getDefaultAgentSettings();
+function resolveSendDefaults(runtime: WorkspaceRuntime, request: SendPromptRequest): AgentDefaults {
+  const defaults = getDefaultAgentSettings(runtime);
   return {
     provider: request.provider || defaults.provider,
     model: request.model || defaults.model,
@@ -221,14 +205,16 @@ function resolveSendDefaults(request: SendPromptRequest): AgentDefaults {
   };
 }
 
-function getDefaultAgentSettings(): AgentDefaults {
-  const savedDefault = agentSettingsStore.getState().sessionAgents.defaultSession;
-  if (savedDefault.provider && savedDefault.model) {
-    return {
-      provider: savedDefault.provider,
-      model: savedDefault.model,
-      reasoningEffort: savedDefault.reasoningEffort,
-    };
+function getDefaultAgentSettings(runtime?: WorkspaceRuntime): AgentDefaults {
+  if (runtime) {
+    const savedDefault = runtime.agentSettingsStore.getState().sessionAgents.defaultSession;
+    if (savedDefault.provider && savedDefault.model) {
+      return {
+        provider: savedDefault.provider,
+        model: savedDefault.model,
+        reasoningEffort: savedDefault.reasoningEffort,
+      };
+    }
   }
   if (resolvedDefaults) {
     return resolvedDefaults;
@@ -266,13 +252,18 @@ function getDefaultAgentSettings(): AgentDefaults {
   return resolvedDefaults;
 }
 
-function getSessionDefaults(mode: SessionMode = "orchestrator"): SessionDefaults {
+function getSessionDefaults(
+  runtime: WorkspaceRuntime,
+  mode: SessionMode = "orchestrator",
+): SessionDefaults {
   const agentSettings =
-    agentSettingsStore.getState().sessionAgents[
+    runtime.agentSettingsStore.getState().sessionAgents[
       mode === "dumb" ? "dumbOrchestrator" : "defaultSession"
     ];
   const defaults =
-    agentSettings.provider && agentSettings.model ? agentSettings : getDefaultAgentSettings();
+    agentSettings.provider && agentSettings.model
+      ? agentSettings
+      : getDefaultAgentSettings(runtime);
   return {
     model: defaults.model,
     provider: defaults.provider,
@@ -322,8 +313,11 @@ function getWorkspaceBranch(cwd: string): string | undefined {
   return branch && branch !== "HEAD" ? branch : undefined;
 }
 
-function resolveSafeWorkspacePath(workspaceRelativePath: string): string | null {
-  const cwd = resolveWorkspaceCwd();
+function resolveSafeWorkspacePath(
+  runtime: WorkspaceRuntime,
+  workspaceRelativePath: string,
+): string | null {
+  const cwd = runtime.cwd;
   const normalizedRelativePath = workspaceRelativePath.trim().replace(/\\/g, "/").replace(/^@/, "");
   if (
     !normalizedRelativePath ||
@@ -349,8 +343,11 @@ function getWorkspacePathKind(absolutePath: string): ComposerMentionKind | "miss
   }
 }
 
-function openPathInPreferredEditor(path: string): { opened: boolean; editor: string } {
-  const preferences = agentSettingsStore.getState().appPreferences;
+function openPathInPreferredEditor(
+  runtime: WorkspaceRuntime,
+  path: string,
+): { opened: boolean; editor: string } {
+  const preferences = runtime.agentSettingsStore.getState().appPreferences;
   const editor = preferences.preferredExternalEditor;
   if (editor === "system") {
     return { opened: Utils.openPath(path), editor };
@@ -363,7 +360,7 @@ function openPathInPreferredEditor(path: string): { opened: boolean; editor: str
   }
 
   const child = spawn(command, [...baseArgs, path], {
-    cwd: resolveWorkspaceCwd(),
+    cwd: runtime.cwd,
     detached: true,
     stdio: "ignore",
   });
@@ -388,17 +385,25 @@ const svvyToolBridge = createSvvyToolBridge({
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
   getDefaultAgentSettings,
   getMainWindow: () => mainWindow,
-  getWorkspaceCwd: resolveWorkspaceCwd,
+  getActiveWorkspace: () => workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.getInfo() ?? null,
+  getOpenWorkspaces: () => workspaceRuntimeRegistry.listOpenWorkspaces(),
   getWorkspaceBranch,
   listProviderAuthSummaries,
-  listOpenSurfaceSnapshots: () => workspaceSessionCatalog.listOpenSurfaceSnapshots(),
-  listWorkspaceSessions: () => workspaceSessionCatalog.listSessions(),
+  listOpenSurfaceSnapshots: async () =>
+    (await workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.catalog.listOpenSurfaceSnapshots()) ??
+    [],
+  listWorkspaceSessions: async () =>
+    (await workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.catalog.listSessions()) ?? {
+      sessions: [],
+    },
 });
 const recordBridgeEvent = svvyToolBridge.recordEvent;
 const recordRawBridgeLog = svvyToolBridge.recordLog;
 const recordRawBridgeError = svvyToolBridge.recordError;
-const appLog = createAppLogger({
-  store: appLogStore,
+
+const workspaceRuntimeRegistry = new WorkspaceRuntimeRegistry({
+  initialCwd: startupWorkspaceCwd,
+  openInitialWorkspace: !!process.env.SVVY_WORKSPACE_CWD,
   forwardBridgeLog: (level, message, source, details, error) => {
     if (level === "error") {
       recordRawBridgeError("app", message, source, details, error);
@@ -406,37 +411,19 @@ const appLog = createAppLogger({
     }
     recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
   },
+  onAppLogUpdate: (workspaceId, payload) => {
+    rpc.send.sendAppLogUpdate({
+      ...payload,
+      workspaceId,
+    } as AppLogUpdateMessage & { workspaceId: string });
+  },
+  onWorkspaceSync: (_workspaceId, payload) => {
+    rpc.send.sendWorkspaceSync(payload);
+  },
+  onSurfaceSync: (_workspaceId, payload) => {
+    rpc.send.sendSurfaceSync(payload);
+  },
 });
-
-workspaceSessionCatalog.setTitleGenerationLogListener((event) => {
-  const message = formatTitleGenerationLogMessage(event);
-  const details = {
-    status: event.status,
-    ...(event.status === "completed" ? { title: event.title } : {}),
-    workspaceSessionId: event.sessionId,
-  };
-  if (event.level === "warning") {
-    appLog.warning("session.title", message, {
-      ...details,
-      failureReason: event.error,
-    });
-    return;
-  }
-  appLog.info("session.title", message, details);
-});
-
-function formatTitleGenerationLogMessage(event: TitleGenerationLogEvent): string {
-  switch (event.status) {
-    case "queued":
-      return "Session title generation queued.";
-    case "started":
-      return "Session title generation started.";
-    case "completed":
-      return "Session title generation completed.";
-    case "failed":
-      return "Session title generation failed.";
-  }
-}
 
 function recordBridgeLog(
   level: "info" | "warning",
@@ -444,7 +431,12 @@ function recordBridgeLog(
   source: string,
   details?: Record<string, unknown>,
 ): void {
-  appLog[level](mapBridgeSource(source), message, details);
+  const runtime = workspaceRuntimeRegistry.getActiveRuntimeOrNull();
+  if (!runtime) {
+    recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
+    return;
+  }
+  runtime.appLog[level](mapBridgeSource(source), message, details);
 }
 
 function recordBridgeError(
@@ -454,7 +446,12 @@ function recordBridgeError(
   details?: Record<string, unknown>,
   error?: unknown,
 ): void {
-  appLog.error(mapBridgeSource(source, kind), message, error, details);
+  const runtime = workspaceRuntimeRegistry.getActiveRuntimeOrNull();
+  if (!runtime) {
+    recordRawBridgeError(kind === "rpc" ? "rpc" : "app", message, source, details, error);
+    return;
+  }
+  runtime.appLog.error(mapBridgeSource(source, kind), message, error, details);
 }
 
 function mapBridgeSource(source: string, kind?: string) {
@@ -470,6 +467,24 @@ function mapBridgeSource(source: string, kind?: string) {
   return "app.lifecycle" as const;
 }
 
+function getWorkspaceRuntime(input: WorkspaceScopedRequest): WorkspaceRuntime {
+  return workspaceRuntimeRegistry.getRuntime(input.workspaceId);
+}
+
+function stripWorkspaceId<T extends WorkspaceScopedRequest>(
+  input: T,
+): Omit<T, keyof WorkspaceScopedRequest> {
+  const { workspaceId: _workspaceId, ...rest } = input;
+  return rest;
+}
+
+function addWorkspaceBranch<T extends { cwd: string }>(info: T): T & { branch?: string } {
+  return {
+    ...info,
+    branch: getWorkspaceBranch(info.cwd),
+  };
+}
+
 const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
   maxRequestTime: getRpcRequestTimeoutMs(),
   handlers: {
@@ -478,25 +493,32 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         return getDefaultAgentSettings();
       },
       getAgentSettings: async () => {
-        return agentSettingsStore.getState();
+        return workspaceRuntimeRegistry.getActiveRuntime().agentSettingsStore.getState();
       },
       updateSessionAgentDefault: async ({ key, settings }) => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
         resolvedDefaults = null;
-        appLog.info("settings", "Session agent defaults updated.", { key });
-        return agentSettingsStore.setSessionAgentDefault(key, settings);
+        runtime.appLog.info("settings", "Session agent defaults updated.", { key });
+        return runtime.agentSettingsStore.setSessionAgentDefault(key, settings);
       },
       updateWorkflowAgent: async ({ key, settings }) => {
-        appLog.info("settings", "Workflow agent settings updated.", { key });
-        return agentSettingsStore.setWorkflowAgent(key, settings);
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        runtime.appLog.info("settings", "Workflow agent settings updated.", { key });
+        return runtime.agentSettingsStore.setWorkflowAgent(key, settings);
       },
       updateAppPreferences: async (preferences) => {
-        appLog.info("settings", "App preferences updated.", {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        runtime.appLog.info("settings", "App preferences updated.", {
           preferredExternalEditor: preferences.preferredExternalEditor,
         });
-        return agentSettingsStore.setAppPreferences(preferences);
+        return runtime.agentSettingsStore.setAppPreferences(preferences);
       },
       ensureWorkflowAgentsComponent: async () => {
-        return { path: agentSettingsStore.ensureWorkflowAgentsComponent() };
+        return {
+          path: workspaceRuntimeRegistry
+            .getActiveRuntime()
+            .agentSettingsStore.ensureWorkflowAgentsComponent(),
+        };
       },
       getProviderAuthState: async ({
         providerId,
@@ -506,26 +528,65 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const defaults = getDefaultAgentSettings();
         return createAuthState(providerId || defaults.provider);
       },
-      getWorkspaceInfo: () => {
-        const cwd = resolveWorkspaceCwd();
-        return {
-          workspaceId: cwd,
-          workspaceLabel: basename(cwd),
-          branch: getWorkspaceBranch(cwd),
-        };
+      openWorkspace: async ({ cwd }) => {
+        const selectedCwd =
+          cwd ??
+          (
+            await Utils.openFileDialog({
+              startingFolder:
+                workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.cwd ??
+                workspaceRuntimeRegistry.getInitialCwd(),
+              allowedFileTypes: "*",
+              canChooseFiles: false,
+              canChooseDirectory: true,
+              allowsMultipleSelection: false,
+            })
+          )[0];
+        if (!selectedCwd) return { workspace: null };
+        const runtime = workspaceRuntimeRegistry.openWorkspace(selectedCwd);
+        runtime.appLog.info("workspace", "Workspace opened.", { workspaceId: runtime.workspaceId });
+        recordBridgeEvent("workspace.opened", { workspaceId: runtime.workspaceId });
+        return { workspace: addWorkspaceBranch(runtime.getInfo()) };
       },
-      getAppLogs: (query) => appLogStore.query(query),
-      getAppLogSummary: () => appLogStore.summary(),
-      markAppLogsSeen: ({ throughSeq }) => appLogStore.markSeen(throughSeq),
+      getOpenWorkspaces: async () => {
+        return workspaceRuntimeRegistry.listOpenWorkspaces().map(addWorkspaceBranch);
+      },
+      setActiveWorkspace: async ({ workspaceId }) => {
+        const runtime = workspaceRuntimeRegistry.setActiveWorkspace(workspaceId);
+        runtime.appLog.info("workspace", "Active workspace changed.", {
+          workspaceId: runtime.workspaceId,
+        });
+        recordBridgeEvent("workspace.activated", { workspaceId: runtime.workspaceId });
+        return { ok: true };
+      },
+      closeWorkspace: async ({ workspaceId }) => {
+        const closed = await workspaceRuntimeRegistry.closeWorkspace(workspaceId);
+        recordBridgeEvent("workspace.closed", { workspaceId, closed });
+        return { ok: closed };
+      },
+      getWorkspaceInfo: (input) => {
+        return addWorkspaceBranch(getWorkspaceRuntime(input).getInfo());
+      },
+      getAppLogs: (query) => {
+        const runtime = query
+          ? getWorkspaceRuntime(query)
+          : workspaceRuntimeRegistry.getActiveRuntime();
+        return runtime.appLogStore.query(query ? stripWorkspaceId(query) : undefined);
+      },
+      getAppLogSummary: (input) => getWorkspaceRuntime(input).appLogStore.summary(),
+      markAppLogsSeen: ({ workspaceId, throughSeq }) =>
+        workspaceRuntimeRegistry.getRuntime(workspaceId).appLogStore.markSeen(throughSeq),
       writeClipboardText: ({ text }) => {
         Utils.clipboardWriteText(text);
         return { ok: true };
       },
-      listWorkspacePaths: ({ refresh } = {}) => {
-        return refresh ? workspacePathIndex.refresh() : workspacePathIndex.list();
+      listWorkspacePaths: (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        return input.refresh ? runtime.pathIndex.refresh() : runtime.pathIndex.list();
       },
-      pickWorkspaceAttachments: async () => {
-        const cwd = resolveWorkspaceCwd();
+      pickWorkspaceAttachments: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const cwd = runtime.cwd;
         const selectedPaths = await Utils.openFileDialog({
           startingFolder: cwd,
           allowedFileTypes: "*",
@@ -562,8 +623,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
 
         return { entries, skippedPaths };
       },
-      openWorkspacePath: ({ workspaceRelativePath }) => {
-        const absolutePath = resolveSafeWorkspacePath(workspaceRelativePath);
+      openWorkspacePath: (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const absolutePath = resolveSafeWorkspacePath(runtime, input.workspaceRelativePath);
         if (!absolutePath) return { opened: false, kind: "missing" };
 
         const kind = getWorkspacePathKind(absolutePath);
@@ -575,164 +637,149 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         }
         return { opened, kind };
       },
-      getSavedWorkflowLibrary: async () => {
-        const state = agentSettingsStore.getState();
-        appLog.info("workflow.library", "Saved workflow library read.");
-        return await readSavedWorkflowLibraryReadModel(resolveWorkspaceCwd(), state.appPreferences);
+      getSavedWorkflowLibrary: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const state = runtime.agentSettingsStore.getState();
+        runtime.appLog.info("workflow.library", "Saved workflow library read.");
+        return await readSavedWorkflowLibraryReadModel(runtime.cwd, state.appPreferences);
       },
-      deleteSavedWorkflowLibraryItem: async ({ path }) => {
-        const state = agentSettingsStore.getState();
+      deleteSavedWorkflowLibraryItem: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { path } = input;
+        const state = runtime.agentSettingsStore.getState();
         try {
           const result = await deleteSavedWorkflowLibraryPath(
-            resolveWorkspaceCwd(),
+            runtime.cwd,
             path,
             state.appPreferences,
           );
-          appLog.info("workflow.library", "Saved workflow library item deleted.", { path });
+          runtime.appLog.info("workflow.library", "Saved workflow library item deleted.", { path });
           return result;
         } catch (error) {
-          appLog.error("workflow.library", "Saved workflow deletion failed.", error, { path });
+          runtime.appLog.error("workflow.library", "Saved workflow deletion failed.", error, {
+            path,
+          });
           throw error;
         }
       },
-      openWorkflowSourceInEditor: ({ path }) => {
-        const absolutePath = resolveSafeWorkspacePath(path);
+      openWorkflowSourceInEditor: (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { path } = input;
+        const absolutePath = resolveSafeWorkspacePath(runtime, path);
         if (!absolutePath || getWorkspacePathKind(absolutePath) === "missing") {
-          appLog.warning("external-editor", "Workflow source file does not exist.", { path });
+          runtime.appLog.warning("external-editor", "Workflow source file does not exist.", {
+            path,
+          });
           throw new Error(`Workflow source file does not exist: ${path}`);
         }
-        const result = openPathInPreferredEditor(absolutePath);
-        appLog.info("external-editor", "Workflow source opened in external editor.", {
+        const result = openPathInPreferredEditor(runtime, absolutePath);
+        runtime.appLog.info("external-editor", "Workflow source opened in external editor.", {
           path,
           editor: result.editor,
           opened: result.opened,
         });
         return { ...result, path };
       },
-      listSessions: async () => {
-        return await workspaceSessionCatalog.listSessions();
+      listSessions: async (input) => {
+        return await getWorkspaceRuntime(input).catalog.listSessions();
       },
-      getCommandInspector: async ({
-        sessionId,
-        commandId,
-      }: {
-        sessionId: string;
-        commandId: string;
-      }) => {
-        return await workspaceSessionCatalog.getCommandInspector({
+      getCommandInspector: async (input) => {
+        const { sessionId, commandId } = input;
+        return await getWorkspaceRuntime(input).catalog.getCommandInspector({
           sessionId,
           commandId,
         });
       },
-      listHandlerThreads: async ({ sessionId }: { sessionId: string }) => {
-        return await workspaceSessionCatalog.listHandlerThreads({ sessionId });
+      listHandlerThreads: async (input) => {
+        return await getWorkspaceRuntime(input).catalog.listHandlerThreads({
+          sessionId: input.sessionId,
+        });
       },
-      getHandlerThreadInspector: async ({
-        sessionId,
-        threadId,
-      }: {
-        sessionId: string;
-        threadId: string;
-      }) => {
-        return await workspaceSessionCatalog.getHandlerThreadInspector({
+      getHandlerThreadInspector: async (input) => {
+        const { sessionId, threadId } = input;
+        return await getWorkspaceRuntime(input).catalog.getHandlerThreadInspector({
           sessionId,
           threadId,
         });
       },
-      getWorkflowTaskAttemptInspector: async ({
-        sessionId,
-        workflowTaskAttemptId,
-      }: {
-        sessionId: string;
-        workflowTaskAttemptId: string;
-      }) => {
-        return await workspaceSessionCatalog.getWorkflowTaskAttemptInspector({
+      getWorkflowTaskAttemptInspector: async (input) => {
+        const { sessionId, workflowTaskAttemptId } = input;
+        return await getWorkspaceRuntime(input).catalog.getWorkflowTaskAttemptInspector({
           sessionId,
           workflowTaskAttemptId,
         });
       },
-      getWorkflowInspector: async (input: {
-        sessionId: string;
-        workflowRunId: string;
-        selectedNodeKey?: string | null;
-        expandedNodeKeys?: string[];
-        userCollapsedNodeKeys?: string[];
-        searchQuery?: string;
-        mode?: { kind: "live" } | { kind: "historical"; frameNo: number };
-      }) => {
-        return await workspaceSessionCatalog.getWorkflowInspector(input);
+      getWorkflowInspector: async (input) => {
+        return await getWorkspaceRuntime(input).catalog.getWorkflowInspector(
+          stripWorkspaceId(input),
+        );
       },
-      streamWorkflowInspector: async (input: {
-        sessionId: string;
-        workflowRunId: string;
-        selectedNodeKey?: string | null;
-        expandedNodeKeys?: string[];
-        userCollapsedNodeKeys?: string[];
-        searchQuery?: string;
-        mode?: { kind: "live" } | { kind: "historical"; frameNo: number };
-        fromSeq?: number | null;
-      }) => {
-        return await workspaceSessionCatalog.streamWorkflowInspector(input);
+      streamWorkflowInspector: async (input) => {
+        return await getWorkspaceRuntime(input).catalog.streamWorkflowInspector(
+          stripWorkspaceId(input),
+        );
       },
-      getProjectCiStatus: async ({ sessionId }: { sessionId: string }) => {
-        return await workspaceSessionCatalog.getProjectCiStatus({ sessionId });
+      getProjectCiStatus: async (input) => {
+        return await getWorkspaceRuntime(input).catalog.getProjectCiStatus({
+          sessionId: input.sessionId,
+        });
       },
-      getArtifactPreview: async ({
-        sessionId,
-        artifactId,
-      }: {
-        sessionId: string;
-        artifactId: string;
-      }) => {
-        return await workspaceSessionCatalog.getArtifactPreview({ sessionId, artifactId });
+      getArtifactPreview: async (input) => {
+        const { sessionId, artifactId } = input;
+        return await getWorkspaceRuntime(input).catalog.getArtifactPreview({
+          sessionId,
+          artifactId,
+        });
       },
-      createSession: async ({
-        title,
-        parentSessionId,
-        mode,
-      }: {
-        parentSessionId?: string;
-        title?: string;
-        mode?: SessionMode;
-      }) => {
-        const session = await workspaceSessionCatalog.createSession(
+      createSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { title, parentSessionId, mode } = input;
+        const session = await runtime.catalog.createSession(
           { title, parentSessionId, mode },
-          getSessionDefaults(mode ?? "orchestrator"),
+          getSessionDefaults(runtime, mode ?? "orchestrator"),
         );
         recordBridgeEvent("session.created", {
           parentSessionId: parentSessionId ?? null,
           sessionId: session.target.workspaceSessionId,
           title: title?.trim() || null,
         });
-        recordBridgeLog("info", "Workspace session created.", "bun.session", {
+        runtime.appLog.info("session", "Workspace session created.", {
           parentSessionId: parentSessionId ?? null,
           workspaceSessionId: session.target.workspaceSessionId,
         });
         return session;
       },
-      openSession: async ({ sessionId }: { sessionId: string }) => {
-        const session = await workspaceSessionCatalog.openSession(sessionId, DEFAULT_SYSTEM_PROMPT);
+      openSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const session = await runtime.catalog.openSession(sessionId, DEFAULT_SYSTEM_PROMPT);
         recordBridgeEvent("session.opened", {
           sessionId,
         });
-        appLog.info("session", "Workspace session opened.", { workspaceSessionId: sessionId });
+        runtime.appLog.info("session", "Workspace session opened.", {
+          workspaceSessionId: sessionId,
+        });
         return session;
       },
-      recordSessionOpened: async ({ sessionId }: { sessionId: string }) => {
+      recordSessionOpened: async (input) => {
+        getWorkspaceRuntime(input);
+        const { sessionId } = input;
         recordBridgeEvent("session.opened", {
           sessionId,
         });
         return { ok: true };
       },
-      openSurface: async ({ target }: { target: PromptTarget }) => {
-        const session = await workspaceSessionCatalog.openSurface(target, DEFAULT_SYSTEM_PROMPT);
+      openSurface: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target } = input;
+        const session = await runtime.catalog.openSurface(target, DEFAULT_SYSTEM_PROMPT);
         recordBridgeEvent("surface.opened", {
           surface: target.surface,
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
-        appLog.info("surface", "Surface opened.", {
+        runtime.appLog.info("surface", "Surface opened.", {
           surface: target.surface,
           workspaceSessionId: target.workspaceSessionId,
           surfacePiSessionId: target.surfacePiSessionId,
@@ -740,15 +787,17 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return session;
       },
-      closeSurface: async ({ target }: { target: PromptTarget }) => {
-        const result = await workspaceSessionCatalog.closeSurface(target);
+      closeSurface: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target } = input;
+        const result = await runtime.catalog.closeSurface(target);
         recordBridgeEvent("surface.closed", {
           surface: target.surface,
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
-        appLog.info("surface", "Surface closed.", {
+        runtime.appLog.info("surface", "Surface closed.", {
           surface: target.surface,
           workspaceSessionId: target.workspaceSessionId,
           surfacePiSessionId: target.surfacePiSessionId,
@@ -756,23 +805,27 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return result;
       },
-      renameSession: async ({ sessionId, title }: { sessionId: string; title: string }) => {
-        const result = await workspaceSessionCatalog.renameSession(sessionId, title);
+      renameSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId, title } = input;
+        const result = await runtime.catalog.renameSession(sessionId, title);
         recordBridgeEvent("session.renamed", {
           sessionId,
           title,
         });
-        appLog.info("session", "Workspace session renamed.", {
+        runtime.appLog.info("session", "Workspace session renamed.", {
           workspaceSessionId: sessionId,
           title,
         });
         return result;
       },
-      setSessionMode: async ({ target, mode }: { target: PromptTarget; mode: SessionMode }) => {
-        const result = await workspaceSessionCatalog.setSessionMode(
+      setSessionMode: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target, mode } = input;
+        const result = await runtime.catalog.setSessionMode(
           target,
           mode,
-          getSessionDefaults(mode),
+          getSessionDefaults(runtime, mode),
         );
         if (result.ok && result.snapshot) {
           recordBridgeEvent("session.mode.changed", {
@@ -781,7 +834,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             surfacePiSessionId: target.surfacePiSessionId,
           });
         } else {
-          recordBridgeError("rpc", result.error ?? "Session mode update failed.", "bun.session", {
+          runtime.appLog.error("session", result.error ?? "Session mode update failed.", {
             mode,
             sessionId: target.workspaceSessionId,
             surfacePiSessionId: target.surfacePiSessionId,
@@ -789,18 +842,12 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         }
         return result;
       },
-      forkSession: async ({
-        sessionId,
-        title,
-        messageTimestamp,
-      }: {
-        sessionId: string;
-        title?: string;
-        messageTimestamp?: string | number;
-      }) => {
-        const session = await workspaceSessionCatalog.forkSession(
+      forkSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId, title, messageTimestamp } = input;
+        const session = await runtime.catalog.forkSession(
           { sessionId, title, messageTimestamp },
-          getSessionDefaults(),
+          getSessionDefaults(runtime),
         );
         recordBridgeEvent("session.forked", {
           sessionId,
@@ -810,52 +857,70 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return session;
       },
-      deleteSession: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.deleteSession(sessionId);
+      deleteSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.deleteSession(sessionId);
         recordBridgeEvent("session.deleted", { sessionId });
-        appLog.info("session", "Workspace session deleted.", { workspaceSessionId: sessionId });
-        return result;
-      },
-      pinSession: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.pinSession(sessionId);
-        recordBridgeEvent("session.pinned", { sessionId });
-        appLog.info("session", "Workspace session pinned.", { workspaceSessionId: sessionId });
-        return result;
-      },
-      unpinSession: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.unpinSession(sessionId);
-        recordBridgeEvent("session.unpinned", { sessionId });
-        appLog.info("session", "Workspace session unpinned.", { workspaceSessionId: sessionId });
-        return result;
-      },
-      archiveSession: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.archiveSession(sessionId);
-        recordBridgeEvent("session.archived", { sessionId });
-        appLog.info("session", "Workspace session archived.", { workspaceSessionId: sessionId });
-        return result;
-      },
-      unarchiveSession: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.unarchiveSession(sessionId);
-        recordBridgeEvent("session.unarchived", { sessionId });
-        appLog.info("session", "Workspace session unarchived.", { workspaceSessionId: sessionId });
-        return result;
-      },
-      markSessionUnread: async ({ sessionId }: { sessionId: string }) => {
-        const result = await workspaceSessionCatalog.markSessionUnread(sessionId);
-        recordBridgeEvent("session.marked-unread", { sessionId });
-        appLog.info("session", "Workspace session marked unread.", {
+        runtime.appLog.info("session", "Workspace session deleted.", {
           workspaceSessionId: sessionId,
         });
         return result;
       },
-      recordFocusedSession: async ({
-        sessionId,
-        surfacePiSessionId,
-      }: {
-        sessionId: string | null;
-        surfacePiSessionId?: string | null;
-      }) => {
-        const result = await workspaceSessionCatalog.recordFocusedSession({
+      pinSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.pinSession(sessionId);
+        recordBridgeEvent("session.pinned", { sessionId });
+        runtime.appLog.info("session", "Workspace session pinned.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      unpinSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.unpinSession(sessionId);
+        recordBridgeEvent("session.unpinned", { sessionId });
+        runtime.appLog.info("session", "Workspace session unpinned.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      archiveSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.archiveSession(sessionId);
+        recordBridgeEvent("session.archived", { sessionId });
+        runtime.appLog.info("session", "Workspace session archived.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      unarchiveSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.unarchiveSession(sessionId);
+        recordBridgeEvent("session.unarchived", { sessionId });
+        runtime.appLog.info("session", "Workspace session unarchived.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      markSessionUnread: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.markSessionUnread(sessionId);
+        recordBridgeEvent("session.marked-unread", { sessionId });
+        runtime.appLog.info("session", "Workspace session marked unread.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      recordFocusedSession: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId, surfacePiSessionId } = input;
+        const result = await runtime.catalog.recordFocusedSession({
           sessionId,
           surfacePiSessionId,
         });
@@ -864,13 +929,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         }
         return result;
       },
-      setArchivedGroupCollapsed: async ({ collapsed }: { collapsed: boolean }) => {
-        const result = await workspaceSessionCatalog.setArchivedGroupCollapsed({ collapsed });
+      setArchivedGroupCollapsed: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { collapsed } = input;
+        const result = await runtime.catalog.setArchivedGroupCollapsed({ collapsed });
         recordBridgeEvent("session.archived-group.toggled", { collapsed });
         return result;
       },
-      sendPrompt: async (payload: SendPromptRequest): Promise<{ target: PromptTarget }> => {
-        const resolved = resolveSendDefaults(payload);
+      sendPrompt: async (payload): Promise<{ target: PromptTarget }> => {
+        const runtime = getWorkspaceRuntime(payload);
+        const resolved = resolveSendDefaults(runtime, payload);
 
         if (supportsOAuth(resolved.provider)) {
           await refreshIfNeeded(resolved.provider);
@@ -879,12 +947,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const apiKey = resolveApiKey(resolved.provider);
         if (!apiKey) {
           const message = getApiKeyMissingError(resolved.provider);
-          appLog.warning("auth.provider", "Configured provider is not connected for prompt.", {
-            provider: resolved.provider,
-            workspaceSessionId: payload.target.workspaceSessionId,
-            surfacePiSessionId: payload.target.surfacePiSessionId,
-            threadId: payload.target.threadId,
-          });
+          runtime.appLog.warning(
+            "auth.provider",
+            "Configured provider is not connected for prompt.",
+            {
+              provider: resolved.provider,
+              workspaceSessionId: payload.target.workspaceSessionId,
+              surfacePiSessionId: payload.target.surfacePiSessionId,
+              threadId: payload.target.threadId,
+            },
+          );
           throw new Error(message);
         }
 
@@ -902,7 +974,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           requestedWorkspaceSessionId: payload.target.workspaceSessionId,
           requestedThreadId: payload.target.threadId ?? null,
         });
-        appLog.info("prompt", "Prompt requested.", {
+        runtime.appLog.info("prompt", "Prompt requested.", {
           messageCount: payload.messages.length,
           model: model.id,
           provider: resolved.provider,
@@ -911,7 +983,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           threadId: payload.target.threadId,
         });
 
-        const session = await workspaceSessionCatalog.sendPrompt({
+        const session = await runtime.catalog.sendPrompt({
           target: payload.target,
           provider: resolved.provider,
           model: model.id,
@@ -927,7 +999,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 workspaceSessionId: payload.target.workspaceSessionId,
                 threadId: payload.target.threadId ?? null,
               });
-              appLog.info("prompt", "Prompt started.", {
+              runtime.appLog.info("prompt", "Prompt started.", {
                 model: model.id,
                 provider: resolved.provider,
                 workspaceSessionId: payload.target.workspaceSessionId,
@@ -943,7 +1015,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 workspaceSessionId: payload.target.workspaceSessionId,
                 threadId: payload.target.threadId ?? null,
               });
-              appLog.info("prompt", "Prompt finished.", {
+              runtime.appLog.info("prompt", "Prompt finished.", {
                 model: model.id,
                 provider: resolved.provider,
                 reason: event.reason,
@@ -963,7 +1035,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 workspaceSessionId: payload.target.workspaceSessionId,
                 threadId: payload.target.threadId ?? null,
               });
-              recordBridgeError("app", message, "bun.sendPrompt", {
+              runtime.appLog.error("prompt", message, {
                 model: model.id,
                 provider: resolved.provider,
                 reason: event.reason,
@@ -976,39 +1048,35 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
 
         surfacePiSessionId = session.target.surfacePiSessionId;
-        recordBridgeLog("info", "Prompt dispatched to pi runtime.", "bun.sendPrompt", {
+        runtime.appLog.info("prompt", "Prompt dispatched to pi runtime.", {
           model: model.id,
           provider: resolved.provider,
           surfacePiSessionId,
           workspaceSessionId: session.target.workspaceSessionId,
-          threadId: session.target.threadId ?? null,
+          threadId: session.target.threadId,
         });
         return session;
       },
-      cancelPrompt: async ({ target }: { target: PromptTarget }): Promise<{ ok: boolean }> => {
-        await workspaceSessionCatalog.cancelPrompt(target);
+      cancelPrompt: async (input): Promise<{ ok: boolean }> => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target } = input;
+        await runtime.catalog.cancelPrompt(target);
         recordBridgeEvent("prompt.cancel.requested", {
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
-        appLog.info("prompt", "Prompt cancellation requested.", {
+        runtime.appLog.info("prompt", "Prompt cancellation requested.", {
           workspaceSessionId: target.workspaceSessionId,
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId,
         });
         return { ok: true };
       },
-      setSurfaceModel: async ({
-        target,
-        provider,
-        model,
-      }: {
-        target: PromptTarget;
-        provider: string;
-        model: string;
-      }) => {
-        const result = await workspaceSessionCatalog.setSurfaceModel(target, provider, model);
+      setSurfaceModel: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target, provider, model } = input;
+        const result = await runtime.catalog.setSurfaceModel(target, provider, model);
         if (result.ok) {
           recordBridgeEvent("surface.model.changed", {
             model,
@@ -1016,7 +1084,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             threadId: target.threadId ?? null,
             workspaceSessionId: target.workspaceSessionId,
           });
-          appLog.info("surface", "Surface model changed.", {
+          runtime.appLog.info("surface", "Surface model changed.", {
             model,
             provider,
             workspaceSessionId: target.workspaceSessionId,
@@ -1024,10 +1092,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             threadId: target.threadId,
           });
         } else {
-          recordBridgeError(
-            "rpc",
+          runtime.appLog.error(
+            "surface",
             `Surface pi session ${target.surfacePiSessionId} was not found for model update.`,
-            "bun.surface",
             {
               model,
               surfacePiSessionId: target.surfacePiSessionId,
@@ -1036,14 +1103,10 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         }
         return result;
       },
-      setSurfaceThoughtLevel: async ({
-        target,
-        level,
-      }: {
-        target: PromptTarget;
-        level: ReasoningEffort;
-      }) => {
-        const result = await workspaceSessionCatalog.setSurfaceThoughtLevel(target, level);
+      setSurfaceThoughtLevel: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { target, level } = input;
+        const result = await runtime.catalog.setSurfaceThoughtLevel(target, level);
         if (result.ok) {
           recordBridgeEvent("surface.reasoning.changed", {
             level,
@@ -1051,17 +1114,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             threadId: target.threadId ?? null,
             workspaceSessionId: target.workspaceSessionId,
           });
-          appLog.info("surface", "Surface reasoning changed.", {
+          runtime.appLog.info("surface", "Surface reasoning changed.", {
             level,
             workspaceSessionId: target.workspaceSessionId,
             surfacePiSessionId: target.surfacePiSessionId,
             threadId: target.threadId,
           });
         } else {
-          recordBridgeError(
-            "rpc",
+          runtime.appLog.error(
+            "surface",
             `Surface pi session ${target.surfacePiSessionId} was not found for reasoning update.`,
-            "bun.surface",
             {
               level,
               surfacePiSessionId: target.surfacePiSessionId,
@@ -1083,7 +1145,12 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           keyType: "apikey",
           providerId,
         });
-        appLog.info("auth.provider", "Provider auth updated.", { providerId, keyType: "apikey" });
+        workspaceRuntimeRegistry
+          .getActiveRuntimeOrNull()
+          ?.appLog.info("auth.provider", "Provider auth updated.", {
+            providerId,
+            keyType: "apikey",
+          });
         return { ok: true };
       },
       startOAuth: async ({
@@ -1094,7 +1161,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         try {
           await startOAuthLogin(providerId);
           recordBridgeEvent("provider.oauth.started", { providerId });
-          appLog.info("auth.provider", "Provider OAuth started.", { providerId });
+          workspaceRuntimeRegistry
+            .getActiveRuntimeOrNull()
+            ?.appLog.info("auth.provider", "Provider OAuth started.", { providerId });
           return { ok: true };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -1112,23 +1181,13 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       }): Promise<{ ok: boolean }> => {
         removeCredential(providerId);
         recordBridgeEvent("provider.auth.removed", { providerId });
-        appLog.info("auth.provider", "Provider auth removed.", { providerId });
+        workspaceRuntimeRegistry
+          .getActiveRuntimeOrNull()
+          ?.appLog.info("auth.provider", "Provider auth removed.", { providerId });
         return { ok: true };
       },
     },
   },
-});
-
-appLog.subscribe((entries, summary) => {
-  rpc.send.sendAppLogUpdate({ entries, summary });
-});
-
-workspaceSessionCatalog.setWorkspaceSyncListener((payload) => {
-  rpc.send.sendWorkspaceSync(payload);
-});
-
-workspaceSessionCatalog.setSurfaceSyncListener((payload) => {
-  rpc.send.sendSurfaceSync(payload);
 });
 
 const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
@@ -1195,7 +1254,7 @@ ApplicationMenu.on("application-menu-clicked", (event) => {
   rpc.send.sendAppMenuAction({ action });
 });
 
-loadRuntimeEnv();
+loadRuntimeEnv(startupWorkspaceCwd);
 
 const url = await getMainViewUrl(localInfoChannelPromise);
 
@@ -1220,16 +1279,7 @@ mainWindow.show();
 recordBridgeEvent("app.ready", {
   bridgeUrl: mountedToolBridge.url ?? null,
   url,
-  workspaceCwd: resolveWorkspaceCwd(),
-});
-appLog.info("app.lifecycle", "App startup completed.", {
-  url,
-  workspaceCwd: resolveWorkspaceCwd(),
-  branch: getWorkspaceBranch(resolveWorkspaceCwd()),
-});
-appLog.info("workspace", "Workspace cwd resolved.", {
-  cwd: resolveWorkspaceCwd(),
-  branch: getWorkspaceBranch(resolveWorkspaceCwd()),
+  workspaceId: workspaceRuntimeRegistry.getActiveWorkspaceId(),
 });
 recordBridgeLog("info", "svvy tool bridge mounted.", "tool-bridge", {
   appId: mountedToolBridge.appId,

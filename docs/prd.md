@@ -529,6 +529,12 @@ It includes:
 - available worktrees
 - repo-local `AGENTS.md`
 
+The desktop shell presents open workspaces as compact tabs inside the app chrome, integrated with the sidebar and workspace control row rather than as a separate top toolbar. Workspace tabs are left-aligned at the start of the main workspace chrome, scroll horizontally when the open tab set exceeds the available space, and can be dragged to reorder them. Workspace tab order is durable workspace-shell state and restores across app restart. A workspace tab is a real app runtime container for one repository context, with its own workspace session catalog, path index, app logs, live surface registry, and workspace UI restore state. Opening the app with no restored tabs shows a workspace picker instead of silently attaching to a process-global cwd. Opening a new workspace tab uses the same picker. Opening an already-open repository again creates a separate workspace runtime tab for the same cwd instead of focusing the existing tab.
+
+Each workspace tab summarizes that workspace's session-level running, unread, waiting, and error counts from durable workspace read models. Count badges render only when their value is greater than zero, stay in the stable running, unread, waiting, error order, use status color instead of icons, and expose title or tooltip context on hover. Workspace open and close controls are compact icon controls with accessible labels. Workspace-scoped backend requests and renderer sync events carry an explicit runtime `workspaceId`; the backend must not route user work through a process-global active cwd or treat cwd as the workspace id.
+
+Each workspace has three fixed layout slots: `A`, `B`, and `C`. These are not user-named layouts. The slots render as compact controls pinned at the far right of the same chrome row as the workspace tabs and status controls. Selecting a layout slot swaps the active Dockview layout snapshot for that workspace. Empty slots remain selectable and render muted, not disabled, so the user can start a new layout from scratch.
+
 ### Session Container
 
 A session is the top-level durable product container for one orchestrator-led line of work.
@@ -613,6 +619,8 @@ If two Dockview panels show the same surface, they share one underlying live sur
 Users may split, dock, tab, drag, resize, close, float, and pop out panels as their workspace requires. Dockview owns the layout interaction mechanics, including drag/drop overlays and splitter behavior. The renderer is responsible for applying svvy product policy, practical minimum panel sizes, and explicit close behavior around Dockview events.
 
 The durable layout stores Dockview serialized layout state plus svvy panel metadata. Window resize preserves the Dockview layout intent without changing surface bindings or live runtime ownership.
+
+Workspace layout persistence is slot-based. Slots `A`, `B`, and `C` each store their own Dockview serialized layout, panel metadata, focused panel, compact surface state, and panel-local state. The active slot autosaves after meaningful pane changes. A slot is considered initialized once it contains a bound product surface; uninitialized slots are shown with muted chrome but remain fully selectable.
 
 ### Orchestrator Surface
 
@@ -1014,6 +1022,7 @@ Panel and surface semantics are:
 - more than one panel may attach to the same surface
 - duplicated panels share one underlying live surface state but may keep independent scroll position
 - split, resize, close, tab reorder, panel/group drag/drop placement, Dockview focus, bindings, Dockview layout JSON, edge-group state, floating/popout state, and panel-local state persist across restart
+- the active workspace layout slot and all initialized `A`/`B`/`C` layout snapshots persist across restart
 - background workflow attention always targets the owning handler surface, not the currently focused panel
 
 On restart, the workspace shell should restore useful stable UI state:

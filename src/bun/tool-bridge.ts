@@ -1,7 +1,10 @@
 import type { BrowserWindow } from "electrobun/bun";
 import { mountElectrobunToolBridge } from "electrobun-browser-tools/bridge";
-import { basename } from "node:path";
-import type { ProviderAuthInfo } from "../shared/workspace-contract";
+import type {
+  ProviderAuthInfo,
+  WorkspaceInfoResponse,
+  WorkspaceTabInfo,
+} from "../shared/workspace-contract";
 import type { AgentDefaults } from "../shared/agent-settings";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -53,9 +56,10 @@ type ToolBridgeState = Record<string, Record<string, unknown>>;
 type CreateSvvyToolBridgeOptions = {
   defaultSystemPrompt: string;
   getDefaultAgentSettings: () => AgentDefaults;
+  getActiveWorkspace: () => WorkspaceInfoResponse | null;
   getMainWindow: () => BrowserWindow | null;
-  getWorkspaceCwd: () => string;
   getWorkspaceBranch: (cwd: string) => string | undefined;
+  getOpenWorkspaces: () => WorkspaceTabInfo[];
   listProviderAuthSummaries: () => ProviderAuthInfo[];
   listOpenSurfaceSnapshots: () => Promise<OpenSurfaceSnapshot[]>;
   listWorkspaceSessions: () => Promise<WorkspaceSessionsState>;
@@ -80,18 +84,24 @@ export function createSvvyToolBridge(options: CreateSvvyToolBridgeOptions) {
   }
 
   async function buildState(): Promise<ToolBridgeState> {
-    const cwd = options.getWorkspaceCwd();
+    const activeWorkspace = options.getActiveWorkspace();
     const defaults = options.getDefaultAgentSettings();
-    const sessions = await options.listWorkspaceSessions();
-    const openSurfaces = await options.listOpenSurfaceSnapshots();
+    const sessions = activeWorkspace ? await options.listWorkspaceSessions() : { sessions: [] };
+    const openSurfaces = activeWorkspace ? await options.listOpenSurfaceSnapshots() : [];
     const providerAuths = options.listProviderAuthSummaries();
+    const openWorkspaces = options.getOpenWorkspaces();
 
     return {
       workspace: {
-        workspaceId: cwd,
-        cwd,
-        label: basename(cwd),
-        branch: options.getWorkspaceBranch(cwd),
+        workspaceId: activeWorkspace?.workspaceId ?? null,
+        cwd: activeWorkspace?.cwd ?? null,
+        label: activeWorkspace?.workspaceLabel ?? null,
+        branch: activeWorkspace
+          ? (activeWorkspace.branch ?? options.getWorkspaceBranch(activeWorkspace.cwd))
+          : null,
+        activeWorkspaceId: activeWorkspace?.workspaceId ?? null,
+        openWorkspaces,
+        total: openWorkspaces.length,
       },
       defaults: {
         ...defaults,

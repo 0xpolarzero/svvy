@@ -17,6 +17,7 @@ import type {
   WorkspaceSessionSummary,
   WorkspaceSyncMessage,
   WorkspaceWorkflowTaskAttemptInspector,
+  WorkspaceTabInfo,
 } from "../shared/workspace-contract";
 import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
@@ -44,6 +45,13 @@ mock.module("electrobun/view", () => {
 });
 
 type ReasoningEffort = ConversationSurfaceSnapshot["reasoningEffort"];
+const TEST_WORKSPACE_INFO: WorkspaceTabInfo = {
+  workspaceId: "/tmp/svvy#runtime-1",
+  cwd: "/tmp/svvy",
+  workspaceLabel: "svvy",
+  branch: "main",
+  openedAt: "2026-04-10T10:00:00.000Z",
+};
 
 type PromptHandlerResult = {
   assistantText: string;
@@ -85,8 +93,10 @@ type FakeRpcHarness = {
   projectCiStatusRequests: string[];
   setPromptHandler: (surfacePiSessionId: string, handler: PromptHandler) => void;
   updateSummary: (sessionId: string, updater: (summary: WorkspaceSessionSummary) => void) => void;
-  emitWorkspaceSync: (reason?: WorkspaceSyncMessage["reason"]) => void;
-  emitSurfaceSync: (payload: SurfaceSyncMessage) => void;
+  emitWorkspaceSync: (reason?: WorkspaceSyncMessage["reason"], workspaceId?: string) => void;
+  emitSurfaceSync: (
+    payload: Omit<SurfaceSyncMessage, "workspaceId"> & { workspaceId?: string },
+  ) => void;
   getRetainCount: (surfacePiSessionId: string) => number;
   getSurfaceSnapshot: (surfacePiSessionId: string) => ConversationSurfaceSnapshot;
 };
@@ -513,6 +523,7 @@ function createMemoryStorage(): ChatStorage {
     string,
     Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>
   >();
+  let appWorkspaceTabs: Awaited<ReturnType<ChatStorage["appWorkspaceTabs"]["get"]>> = null;
 
   return {
     providerKeys: {
@@ -553,7 +564,30 @@ function createMemoryStorage(): ChatStorage {
         workspaceUiRestore.set(workspaceId, structuredClone(state));
       },
     },
+    appWorkspaceTabs: {
+      get: async () => structuredClone(appWorkspaceTabs),
+      set: async (state) => {
+        appWorkspaceTabs = structuredClone(state);
+      },
+    },
   } as ChatStorage;
+}
+
+function createWorkspaceRestoreState(
+  layout: NonNullable<
+    Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>
+  >["layouts"]["A"],
+  activeLayoutId: "A" | "B" | "C" = "A",
+): NonNullable<Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>> {
+  return {
+    version: 4,
+    activeLayoutId,
+    layouts: {
+      A: activeLayoutId === "A" ? layout : null,
+      B: activeLayoutId === "B" ? layout : null,
+      C: activeLayoutId === "C" ? layout : null,
+    },
+  };
 }
 
 function createFakeRpc(input: {
@@ -630,8 +664,10 @@ function createFakeRpc(input: {
 
   const emitWorkspaceSync = (
     reason: WorkspaceSyncMessage["reason"] = "workspace.updated",
+    workspaceId = TEST_WORKSPACE_INFO.workspaceId,
   ): void => {
     const payload: WorkspaceSyncMessage = {
+      workspaceId,
       reason,
       sessions: listSessions(),
       navigation: listNavigation(),
@@ -641,23 +677,29 @@ function createFakeRpc(input: {
     }
   };
 
-  const emitSurfaceSync = (payload: SurfaceSyncMessage): void => {
-    if (payload.reason === "surface.closed") {
-      surfaces.delete(payload.target.surfacePiSessionId);
-    } else if (payload.snapshot) {
-      const existing = surfaces.get(payload.target.surfacePiSessionId);
+  const emitSurfaceSync = (
+    payload: Omit<SurfaceSyncMessage, "workspaceId"> & { workspaceId?: string },
+  ): void => {
+    const scopedPayload: SurfaceSyncMessage = {
+      ...payload,
+      workspaceId: payload.workspaceId ?? TEST_WORKSPACE_INFO.workspaceId,
+    };
+    if (scopedPayload.reason === "surface.closed") {
+      surfaces.delete(scopedPayload.target.surfacePiSessionId);
+    } else if (scopedPayload.snapshot) {
+      const existing = surfaces.get(scopedPayload.target.surfacePiSessionId);
       if (existing) {
-        existing.snapshot = structuredClone(payload.snapshot);
+        existing.snapshot = structuredClone(scopedPayload.snapshot);
       } else {
-        surfaces.set(payload.target.surfacePiSessionId, {
-          snapshot: structuredClone(payload.snapshot),
+        surfaces.set(scopedPayload.target.surfacePiSessionId, {
+          snapshot: structuredClone(scopedPayload.snapshot),
           retainCount: 0,
         });
       }
     }
 
     for (const listener of surfaceSyncListeners) {
-      listener(structuredClone(payload));
+      listener(structuredClone(scopedPayload));
     }
   };
 
@@ -809,16 +851,18 @@ function createFakeRpc(input: {
           path: "/tmp/svvy/.svvy/workflows/components/agents.ts",
         }),
         getProviderAuthState: async () => ({ connected: true, accountId: "openai-oauth" }),
-        getWorkspaceInfo: async () => ({
-          workspaceId: "/tmp/svvy",
-          workspaceLabel: "svvy",
-          branch: "main",
-        }),
-        getAppLogs: async (query = {}) => {
+        getWorkspaceInfo: async () => structuredClone(TEST_WORKSPACE_INFO),
+        getAppLogs: async (query) => {
+          const scopedQuery = query ?? {
+            workspaceId: TEST_WORKSPACE_INFO.workspaceId,
+          };
           const entries = appLogEntries.filter((entry) => {
-            if (query.afterSeq !== undefined && entry.seq <= query.afterSeq) return false;
-            if (query.levels?.length && !query.levels.includes(entry.level)) return false;
-            if (query.sources?.length && !query.sources.includes(entry.source)) return false;
+            if (scopedQuery.afterSeq !== undefined && entry.seq <= scopedQuery.afterSeq)
+              return false;
+            if (scopedQuery.levels?.length && !scopedQuery.levels.includes(entry.level))
+              return false;
+            if (scopedQuery.sources?.length && !scopedQuery.sources.includes(entry.source))
+              return false;
             return true;
           });
           return { entries: structuredClone(entries), summary: summarizeAppLogs() };
@@ -996,7 +1040,7 @@ function createFakeRpc(input: {
           missingFile: false,
           content: `artifact ${artifactId}`,
         }),
-        createSession: async ({ title } = {}) => {
+        createSession: async ({ title }) => {
           const sessionId = `session-${summaries.size + 1}`;
           const summary = createSummary(sessionId, title ?? "New Session", "");
           const snapshot = createSurfaceSnapshot({
@@ -1220,6 +1264,7 @@ function createFakeRpc(input: {
 
           queueMicrotask(() => {
             const surfaceSyncPayload: SurfaceSyncMessage = {
+              workspaceId: TEST_WORKSPACE_INFO.workspaceId,
               reason: result.reason ?? "prompt.settled",
               target: cloneTarget(request.target),
               snapshot: structuredClone(record.snapshot),
@@ -1364,7 +1409,11 @@ function createFakeRpc(input: {
 
 async function createRuntime(harness: FakeRpcHarness, storage = createMemoryStorage()) {
   const { createChatRuntime } = await import("./chat-runtime");
-  return await createChatRuntime({}, harness.client as never, storage);
+  return await createChatRuntime(
+    { workspaceInfo: TEST_WORKSPACE_INFO },
+    harness.client as never,
+    storage,
+  );
 }
 
 describe("createChatRuntime", () => {
@@ -1721,9 +1770,7 @@ describe("createChatRuntime", () => {
     );
 
     await runtime.closePaneSurface(runtime.primaryPaneId);
-    expect(runtime.sessions.find((session) => session.id === "session-1")?.status).toBe(
-      "running",
-    );
+    expect(runtime.sessions.find((session) => session.id === "session-1")?.status).toBe("running");
 
     promptGate.resolve();
     await prompt;
@@ -1960,6 +2007,55 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("ignores workspace and surface sync messages for other workspace ids", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController(runtime.primaryPaneId);
+    if (!controller) {
+      throw new Error("Expected an orchestrator controller.");
+    }
+
+    harness.updateSummary("session-1", (summary) => {
+      summary.preview = "foreign workspace update";
+    });
+    harness.emitWorkspaceSync("workspace.updated", "/tmp/other");
+    harness.emitSurfaceSync({
+      workspaceId: "/tmp/other",
+      reason: "surface.updated",
+      target: createOrchestratorTarget("session-1"),
+      snapshot: createSurfaceSnapshot({
+        target: createOrchestratorTarget("session-1"),
+        messages: [assistantMessage("foreign surface update")],
+      }),
+    });
+
+    expect(runtime.sessions.find((session) => session.id === "session-1")?.preview).toBe(
+      "main reply",
+    );
+    const lastMessage = controller.agent.state.messages.at(-1);
+    expect(
+      lastMessage?.role === "assistant" && "content" in lastMessage ? lastMessage.content[0] : null,
+    ).toMatchObject({ text: "main reply" });
+
+    harness.emitWorkspaceSync("workspace.updated");
+    await waitFor(
+      () =>
+        runtime.sessions.find((session) => session.id === "session-1")?.preview ===
+        "foreign workspace update",
+    );
+
+    runtime.dispose();
+  });
+
   it("uses the focused pane session by default for inspectors", async () => {
     const commandInspector = createCommandInspector("command-77");
     const handlerThreads = [createHandlerThreadSummary("thread-77")];
@@ -2114,9 +2210,10 @@ describe("createChatRuntime", () => {
     await Bun.sleep(0);
     firstRuntime.dispose();
 
-    const restoreState = await storage.workspaceUiRestore.get("/tmp/svvy");
-    expect(restoreState?.focusedPanelId).toBe("secondary");
-    expect(restoreState?.panels).toContainEqual(
+    const restoreState = await storage.workspaceUiRestore.get(TEST_WORKSPACE_INFO.workspaceId);
+    expect(restoreState?.activeLayoutId).toBe("A");
+    expect(restoreState?.layouts.A?.focusedPanelId).toBe("secondary");
+    expect(restoreState?.layouts.A?.panels).toContainEqual(
       expect.objectContaining({
         panelId: "secondary",
         binding: threadTarget,
@@ -2160,51 +2257,53 @@ describe("createChatRuntime", () => {
       surface: "workflow-inspector" as const,
       workflowRunId: "workflow-1",
     };
-    await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 3,
-      dockview: null,
-      compactSurfaces: [],
-      panels: [
-        {
-          panelId: "primary",
-          binding: orchestratorTarget,
-          localState: {
-            inspectorSelection: null,
-            scroll: { transcriptAnchorId: "assistant-1", offsetPx: 12 },
-            timelineDensity: "comfortable",
+    await storage.workspaceUiRestore.set(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: orchestratorTarget,
+            localState: {
+              inspectorSelection: null,
+              scroll: { transcriptAnchorId: "assistant-1", offsetPx: 12 },
+              timelineDensity: "comfortable",
+            },
           },
-        },
-        {
-          panelId: "thread-left",
-          binding: threadTarget,
-          localState: {
-            inspectorSelection: { kind: "thread", threadId: "thread-123" },
-            scroll: null,
-            timelineDensity: "compact",
+          {
+            panelId: "thread-left",
+            binding: threadTarget,
+            localState: {
+              inspectorSelection: { kind: "thread", threadId: "thread-123" },
+              scroll: null,
+              timelineDensity: "compact",
+            },
           },
-        },
-        {
-          panelId: "thread-right",
-          binding: threadTarget,
-          localState: {
-            inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
-            scroll: null,
-            timelineDensity: "comfortable",
+          {
+            panelId: "thread-right",
+            binding: threadTarget,
+            localState: {
+              inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-        {
-          panelId: "inspector",
-          binding: workflowInspectorTarget,
-          localState: {
-            inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
-            scroll: null,
-            timelineDensity: "comfortable",
+          {
+            panelId: "inspector",
+            binding: workflowInspectorTarget,
+            localState: {
+              inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-      ],
-      focusedPanelId: "thread-right",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-    });
+        ],
+        focusedPanelId: "thread-right",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
     const harness = createFakeRpc({
       sessions: [createSummary("session-1", "Orchestrator", "main reply")],
       surfaces: [
@@ -2248,24 +2347,26 @@ describe("createChatRuntime", () => {
   it("restores prompt lock state from opened surface snapshots", async () => {
     const storage = createMemoryStorage();
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
-    await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 3,
-      dockview: null,
-      compactSurfaces: [],
-      panels: [
-        {
-          panelId: "primary",
-          binding: threadTarget,
-          localState: {
-            inspectorSelection: null,
-            scroll: null,
-            timelineDensity: "comfortable",
+    await storage.workspaceUiRestore.set(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: threadTarget,
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-      ],
-      focusedPanelId: "primary",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-    });
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
     const harness = createFakeRpc({
       sessions: [createSummary("session-1", "Waiting Session", "worker waiting")],
       surfaces: [
@@ -2289,33 +2390,35 @@ describe("createChatRuntime", () => {
 
   it("preserves restored empty panes and keeps focus on the restored pane", async () => {
     const storage = createMemoryStorage();
-    await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 3,
-      dockview: null,
-      compactSurfaces: [],
-      panels: [
-        {
-          panelId: "primary",
-          binding: null,
-          localState: {
-            inspectorSelection: null,
-            scroll: null,
-            timelineDensity: "comfortable",
+    await storage.workspaceUiRestore.set(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: null,
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-        {
-          panelId: "secondary",
-          binding: createOrchestratorTarget("session-1"),
-          localState: {
-            inspectorSelection: null,
-            scroll: null,
-            timelineDensity: "comfortable",
+          {
+            panelId: "secondary",
+            binding: createOrchestratorTarget("session-1"),
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-      ],
-      focusedPanelId: "primary",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-    });
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
     const harness = createFakeRpc({
       sessions: [createSummary("session-1", "Orchestrator", "main reply")],
       surfaces: [
@@ -2336,26 +2439,79 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("switches between fixed A/B/C layout slots and keeps empty slots selectable", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness, storage);
+
+    expect(runtime.activeLayoutId).toBe("A");
+    expect(runtime.layoutSlots).toEqual([
+      expect.objectContaining({ id: "A", active: true, initialized: true }),
+      expect.objectContaining({ id: "B", active: false, initialized: false }),
+      expect.objectContaining({ id: "C", active: false, initialized: false }),
+    ]);
+
+    await runtime.switchWorkspaceLayout("B");
+    expect(runtime.activeLayoutId).toBe("B");
+    expect(runtime.paneLayout.panels).toHaveLength(1);
+    expect(runtime.getPane("primary")?.target).toBeNull();
+    expect(runtime.layoutSlots).toEqual([
+      expect.objectContaining({ id: "A", active: false, initialized: true }),
+      expect.objectContaining({ id: "B", active: true, initialized: false }),
+      expect.objectContaining({ id: "C", active: false, initialized: false }),
+    ]);
+
+    await runtime.openSession("session-1", runtime.primaryPaneId);
+    expect(runtime.layoutSlots.find((slot) => slot.id === "B")?.initialized).toBe(true);
+
+    await runtime.switchWorkspaceLayout("A");
+    expect(runtime.activeLayoutId).toBe("A");
+    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    const restoreState = await storage.workspaceUiRestore.get(TEST_WORKSPACE_INFO.workspaceId);
+    expect(restoreState?.activeLayoutId).toBe("A");
+    expect(restoreState?.layouts.A?.panels[0]?.binding).toEqual(
+      createOrchestratorTarget("session-1"),
+    );
+    expect(restoreState?.layouts.B?.panels[0]?.binding).toEqual(
+      createOrchestratorTarget("session-1"),
+    );
+    expect(restoreState?.layouts.C).toBeNull();
+
+    runtime.dispose();
+  });
+
   it("creates an initial session when a restored empty pane layout has no sessions", async () => {
     const storage = createMemoryStorage();
-    await storage.workspaceUiRestore.set("/tmp/svvy", {
-      version: 3,
-      dockview: null,
-      compactSurfaces: [],
-      panels: [
-        {
-          panelId: "primary",
-          binding: null,
-          localState: {
-            inspectorSelection: null,
-            scroll: null,
-            timelineDensity: "comfortable",
+    await storage.workspaceUiRestore.set(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: null,
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
           },
-        },
-      ],
-      focusedPanelId: "primary",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-    });
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
     const harness = createFakeRpc({ sessions: [], surfaces: [] });
 
     const runtime = await createRuntime(harness, storage);

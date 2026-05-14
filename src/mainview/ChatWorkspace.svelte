@@ -69,6 +69,8 @@
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
+    type WorkspaceLayoutSlotId,
+    type WorkspaceLayoutSlotSummary,
   } from "./pane-layout";
   import {
     buildCommandRegistry,
@@ -102,6 +104,7 @@
   import { rpc } from "./rpc";
   import Input from "./ui/Input.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+  import WorkspaceTabStrip, { type WorkspaceTabStripItem } from "./WorkspaceTabStrip.svelte";
 
   const DEFAULT_SIDEBAR_WIDTH = 240;
 
@@ -109,9 +112,27 @@
     runtime: ChatRuntime;
     shortcutsEnabled?: boolean;
     onOpenSettings?: () => void;
+    workspaceTabs?: WorkspaceTabStripItem[];
+    activeWorkspaceId?: string | null;
+    openingWorkspace?: boolean;
+    onSelectWorkspace?: (workspaceId: string) => void;
+    onCloseWorkspace?: (workspaceId: string) => void;
+    onOpenWorkspace?: () => void;
+    onReorderWorkspace?: (workspaceId: string, beforeWorkspaceId: string | null) => void;
   };
 
-  let { runtime, shortcutsEnabled = true, onOpenSettings }: Props = $props();
+  let {
+    runtime,
+    shortcutsEnabled = true,
+    onOpenSettings,
+    workspaceTabs = [],
+    activeWorkspaceId = null,
+    openingWorkspace = false,
+    onSelectWorkspace,
+    onCloseWorkspace,
+    onOpenWorkspace,
+    onReorderWorkspace,
+  }: Props = $props();
   const sidebarToggleShortcut = getShortcutReadable("sidebar.toggle");
 
   let controller = $state<ArtifactsController | null>(null);
@@ -155,6 +176,8 @@
     ...createEmptyPaneLayout(),
     focusedPanelId: PRIMARY_CHAT_PANE_ID,
   });
+  let activeLayoutId = $state<WorkspaceLayoutSlotId>("A");
+  let layoutSlots = $state<WorkspaceLayoutSlotSummary[]>([]);
   let currentPane = $state<ChatPaneState | null>(null);
   let focusedPanelId = $state(PRIMARY_CHAT_PANE_ID);
   let focusedSurfaceTarget = $state<PromptTarget | null>(null);
@@ -753,6 +776,11 @@
     } finally {
       mutatingSession = false;
     }
+  }
+
+  async function handleSwitchLayout(layoutId: WorkspaceLayoutSlotId) {
+    await runSessionMutation(() => runtime.switchWorkspaceLayout(layoutId));
+    scheduleDockviewLayoutPulse();
   }
 
   function openPalette(mode: CommandPaletteMode) {
@@ -2033,6 +2061,8 @@
     sessionNavigation = runtime.sessionNavigation;
     appLogSummary = runtime.appLogSummary;
     paneLayout = runtime.paneLayout;
+    activeLayoutId = runtime.activeLayoutId;
+    layoutSlots = runtime.layoutSlots;
     focusedPanelId = paneLayout.focusedPanelId ?? PRIMARY_CHAT_PANE_ID;
     currentPane = runtime.getPane(focusedPanelId) ?? null;
     focusedSurfaceTarget = currentPane?.target ?? null;
@@ -2156,6 +2186,53 @@
       </Tooltip>
       <p class="workspace-titlebar-title">svvy</p>
     </div>
+    <div class="workspace-titlebar-tabs">
+      <WorkspaceTabStrip
+        tabs={workspaceTabs}
+        {activeWorkspaceId}
+        {openingWorkspace}
+        onSelectWorkspace={(workspaceId) => onSelectWorkspace?.(workspaceId)}
+        onCloseWorkspace={(workspaceId) => onCloseWorkspace?.(workspaceId)}
+        onOpenWorkspace={() => onOpenWorkspace?.()}
+        onReorderWorkspace={(workspaceId, beforeWorkspaceId) =>
+          onReorderWorkspace?.(workspaceId, beforeWorkspaceId)}
+      />
+    </div>
+    <div class="workspace-titlebar-actions electrobun-webkit-app-region-no-drag">
+      <div class="workspace-main-meta" role="toolbar" aria-label="Workspace actions">
+        {#if projectCiStatus && hasActionableProjectCiStatus}
+          <div class="project-ci-compact" aria-label="Project CI summary">
+            <Badge tone={getProjectCiStatusTone(projectCiStatus.status)}>
+              CI {getProjectCiStatusLabel(projectCiStatus.status)}
+            </Badge>
+            <span>{projectCiStatus.summary}</span>
+            <span>{formatProjectCiCheckCounts(projectCiStatus)}</span>
+            {#if projectCiStatus.latestRun}
+              <Button
+                variant="ghost"
+                size="sm"
+                onclick={handleInspectLatestProjectCiRun}
+              >
+                Inspect
+              </Button>
+            {/if}
+          </div>
+        {/if}
+      </div>
+      <div class="workspace-layout-switcher" role="tablist" aria-label="Workspace layouts">
+        {#each layoutSlots as slot (slot.id)}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={slot.id === activeLayoutId}
+            class={`workspace-layout-tab ${slot.id === activeLayoutId ? "active" : ""} ${slot.initialized ? "initialized" : "empty"}`.trim()}
+            onclick={() => void handleSwitchLayout(slot.id)}
+          >
+            {slot.id}
+          </button>
+        {/each}
+      </div>
+    </div>
   </header>
 
   <div
@@ -2219,28 +2296,7 @@
     {/if}
 
     <section class="workspace-main">
-      <header class="workspace-main-header">
-        <div class="workspace-main-meta" role="toolbar" aria-label="Workspace actions">
-          {#if projectCiStatus && hasActionableProjectCiStatus}
-            <div class="project-ci-compact" aria-label="Project CI summary">
-              <Badge tone={getProjectCiStatusTone(projectCiStatus.status)}>
-                CI {getProjectCiStatusLabel(projectCiStatus.status)}
-              </Badge>
-              <span>{projectCiStatus.summary}</span>
-              <span>{formatProjectCiCheckCounts(projectCiStatus)}</span>
-              {#if projectCiStatus.latestRun}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={handleInspectLatestProjectCiRun}
-                >
-                  Inspect
-                </Button>
-              {/if}
-            </div>
-          {/if}
-        </div>
-      </header>
+      <header class="workspace-main-header" aria-hidden="true"></header>
       <DockviewWorkspace
         {runtime}
         panels={paneLayout.panels}
@@ -3095,17 +3151,18 @@
   .workspace-titlebar {
     --titlebar-inline-padding: 0.72rem;
     --mac-titlebar-control-offset: 5.25rem;
+    --workspace-titlebar-start-width: var(--sidebar-width, 240px);
     position: absolute;
     top: 0;
     left: 0;
     z-index: 12;
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--workspace-titlebar-start-width) minmax(0, 1fr) max-content;
     align-items: center;
-    justify-content: flex-start;
-    gap: 0.35rem;
-    width: var(--sidebar-width, 240px);
+    column-gap: 0;
+    width: 100%;
     height: var(--workspace-chrome-height);
-    padding: 0 var(--titlebar-inline-padding);
+    padding: 0 var(--titlebar-inline-padding) 0 0;
     border: 0;
     background: transparent;
     pointer-events: auto;
@@ -3113,21 +3170,60 @@
   }
 
   .workspace-titlebar.sidebar-titlebar-hidden {
-    width: 7.25rem;
+    width: 100%;
+    --workspace-titlebar-start-width: 7.25rem;
   }
 
   .workspace-shell.mac-window-chrome .workspace-titlebar {
-    padding-left: max(var(--titlebar-inline-padding), var(--mac-titlebar-control-offset));
+    padding-left: 0;
   }
 
   .workspace-titlebar-start {
     display: flex;
     align-items: center;
     gap: 0.48rem;
+    width: var(--workspace-titlebar-start-width);
+    min-width: 7.25rem;
+    transition: width 230ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .workspace-shell.mac-window-chrome .workspace-titlebar-start {
+    padding-left: var(--mac-titlebar-control-offset);
   }
 
   .workspace-titlebar-title {
     display: none;
+  }
+
+  .workspace-titlebar-tabs {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    justify-self: stretch;
+    overflow: hidden;
+  }
+
+  .workspace-titlebar-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.58rem;
+    justify-self: end;
+    min-width: max-content;
+  }
+
+  .workspace-layout-tab {
+    border: 1px solid var(--ui-border-soft);
+    border-radius: var(--ui-radius-md);
+    background: color-mix(in oklab, var(--ui-panel) 82%, transparent);
+    color: var(--ui-text-secondary);
+    font: inherit;
+    cursor: pointer;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .titlebar-icon {
@@ -3207,18 +3303,12 @@
     height: 100%;
     min-height: 0;
     padding: 0;
-    border-right: 1px solid var(--ui-shell-edge);
     background: var(--ui-shell);
-    transition: border-color 180ms cubic-bezier(0.19, 1, 0.22, 1);
-  }
-
-  .chat-workspace.sidebar-hidden .sidebar-surface {
-    border-right-color: transparent;
   }
 
   .sidebar-resize-handle {
     position: absolute;
-    top: 0;
+    top: var(--workspace-chrome-height);
     bottom: 0;
     left: calc(var(--sidebar-width) - 0.2rem);
     z-index: 9;
@@ -3256,7 +3346,7 @@
   .workspace-main-header {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: space-between;
     gap: 0.75rem;
     min-height: var(--workspace-chrome-height);
     height: var(--workspace-chrome-height);
@@ -3264,6 +3354,7 @@
     border-bottom: 0;
     background: color-mix(in oklab, var(--ui-surface) 52%, transparent);
     box-shadow: inset 0 -1px 0 var(--ui-border-soft);
+    pointer-events: none;
   }
 
   .chat-workspace.sidebar-hidden .workspace-main-header {
@@ -3280,6 +3371,39 @@
     min-width: 0;
     font-size: 0.64rem;
     color: var(--ui-text-tertiary);
+  }
+
+  .workspace-layout-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.24rem;
+    min-width: max-content;
+  }
+
+  .workspace-layout-tab {
+    display: inline-grid;
+    place-items: center;
+    width: 1.65rem;
+    height: 1.45rem;
+    padding: 0;
+    font-size: 0.66rem;
+    font-weight: 700;
+  }
+
+  .workspace-layout-tab.empty {
+    opacity: 0.48;
+  }
+
+  .workspace-layout-tab.empty:hover,
+  .workspace-layout-tab.empty:focus-visible,
+  .workspace-layout-tab.active {
+    opacity: 1;
+  }
+
+  .workspace-layout-tab.active {
+    border-color: color-mix(in oklab, var(--ui-accent) 52%, var(--ui-border-strong));
+    background: color-mix(in oklab, var(--ui-accent) 16%, var(--ui-panel));
+    color: var(--ui-text-primary);
   }
 
   .workspace-main-meta :global(.ui-metadata-chip) {

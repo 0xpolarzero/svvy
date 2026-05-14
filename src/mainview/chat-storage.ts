@@ -1,13 +1,16 @@
 import type { Model } from "@mariozechner/pi-ai";
-import type { WorkspaceDockviewLayoutState } from "./pane-layout";
+import type { WorkspaceTabInfo } from "../shared/workspace-contract";
+import type { WorkspaceDockviewLayoutState, WorkspaceLayoutSlotId } from "./pane-layout";
 import type { PromptHistoryEntry } from "./prompt-history";
 
 const DB_NAME = "svvy-desktop-chat";
-const DB_VERSION = 5;
+const DB_VERSION = 7;
 const PROVIDER_KEYS_STORE = "provider-keys";
 const CUSTOM_PROVIDERS_STORE = "custom-providers";
 const PROMPT_HISTORY_STORE = "prompt-history";
 const WORKSPACE_UI_RESTORE_STORE = "workspace-ui-restore";
+const APP_WORKSPACE_TABS_STORE = "app-workspace-tabs";
+const APP_WORKSPACE_TABS_KEY = "open-tabs";
 
 export type AutoDiscoveryProviderType = "ollama" | "llama.cpp" | "vllm" | "lmstudio";
 
@@ -49,6 +52,9 @@ class IndexedDbKeyValueStore {
           }
           if (!db.objectStoreNames.contains(WORKSPACE_UI_RESTORE_STORE)) {
             db.createObjectStore(WORKSPACE_UI_RESTORE_STORE);
+          }
+          if (!db.objectStoreNames.contains(APP_WORKSPACE_TABS_STORE)) {
+            db.createObjectStore(APP_WORKSPACE_TABS_STORE);
           }
         });
       });
@@ -180,8 +186,10 @@ export type WorkspaceInspectorSelection =
   | { kind: "ci-run"; ciRunId: string }
   | { kind: "project-ci-check"; checkResultId: string };
 
-export interface WorkspaceUiRestoreState extends WorkspaceDockviewLayoutState {
-  version: 3;
+export interface WorkspaceUiRestoreState {
+  version: 4;
+  activeLayoutId: WorkspaceLayoutSlotId;
+  layouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>;
 }
 
 export class WorkspaceUiRestoreStore {
@@ -192,12 +200,7 @@ export class WorkspaceUiRestoreStore {
       WORKSPACE_UI_RESTORE_STORE,
       workspaceId,
     );
-    if (
-      !state ||
-      state.version !== 3 ||
-      !Array.isArray(state.panels) ||
-      !("dockview" in state)
-    ) {
+    if (!state || state.version !== 4 || !state.layouts || !state.activeLayoutId) {
       return null;
     }
     return state;
@@ -208,11 +211,37 @@ export class WorkspaceUiRestoreStore {
   }
 }
 
+export interface AppWorkspaceTabsState {
+  version: 2;
+  activeWorkspaceId: string | null;
+  tabs: WorkspaceTabInfo[];
+}
+
+export class AppWorkspaceTabsStore {
+  constructor(private backend: IndexedDbKeyValueStore) {}
+
+  async get(): Promise<AppWorkspaceTabsState | null> {
+    const state = await this.backend.get<AppWorkspaceTabsState>(
+      APP_WORKSPACE_TABS_STORE,
+      APP_WORKSPACE_TABS_KEY,
+    );
+    if (!state || state.version !== 2 || !Array.isArray(state.tabs)) {
+      return null;
+    }
+    return state;
+  }
+
+  async set(state: AppWorkspaceTabsState): Promise<void> {
+    await this.backend.set(APP_WORKSPACE_TABS_STORE, APP_WORKSPACE_TABS_KEY, state);
+  }
+}
+
 export interface ChatStorage {
   providerKeys: ProviderKeysStore;
   customProviders: CustomProvidersStore;
   promptHistory: PromptHistoryStore;
   workspaceUiRestore: WorkspaceUiRestoreStore;
+  appWorkspaceTabs: AppWorkspaceTabsStore;
 }
 
 export function createChatStorage(): ChatStorage {
@@ -222,5 +251,6 @@ export function createChatStorage(): ChatStorage {
     customProviders: new CustomProvidersStore(backend),
     promptHistory: new PromptHistoryStore(backend),
     workspaceUiRestore: new WorkspaceUiRestoreStore(backend),
+    appWorkspaceTabs: new AppWorkspaceTabsStore(backend),
   };
 }

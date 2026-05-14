@@ -78,7 +78,6 @@ import { createExecuteTypescriptTool } from "./execute-typescript-tool";
 import { createWaitTool } from "./wait-tool";
 import { resolveApiKey } from "./auth-store";
 import { createToolExecutionCommandTracker } from "./tool-execution-command-tracker";
-import { resolveWorkspaceCwd } from "./workspace-context";
 import { createStartThreadTool } from "./thread-start-tool";
 import { createThreadHandoffTool } from "./thread-handoff-tool";
 import { buildSystemPrompt, type SvvyActorKind } from "./default-system-prompt";
@@ -206,18 +205,16 @@ export class WorkspaceSessionCatalog {
   private titleGenerationLogListener: ((event: TitleGenerationLogEvent) => void) | null = null;
 
   constructor(
-    private readonly cwd: string = resolveWorkspaceCwd(),
+    private readonly cwd: string,
     private readonly agentDir: string = getSvvyAgentDir(),
-    private readonly sessionDir: string = getSvvySessionDir(
-      resolveWorkspaceCwd(),
-      getSvvyAgentDir(),
-    ),
+    private readonly sessionDir: string = getSvvySessionDir(cwd, agentDir),
     private readonly namerSessionDir: string = join(sessionDir, "namer"),
+    private readonly workspaceId: string = cwd,
   ) {
     const workspaceLabel = basename(this.cwd) || "workspace";
     this.structuredSessionStore = createStructuredSessionStateStore({
       workspace: {
-        id: this.cwd,
+        id: this.workspaceId,
         label: workspaceLabel,
         cwd: this.cwd,
       },
@@ -1266,6 +1263,7 @@ export class WorkspaceSessionCatalog {
 
     try {
       this.surfaceSyncListener({
+        workspaceId: this.workspaceId,
         reason: input.reason,
         target: structuredClone(input.target),
         snapshot: await this.buildSurfaceSnapshot(input.session, input.target),
@@ -1303,6 +1301,7 @@ export class WorkspaceSessionCatalog {
         return;
       }
       this.workspaceSyncListener({
+        workspaceId: this.workspaceId,
         reason,
         sessions: payload.sessions,
         navigation: payload.navigation,
@@ -1320,6 +1319,7 @@ export class WorkspaceSessionCatalog {
       return;
     }
     this.surfaceSyncListener({
+      workspaceId: this.workspaceId,
       reason: "surface.closed",
       target: structuredClone(target),
     });

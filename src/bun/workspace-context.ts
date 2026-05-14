@@ -1,3 +1,17 @@
+import { realpathSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+
 export function resolveWorkspaceCwd(): string {
-  return process.env.SVVY_WORKSPACE_CWD ?? process.env.INIT_CWD ?? process.env.PWD ?? process.cwd();
+  return canonicalizeWorkspaceCwd(
+    process.env.SVVY_WORKSPACE_CWD ?? process.env.INIT_CWD ?? process.env.PWD ?? process.cwd(),
+  );
+}
+
+export function canonicalizeWorkspaceCwd(cwd: string): string {
+  const resolved = resolve(cwd);
+  const stats = statSync(resolved);
+  if (!stats.isDirectory()) {
+    throw new Error(`Workspace path is not a directory: ${cwd}`);
+  }
+  return realpathSync.native(resolved);
 }

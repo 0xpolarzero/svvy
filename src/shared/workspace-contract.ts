@@ -178,6 +178,7 @@ export interface SetSessionModeResponse {
 }
 
 export interface WorkspaceSyncMessage {
+  workspaceId: string;
   reason: "workspace.updated" | "structured.updated";
   sessions: WorkspaceSessionSummary[];
   navigation: WorkspaceSessionNavigationReadModel;
@@ -199,9 +200,28 @@ export interface AuthStateResponse {
 
 export interface WorkspaceInfoResponse {
   workspaceId: string;
+  cwd: string;
   workspaceLabel: string;
   branch?: string;
 }
+
+export interface WorkspaceTabInfo extends WorkspaceInfoResponse {
+  openedAt: string;
+}
+
+export interface OpenWorkspaceRequest {
+  cwd?: string;
+}
+
+export interface OpenWorkspaceResponse {
+  workspace: WorkspaceInfoResponse | null;
+}
+
+export interface WorkspaceScopedRequest {
+  workspaceId: string;
+}
+
+export type WorkspaceScoped<T extends object = Record<string, never>> = T & WorkspaceScopedRequest;
 
 export type ComposerMentionKind = "file" | "folder";
 
@@ -862,6 +882,7 @@ export interface ConversationSurfaceSnapshot {
 }
 
 export interface SurfaceSyncMessage {
+  workspaceId: string;
   reason: "surface.updated" | "prompt.settled" | "background.started" | "surface.closed";
   target: PromptTarget;
   snapshot?: ConversationSurfaceSnapshot;
@@ -951,20 +972,36 @@ export interface ChatRPCSchema {
         params: ProviderAuthStateRequest;
         response: AuthStateResponse;
       };
-      getWorkspaceInfo: {
+      openWorkspace: {
+        params: OpenWorkspaceRequest;
+        response: OpenWorkspaceResponse;
+      };
+      getOpenWorkspaces: {
         params: undefined;
+        response: WorkspaceTabInfo[];
+      };
+      setActiveWorkspace: {
+        params: WorkspaceScopedRequest;
+        response: WorkspaceMutationResponse;
+      };
+      closeWorkspace: {
+        params: WorkspaceScopedRequest;
+        response: WorkspaceMutationResponse;
+      };
+      getWorkspaceInfo: {
+        params: WorkspaceScopedRequest;
         response: WorkspaceInfoResponse;
       };
       getAppLogs: {
-        params: AppLogQuery | undefined;
+        params: WorkspaceScoped<AppLogQuery> | undefined;
         response: AppLogReadModel;
       };
       getAppLogSummary: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: AppLogSummary;
       };
       markAppLogsSeen: {
-        params: { throughSeq: number };
+        params: WorkspaceScoped<{ throughSeq: number }>;
         response: AppLogSummary;
       };
       writeClipboardText: {
@@ -972,51 +1009,51 @@ export interface ChatRPCSchema {
         response: WorkspaceMutationResponse;
       };
       listWorkspacePaths: {
-        params: { refresh?: boolean } | undefined;
+        params: WorkspaceScoped<{ refresh?: boolean }>;
         response: WorkspacePathIndexEntry[];
       };
       pickWorkspaceAttachments: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: PickWorkspaceAttachmentResponse;
       };
       openWorkspacePath: {
-        params: OpenWorkspacePathRequest;
+        params: WorkspaceScoped<OpenWorkspacePathRequest>;
         response: OpenWorkspacePathResponse;
       };
       getSavedWorkflowLibrary: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: WorkspaceSavedWorkflowLibraryReadModel;
       };
       deleteSavedWorkflowLibraryItem: {
-        params: DeleteSavedWorkflowLibraryItemRequest;
+        params: WorkspaceScoped<DeleteSavedWorkflowLibraryItemRequest>;
         response: WorkspaceSavedWorkflowLibraryReadModel;
       };
       openWorkflowSourceInEditor: {
-        params: OpenWorkflowSourceInEditorRequest;
+        params: WorkspaceScoped<OpenWorkflowSourceInEditorRequest>;
         response: OpenWorkflowSourceInEditorResponse;
       };
       listSessions: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: ListSessionsResponse;
       };
       getCommandInspector: {
-        params: { sessionId: string; commandId: string };
+        params: WorkspaceScoped<{ sessionId: string; commandId: string }>;
         response: WorkspaceCommandInspector | null;
       };
       listHandlerThreads: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceHandlerThreadSummary[];
       };
       getHandlerThreadInspector: {
-        params: { sessionId: string; threadId: string };
+        params: WorkspaceScoped<{ sessionId: string; threadId: string }>;
         response: WorkspaceHandlerThreadInspector | null;
       };
       getWorkflowTaskAttemptInspector: {
-        params: { sessionId: string; workflowTaskAttemptId: string };
+        params: WorkspaceScoped<{ sessionId: string; workflowTaskAttemptId: string }>;
         response: WorkspaceWorkflowTaskAttemptInspector | null;
       };
       getWorkflowInspector: {
-        params: {
+        params: WorkspaceScoped<{
           sessionId: string;
           workflowRunId: string;
           selectedNodeKey?: string | null;
@@ -1024,11 +1061,11 @@ export interface ChatRPCSchema {
           userCollapsedNodeKeys?: string[];
           searchQuery?: string;
           mode?: WorkspaceWorkflowInspectorMode;
-        };
+        }>;
         response: WorkspaceWorkflowInspectorReadModel | null;
       };
       streamWorkflowInspector: {
-        params: {
+        params: WorkspaceScoped<{
           sessionId: string;
           workflowRunId: string;
           selectedNodeKey?: string | null;
@@ -1037,95 +1074,95 @@ export interface ChatRPCSchema {
           searchQuery?: string;
           mode?: WorkspaceWorkflowInspectorMode;
           fromSeq?: number | null;
-        };
+        }>;
         response: WorkspaceWorkflowInspectorLiveUpdate | null;
       };
       getProjectCiStatus: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceProjectCiStatusPanel;
       };
       getArtifactPreview: {
-        params: { sessionId: string; artifactId: string };
+        params: WorkspaceScoped<{ sessionId: string; artifactId: string }>;
         response: WorkspaceArtifactPreview;
       };
       createSession: {
-        params: CreateSessionRequest;
+        params: WorkspaceScoped<CreateSessionRequest>;
         response: ConversationSurfaceSnapshot;
       };
       openSession: {
-        params: OpenSessionRequest;
+        params: WorkspaceScoped<OpenSessionRequest>;
         response: ConversationSurfaceSnapshot;
       };
       recordSessionOpened: {
-        params: OpenSessionRequest;
+        params: WorkspaceScoped<OpenSessionRequest>;
         response: WorkspaceMutationResponse;
       };
       openSurface: {
-        params: OpenSurfaceRequest;
+        params: WorkspaceScoped<OpenSurfaceRequest>;
         response: ConversationSurfaceSnapshot;
       };
       closeSurface: {
-        params: CloseSurfaceRequest;
+        params: WorkspaceScoped<CloseSurfaceRequest>;
         response: WorkspaceMutationResponse;
       };
       renameSession: {
-        params: RenameSessionRequest;
+        params: WorkspaceScoped<RenameSessionRequest>;
         response: WorkspaceMutationResponse;
       };
       setSessionMode: {
-        params: SetSessionModeRequest;
+        params: WorkspaceScoped<SetSessionModeRequest>;
         response: SetSessionModeResponse;
       };
       forkSession: {
-        params: ForkSessionRequest;
+        params: WorkspaceScoped<ForkSessionRequest>;
         response: ConversationSurfaceSnapshot;
       };
       deleteSession: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       pinSession: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       unpinSession: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       archiveSession: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       unarchiveSession: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       markSessionUnread: {
-        params: { sessionId: string };
+        params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
       recordFocusedSession: {
-        params: { sessionId: string | null; surfacePiSessionId?: string | null };
+        params: WorkspaceScoped<{ sessionId: string | null; surfacePiSessionId?: string | null }>;
         response: WorkspaceMutationResponse;
       };
       setArchivedGroupCollapsed: {
-        params: { collapsed: boolean };
+        params: WorkspaceScoped<{ collapsed: boolean }>;
         response: WorkspaceMutationResponse;
       };
       sendPrompt: {
-        params: SendPromptRequest;
+        params: WorkspaceScoped<SendPromptRequest>;
         response: SendPromptResponse;
       };
       setSurfaceModel: {
-        params: SetSurfaceModelRequest;
+        params: WorkspaceScoped<SetSurfaceModelRequest>;
         response: SurfaceMutationResponse;
       };
       setSurfaceThoughtLevel: {
-        params: SetSurfaceThoughtLevelRequest;
+        params: WorkspaceScoped<SetSurfaceThoughtLevelRequest>;
         response: SurfaceMutationResponse;
       };
       cancelPrompt: {
-        params: CancelPromptRequest;
+        params: WorkspaceScoped<CancelPromptRequest>;
         response: WorkspaceMutationResponse;
       };
       listProviderAuths: {

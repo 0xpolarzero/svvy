@@ -8,7 +8,6 @@
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
   import ContextBudgetBar from "./ContextBudgetBar.svelte";
   import { formatCompactRelativeSessionTime, getSessionSidebarSubtitle } from "./session-format";
-  import Button from "./ui/Button.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
 
   type SidebarPaneTone = "neutral" | "waiting" | "error";
@@ -141,11 +140,9 @@
 
   <div class="session-inline-actions" role="toolbar" aria-label={`Actions for ${session.title}`}>
     <Tooltip label={session.isArchived ? "Unarchive session" : "Archive session"}>
-      <Button
-        variant="ghost"
-        size="xs"
-        iconOnly
+      <button
         class="session-inline-action"
+        type="button"
         aria-label={session.isArchived ? `Unarchive ${session.title}` : `Archive ${session.title}`}
         onclick={(event) => {
           event.stopPropagation();
@@ -161,15 +158,13 @@
         {:else}
           <ArchiveIcon aria-hidden="true" size={13} strokeWidth={1.9} />
         {/if}
-      </Button>
+      </button>
     </Tooltip>
 
     <Tooltip label={session.isPinned ? "Unpin session" : "Pin session"}>
-      <Button
-        variant="ghost"
-        size="xs"
-        iconOnly
+      <button
         class="session-inline-action"
+        type="button"
         aria-label={session.isPinned ? `Unpin ${session.title}` : `Pin ${session.title}`}
         onclick={(event) => {
           event.stopPropagation();
@@ -185,7 +180,7 @@
         {:else}
           <PinIcon aria-hidden="true" size={13} strokeWidth={1.9} />
         {/if}
-      </Button>
+      </button>
     </Tooltip>
   </div>
 </article>
@@ -433,21 +428,15 @@
 
   .session-inline-actions {
     position: absolute;
-    top: 0.32rem;
-    right: 0.32rem;
+    top: 0.4rem;
+    right: 0.42rem;
     z-index: 2;
     display: inline-flex;
     align-items: center;
     gap: 0.08rem;
-    padding: 0.08rem;
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface-raised) 72%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--ui-surface) 58%, transparent);
-    backdrop-filter: blur(10px);
     opacity: 0;
     pointer-events: none;
-    transform: translateY(-0.08rem);
+    transform: translateY(-0.06rem);
     transition:
       opacity 140ms cubic-bezier(0.19, 1, 0.22, 1),
       transform 140ms cubic-bezier(0.19, 1, 0.22, 1);
@@ -461,30 +450,46 @@
   }
 
   .session-inline-action {
-    min-width: 1.3rem;
-    min-height: 1.3rem;
+    display: inline-grid;
+    place-items: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    border: 0;
     color: var(--ui-text-tertiary);
+    background: transparent;
     border-radius: var(--ui-radius-sm);
+    cursor: pointer;
+    line-height: 1;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .session-inline-action:hover,
   .session-inline-action:focus-visible {
+    outline: none;
     background: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
     color: var(--ui-text-primary);
   }
 
+  .session-inline-action:focus-visible {
+    box-shadow: var(--ui-focus-ring);
+  }
+
   @media (max-width: 760px) {
     .session-inline-actions {
-      top: 0.24rem;
-      right: 0.24rem;
+      top: 0.32rem;
+      right: 0.34rem;
       opacity: 1;
       pointer-events: auto;
       transform: none;
     }
 
     .session-inline-action {
-      min-width: 2.75rem;
-      min-height: 2.75rem;
+      width: 2.75rem;
+      height: 2.75rem;
     }
   }
 

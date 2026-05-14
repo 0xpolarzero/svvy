@@ -119,11 +119,11 @@ The Archived group should be collapsed by default in new workspaces and whenever
 
 When an assistant turn finishes for a session, that session becomes unread unless the currently focused Dockview panel is bound to the same interactive surface at the moment the turn settles.
 
-Unread state is session-level navigation metadata, not panel-local state. It survives restart and applies even when the unread work happened in a handler-thread surface or a background workflow-attention turn owned by that session.
+Unread state is session-level navigation metadata, not panel-local state and not layout-slot state. It survives restart and applies even when the unread work happened in a handler-thread surface or a background workflow-attention turn owned by that session.
 
 Focusing any pane bound to the session clears unread state and records `lastReadAt`. Read and unread state changes must not update the session recency timestamp or reorder session navigation.
 
-The sidebar represents unread state with a small dot in place of the session timestamp. It must not add a separate row highlight beyond the dot.
+The sidebar represents unread state with a small dot in place of the session timestamp. Panes may reflect that the session they show is unread, but any pane treatment must read from the same session-level metadata. The product must not maintain separate per-pane unread counts or independent pane-read state.
 
 Users may manually set unread state from the session row context menu. Manual unread uses the same sidebar dot and clears through the same focus behavior.
 
@@ -326,14 +326,16 @@ It must not infer Project CI status from arbitrary command names, logs, transcri
 
 ## Restart Restore
 
-The product should restore as much workspace UI state as is useful and stable.
+The product should restore as much app and workspace UI state as is useful and stable.
 
-Restart restore is a product contract, not a best-effort UI convenience. On startup the workspace shell rebuilds restorable Dockview panel bindings from durable workspace UI state, opens referenced live surfaces through the Bun catalog, and lets the catalog bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
+Restart restore is a product contract, not a best-effort UI convenience. On startup the app shell restores open workspace chrome tabs first. Each workspace tab then rebuilds restorable Dockview panel bindings from that workspace's durable UI state, opens referenced live surfaces through that workspace's Bun runtime, and lets that runtime bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
 
 ### Restore Targets
 
 The app should restore:
 
+- open workspace tabs
+- active workspace tab
 - pinned and archived session state
 - Archived group collapsed state
 - open Dockview panels
@@ -349,31 +351,13 @@ Panel restoration should be lazy. On app load, the renderer can restore panel bi
 
 ```ts
 type WorkspaceUiRestoreState = {
-  dockview: unknown | null;
-  focusedPanelId: string | null;
-  panels: Array<{
-    panelId: string;
-    binding: unknown | null;
-    localState: {
-      scroll:
-        | null
-        | {
-            transcriptAnchorId: string | null;
-            offsetPx: number;
-          };
-      inspectorSelection:
-        | null
-        | { kind: "thread"; threadId: string }
-        | { kind: "workflow-run"; workflowRunId: string }
-        | { kind: "artifact"; artifactId: string }
-        | { kind: "ci-run"; ciRunId: string };
-    };
-  }>;
-  updatedAt: string;
+  version: 4;
+  activeLayoutId: "A" | "B" | "C";
+  layouts: Record<"A" | "B" | "C", WorkspaceDockviewLayoutState | null>;
 };
 ```
 
-Dockview layout geometry is owned by the pane-layout work. Section 8 does not need to solve expanded Dockview layout editing.
+Dockview layout geometry is owned by the pane-layout work. Section 8 requires workspace tab restoration and workspace-scoped sync routing, but it does not need to solve expanded Dockview layout editing.
 
 ### Restore Rules
 

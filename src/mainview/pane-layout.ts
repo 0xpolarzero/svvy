@@ -4,8 +4,10 @@ import type { WorkspaceInspectorSelection } from "./chat-storage";
 
 export const PRIMARY_CHAT_PANE_ID = "primary";
 export const MIN_PANE_HEIGHT_PX = 260;
+export const WORKSPACE_LAYOUT_SLOT_IDS = ["A", "B", "C"] as const;
 
 export type DockviewSplitDirection = "left" | "right" | "above" | "below";
+export type WorkspaceLayoutSlotId = (typeof WORKSPACE_LAYOUT_SLOT_IDS)[number];
 
 export interface PaneLocalState {
   scroll: null | {
@@ -90,6 +92,13 @@ export interface WorkspaceDockviewLayoutState {
 
 export type WorkspacePaneLayoutState = WorkspaceDockviewLayoutState;
 
+export interface WorkspaceLayoutSlotSummary {
+  id: WorkspaceLayoutSlotId;
+  initialized: boolean;
+  active: boolean;
+  updatedAt: string | null;
+}
+
 export type DockviewOpenTarget =
   | { kind: "focused-panel" }
   | { kind: "panel"; panelId: string }
@@ -129,7 +138,12 @@ export function createPanelChrome(
     case "orchestrator":
       return chrome("Orchestrator", binding.workspaceSessionId, "orchestrator", true);
     case "thread":
-      return chrome("Handler Thread", binding.threadId ?? binding.surfacePiSessionId, "handler-thread", true);
+      return chrome(
+        "Handler Thread",
+        binding.threadId ?? binding.surfacePiSessionId,
+        "handler-thread",
+        true,
+      );
     case "workflow-inspector":
       return chrome("Workflow Inspector", binding.workflowRunId, "workflow-inspector", true);
     case "saved-workflow-library":
@@ -139,7 +153,12 @@ export function createPanelChrome(
     case "command":
       return chrome("Command Inspector", binding.commandId, "command", true);
     case "workflow-task-attempt":
-      return chrome("Workflow Task-Agent", binding.workflowTaskAttemptId, "workflow-task-attempt", true);
+      return chrome(
+        "Workflow Task-Agent",
+        binding.workflowTaskAttemptId,
+        "workflow-task-attempt",
+        true,
+      );
     case "artifact":
       return chrome("Artifact", binding.artifactId, "artifact", true);
     case "project-ci-check":
@@ -165,7 +184,9 @@ export function createDockviewPanelState(
   };
 }
 
-export function createEmptyPaneLayout(now = new Date().toISOString()): WorkspaceDockviewLayoutState {
+export function createEmptyPaneLayout(
+  now = new Date().toISOString(),
+): WorkspaceDockviewLayoutState {
   return {
     dockview: null,
     panels: [createDockviewPanelState(PRIMARY_CHAT_PANE_ID)],
@@ -173,6 +194,10 @@ export function createEmptyPaneLayout(now = new Date().toISOString()): Workspace
     focusedPanelId: PRIMARY_CHAT_PANE_ID,
     updatedAt: now,
   };
+}
+
+export function isInitializedPaneLayout(layout: WorkspaceDockviewLayoutState): boolean {
+  return layout.panels.some((panel) => panel.binding !== null);
 }
 
 export function normalizePaneLayout(
@@ -358,7 +383,8 @@ export function getOpenPaneLocations(
     .map((panel, index) => ({
       paneId: panel.panelId,
       panelId: panel.panelId,
-      label: panel.restore?.lastKnownLocationLabel ?? (index === 0 ? "Docked" : `Docked ${index + 1}`),
+      label:
+        panel.restore?.lastKnownLocationLabel ?? (index === 0 ? "Docked" : `Docked ${index + 1}`),
       focused: panel.panelId === layout.focusedPanelId,
     }));
 }
