@@ -79,6 +79,10 @@ export function formatCompactRelativeSessionTime(value: string | number | Date):
   return formatCompactRelativeUnit(diffDays, "day");
 }
 
+export function shouldShowSessionUpdatedAt(summary: Pick<WorkspaceSessionSummary, "messageCount">): boolean {
+  return summary.messageCount > 0;
+}
+
 export function sessionStatusTone(
   status: SessionStatus,
 ): "neutral" | "info" | "warning" | "danger" {

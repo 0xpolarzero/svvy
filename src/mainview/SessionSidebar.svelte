@@ -101,16 +101,42 @@
 
   let showNewSessionMenu = $state(false);
   let shortcutAction = $state<string | null>(null);
+  let relativeTimeNow = $state(Date.now());
   let sessionContextMenu = $state<{
     session: WorkspaceSessionSummary;
     x: number;
     y: number;
   } | null>(null);
   let sessionContextMenuElement = $state<HTMLDivElement | null>(null);
+  let relativeTimeTimeout: ReturnType<typeof window.setTimeout> | null = null;
+  let relativeTimeInterval: ReturnType<typeof window.setInterval> | null = null;
   const newSessionDisplayShortcut = getShortcutCompact("session.new");
   const dumbSessionDisplayShortcut = getShortcutCompact("session.dumb");
   const quickOpenDisplayShortcut = getShortcutCompact("quickOpen.open");
   const commandPaletteDisplayShortcut = getShortcutCompact("commandPalette.open");
+
+  $effect(() => {
+    function updateRelativeTimeNow() {
+      relativeTimeNow = Date.now();
+    }
+
+    const msUntilNextMinute = 60000 - (Date.now() % 60000);
+    relativeTimeTimeout = window.setTimeout(() => {
+      updateRelativeTimeNow();
+      relativeTimeInterval = window.setInterval(updateRelativeTimeNow, 60000);
+    }, msUntilNextMinute);
+
+    return () => {
+      if (relativeTimeTimeout) {
+        window.clearTimeout(relativeTimeTimeout);
+        relativeTimeTimeout = null;
+      }
+      if (relativeTimeInterval) {
+        window.clearInterval(relativeTimeInterval);
+        relativeTimeInterval = null;
+      }
+    };
+  });
 
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
     const current = event.currentTarget as HTMLElement | null;
@@ -371,6 +397,7 @@
               active={session.id === activeOrchestratorSessionId}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
+              {relativeTimeNow}
               {session}
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
@@ -393,6 +420,7 @@
               active={session.id === activeOrchestratorSessionId}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
+              {relativeTimeNow}
               {session}
               onOpen={() => onOpenSession(session.id)}
               onRename={() => onRenameSession(session)}
@@ -430,6 +458,7 @@
                 active={session.id === activeOrchestratorSessionId}
                 disabled={busy && session.id !== activeSessionId}
                 paneLocations={paneLocationsBySessionId[session.id] ?? []}
+                {relativeTimeNow}
                 {session}
                 onOpen={() => onOpenSession(session.id)}
                 onRename={() => onRenameSession(session)}

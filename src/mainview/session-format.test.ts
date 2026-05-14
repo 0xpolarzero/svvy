@@ -4,6 +4,7 @@ import {
   formatRelativeSessionTime,
   formatSessionStatusLabel,
   getSessionSidebarSubtitle,
+  shouldShowSessionUpdatedAt,
 } from "./session-format";
 import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
 
@@ -128,6 +129,17 @@ describe("formatSessionStatusLabel", () => {
     expect(
       formatSessionStatusLabel(session({ id: "session-idle", title: "Idle", status: "idle" })),
     ).toBe("Idle");
+  });
+});
+
+describe("shouldShowSessionUpdatedAt", () => {
+  it("hides the sidebar timestamp until a session has transcript activity", () => {
+    expect(shouldShowSessionUpdatedAt(session({ id: "empty", title: "New Session" }))).toBe(false);
+    expect(
+      shouldShowSessionUpdatedAt(
+        session({ id: "active", title: "Parser", messageCount: 1 }),
+      ),
+    ).toBe(true);
   });
 });
 

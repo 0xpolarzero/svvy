@@ -7,7 +7,11 @@
   import type { ContextBudget } from "../shared/context-budget";
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
   import ContextBudgetBar from "./ContextBudgetBar.svelte";
-  import { formatCompactRelativeSessionTime, getSessionSidebarSubtitle } from "./session-format";
+  import {
+    formatCompactRelativeSessionTime,
+    getSessionSidebarSubtitle,
+    shouldShowSessionUpdatedAt,
+  } from "./session-format";
   import Tooltip from "./ui/Tooltip.svelte";
 
   type SidebarPaneTone = "neutral" | "waiting" | "error";
@@ -24,6 +28,7 @@
     session: WorkspaceSessionSummary;
     active: boolean;
     paneLocations?: SidebarPaneLocation[];
+    relativeTimeNow?: number;
     disabled?: boolean;
     onOpen: () => void;
     onRename: () => void;
@@ -40,6 +45,7 @@
     session,
     active,
     paneLocations = [],
+    relativeTimeNow = Date.now(),
     disabled = false,
     onOpen,
     onRename,
@@ -82,7 +88,12 @@
   const contextBudget = $derived(primaryPaneLocation?.contextBudget ?? null);
   const hasPane = $derived(paneLocations.length > 0);
   const isWorking = $derived(session.status === "running");
+  const showUpdatedAt = $derived(shouldShowSessionUpdatedAt(session));
   const sidebarSubtitle = $derived(getSessionSidebarSubtitle(session));
+  const updatedAtLabel = $derived.by(() => {
+    void relativeTimeNow;
+    return formatCompactRelativeSessionTime(session.updatedAt);
+  });
 </script>
 
 <article
@@ -113,8 +124,8 @@
           <span class="session-unread-dot" aria-hidden="true"></span>
         {:else if isWorking}
           <span class="session-unread-dot session-working-dot" aria-hidden="true"></span>
-        {:else}
-          <span>{formatCompactRelativeSessionTime(session.updatedAt)}</span>
+        {:else if showUpdatedAt}
+          <span>{updatedAtLabel}</span>
         {/if}
       </div>
     </div>
