@@ -8,6 +8,7 @@
   - define the product-level unified palette surface for command mode and quick-open search mode
   - define keyboard shortcuts and fallback prompt behavior
   - define the command/action registry model
+  - define the shortcut registry and TanStack Hotkeys dispatch boundary
   - define prefix-driven command search, matching, and execution routing semantics
   - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, saved workflow library browsing, Dockview panels, settings, agent settings, and future product actions
 
@@ -49,7 +50,9 @@ The intended use is as a fast, unstyled, composable command menu foundation. `sv
 
 ## Keyboard Shortcuts
 
-`Cmd+Shift+P` opens the shared palette with the input value seeded to `>`.
+`Cmd+Shift+P` opens the shared palette with the input value seeded to `>`. If the palette is already open, the same chord switches the focused palette input to command mode and seeds `>`.
+
+All palette, sidebar, pane, and action shortcuts come from the product shortcut registry. Shortcut definitions are not duplicated in palette rendering, tooltip rendering, app menu accelerators, or Svelte component event handlers.
 
 With that prefix present, the palette discovers and executes product actions, including:
 
@@ -65,7 +68,7 @@ With that prefix present, the palette discovers and executes product actions, in
 - settings and agent-setting actions when those features exist
 - future product actions as they are added
 
-`Cmd+P` opens the same shared palette with an empty input.
+`Cmd+P` opens the same shared palette with an empty input. If the palette is already open, the same chord switches the focused palette input to quick-open mode and clears the command prefix.
 
 For now, file quick-open is intentionally a no-op placeholder:
 
@@ -123,6 +126,26 @@ type CommandExecutionTarget =
 ```
 
 The registry should be generated or assembled from product-owned action definitions rather than hand-maintained loose prose. As features add product actions, they should add command entries through the same registry model.
+
+## Shortcut Registry And Hotkey Dispatch
+
+The shortcut registry is the product-owned source of keyboard behavior metadata.
+
+Each shortcut has a stable action id, label, TanStack hotkey chord, compact display string, readable display string, optional Electrobun app-menu accelerator, scope, input-typing policy, availability, and optional command action linkage.
+
+Scopes include:
+
+- `global`
+- `workspace-shell`
+- `focused-pane`
+- `dialog`
+- `input`
+
+The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, and sidebar toggle, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
+
+TanStack Hotkeys owns renderer keyboard subscription, chord matching, scoped attachment, conflict handling, and input suppression. It does not own product semantics. Hotkey callbacks dispatch product actions through the shortcut registry and command/action registry rather than executing unrelated product behavior directly.
+
+Electrobun app-menu accelerators are generated from the same shortcut registry entries as renderer hotkeys, so menu shortcuts, sidebar hints, command palette hints, and tooltip keycaps stay aligned.
 
 ## Search And Matching
 
@@ -196,7 +219,7 @@ Command-related action controls use two distinct feedback layers:
 - an instant in-control shortcut hint for controls with a direct keybinding
 - a delayed explanatory tooltip that appears after 500 ms of hover or keyboard focus
 
-The instant hint uses the compact display shortcut from the shared keybinding registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. This is the preferred treatment for explicit labeled sidebar actions such as new session, command palette, and quick open; those actions do not also need an explanatory tooltip.
+The instant hint uses the compact display shortcut from the product shortcut registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. This is the preferred treatment for explicit labeled sidebar actions such as new session, command palette, and quick open; those actions do not also need an explanatory tooltip.
 
 The delayed tooltip uses the readable shortcut form from the same registry, such as `Cmd+N`, when a shortcut exists, but renders it with the same segmented keycap treatment as compact hints. It explains icon-only or ambiguous actions rather than repeating obvious sidebar labels. Native browser `title` tooltips must not be used for these product action buttons because their delay, styling, and shortcut rendering are browser-controlled.
 
@@ -251,7 +274,8 @@ Future product actions:
 - File quick-open is a placeholder until file-oriented surfaces exist.
 - The palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.
 - The command registry is product-owned.
-- Product action buttons use shared keybinding definitions for shortcut hints and avoid native browser `title` tooltips; command-palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
+- Product action buttons use the product shortcut registry for shortcut hints and avoid native browser `title` tooltips; command-palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
+- TanStack Hotkeys is the renderer dispatch primitive and is not the source of product command semantics.
 - Commands route into existing product models and durable state.
 - Unmatched non-empty command-mode text after `>` creates a new session initial prompt.
 - Non-command quick-open text must not create a session while quick-open is a placeholder.

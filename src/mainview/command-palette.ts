@@ -7,7 +7,7 @@ import type {
   WorkspaceWorkflowTaskAttemptSummary,
 } from "../shared/workspace-contract";
 import type { ChatRuntime } from "./chat-runtime";
-import { getKeybindingShortcut, matchesKeybinding } from "../shared/keybindings";
+import { getShortcutReadable } from "../shared/shortcut-registry";
 
 export type CommandPaletteMode = "commands" | "search";
 
@@ -135,38 +135,6 @@ const COMMAND_ACTION_CATEGORY_ORDER: CommandActionCategory[] = [
   "agent-settings",
 ];
 
-export function isCommandPaletteShortcut(
-  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
-): boolean {
-  return matchesKeybinding(
-    {
-      defaultPrevented: false,
-      altKey: event.altKey,
-      metaKey: event.metaKey,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      key: event.key,
-    },
-    "commandPalette.open",
-  );
-}
-
-export function isQuickOpenShortcut(
-  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey">,
-): boolean {
-  return matchesKeybinding(
-    {
-      defaultPrevented: false,
-      altKey: event.altKey,
-      metaKey: event.metaKey,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      key: event.key,
-    },
-    "quickOpen.open",
-  );
-}
-
 export function getCommandPaletteInitialInput(mode: CommandPaletteMode): string {
   return mode === "commands" ? COMMAND_PALETTE_COMMAND_PREFIX : "";
 }
@@ -218,7 +186,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       label: "New Session",
       category: "session",
       aliases: ["create session", "new chat", "new orchestrator session"],
-      shortcut: getKeybindingShortcut("session.new"),
+      shortcut: getShortcutReadable("session.new"),
       availability: { kind: "available" },
       execute: { kind: "create-session" },
     },
@@ -227,7 +195,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       label: "New Dumb Session",
       category: "session",
       aliases: ["dumb session", "scratch session", "fast session", "lightweight orchestrator"],
-      shortcut: getKeybindingShortcut("session.dumb"),
+      shortcut: getShortcutReadable("session.dumb"),
       availability: { kind: "available" },
       execute: { kind: "create-session", mode: "dumb" },
     },
@@ -548,7 +516,16 @@ export function getCommandActionShortcutHints(action: CommandAction): string[] {
     case "open-surface":
     case "open-saved-workflow-library":
     case "start-orchestrator-turn":
-      return action.shortcut ? [action.shortcut, "Enter", "Cmd+Enter"] : ["Enter", "Cmd+Enter"];
+      return action.shortcut
+        ? [
+            action.shortcut,
+            getShortcutReadable("commandPalette.submit"),
+            getShortcutReadable("commandPalette.submitFocusedPane"),
+          ]
+        : [
+            getShortcutReadable("commandPalette.submit"),
+            getShortcutReadable("commandPalette.submitFocusedPane"),
+          ];
     default:
       return action.shortcut ? [action.shortcut] : [];
   }
@@ -568,8 +545,8 @@ export function getCommandActionPlacementHints(
     case "open-saved-workflow-library":
     case "start-orchestrator-turn":
       return [
-        { shortcut: "Enter", label: "New pane" },
-        { shortcut: "Cmd+Enter", label: "Focused pane" },
+        { shortcut: getShortcutReadable("commandPalette.submit"), label: "New pane" },
+        { shortcut: getShortcutReadable("commandPalette.submitFocusedPane"), label: "Focused pane" },
       ];
     default:
       return [];

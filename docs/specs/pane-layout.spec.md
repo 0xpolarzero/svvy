@@ -465,7 +465,7 @@ Default Enter behavior:
 
 `Cmd+Enter` behavior:
 
-- `Cmd+Enter` from the command palette opens the selected command or result into the currently focused panel
+- `Cmd+Enter` from the command palette is a shortcut-registry action routed through palette selection state into Dockview placement and opens the selected command or result into the currently focused panel
 - opening into the focused panel replaces that panel's binding while preserving the opened surface's runtime ownership semantics
 - if no focused panel exists, `Cmd+Enter` falls back to the default open behavior
 
@@ -796,10 +796,13 @@ Requirements:
 
 - `Cmd+Shift+P` opens the shared palette with `>` prefilled for command mode
 - `Cmd+P` opens the same shared palette without a prefix for file quick-open search mode
+- Dockview and pane shortcuts are registered through the product shortcut registry and bound with TanStack Hotkeys in scoped renderer contexts
+- focused-pane shortcuts must only affect the active Dockview panel and must not leak into dialogs, inputs, command palette mode, or another focused pane
 - Dockview focus movement should be available through product actions
 - panel close, duplicate, split, float, and popout commands should be command-palette discoverable
 - resize and tab navigation must remain keyboard accessible where Dockview supports it
 - drag/drop-only actions must have command-palette or menu alternatives
+- popout-specific shortcuts may be enabled only after validating TanStack Hotkeys bindings work correctly inside Electrobun popout windows with the same registry semantics
 - focused panel highlight must be visible without relying only on color
 
 ## Invariants

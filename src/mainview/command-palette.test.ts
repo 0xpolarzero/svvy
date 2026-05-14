@@ -18,10 +18,14 @@ import {
   getCommandPaletteInputState,
   getCommandPalettePlacement,
   groupCommandActions,
-  isCommandPaletteShortcut,
-  isQuickOpenShortcut,
   type CommandRuntime,
 } from "./command-palette";
+import {
+  getShortcut,
+  getShortcutHotkey,
+  getShortcutReadable,
+  shouldShortcutIgnoreInputs,
+} from "../shared/shortcut-registry";
 
 function session(
   id: string,
@@ -166,41 +170,25 @@ function createRuntime(): CommandRuntime & {
 }
 
 describe("command palette shortcuts", () => {
-  it("distinguishes command-prefilled and quick-open shortcuts", () => {
-    expect(isCommandPaletteShortcut(keyEvent({ key: "p", metaKey: true, shiftKey: true }))).toBe(
-      true,
-    );
-    expect(isCommandPaletteShortcut(keyEvent({ key: "P", ctrlKey: true, shiftKey: true }))).toBe(
-      true,
-    );
-    expect(isCommandPaletteShortcut(keyEvent({ key: "p", metaKey: true }))).toBe(false);
-    expect(
-      isCommandPaletteShortcut(keyEvent({ key: "p", metaKey: true, shiftKey: true, altKey: true })),
-    ).toBe(false);
-
-    expect(isQuickOpenShortcut(keyEvent({ key: "p", metaKey: true }))).toBe(true);
-    expect(isQuickOpenShortcut(keyEvent({ key: "p", ctrlKey: true }))).toBe(true);
-    expect(isQuickOpenShortcut(keyEvent({ key: "p", metaKey: true, shiftKey: true }))).toBe(false);
+  it("sources palette chords and display strings from the product shortcut registry", () => {
+    expect(getShortcutHotkey("commandPalette.open")).toBe("Mod+Shift+P");
+    expect(getShortcutReadable("commandPalette.open")).toBe("Cmd+Shift+P");
+    expect(getShortcut("commandPalette.open")).toMatchObject({
+      scope: "global",
+      inputPolicy: "allow-while-typing",
+      commandActionId: "commandPalette.open",
+    });
+    expect(getShortcutHotkey("quickOpen.open")).toBe("Mod+P");
+    expect(getShortcutReadable("quickOpen.open")).toBe("Cmd+P");
+    expect(getShortcut("quickOpen.open").inputPolicy).toBe("allow-while-typing");
   });
 
-  it("matches shortcut properties inherited from KeyboardEvent-like prototypes", () => {
-    const commandPaletteEvent = Object.create({
-      key: "P",
-      metaKey: true,
-      ctrlKey: false,
-      shiftKey: true,
-      altKey: false,
-    });
-    const quickOpenEvent = Object.create({
-      key: "p",
-      metaKey: true,
-      ctrlKey: false,
-      shiftKey: false,
-      altKey: false,
-    });
-
-    expect(isCommandPaletteShortcut(commandPaletteEvent)).toBe(true);
-    expect(isQuickOpenShortcut(quickOpenEvent)).toBe(true);
+  it("keeps app launcher and shell command chords active while text inputs are focused", () => {
+    expect(shouldShortcutIgnoreInputs("commandPalette.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("quickOpen.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("session.new")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("session.dumb")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("sidebar.toggle")).toBe(false);
   });
 
   it("uses the VS Code-style command prefix to derive live palette mode", () => {

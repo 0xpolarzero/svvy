@@ -1,9 +1,12 @@
 <script lang="ts">
   import { Command } from "cmdk-sv";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import { createHotkeysAttachment } from "@tanstack/svelte-hotkeys";
   import { tick } from "svelte";
+  import { getShortcutHotkey, getShortcutReadable } from "../shared/shortcut-registry";
   import {
     filterCommandActions,
+    getCommandPaletteInitialInput,
     getCommandPaletteInputState,
     groupCommandActions,
     type CommandAction,
@@ -65,19 +68,53 @@
     });
   }
 
-  function handleRootKeydown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
+  const paletteHotkeys = createHotkeysAttachment(
+    [
+      {
+        hotkey: getShortcutHotkey("dialog.close"),
+        callback: (event) => {
+          event.stopPropagation();
+          onClose();
+        },
+      },
+      {
+        hotkey: getShortcutHotkey("commandPalette.submitFocusedPane"),
+        callback: (event) => submitPalette(event),
+      },
+      {
+        hotkey: getShortcutHotkey("commandPalette.submit"),
+        callback: (event) => submitPalette(event),
+      },
+      {
+        hotkey: getShortcutHotkey("commandPalette.open"),
+        callback: (event) => {
+          event.stopPropagation();
+          setPaletteInputMode("commands");
+        },
+      },
+      {
+        hotkey: getShortcutHotkey("quickOpen.open"),
+        callback: (event) => {
+          event.stopPropagation();
+          setPaletteInputMode("search");
+        },
+      },
+    ],
+    { ignoreInputs: false, preventDefault: true, conflictBehavior: "replace" },
+  );
 
-    if (event.key !== "Enter" || busy) {
+  function setPaletteInputMode(mode: "commands" | "search") {
+    const nextInput = getCommandPaletteInitialInput(mode);
+    search = nextInput;
+    void placeCaretAfterInitialInput(nextInput);
+  }
+
+  function submitPalette(event: KeyboardEvent) {
+    if (busy) {
       return;
     }
 
     if (!commandMode) {
-      event.preventDefault();
       return;
     }
 
@@ -87,25 +124,21 @@
     const selectedActionId = selectedItem?.dataset.value;
     const selectedAction = renderedActions.find((action) => action.id === selectedActionId) ?? null;
     if (selectedAction) {
-      event.preventDefault();
       onExecute(selectedAction, event);
       return;
     }
 
     const firstAction = renderedActions[0] ?? null;
     if (firstAction) {
-      event.preventDefault();
       onExecute(firstAction, event);
       return;
     }
 
     const prompt = commandQuery.trim();
     if (!prompt) {
-      event.preventDefault();
       return;
     }
 
-    event.preventDefault();
     onFallbackPrompt(prompt, event);
   }
 
@@ -134,11 +167,11 @@
     onOpenChange={(nextOpen) => {
       if (!nextOpen) onClose();
     }}
-    onKeydown={handleRootKeydown}
   >
     <div
       class="command-palette-shell"
       data-testid={commandMode ? "command-palette" : "quick-open"}
+      {@attach paletteHotkeys}
     >
       <div class="command-palette-input-row">
         <SearchIcon aria-hidden="true" size={16} strokeWidth={1.8} />
@@ -213,11 +246,11 @@
 
       <div class="command-palette-footer">
         {#if commandMode}
-          <span><kbd>Enter</kbd> opens a result in a new pane</span>
-          <span><kbd>Cmd+Enter</kbd> uses the focused pane</span>
+          <span><kbd>{getShortcutReadable("commandPalette.submit")}</kbd> opens a result in a new pane</span>
+          <span><kbd>{getShortcutReadable("commandPalette.submitFocusedPane")}</kbd> uses the focused pane</span>
         {:else}
           <span>Type <kbd>&gt;</kbd> to search commands</span>
-          <span>Cmd+P is reserved for future file quick-open</span>
+          <span>{getShortcutReadable("quickOpen.open")} is reserved for future file quick-open</span>
         {/if}
       </div>
     </div>

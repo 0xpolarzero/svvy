@@ -5,8 +5,7 @@
 	import InfoIcon from "@lucide/svelte/icons/info";
 	import KeyIcon from "@lucide/svelte/icons/key";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
-	import { getModels, getProviders, supportsXhigh, type Model } from "@mariozechner/pi-ai";
-	import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+	import { getModels, getProviders, type Model } from "@mariozechner/pi-ai";
 	import { onMount } from "svelte";
 	import { searchScore } from "./chat-format";
 	import type { ProviderAuthInfo } from "../shared/workspace-contract";
@@ -17,10 +16,12 @@
 		WorkflowAgentKey,
 		WorkflowAgentSettings,
 		AppPreferences,
-		PreferredExternalEditor,
 		WebProviderId,
 	} from "../shared/agent-settings";
 	import { rpc } from "./rpc";
+	import AgentSettingsForm from "./AgentSettingsForm.svelte";
+	import AppPreferencesForm from "./AppPreferencesForm.svelte";
+	import ProviderApiKeyForm from "./ProviderApiKeyForm.svelte";
 	import Button from "./ui/Button.svelte";
 	import Dialog from "./ui/Dialog.svelte";
 	import Input from "./ui/Input.svelte";
@@ -31,14 +32,12 @@
 	};
 
 	type SettingsSection = "providers" | "web" | "agents" | "workflow-agents" | "preferences";
-	type EditableAgentSettings = SessionAgentSettings | WorkflowAgentSettings;
 	type ModelOption = {
 		key: string;
 		provider: string;
 		model: Model<any>;
 	};
 
-	const BASE_REASONING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
 	const WEB_PROVIDER_OPTIONS: Array<{ id: WebProviderId | null; label: string; summary: string }> = [
 		{ id: null, label: "None", summary: "Do not expose web tools or api.web helpers." },
 		{ id: "tinyfish", label: "TinyFish", summary: "TinyFish Search and Fetch with a stored TinyFish API key." },
@@ -55,11 +54,8 @@
 	let searchQuery = $state("");
 	let editingProvider = $state<string | null>(null);
 	let confirmingProviderRemoval = $state<string | null>(null);
-	let apiKeyInput = $state<Record<string, string>>({});
 	let oauthLoading = $state<Record<string, boolean>>({});
 	let saveMessage = $state<Record<string, string>>({});
-	let agentSaveMessage = $state<Record<string, string>>({});
-	let agentSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	let preferencesSaveMessage = $state("");
 
 	const connectedProviderIds = $derived(
@@ -83,10 +79,6 @@
 			return providerComparison === 0 ? left.model.name.localeCompare(right.model.name) : providerComparison;
 		});
 	});
-
-	const availableModelsByKey = $derived(
-		new Map(availableModelOptions.map((option) => [option.key, option.model] as const)),
-	);
 
 	async function refreshProviders() {
 		error = null;
@@ -161,43 +153,6 @@
 		reviewer: "Conventional saved workflow agent for verification and review tasks.",
 	} satisfies Record<WorkflowAgentKey, string>;
 
-	function selectedModelKey(settings: EditableAgentSettings): string {
-		return `${settings.provider}:${settings.model}`;
-	}
-
-	function selectedModel(settings: EditableAgentSettings): Model<any> | null {
-		return availableModelsByKey.get(selectedModelKey(settings)) ?? null;
-	}
-
-	function modelLabel(provider: string, model: Model<any>): string {
-		return `${provider} / ${model.name}`;
-	}
-
-	function reasoningLevels(settings: EditableAgentSettings): ThinkingLevel[] {
-		const model = selectedModel(settings);
-		return model && supportsXhigh(model) ? [...BASE_REASONING_LEVELS, "xhigh"] : BASE_REASONING_LEVELS;
-	}
-
-	function selectModel(settings: EditableAgentSettings, value: string): boolean {
-		const option = availableModelOptions.find((entry) => entry.key === value);
-		if (!option) return false;
-		if (settings.provider === option.provider && settings.model === option.model.id) return false;
-		settings.provider = option.provider;
-		settings.model = option.model.id;
-		if (!reasoningLevels(settings).includes(settings.reasoningEffort)) {
-			settings.reasoningEffort = "medium";
-		}
-		return true;
-	}
-
-	function selectReasoning(settings: EditableAgentSettings, value: string): boolean {
-		const levels = reasoningLevels(settings);
-		if (!levels.includes(value as ThinkingLevel)) return false;
-		if (settings.reasoningEffort === value) return false;
-		settings.reasoningEffort = value as ThinkingLevel;
-		return true;
-	}
-
 	const filteredProviders = $derived.by(() => {
 		if (!searchQuery.trim()) {
 			return [...providers].toSorted((left, right) => {
@@ -246,52 +201,31 @@
 		loading = false;
 	});
 
-	function setAgentSaveMessage(statusKey: string, message: string, timeoutMs = 0) {
-		agentSaveMessage[statusKey] = message;
-		if (timeoutMs > 0) {
-			setTimeout(() => {
-				if (agentSaveMessage[statusKey] === message) {
-					agentSaveMessage[statusKey] = "";
-				}
-			}, timeoutMs);
-		}
+	async function saveSessionAgent(key: SessionAgentKey, settings: SessionAgentSettings) {
+		if (!agentSettings) return settings;
+		const nextSettings = await rpc.request.updateSessionAgentDefault({
+			key,
+			settings: structuredClone(settings),
+		});
+		agentSettings.sessionAgents[key] = structuredClone(nextSettings.sessionAgents[key]);
+		return agentSettings.sessionAgents[key];
 	}
 
-	async function saveSessionAgent(key: SessionAgentKey) {
-		if (!agentSettings) return;
-		const statusKey = `session:${key}`;
-		try {
-			setAgentSaveMessage(statusKey, "Saving");
-			await rpc.request.updateSessionAgentDefault({
-				key,
-				settings: structuredClone(agentSettings.sessionAgents[key]),
-			});
-			setAgentSaveMessage(statusKey, "Saved", 1800);
-		} catch (err) {
-			setAgentSaveMessage(statusKey, err instanceof Error ? err.message : "Save failed");
-		}
-	}
-
-	async function saveWorkflowAgent(key: WorkflowAgentKey) {
-		if (!agentSettings) return;
-		const statusKey = `workflow:${key}`;
-		try {
-			setAgentSaveMessage(statusKey, "Saving");
-			await rpc.request.updateWorkflowAgent({
-				key,
-				settings: structuredClone(agentSettings.workflowAgents[key]),
-			});
-			setAgentSaveMessage(statusKey, "Saved", 1800);
-		} catch (err) {
-			setAgentSaveMessage(statusKey, err instanceof Error ? err.message : "Save failed");
-		}
+	async function saveWorkflowAgent(key: WorkflowAgentKey, settings: WorkflowAgentSettings) {
+		if (!agentSettings) return settings;
+		const nextSettings = await rpc.request.updateWorkflowAgent({
+			key,
+			settings: structuredClone(settings),
+		});
+		agentSettings.workflowAgents[key] = structuredClone(nextSettings.workflowAgents[key]);
+		return agentSettings.workflowAgents[key];
 	}
 
 	async function saveAppPreferences(preferences: AppPreferences) {
 		try {
 			preferencesSaveMessage = "Saving";
-			agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
-			preferencesSaveMessage = "Saved";
+		agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
+		preferencesSaveMessage = "Saved";
 			setTimeout(() => {
 				if (preferencesSaveMessage === "Saved") {
 					preferencesSaveMessage = "";
@@ -302,16 +236,9 @@
 		}
 	}
 
-	function scheduleSessionAgentSave(key: SessionAgentKey) {
-		const statusKey = `session:${key}`;
-		clearTimeout(agentSaveTimers.get(statusKey));
-		agentSaveTimers.set(statusKey, setTimeout(() => void saveSessionAgent(key), 450));
-	}
-
-	function scheduleWorkflowAgentSave(key: WorkflowAgentKey) {
-		const statusKey = `workflow:${key}`;
-		clearTimeout(agentSaveTimers.get(statusKey));
-		agentSaveTimers.set(statusKey, setTimeout(() => void saveWorkflowAgent(key), 450));
+	async function saveAppPreferencesForm(preferences: AppPreferences) {
+		agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
+		return agentSettings.appPreferences;
 	}
 
 	async function seedWorkflowAgents() {
@@ -319,12 +246,9 @@
 		await refreshAgentSettings();
 	}
 
-	async function handleSaveApiKey(providerId: string) {
-		const key = apiKeyInput[providerId]?.trim();
-		if (!key) return;
+	async function handleSaveApiKey(providerId: string, apiKey: string) {
 		try {
-			await rpc.request.setProviderApiKey({ providerId, apiKey: key });
-			apiKeyInput[providerId] = "";
+			await rpc.request.setProviderApiKey({ providerId, apiKey });
 			editingProvider = null;
 			await refreshProviders();
 			await notifyAuthChanged(providerId);
@@ -491,28 +415,10 @@
 
 											<div class="provider-actions">
 												{#if isEditing}
-													<div class="key-input-row">
-														<Input
-															type="password"
-															placeholder="Paste API key..."
-															bind:value={apiKeyInput[info.provider]}
-															onkeydown={(event) =>
-																event.key === "Enter" && handleSaveApiKey(info.provider)}
-														/>
-														<Button variant="primary" size="xs" onclick={() => handleSaveApiKey(info.provider)}>
-															Save
-														</Button>
-														<Button
-															variant="ghost"
-															size="xs"
-															onclick={() => {
-																editingProvider = null;
-																apiKeyInput[info.provider] = "";
-															}}
-														>
-															Cancel
-														</Button>
-													</div>
+													<ProviderApiKeyForm
+														onSave={(apiKey) => handleSaveApiKey(info.provider, apiKey)}
+														onCancel={() => (editingProvider = null)}
+													/>
 												{:else}
 													{#if info.hasKey && info.keyType !== "env"}
 														<Button
@@ -535,7 +441,6 @@
 															aria-label={info.hasKey ? "Change API key" : "Add API key"}
 															onclick={() => {
 																editingProvider = info.provider;
-																apiKeyInput[info.provider] = "";
 															}}
 														>
 															<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
@@ -599,27 +504,11 @@
 							{#if option.id}
 								<div class="provider-actions">
 									{#if editingProvider === option.id}
-										<div class="key-input-row">
-											<Input
-												type="password"
-												placeholder={`Paste ${option.label} API key...`}
-												bind:value={apiKeyInput[option.id]}
-												onkeydown={(event) => event.key === "Enter" && handleSaveApiKey(option.id)}
-											/>
-											<Button variant="primary" size="xs" onclick={() => handleSaveApiKey(option.id)}>
-												Save
-											</Button>
-											<Button
-												variant="ghost"
-												size="xs"
-												onclick={() => {
-													editingProvider = null;
-													apiKeyInput[option.id] = "";
-												}}
-											>
-												Cancel
-											</Button>
-										</div>
+										<ProviderApiKeyForm
+											placeholder={`Paste ${option.label} API key...`}
+											onSave={(apiKey) => handleSaveApiKey(option.id, apiKey)}
+											onCancel={() => (editingProvider = null)}
+										/>
 									{:else}
 										{#if info?.hasKey && info.keyType !== "env"}
 											<Button variant="ghost" size="xs" class="row-action action-danger" onclick={() => handleRemove(option.id)}>
@@ -632,7 +521,6 @@
 											class="row-action"
 											onclick={() => {
 												editingProvider = option.id;
-												apiKeyInput[option.id] = "";
 											}}
 										>
 											<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
@@ -653,67 +541,13 @@
 				<div class="agent-list">
 					{#each ["defaultSession", "dumbOrchestrator", "namer"] as key (key)}
 						{@const settings = agentSettings.sessionAgents[key as SessionAgentKey]}
-						<article class="provider-row agent-row">
-							<div class="provider-main">
-								<div class="provider-heading">
-									<span class="provider-name">{sessionAgentLabels[key as SessionAgentKey]}</span>
-									<span class="model-chip">{settings.provider} / {settings.model}</span>
-									<span class="provider-status tone-info">{settings.reasoningEffort}</span>
-									{#if agentSaveMessage[`session:${key}`]}
-										<span class="provider-status">{agentSaveMessage[`session:${key}`]}</span>
-									{/if}
-								</div>
-								<p class="provider-meta">{sessionAgentSummaries[key as SessionAgentKey]}</p>
-								<div class="agent-meta-grid">
-									<div><span>Model</span><strong>{settings.model}</strong></div>
-									<div><span>Provider</span><strong>{settings.provider}</strong></div>
-									<div><span>Reasoning</span><strong>{settings.reasoningEffort}</strong></div>
-								</div>
-								<div class="agent-grid">
-									<label class="agent-field">
-										<span>Model</span>
-										<select
-											value={selectedModelKey(settings)}
-											disabled={availableModelOptions.length === 0}
-											onchange={(event) => {
-												if (selectModel(settings, event.currentTarget.value)) {
-													void saveSessionAgent(key as SessionAgentKey);
-												}
-											}}
-										>
-											{#if !selectedModel(settings)}
-												<option value={selectedModelKey(settings)}>{settings.provider} / {settings.model}</option>
-											{/if}
-											{#each availableModelOptions as option (option.key)}
-												<option value={option.key}>{modelLabel(option.provider, option.model)}</option>
-											{/each}
-										</select>
-									</label>
-									<label class="agent-field">
-										<span>Reasoning</span>
-										<select
-											value={settings.reasoningEffort}
-											onchange={(event) => {
-												if (selectReasoning(settings, event.currentTarget.value)) {
-													void saveSessionAgent(key as SessionAgentKey);
-												}
-											}}
-										>
-											{#each reasoningLevels(settings) as level}
-												<option value={level}>{level}</option>
-											{/each}
-										</select>
-									</label>
-								</div>
-								<textarea
-									bind:value={settings.systemPrompt}
-									class="agent-prompt"
-									rows="5"
-									aria-label={`${sessionAgentLabels[key as SessionAgentKey]} system prompt`}
-									oninput={() => scheduleSessionAgentSave(key as SessionAgentKey)}
-								></textarea>
-							</div>
-						</article>
+						<AgentSettingsForm
+							title={sessionAgentLabels[key as SessionAgentKey]}
+							summary={sessionAgentSummaries[key as SessionAgentKey]}
+							{settings}
+							{availableModelOptions}
+							onSave={(nextSettings) => saveSessionAgent(key as SessionAgentKey, nextSettings as SessionAgentSettings)}
+						/>
 					{/each}
 				</div>
 			{/if}
@@ -725,67 +559,13 @@
 				<div class="agent-list">
 					{#each ["explorer", "implementer", "reviewer"] as key (key)}
 						{@const settings = agentSettings.workflowAgents[key as WorkflowAgentKey]}
-						<article class="provider-row agent-row">
-							<div class="provider-main">
-								<div class="provider-heading">
-									<span class="provider-name">{settings.label}</span>
-									<span class="model-chip">{settings.provider} / {settings.model}</span>
-									<span class="provider-status tone-info">{settings.reasoningEffort}</span>
-									{#if agentSaveMessage[`workflow:${key}`]}
-										<span class="provider-status">{agentSaveMessage[`workflow:${key}`]}</span>
-									{/if}
-								</div>
-								<p class="provider-meta">{workflowAgentSummaries[key as WorkflowAgentKey]}</p>
-								<div class="agent-meta-grid">
-									<div><span>Model</span><strong>{settings.model}</strong></div>
-									<div><span>Provider</span><strong>{settings.provider}</strong></div>
-									<div><span>Tool surface</span><strong>execute_typescript</strong></div>
-								</div>
-								<div class="agent-grid">
-									<label class="agent-field">
-										<span>Model</span>
-										<select
-											value={selectedModelKey(settings)}
-											disabled={availableModelOptions.length === 0}
-											onchange={(event) => {
-												if (selectModel(settings, event.currentTarget.value)) {
-													void saveWorkflowAgent(key as WorkflowAgentKey);
-												}
-											}}
-										>
-											{#if !selectedModel(settings)}
-												<option value={selectedModelKey(settings)}>{settings.provider} / {settings.model}</option>
-											{/if}
-											{#each availableModelOptions as option (option.key)}
-												<option value={option.key}>{modelLabel(option.provider, option.model)}</option>
-											{/each}
-										</select>
-									</label>
-									<label class="agent-field">
-										<span>Reasoning</span>
-										<select
-											value={settings.reasoningEffort}
-											onchange={(event) => {
-												if (selectReasoning(settings, event.currentTarget.value)) {
-													void saveWorkflowAgent(key as WorkflowAgentKey);
-												}
-											}}
-										>
-											{#each reasoningLevels(settings) as level}
-												<option value={level}>{level}</option>
-											{/each}
-										</select>
-									</label>
-								</div>
-								<textarea
-									bind:value={settings.systemPrompt}
-									class="agent-prompt"
-									rows="5"
-									aria-label={`${settings.label} system prompt`}
-									oninput={() => scheduleWorkflowAgentSave(key as WorkflowAgentKey)}
-								></textarea>
-							</div>
-						</article>
+						<AgentSettingsForm
+							title={settings.label}
+							summary={workflowAgentSummaries[key as WorkflowAgentKey]}
+							{settings}
+							{availableModelOptions}
+							onSave={(nextSettings) => saveWorkflowAgent(key as WorkflowAgentKey, nextSettings as WorkflowAgentSettings)}
+						/>
 					{/each}
 				</div>
 			{/if}
@@ -794,55 +574,10 @@
 					<InfoIcon aria-hidden="true" size={15} strokeWidth={1.8} />
 					<p>Used when opening saved and artifact-local workflow files.</p>
 				</div>
-				<article class="provider-row agent-row">
-					<div class="provider-main">
-						<div class="provider-heading">
-							<span class="provider-name">External Editor</span>
-							<span class="provider-status tone-info">
-								{agentSettings.appPreferences.preferredExternalEditor}
-							</span>
-							{#if preferencesSaveMessage}
-								<span class="provider-status">{preferencesSaveMessage}</span>
-							{/if}
-						</div>
-						<p class="provider-meta">
-							Workflow source opens in this editor from read-only library and artifact surfaces.
-						</p>
-						<div class="agent-grid">
-							<label class="agent-field">
-								<span>Editor</span>
-								<select
-									value={agentSettings.appPreferences.preferredExternalEditor}
-									onchange={(event) => {
-										agentSettings!.appPreferences.preferredExternalEditor = event.currentTarget
-											.value as PreferredExternalEditor;
-										void saveAppPreferences(agentSettings!.appPreferences);
-									}}
-								>
-									<option value="system">System default</option>
-									<option value="code">Visual Studio Code</option>
-									<option value="cursor">Cursor</option>
-									<option value="zed">Zed</option>
-									<option value="sublime">Sublime Text</option>
-									<option value="custom">Custom command</option>
-								</select>
-							</label>
-							<label class="agent-field">
-								<span>Custom command</span>
-								<input
-									value={agentSettings.appPreferences.customExternalEditorCommand}
-									placeholder="editor-command --reuse-window"
-									disabled={agentSettings.appPreferences.preferredExternalEditor !== "custom"}
-									oninput={(event) => {
-										agentSettings!.appPreferences.customExternalEditorCommand =
-											event.currentTarget.value;
-									}}
-									onchange={() => void saveAppPreferences(agentSettings!.appPreferences)}
-								/>
-							</label>
-						</div>
-					</div>
-				</article>
+				<AppPreferencesForm
+					preferences={agentSettings.appPreferences}
+					onSave={saveAppPreferencesForm}
+				/>
 			{/if}
 		</section>
 	</div>
@@ -1043,103 +778,6 @@
 		gap: 0.62rem;
 	}
 
-	.agent-row {
-		grid-template-columns: minmax(0, 1fr);
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
-		border-radius: var(--ui-radius-sm);
-		background: color-mix(in oklab, var(--ui-surface) 92%, transparent);
-		box-shadow: none;
-	}
-
-	.agent-row .provider-main {
-		grid-template-columns: minmax(0, 1fr);
-		gap: 0.32rem;
-	}
-
-	.agent-grid {
-		display: grid;
-		grid-template-columns: minmax(0, 2fr) minmax(9rem, 1fr);
-		gap: 0.45rem;
-		margin-top: 0.22rem;
-	}
-
-	.agent-meta-grid {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		gap: 0.25rem 0.8rem;
-		margin-top: 0.2rem;
-		padding: 0.26rem 0;
-	}
-
-	.agent-meta-grid div {
-		display: flex;
-		align-items: center;
-		gap: 0.38rem;
-		min-width: 0;
-	}
-
-	.agent-meta-grid span {
-		font-size: 0.66rem;
-		color: var(--ui-text-tertiary);
-	}
-
-	.agent-meta-grid strong,
-	.model-chip {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-family: var(--font-mono);
-		font-size: 0.66rem;
-		font-weight: 520;
-		color: var(--ui-text-secondary);
-	}
-
-	.agent-field {
-		display: grid;
-		gap: 0.28rem;
-		min-width: 0;
-	}
-
-	.agent-field span {
-		font-size: 0.68rem;
-		font-family: var(--font-mono);
-		color: var(--ui-text-secondary);
-	}
-
-	.agent-field select,
-	.agent-field input {
-		width: 100%;
-		min-width: 0;
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
-		border-radius: var(--ui-radius-sm);
-		padding: 0.38rem 0.48rem;
-		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
-		color: var(--ui-text-primary);
-		font: inherit;
-		font-size: 0.72rem;
-	}
-
-	.agent-field select:disabled {
-		opacity: 0.58;
-		cursor: not-allowed;
-	}
-
-	.agent-prompt {
-		width: 100%;
-		min-width: 0;
-		margin-top: 0.26rem;
-		resize: vertical;
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
-		border-radius: var(--ui-radius-sm);
-		padding: 0.5rem;
-		background: color-mix(in oklab, var(--ui-code) 92%, transparent);
-		color: var(--ui-text-primary);
-		font-family: var(--font-mono);
-		font-size: 0.7rem;
-		line-height: 1.52;
-	}
-
 	.provider-heading {
 		display: flex;
 		align-items: center;
@@ -1218,12 +856,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.agent-row .provider-meta {
-		display: block;
-		font-size: 0.75rem;
-		line-height: 1.4;
 	}
 
 	.save-msg {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { createHotkeys } from "@tanstack/svelte-hotkeys";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -55,7 +56,6 @@
   import {
     clampSidebarWidth,
     getMaxSidebarWidth,
-    isSidebarToggleShortcut,
     MIN_SIDEBAR_WIDTH,
   } from "./sidebar-layout";
   import { getViewportClass, shouldUseDesktopInspectorSplit, shouldUseNarrowShell } from "./responsive-layout";
@@ -79,16 +79,16 @@
     getCommandExecutionPaneId,
     getCommandPaletteInitialInput,
     getCommandPalettePlacement,
-    isCommandPaletteShortcut,
-    isQuickOpenShortcut,
     type CommandAction,
     type CommandPaletteMode,
   } from "./command-palette";
   import {
-    getKeybindingShortcut,
-    matchesKeybinding,
+    getShortcutHotkey,
+    getShortcutReadable,
+    shouldShortcutIgnoreInputs,
     type AppMenuAction,
-  } from "../shared/keybindings";
+    type ShortcutActionId,
+  } from "../shared/shortcut-registry";
   import ModelPickerDialog from "./ModelPickerDialog.svelte";
   import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
   import VerificationCard, { type ReferenceVerification } from "./reference-cards/VerificationCard.svelte";
@@ -108,12 +108,13 @@
 
   type Props = {
     runtime: ChatRuntime;
+    shortcutsEnabled?: boolean;
     onOpenSettings?: () => void;
   };
 
-  let { runtime, onOpenSettings }: Props = $props();
-  const sidebarToggleShortcut = getKeybindingShortcut("sidebar.toggle");
-  const commandPaletteShortcut = getKeybindingShortcut("commandPalette.open");
+  let { runtime, shortcutsEnabled = true, onOpenSettings }: Props = $props();
+  const sidebarToggleShortcut = getShortcutReadable("sidebar.toggle");
+  const commandPaletteShortcut = getShortcutReadable("commandPalette.open");
 
   let controller = $state<ArtifactsController | null>(null);
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
@@ -428,6 +429,56 @@
     }),
   );
   const visibleCommandActions = $derived(filterCommandActions(commandRegistry, ""));
+  const workspaceHotkeysEnabled = $derived(
+    shortcutsEnabled &&
+      !paletteOpen &&
+      !renameTarget &&
+      !showModelPicker &&
+      !showCommandInspector &&
+      !showThreadInspector &&
+      !showWorkflowTaskAttemptInspector,
+  );
+
+  createHotkeys(
+    () => [
+      {
+        hotkey: getShortcutHotkey("commandPalette.open"),
+        callback: () => openPalette("commands"),
+        options: () => workspaceShortcutOptions("commandPalette.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("quickOpen.open"),
+        callback: () => openPalette("search"),
+        options: () => workspaceShortcutOptions("quickOpen.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("session.new"),
+        callback: () => void handleCreateSession(),
+        options: () => workspaceShortcutOptions("session.new"),
+      },
+      {
+        hotkey: getShortcutHotkey("session.dumb"),
+        callback: () => void handleCreateDumbSession(),
+        options: () => workspaceShortcutOptions("session.dumb"),
+      },
+      {
+        hotkey: getShortcutHotkey("sidebar.toggle"),
+        callback: () => toggleSidebarVisibility(),
+        options: () => workspaceShortcutOptions("sidebar.toggle"),
+      },
+    ],
+    () => ({
+      enabled: workspaceHotkeysEnabled,
+      preventDefault: true,
+      conflictBehavior: "replace",
+    }),
+  );
+
+  function workspaceShortcutOptions(id: ShortcutActionId) {
+    return {
+      ignoreInputs: shouldShortcutIgnoreInputs(id),
+    };
+  }
 
   function clearCopyTranscriptResetTimer() {
     if (!copyTranscriptResetTimer) return;
@@ -638,6 +689,7 @@
   }
 
   function handleAppMenuAction(action: AppMenuAction) {
+    if (!shortcutsEnabled) return;
     switch (action) {
       case "commandPalette.open":
         openPalette("commands");
@@ -1898,41 +1950,10 @@
     const handleResize = () => {
       windowWidth = window.innerWidth;
     };
-    const handleWindowKeydown = (event: KeyboardEvent) => {
-      if (isCommandPaletteShortcut(event)) {
-        event.preventDefault();
-        openPalette("commands");
-        return;
-      }
-
-      if (isQuickOpenShortcut(event)) {
-        event.preventDefault();
-        openPalette("search");
-        return;
-      }
-
-      if (matchesKeybinding(event, "session.new")) {
-        event.preventDefault();
-        void handleCreateSession();
-        return;
-      }
-
-      if (matchesKeybinding(event, "session.dumb")) {
-        event.preventDefault();
-        void handleCreateDumbSession();
-        return;
-      }
-
-      if (!isSidebarToggleShortcut(event)) return;
-
-      event.preventDefault();
-      toggleSidebarVisibility();
-    };
     const handleAppMenuMessage = ({ action }: { action: AppMenuAction }) => {
       handleAppMenuAction(action);
     };
     window.addEventListener("resize", handleResize);
-    window.addEventListener("keydown", handleWindowKeydown);
     const unsubscribeAppMenuAction = runtime.subscribeAppMenuAction(handleAppMenuMessage);
 
     syncSurfaceTools();
@@ -1981,7 +2002,6 @@
         dockviewLayoutSyncTimer = null;
       }
       window.removeEventListener("resize", handleResize);
-      window.removeEventListener("keydown", handleWindowKeydown);
       unsubscribeAppMenuAction();
       controller = null;
     };

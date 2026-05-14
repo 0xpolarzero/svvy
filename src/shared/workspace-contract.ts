@@ -11,7 +11,7 @@ import type {
   WorkflowAgentKey,
   WorkflowAgentSettings,
 } from "./agent-settings";
-import type { AppMenuAction } from "./keybindings";
+import type { AppMenuAction } from "./shortcut-registry";
 
 export type AuthKeyType = "apikey" | "oauth" | "env" | "none";
 export type PromptSurfaceKind = "orchestrator" | "thread";

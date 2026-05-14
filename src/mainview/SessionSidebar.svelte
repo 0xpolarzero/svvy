@@ -9,7 +9,7 @@
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import ZapIcon from "@lucide/svelte/icons/zap";
-  import { getKeybindingDisplayShortcut } from "../shared/keybindings";
+  import { getShortcutCompact } from "../shared/shortcut-registry";
   import type { AppLogSummary, WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
   import { formatAppLogCount } from "./app-logs";
   import SessionListItem from "./SessionListItem.svelte";
@@ -68,10 +68,10 @@
 
   let showNewSessionMenu = $state(false);
   let shortcutAction = $state<string | null>(null);
-  const newSessionDisplayShortcut = getKeybindingDisplayShortcut("session.new");
-  const dumbSessionDisplayShortcut = getKeybindingDisplayShortcut("session.dumb");
-  const quickOpenDisplayShortcut = getKeybindingDisplayShortcut("quickOpen.open");
-  const commandPaletteDisplayShortcut = getKeybindingDisplayShortcut("commandPalette.open");
+  const newSessionDisplayShortcut = getShortcutCompact("session.new");
+  const dumbSessionDisplayShortcut = getShortcutCompact("session.dumb");
+  const quickOpenDisplayShortcut = getShortcutCompact("quickOpen.open");
+  const commandPaletteDisplayShortcut = getShortcutCompact("commandPalette.open");
 
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
     const current = event.currentTarget as HTMLElement | null;

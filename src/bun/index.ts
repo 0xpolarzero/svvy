@@ -18,11 +18,11 @@ import type {
   SendPromptRequest,
 } from "../shared/workspace-contract";
 import {
-  getKeybinding,
-  getKeybindingAccelerator,
+  getShortcut,
+  getShortcutAccelerator,
   isAppMenuAction,
   type AppMenuAction,
-} from "../shared/keybindings";
+} from "../shared/shortcut-registry";
 import {
   DEFAULT_AGENT_SETTINGS,
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
@@ -95,9 +95,9 @@ function appMenuItem(action: AppMenuAction): {
   accelerator: string;
 } {
   return {
-    label: getKeybinding(action).label,
+    label: getShortcut(action).label,
     action,
-    accelerator: getKeybindingAccelerator(action),
+    accelerator: getShortcutAccelerator(action) ?? "",
   };
 }
 

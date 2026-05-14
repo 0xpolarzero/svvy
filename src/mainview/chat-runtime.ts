@@ -40,7 +40,7 @@ import {
 } from "./chat-storage";
 import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-settings";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
-import type { AppMenuAction } from "../shared/keybindings";
+import type { AppMenuAction } from "../shared/shortcut-registry";
 import {
   addDockviewPanel,
   bindPane,

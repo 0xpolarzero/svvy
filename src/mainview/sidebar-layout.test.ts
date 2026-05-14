@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import {
   clampSidebarWidth,
   getMaxSidebarWidth,
-  isSidebarToggleShortcut,
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
 } from "./sidebar-layout";
+import { getShortcut } from "../shared/shortcut-registry";
 
 describe("getMaxSidebarWidth", () => {
   it("caps the sidebar against the viewport ratio on narrow windows", () => {
@@ -27,74 +27,14 @@ describe("clampSidebarWidth", () => {
   });
 });
 
-describe("isSidebarToggleShortcut", () => {
-  it("matches Cmd/Ctrl+B", () => {
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: false,
-        altKey: false,
-        metaKey: true,
-        ctrlKey: false,
-        shiftKey: false,
-        key: "b",
-      } as KeyboardEvent),
-    ).toBe(true);
-
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: false,
-        altKey: false,
-        metaKey: false,
-        ctrlKey: true,
-        shiftKey: false,
-        key: "B",
-      } as KeyboardEvent),
-    ).toBe(true);
-  });
-
-  it("rejects prevented, alt-modified, and unrelated shortcuts", () => {
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: true,
-        altKey: false,
-        metaKey: true,
-        ctrlKey: false,
-        shiftKey: false,
-        key: "b",
-      } as KeyboardEvent),
-    ).toBe(false);
-
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: false,
-        altKey: true,
-        metaKey: true,
-        ctrlKey: false,
-        shiftKey: false,
-        key: "b",
-      } as KeyboardEvent),
-    ).toBe(false);
-
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: false,
-        altKey: false,
-        metaKey: true,
-        ctrlKey: false,
-        shiftKey: true,
-        key: "b",
-      } as KeyboardEvent),
-    ).toBe(false);
-
-    expect(
-      isSidebarToggleShortcut({
-        defaultPrevented: false,
-        altKey: false,
-        metaKey: true,
-        ctrlKey: false,
-        shiftKey: false,
-        key: "k",
-      } as KeyboardEvent),
-    ).toBe(false);
+describe("sidebar shortcut registry", () => {
+  it("declares the shell-scoped sidebar toggle chord", () => {
+    expect(getShortcut("sidebar.toggle")).toMatchObject({
+      hotkey: "Mod+B",
+      readableShortcut: "Cmd+B",
+      compactShortcut: "⌘B",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+    });
   });
 });

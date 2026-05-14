@@ -1,7 +1,9 @@
 <script lang="ts">
 	import XIcon from "@lucide/svelte/icons/x";
+	import { createHotkeys } from "@tanstack/svelte-hotkeys";
 	import { onMount } from "svelte";
 	import type { Snippet } from "svelte";
+	import { getShortcutHotkey } from "../../shared/shortcut-registry";
 	import Button from "./Button.svelte";
 
 	type DialogWidth = "md" | "lg";
@@ -36,13 +38,20 @@
 		onClose?.();
 	}
 
-	function handlePanelKeydown(event: KeyboardEvent) {
-		if (event.key === "Escape") {
-			event.stopPropagation();
-			close();
-			return;
-		}
+	createHotkeys(
+		() => [
+			{
+				hotkey: getShortcutHotkey("dialog.close"),
+				callback: (event) => {
+					event.stopPropagation();
+					close();
+				},
+			},
+		],
+		() => ({ ignoreInputs: false, preventDefault: true, conflictBehavior: "replace" }),
+	);
 
+	function handlePanelKeydown(event: KeyboardEvent) {
 		if (event.key !== "Tab" || !panelElement) {
 			return;
 		}

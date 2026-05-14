@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { HotkeysProvider } from "@tanstack/svelte-hotkeys";
 	import ChatWorkspace from "./ChatWorkspace.svelte";
 	import { createChatRuntime, type ChatRuntime } from "./chat-runtime";
 	import Settings from "./Settings.svelte";
@@ -56,31 +57,33 @@
 	});
 </script>
 
-<div class="app-shell">
-	<div class="app-frame">
-		<main class="workspace">
-			<div class="workspace-body">
-				{#if bootstrapError}
-					<StatusCard
-						tone="error"
-						eyebrow="Runtime Error"
-						title="Startup failed"
-						message={bootstrapError}
-					/>
-				{:else if runtime}
-					<ChatWorkspace {runtime} onOpenSettings={openSettings} />
-				{/if}
-				{#if !runtime && !bootstrapError}
-					<StatusCard
-						eyebrow="Boot Sequence"
-						title="Starting svvy"
-						message="Booting the Bun-side pi host and initializing the desktop chat surface."
-					/>
-				{/if}
-			</div>
-		</main>
+<HotkeysProvider defaultOptions={{ hotkey: { preventDefault: true, ignoreInputs: true } }}>
+	<div class="app-shell">
+		<div class="app-frame">
+			<main class="workspace">
+				<div class="workspace-body">
+					{#if bootstrapError}
+						<StatusCard
+							tone="error"
+							eyebrow="Runtime Error"
+							title="Startup failed"
+							message={bootstrapError}
+						/>
+					{:else if runtime}
+						<ChatWorkspace {runtime} shortcutsEnabled={!showSettings} onOpenSettings={openSettings} />
+					{/if}
+					{#if !runtime && !bootstrapError}
+						<StatusCard
+							eyebrow="Boot Sequence"
+							title="Starting svvy"
+							message="Booting the Bun-side pi host and initializing the desktop chat surface."
+						/>
+					{/if}
+				</div>
+			</main>
+		</div>
 	</div>
-</div>
+</HotkeysProvider>
 
 {#if showSettings}
 	<Settings onClose={() => (showSettings = false)} onProviderAuthChanged={handleProviderAuthChanged} />

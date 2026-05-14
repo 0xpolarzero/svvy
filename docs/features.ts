@@ -21,7 +21,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Provider Auth And Settings",
     status: "shipped",
     summary:
-      "Manages provider keys, OAuth-backed access, and app-level preferences such as the user's preferred external editor through the desktop settings surface.",
+      "Manages provider keys, OAuth-backed access, and app-level preferences such as the user's preferred external editor through TanStack Form-backed desktop settings surfaces with local validation, dirty state, reset/cancel behavior, and backend-authoritative persistence.",
     sourceSpecs: ["docs/prd.md"],
   },
   {
@@ -177,7 +177,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Command Palette And Quick Open",
     status: "in-progress",
     summary:
-      "Defines a VS Code-like shared palette where `Cmd+Shift+P` opens the same input as `Cmd+P` with `>` prefilled, the leading `>` live-switches quick-open search into command/action mode, command mode discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, Dockview panel, settings, and agent-setting routing, sidebar shell actions reveal compact shortcut hints instantly on hover or focus, icon-only or ambiguous action controls show faster delayed explanatory tooltips with consistent keycap chips, open-session results show visually distinct kind badges across orchestrator, handler-thread, and task-agent categories, `Cmd+P` remains a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty command-mode text creates a normal new session initial prompt without the `>` prefix or a parallel runtime, shell, terminal loop, or workflow abstraction.",
+      "Defines a VS Code-like shared palette where `Cmd+Shift+P` opens the same input as `Cmd+P` with `>` prefilled, those launcher chords remain available while text inputs are focused and switch the focused palette between command and quick-open modes when it is already open, the leading `>` live-switches quick-open search into command/action mode, command mode discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, Dockview panel, settings, and agent-setting routing, a product shortcut registry backed by TanStack Hotkeys owns scoped renderer dispatch, input policy, and shared shortcut display, sidebar shell actions reveal compact shortcut hints instantly on hover or focus, icon-only or ambiguous action controls show faster delayed explanatory tooltips with consistent keycap chips, open-session results show visually distinct kind badges across orchestrator, handler-thread, and task-agent categories, `Cmd+P` remains a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty command-mode text creates a normal new session initial prompt without the `>` prefix or a parallel runtime, shell, terminal loop, or workflow abstraction.",
     sourceSpecs: ["docs/prd.md", "docs/specs/command-palette.spec.md"],
   },
   {
@@ -185,7 +185,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Session Agent And Workflow Agent Settings",
     status: "shipped",
     summary:
-      "Persists app-wide default-session, dumb-orchestrator, and namer session-agent defaults with provider, model, reasoning, and system prompt; records session mode and prompt selection on created sessions; uses the same configured `namer` for top-level session titles and handler-thread titles derived from delegated objectives; allows handler threads to carry per-thread model, reasoning, and prompt overrides through `thread.start`; exposes focused-surface agent summaries in pane chrome and direct-saving settings inspection/editing for session agents and conventional workflow agents through connected-provider model dropdowns plus selected-model reasoning dropdowns; and synchronizes `explorer`, `implementer`, and `reviewer` workflow-agent settings to `.svvy/workflows/components/agents.ts` as a normal saved component asset.",
+      "Persists app-wide default-session, dumb-orchestrator, and namer session-agent defaults with provider, model, reasoning, and system prompt; records session mode and prompt selection on created sessions; uses the same configured `namer` for top-level session titles and handler-thread titles derived from delegated objectives; allows handler threads to carry per-thread model, reasoning, and prompt overrides through `thread.start`; exposes focused-surface agent summaries in pane chrome and TanStack Form-backed direct-saving settings inspection/editing for session agents and conventional workflow agents through connected-provider model dropdowns plus selected-model reasoning dropdowns, with validation, dirty state, reset, pending, and async error state; and synchronizes `explorer`, `implementer`, and `reviewer` workflow-agent settings to `.svvy/workflows/components/agents.ts` as a normal saved component asset.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/structured-session-state.spec.md",

@@ -184,6 +184,8 @@ Current product decisions for this section are specified in `docs/specs/command-
 - [x] Route unmatched non-empty command-mode text after `>` into a new session initial prompt through the normal orchestrator turn model. Commit(s): `cb319ac`
 - [x] Add keyboard shortcut handling for `Cmd+Shift+P`, `Cmd+P`, Enter, and command-palette `Cmd+Enter` placement once Dockview layout exists. Commit(s): `cb319ac`
 - [x] Add tests for shortcut dispatch, command matching, action routing, disabled or hidden availability, and unmatched prompt-session creation. Commit(s): `cb319ac`
+- [ ] Keep a product-owned shortcut registry with stable action ids, labels, platform chords, compact and readable display strings, scopes, input-typing policy, availability, and command-palette or tooltip metadata.
+- [ ] Use TanStack Hotkeys as the renderer shortcut dispatch primitive for palette, quick-open, sidebar shell actions, dialog-local actions, pane placement, and future focused-pane actions.
 
 ## 10. Pane Layout, Surface Ownership, And Expanded Surfaces
 
@@ -224,6 +226,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [x] Expand the session agent panel to inspect the session agent settings for the focused surface's session and thread. Commit(s): `8e19462`
 - [x] Seed `.svvy/workflows/components/agents.ts` with conventional `explorer`, `implementer`, and `reviewer` workflow agent exports. Commit(s): `8e19462`
 - [x] Build settings support for editing conventional workflow agents by synchronizing model, reasoning, and prompt fields with `.svvy/workflows/components/agents.ts`. Commit(s): `8e19462`
+- [ ] Use TanStack Form for complex session-agent, workflow-agent, provider key, web-provider, and app-preference settings forms, including direct-save semantics, validation, dirty state, reset/cancel, pending submit state, async save errors, provider/model/reasoning constraints, and synchronization to `.svvy/workflows/components/agents.ts`.
 - [x] Teach handler prompts to inspect and reuse `.svvy/workflows/components/agents.ts` exports when they fit, author artifact-local workflow agents for one-off needs, and write saved workflow agent components only on explicit request. Commit(s): `92c5397`
 
 ## 12. Session Titles
