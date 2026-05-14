@@ -2996,6 +2996,10 @@
 
 <style>
   .workspace-shell {
+    --mac-traffic-light-top: 13px;
+    --mac-traffic-light-size: 16px;
+    --workspace-chrome-height: calc((var(--mac-traffic-light-top) * 2) + var(--mac-traffic-light-size));
+    --workspace-chrome-control-size: 28px;
     position: relative;
     display: grid;
     grid-template-rows: minmax(0, 1fr);
@@ -3017,7 +3021,7 @@
     justify-content: flex-start;
     gap: 0.35rem;
     width: var(--sidebar-width, 240px);
-    height: 2.45rem;
+    height: var(--workspace-chrome-height);
     padding: 0 var(--titlebar-inline-padding);
     border: 0;
     background: transparent;
@@ -3062,8 +3066,8 @@
   }
 
   .titlebar-icon {
-    width: 1.72rem;
-    height: 1.72rem;
+    width: var(--workspace-chrome-control-size);
+    height: var(--workspace-chrome-control-size);
   }
 
   .chat-workspace {
@@ -3171,10 +3175,12 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
-    min-height: 2.25rem;
+    min-height: var(--workspace-chrome-height);
+    height: var(--workspace-chrome-height);
     padding: 0 0.78rem;
-    border-bottom: 1px solid var(--ui-border-soft);
+    border-bottom: 0;
     background: color-mix(in oklab, var(--ui-surface) 52%, transparent);
+    box-shadow: inset 0 -1px 0 var(--ui-border-soft);
   }
 
   .chat-workspace.sidebar-hidden .workspace-main-header {
@@ -3186,12 +3192,15 @@
     flex-direction: row;
     align-items: center;
     gap: 0.48rem;
+    min-height: var(--workspace-chrome-control-size);
     min-width: 0;
   }
 
   .workspace-main-title-button {
     display: inline-flex;
+    align-items: center;
     min-width: 0;
+    min-height: var(--workspace-chrome-control-size);
     max-width: 24rem;
     padding: 0;
     border: 0;
@@ -3225,12 +3234,14 @@
     white-space: nowrap;
     font-size: 0.75rem;
     font-weight: 600;
+    line-height: 1;
     letter-spacing: 0;
   }
 
   .workspace-main-separator {
     color: var(--ui-border-strong);
     font-size: 0.68rem;
+    line-height: 1;
   }
 
   .workspace-main-branch {
@@ -3245,6 +3256,7 @@
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
     font-size: 0.62rem;
+    line-height: 1;
   }
 
   .workspace-main-meta {
@@ -3253,6 +3265,7 @@
     justify-content: flex-end;
     flex-wrap: nowrap;
     gap: 0.5rem;
+    min-height: var(--workspace-chrome-control-size);
     min-width: 0;
     font-size: 0.64rem;
     color: var(--ui-text-tertiary);

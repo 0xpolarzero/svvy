@@ -357,7 +357,7 @@
 
   .sidebar-window-row {
     flex: 0 0 auto;
-    min-height: 2.45rem;
+    min-height: var(--workspace-chrome-height, 42px);
   }
 
   .sidebar-error {
@@ -377,7 +377,7 @@
   .sidebar-actions {
     display: grid;
     gap: 0.08rem;
-    padding: 0.2rem 0.72rem 0.7rem;
+    padding: 0.08rem 0.72rem 0.7rem;
     position: relative;
     z-index: 8;
   }

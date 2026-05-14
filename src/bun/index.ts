@@ -1150,15 +1150,14 @@ mainWindow = new BrowserWindow({
     height: 820,
   },
   titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+  hidden: process.platform === "darwin",
   rpc,
 });
 
 const mountedToolBridge = await svvyToolBridge.mount(mainWindow);
 mainWindow.webview.loadURL(url);
 positionNativeTrafficLights(mainWindow.ptr, NATIVE_TRAFFIC_LIGHT_POSITION);
-setTimeout(() => {
-  positionNativeTrafficLights(mainWindow?.ptr, NATIVE_TRAFFIC_LIGHT_POSITION);
-}, 250);
+mainWindow.show();
 
 recordBridgeEvent("app.ready", {
   bridgeUrl: mountedToolBridge.url ?? null,
