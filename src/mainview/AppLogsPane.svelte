@@ -94,12 +94,6 @@
     return "info";
   }
 
-  function levelGlyph(level: AppLogLevel): string {
-    if (level === "error") return "E";
-    if (level === "warning") return "W";
-    return "I";
-  }
-
   function levelFilterCount(level: AppLogLevel | "all"): number {
     if (!readModel) return 0;
     return level === "all" ? readModel.summary.totals.total : readModel.summary.totals[level];
@@ -653,7 +647,6 @@
                   <ChevronRightIcon size={14} />
                 {/if}
               </span>
-              <span class="level-mark">{levelGlyph(entry.level)}</span>
               <span class="row-copy">
                 <span class="row-title">
                   <Badge tone={levelTone(entry.level)}>{entry.level}</Badge>
@@ -927,6 +920,8 @@
   }
 
   .logs-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
   }
@@ -982,7 +977,7 @@
 
   .row-main {
     display: grid;
-    grid-template-columns: 0.9rem 1.1rem minmax(0, 1fr) auto;
+    grid-template-columns: 0.9rem minmax(0, 1fr) auto;
     gap: 0.4rem;
     width: 100%;
     min-width: 0;
@@ -1004,21 +999,6 @@
     place-items: center;
     color: var(--ui-text-tertiary);
   }
-
-  .level-mark {
-    display: grid;
-    place-items: center;
-    width: 1rem;
-    height: 1rem;
-    border-radius: var(--ui-radius-xs);
-    font-family: var(--font-mono);
-    font-size: 0.56rem;
-    font-weight: 750;
-  }
-
-  .level-info .level-mark { color: var(--ui-info); background: var(--ui-info-soft); }
-  .level-warning .level-mark { color: var(--ui-warning); background: var(--ui-warning-soft); }
-  .level-error .level-mark { color: var(--ui-danger); background: var(--ui-danger-soft); }
 
   .row-copy {
     display: grid;
