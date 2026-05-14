@@ -737,6 +737,31 @@ export interface WorkspaceHandlerThreadInspector extends WorkspaceHandlerThreadS
   artifacts: WorkspaceCommandArtifactLink[];
 }
 
+export interface WorkspaceSidebarRowSubtitle {
+  badge: "waiting" | "error" | "workflow" | "text";
+  text: string;
+  tone: "muted" | "waiting" | "error";
+}
+
+export interface WorkspaceSidebarWorkflowRow {
+  workflowRunId: string;
+  workflowName: string;
+  status: WorkspaceHandlerThreadWorkflowSummary["status"];
+  subtitle: WorkspaceSidebarRowSubtitle | null;
+  updatedAt: string;
+}
+
+export interface WorkspaceSidebarHandlerThreadRow {
+  threadId: string;
+  surfacePiSessionId: string;
+  title: string;
+  objective: string;
+  status: WorkspaceHandlerThreadSummary["status"];
+  subtitle: WorkspaceSidebarRowSubtitle | null;
+  updatedAt: string;
+  workflows: WorkspaceSidebarWorkflowRow[];
+}
+
 export interface WorkspaceSessionSummary {
   id: string;
   title: string;
@@ -780,6 +805,7 @@ export interface WorkspaceSessionSummary {
     troubleshooting: string[];
   };
   threadIds?: string[];
+  sidebarThreads?: WorkspaceSidebarHandlerThreadRow[];
   commandRollups?: WorkspaceCommandRollup[];
   titleGeneration?: {
     status: SessionTitleGenerationStatus;

@@ -1568,6 +1568,7 @@ export class WorkspaceSessionCatalog {
       counts: structuredSummary.counts,
       threadIdsByStatus: view.threadIdsByStatus,
       threadIds: structuredSummary.threadIds,
+      sidebarThreads: view.sidebarThreads,
       commandRollups: view.commandRollups.length > 0 ? view.commandRollups : undefined,
     };
   }
@@ -2635,28 +2636,27 @@ function buildHandlerWorkflowAttentionPrompt(input: {
   ].join("\n");
 }
 
+function projectWorkspaceWait(
+  wait: StructuredSessionSnapshot["session"]["wait"],
+): WorkspaceSessionSummary["wait"] {
+  if (!wait || wait.owner.kind !== "orchestrator") {
+    return null;
+  }
+
+  return {
+    kind: wait.kind,
+    reason: wait.reason,
+    resumeWhen: wait.resumeWhen,
+    since: wait.since,
+  };
+}
+
 function getThreadOwnedWaitId(wait: StructuredSessionSnapshot["session"]["wait"]): string | null {
   if (!wait || wait.owner.kind !== "thread") {
     return null;
   }
 
   return wait.owner.threadId;
-}
-
-function projectWorkspaceWait(
-  wait: StructuredSessionSnapshot["session"]["wait"],
-): WorkspaceSessionSummary["wait"] {
-  if (!wait) {
-    return null;
-  }
-
-  return {
-    threadId: getThreadOwnedWaitId(wait) ?? undefined,
-    kind: wait.kind,
-    reason: wait.reason,
-    resumeWhen: wait.resumeWhen,
-    since: wait.since,
-  };
 }
 
 function getEffectiveTurnWait(

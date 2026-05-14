@@ -162,7 +162,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workspace Navigation And Core Projection",
     status: "shipped",
     summary:
-      "Keeps the workspace shell navigable with pinned active sessions, a single collapsed-by-default Archived group for non-destructive session hiding, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable Dockview panel bindings, focus, panel-local scroll, display preferences, and inspector selections while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
+      "Keeps the workspace shell navigable with pinned active sessions, a single collapsed-by-default Archived group for non-destructive session hiding, layered sidebar rows where orchestrator session state, handler-thread state, and workflow-run state stay local to their owning rows, compact running indicators, tone-aware open-pane highlighting, context-budget rails for open orchestrator and handler rows, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable Dockview panel bindings, focus, panel-local scroll, display preferences, and inspector selections while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/pane-layout.spec.md",
@@ -283,7 +283,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Metadata-First Session Read Models",
     status: "in-progress",
     summary:
-      "Derives idle, running, waiting, and error session status, pinned and archived navigation fields, counts, ordered thread ids, pending attention, and compact summary data from structured wait, handler-attention state, workflow-run state, and artifact metadata for workspace navigation and restart recovery without transcript replay, transcript-file heuristics, or any global active-surface overlay.",
+      "Derives orchestrator-local idle, running, waiting, and error session status, pinned and archived navigation fields, row-local handler-thread and workflow-run sidebar projections, pending attention, and compact summary data from structured state for workspace navigation and restart recovery without rolling child handler or workflow lifecycle state into the parent session row, transcript replay, transcript-file heuristics, or any global active-surface overlay.",
     sourceSpecs: [
       "docs/specs/structured-session-state.spec.md",
       "docs/specs/workspace-navigation-core-projection.spec.md",

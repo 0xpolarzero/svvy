@@ -1,18 +1,30 @@
 <script lang="ts">
   import ArchiveIcon from "@lucide/svelte/icons/archive";
   import ArchiveRestoreIcon from "@lucide/svelte/icons/archive-restore";
+  import GitForkIcon from "@lucide/svelte/icons/git-fork";
   import PinIcon from "@lucide/svelte/icons/pin";
   import PinOffIcon from "@lucide/svelte/icons/pin-off";
+  import type { ContextBudget } from "../shared/context-budget";
   import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
-  import { formatRelativeSessionTime, formatSessionStatusLabel } from "./session-format";
+  import ContextBudgetBar from "./ContextBudgetBar.svelte";
+  import { formatCompactRelativeSessionTime, getSessionSidebarSubtitle } from "./session-format";
   import Button from "./ui/Button.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+
+  type SidebarPaneTone = "neutral" | "waiting" | "error";
+
+  type SidebarPaneLocation = {
+    paneId: string;
+    label: string;
+    focused: boolean;
+    tone: SidebarPaneTone;
+    contextBudget: ContextBudget | null;
+  };
 
   type Props = {
     session: WorkspaceSessionSummary;
     active: boolean;
-    activeSurface?: "orchestrator" | "thread";
-    paneLocations?: { paneId: string; label: string; focused: boolean }[];
+    paneLocations?: SidebarPaneLocation[];
     disabled?: boolean;
     onOpen: () => void;
     onRename: () => void;
@@ -27,7 +39,6 @@
   let {
     session,
     active,
-    activeSurface,
     paneLocations = [],
     disabled = false,
     onOpen,
@@ -53,62 +64,22 @@
     }
   }
 
-  function getProgressLabels(currentSession: WorkspaceSessionSummary): string[] {
-    const labels: string[] = [];
-    const counts = currentSession.counts;
-    const threadIdsByStatus = currentSession.threadIdsByStatus;
-
-    if (counts) {
-      if (counts.workflows > 0) {
-        labels.push(`Workflow ${counts.workflows}`);
-      }
-
-      if (counts.ciRuns > 0) {
-        labels.push(`CI ${counts.ciRuns}`);
-      }
-
-      if (counts.threads > 0) {
-        labels.push(`Threads ${counts.threads}`);
-      }
-    }
-
-    if (threadIdsByStatus?.runningHandler.length) {
-      labels.push(`Handlers ${threadIdsByStatus.runningHandler.length}`);
-    }
-
-    if (threadIdsByStatus?.runningWorkflow.length) {
-      labels.push(`Workflows ${threadIdsByStatus.runningWorkflow.length}`);
-    }
-
-    if (threadIdsByStatus?.waiting.length) {
-      labels.push(
-        currentSession.status === "running"
-          ? `Blocked ${threadIdsByStatus.waiting.length}`
-          : `Waiting ${threadIdsByStatus.waiting.length}`,
-      );
-    }
-
-    if (threadIdsByStatus?.troubleshooting.length) {
-      labels.push(`Troubleshooting ${threadIdsByStatus.troubleshooting.length}`);
-    }
-
-    return labels;
-  }
-
-  const showingThreadSurface = $derived(active && activeSurface === "thread");
   const renameLocked = $derived(session.titleGeneration?.renameLocked ?? false);
   const focusedPaneLocation = $derived(paneLocations.find((location) => location.focused) ?? null);
-  const openPaneSummary = $derived(
-    paneLocations.length === 0
-      ? ""
-      : paneLocations.length === 1
-        ? (focusedPaneLocation?.label ?? paneLocations[0]?.label ?? "")
-        : `${paneLocations.length} panes`,
+  const primaryPaneLocation = $derived(focusedPaneLocation ?? paneLocations[0] ?? null);
+  const paneTone = $derived(
+    paneLocations.find((location) => location.tone === "error")?.tone ??
+      paneLocations.find((location) => location.tone === "waiting")?.tone ??
+      "neutral",
   );
+  const contextBudget = $derived(primaryPaneLocation?.contextBudget ?? null);
+  const hasPane = $derived(paneLocations.length > 0);
+  const isWorking = $derived(session.status === "running");
+  const sidebarSubtitle = $derived(getSessionSidebarSubtitle(session));
 </script>
 
 <article
-  class={`session-item ${active ? "active" : ""} ${showingThreadSurface ? "active-thread" : ""} ${session.isArchived ? "archived" : ""} ${paneLocations.length > 0 ? "open-in-pane" : ""}`.trim()}
+  class={`session-item ${active ? "active" : ""} ${session.isArchived ? "archived" : ""} ${hasPane ? "open-in-pane" : ""} open-tone-${paneTone} ${isWorking ? "working" : ""}`.trim()}
 >
   <button
     class="session-main"
@@ -123,53 +94,28 @@
     <div class="session-main-top">
       <strong>{session.title}</strong>
       <div class="session-main-top-meta">
-        {#if openPaneSummary}
-          <span
-            class="session-open-marker"
-            title={`Open in ${paneLocations.map((location) => location.label).join(", ")}`}
-          >
-            {openPaneSummary}
-          </span>
+        {#if session.parentSessionId}
+          <GitForkIcon aria-label="Forked session" size={11} strokeWidth={1.85} />
         {/if}
-        <span>{formatRelativeSessionTime(session.updatedAt)}</span>
+        <span>{formatCompactRelativeSessionTime(session.updatedAt)}</span>
       </div>
     </div>
     <div class="session-main-body">
-      <div class="session-main-preview">{session.preview}</div>
-      {#if getProgressLabels(session).length > 0}
-        <div class="session-main-progress" aria-label="Structured workflow progress">
-          {#each getProgressLabels(session) as label}
-            <span class="session-progress-pill">{label}</span>
-          {/each}
+      {#if sidebarSubtitle}
+        <div
+          class={`session-main-subtitle tone-${sidebarSubtitle.tone} ${sidebarSubtitle.badge ? "" : "text-only"} ${sidebarSubtitle.blinking ? "blinking" : ""}`.trim()}
+        >
+          {#if sidebarSubtitle.badge}
+            <span>{sidebarSubtitle.badge}</span>
+          {/if}
+          <span>{sidebarSubtitle.text}</span>
         </div>
       {/if}
     </div>
 
-    {#if showingThreadSurface || session.status !== "idle" || session.parentSessionId}
-      <div class="session-main-meta">
-        {#if showingThreadSurface}
-          <span class="session-surface">Thread Open</span>
-        {/if}
-        {#if session.status !== "idle"}
-          <span class={`session-status status-${session.status}`.trim()}>
-            <span class="session-status-dot"></span>
-            {formatSessionStatusLabel(session)}
-          </span>
-        {/if}
-        {#if session.parentSessionId}
-          <span class="session-branch">Fork</span>
-        {/if}
-      </div>
-    {/if}
-
-    {#if session.isPinned || session.isArchived}
-      <div class="session-main-meta session-navigation-meta">
-        {#if session.isPinned}
-          <span class="session-branch">Pinned</span>
-        {/if}
-        {#if session.isArchived}
-          <span class="session-branch">Archived</span>
-        {/if}
+    {#if contextBudget}
+      <div class="session-context-budget" aria-hidden="true">
+        <ContextBudgetBar budget={contextBudget} variant="compact" label="Context" />
       </div>
     {/if}
   </button>
@@ -289,10 +235,6 @@
     background: color-mix(in oklab, var(--ui-accent) 84%, transparent);
   }
 
-  .active-thread .session-main {
-    border-color: color-mix(in oklab, var(--ui-accent) 22%, transparent);
-  }
-
   .open-in-pane:not(.active) .session-main {
     border-color: color-mix(in oklab, var(--ui-border-soft) 62%, transparent);
     background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
@@ -300,6 +242,24 @@
 
   .open-in-pane:not(.active) .session-main::before {
     background: color-mix(in oklab, var(--ui-text-tertiary) 42%, transparent);
+  }
+
+  .open-tone-waiting:not(.active) .session-main {
+    border-color: color-mix(in oklab, var(--ui-status-waiting) 32%, transparent);
+    background: color-mix(in oklab, var(--ui-status-waiting-soft) 28%, transparent);
+  }
+
+  .open-tone-waiting:not(.active) .session-main::before {
+    background: color-mix(in oklab, var(--ui-status-waiting) 54%, transparent);
+  }
+
+  .open-tone-error:not(.active) .session-main {
+    border-color: color-mix(in oklab, var(--ui-danger) 34%, transparent);
+    background: color-mix(in oklab, var(--ui-danger-soft) 30%, transparent);
+  }
+
+  .open-tone-error:not(.active) .session-main::before {
+    background: color-mix(in oklab, var(--ui-danger) 56%, transparent);
   }
 
   .archived .session-main {
@@ -348,15 +308,8 @@
     flex-shrink: 0;
   }
 
-  .session-open-marker {
-    max-width: 4.4rem;
-    overflow: hidden;
-    color: color-mix(in oklab, var(--ui-accent) 66%, var(--ui-text-tertiary));
-    font-family: var(--font-mono);
-    font-size: 0.5rem;
-    font-weight: 650;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .session-main-top-meta :global(svg) {
+    color: var(--ui-text-tertiary);
   }
 
   .session-main-body {
@@ -366,97 +319,71 @@
     min-width: 0;
   }
 
-  .session-main-preview {
+  .session-main-subtitle {
     min-width: 0;
     overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 0.28rem;
     font-size: 0.64rem;
     line-height: 1.22;
     color: var(--ui-text-secondary);
   }
 
-  .session-main-progress {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.22rem;
-  }
-
-  .session-progress-pill {
-    display: inline-flex;
-    align-items: center;
-    min-height: 0.9rem;
-    padding: 0 0.24rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-tertiary);
+  .session-main-subtitle span:first-child {
+    flex-shrink: 0;
     font-family: var(--font-mono);
     font-size: 0.52rem;
-    font-weight: 500;
-    letter-spacing: 0;
-    white-space: nowrap;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
   }
 
-  .session-main-meta {
-    display: flex;
-    align-items: center;
-    gap: 0.32rem;
-    flex-wrap: nowrap;
-    margin-top: 0.22rem;
+  .session-main-subtitle span:last-child {
+    min-width: 0;
     overflow: hidden;
-  }
-
-  .session-navigation-meta {
-    margin-top: 0.24rem;
-  }
-
-  .session-status,
-  .session-branch,
-  .session-surface {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.26rem;
-    min-height: 0.9rem;
-    font-family: var(--font-mono);
-    font-size: 0.54rem;
-    font-weight: 500;
-    letter-spacing: 0;
-    line-height: 1;
-    white-space: nowrap;
-    color: var(--ui-text-tertiary);
-  }
-
-  .session-status-dot {
-    width: 0.34rem;
-    height: 0.34rem;
-    border-radius: 999px;
-    background: currentColor;
-  }
-
-  .status-running {
-    color: color-mix(in oklab, var(--ui-warning) 82%, var(--ui-text-primary));
-  }
-
-  .status-waiting {
-    color: color-mix(in oklab, var(--ui-info) 78%, var(--ui-text-primary));
-  }
-
-  .status-error {
-    color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
-  }
-
-  .session-branch {
-    color: var(--ui-text-tertiary);
-  }
-
-  .session-surface {
-    max-width: 7rem;
-    overflow: hidden;
-    color: var(--ui-text-tertiary);
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .session-main-subtitle.tone-waiting {
+    color: var(--ui-status-waiting);
+  }
+
+  .session-main-subtitle.tone-error {
+    color: var(--ui-danger);
+  }
+
+  .session-main-subtitle.text-only {
+    color: var(--ui-text-tertiary);
+  }
+
+  .blinking {
+    animation: session-working-blink 1.8s ease-in-out infinite;
+  }
+
+  .session-context-budget {
+    margin-top: 0.28rem;
+    padding-bottom: 0.02rem;
+  }
+
+  .session-context-budget :global(.context-budget-compact) {
+    position: static;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-context-budget :global(.context-budget-compact-label) {
+    display: none;
+  }
+
+  @keyframes session-working-blink {
+    0%,
+    100% {
+      opacity: 0.38;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   .session-inline-actions {
@@ -513,6 +440,12 @@
     .session-inline-action {
       min-width: 2.75rem;
       min-height: 2.75rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blinking {
+      animation: none;
     }
   }
 </style>

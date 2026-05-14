@@ -162,7 +162,7 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Split workspace-summary updates from live surface transcript updates in the renderer runtime. Commit(s): `9a21f87`, `b0ee858`
 - [x] Manage open live surfaces in a shared registry keyed by `surfacePiSessionId`. Commit(s): `9a21f87`, `b0ee858`
 - [x] Give each live surface its own prompt lock, model state, reasoning state, and cancellation lifecycle. Commit(s): `9a21f87`, `b0ee858`
-- [x] Render handler-thread lists from structured thread data in the workspace shell and focused panel. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
+- [x] Render handler-thread and workflow-run rows from structured state in the workspace shell while keeping lifecycle subtitles, running indicators, open-pane treatment, and compact context rails local to the owning row. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
 - [x] Show thread objective, status, latest workflow-run summary, and blocked reason in panel-local thread views. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
 - [x] Render the latest handoff episode for an inspected thread while preserving earlier handoff points in thread history. Commit(s): `ba5c3f0`, `9a21f87`, `b0ee858`
 - [x] Render thread- and workflow-run-linked artifacts before relying on transcript reconstruction. Commit(s): `3855fe4`

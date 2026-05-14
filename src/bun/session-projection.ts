@@ -92,6 +92,18 @@ function getFirstUserMessage(messages: AgentMessage[]): string {
   return "";
 }
 
+function getLatestUserMessage(messages: AgentMessage[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user") continue;
+    const text = flattenMessageText(message);
+    if (text.trim()) {
+      return text;
+    }
+  }
+  return "";
+}
+
 function getLatestVisibleMessage(messages: AgentMessage[]): AgentMessage | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -145,10 +157,7 @@ export function getSessionPreview(source: {
   messages?: AgentMessage[];
 }): string {
   if (source.messages) {
-    const latestText = normalizeText(
-      flattenMessageText(getLatestVisibleMessage(source.messages)),
-      PREVIEW_LIMIT,
-    );
+    const latestText = normalizeText(getLatestUserMessage(source.messages), PREVIEW_LIMIT);
     if (latestText) {
       return latestText;
     }
@@ -159,7 +168,7 @@ export function getSessionPreview(source: {
     return firstMessage;
   }
 
-  return "Waiting for first turn";
+  return "";
 }
 
 function buildWorkspaceSessionSummary(

@@ -9,29 +9,50 @@
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import ZapIcon from "@lucide/svelte/icons/zap";
+  import type { ContextBudget } from "../shared/context-budget";
   import { getShortcutCompact } from "../shared/shortcut-registry";
-  import type { AppLogSummary, WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
+  import type {
+    AppLogSummary,
+    WorkspaceSessionNavigationReadModel,
+    WorkspaceSessionSummary,
+    WorkspaceSidebarHandlerThreadRow,
+    WorkspaceSidebarRowSubtitle,
+    WorkspaceSidebarWorkflowRow,
+  } from "../shared/workspace-contract";
   import {
     formatAppLogCount,
     formatAppLogUnreadTitle,
     getVisibleAppLogUnreadBadges,
   } from "./app-logs";
   import SessionListItem from "./SessionListItem.svelte";
+  import ContextBudgetBar from "./ContextBudgetBar.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+
+  type SidebarPaneLocation = {
+    paneId: string;
+    label: string;
+    focused: boolean;
+    tone: "neutral" | "waiting" | "error";
+    contextBudget: ContextBudget | null;
+  };
 
   type Props = {
     workspaceLabel: string;
     navigation: WorkspaceSessionNavigationReadModel;
     activeSessionId?: string;
-    activeSurface?: "orchestrator" | "thread";
-    paneLocationsBySessionId?: Record<string, { paneId: string; label: string; focused: boolean }[]>;
+    activeThreadId?: string;
+    paneLocationsBySessionId?: Record<string, SidebarPaneLocation[]>;
+    paneLocationsByThreadId?: Record<string, SidebarPaneLocation[]>;
+    paneLocationsByWorkflowRunId?: Record<string, SidebarPaneLocation[]>;
     appLogSummary?: AppLogSummary | null;
     busy?: boolean;
     errorMessage?: string;
     onCreateSession: () => void;
     onCreateDumbSession: () => void;
     onOpenSession: (sessionId: string) => void;
+    onOpenHandlerThread?: (sessionId: string, thread: WorkspaceSidebarHandlerThreadRow) => void;
+    onOpenWorkflowRun?: (sessionId: string, workflow: WorkspaceSidebarWorkflowRow) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
     onPinSession: (session: WorkspaceSessionSummary) => void;
     onUnpinSession: (session: WorkspaceSessionSummary) => void;
@@ -49,14 +70,18 @@
     workspaceLabel,
     navigation,
     activeSessionId,
-    activeSurface,
+    activeThreadId,
     paneLocationsBySessionId = {},
+    paneLocationsByThreadId = {},
+    paneLocationsByWorkflowRunId = {},
     appLogSummary = null,
     busy = false,
     errorMessage,
     onCreateSession,
     onCreateDumbSession,
     onOpenSession,
+    onOpenHandlerThread,
+    onOpenWorkflowRun,
     onRenameSession,
     onPinSession,
     onUnpinSession,
@@ -107,6 +132,35 @@
     return formatAppLogUnreadTitle(appLogSummary);
   });
   const appLogUnreadBadges = $derived(getVisibleAppLogUnreadBadges(appLogSummary));
+
+  function isThreadWorking(thread: WorkspaceSidebarHandlerThreadRow): boolean {
+    return thread.status === "running-handler" || thread.status === "running-workflow";
+  }
+
+  function isWorkflowWorking(workflow: WorkspaceSidebarWorkflowRow): boolean {
+    return workflow.status === "running";
+  }
+
+  function getSubtitleClass(
+    subtitle: WorkspaceSidebarRowSubtitle | null,
+    working = false,
+  ): string {
+    return `${subtitle ? `sidebar-child-subtitle tone-${subtitle.tone}` : "sidebar-child-subtitle"} ${
+      working ? "blinking" : ""
+    }`.trim();
+  }
+
+  function getPaneTone(paneLocations: SidebarPaneLocation[]): SidebarPaneLocation["tone"] {
+    return (
+      paneLocations.find((location) => location.tone === "error")?.tone ??
+      paneLocations.find((location) => location.tone === "waiting")?.tone ??
+      "neutral"
+    );
+  }
+
+  function getPrimaryPaneLocation(paneLocations: SidebarPaneLocation[]): SidebarPaneLocation | null {
+    return paneLocations.find((location) => location.focused) ?? paneLocations[0] ?? null;
+  }
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -206,6 +260,68 @@
     <p class="sidebar-error">{errorMessage}</p>
   {/if}
 
+  {#snippet sessionChildren(session: WorkspaceSessionSummary)}
+    {#if (session.sidebarThreads?.length ?? 0) > 0}
+      <div class="sidebar-child-list" aria-label={`Handler threads for ${session.title}`}>
+        {#each session.sidebarThreads ?? [] as thread (thread.threadId)}
+          {@const threadPaneLocations = paneLocationsByThreadId[thread.threadId] ?? []}
+          {@const threadPrimaryPane = getPrimaryPaneLocation(threadPaneLocations)}
+          {@const threadWorking = isThreadWorking(thread)}
+          {@const threadPreview = thread.subtitle ? null : threadWorking ? "..." : null}
+          <button
+            type="button"
+            class={`sidebar-child-row handler-row status-${thread.status} ${session.id === activeSessionId && thread.threadId === activeThreadId ? "active" : ""} ${threadPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(threadPaneLocations)} ${threadWorking ? "working" : ""}`.trim()}
+            onclick={() => onOpenHandlerThread?.(session.id, thread)}
+            disabled={busy}
+          >
+            <span class="sidebar-child-content">
+              <span class="sidebar-child-title">{thread.title}</span>
+              {#if thread.subtitle}
+                <span class={getSubtitleClass(thread.subtitle, threadWorking)}>
+                  <span>{thread.subtitle.badge}</span>
+                  <span>{thread.subtitle.text}</span>
+                </span>
+              {:else if threadPreview}
+                <span class="sidebar-child-subtitle text-only blinking">
+                  <span>{threadPreview}</span>
+                </span>
+              {/if}
+              {#if threadPrimaryPane?.contextBudget}
+                <span class="sidebar-child-context" aria-hidden="true">
+                  <ContextBudgetBar budget={threadPrimaryPane.contextBudget} variant="compact" label="Context" />
+                </span>
+              {/if}
+            </span>
+          </button>
+          {#if thread.workflows.length > 0}
+            <div class="sidebar-workflow-list" aria-label={`Workflow runs for ${thread.title}`}>
+              {#each thread.workflows as workflow (workflow.workflowRunId)}
+                {@const workflowPaneLocations = paneLocationsByWorkflowRunId[workflow.workflowRunId] ?? []}
+                {@const workflowWorking = isWorkflowWorking(workflow)}
+                <button
+                  type="button"
+                  class={`sidebar-child-row workflow-row status-${workflow.status} ${workflowPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(workflowPaneLocations)} ${workflowWorking ? "working" : ""}`.trim()}
+                  onclick={() => onOpenWorkflowRun?.(session.id, workflow)}
+                  disabled={busy}
+                >
+                  <span class="sidebar-child-content">
+                    <span class="sidebar-child-title">{workflow.workflowName}</span>
+                    {#if workflow.subtitle}
+                      <span class={getSubtitleClass(workflow.subtitle, workflowWorking)}>
+                        <span>{workflow.subtitle.badge}</span>
+                        <span>{workflow.subtitle.text}</span>
+                      </span>
+                    {/if}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+  {/snippet}
+
   <div class="sidebar-sections">
     <div class="sidebar-list">
       {#if navigation.pinnedSessions.length > 0}
@@ -214,7 +330,6 @@
           {#each navigation.pinnedSessions as session (session.id)}
             <SessionListItem
               active={session.id === activeSessionId}
-              activeSurface={session.id === activeSessionId ? activeSurface : undefined}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {session}
@@ -225,6 +340,7 @@
               onArchive={() => onArchiveSession(session)}
               onUnarchive={() => onUnarchiveSession(session)}
             />
+            {@render sessionChildren(session)}
           {/each}
         </section>
       {/if}
@@ -235,7 +351,6 @@
           {#each navigation.activeSessions as session (session.id)}
             <SessionListItem
               active={session.id === activeSessionId}
-              activeSurface={session.id === activeSessionId ? activeSurface : undefined}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {session}
@@ -246,6 +361,7 @@
               onArchive={() => onArchiveSession(session)}
               onUnarchive={() => onUnarchiveSession(session)}
             />
+            {@render sessionChildren(session)}
           {/each}
         </section>
       {/if}
@@ -271,7 +387,6 @@
             {#each navigation.archived.sessions as session (session.id)}
               <SessionListItem
                 active={session.id === activeSessionId}
-                activeSurface={session.id === activeSessionId ? activeSurface : undefined}
                 disabled={busy && session.id !== activeSessionId}
                 paneLocations={paneLocationsBySessionId[session.id] ?? []}
                 {session}
@@ -282,6 +397,7 @@
                 onArchive={() => onArchiveSession(session)}
                 onUnarchive={() => onUnarchiveSession(session)}
               />
+              {@render sessionChildren(session)}
             {/each}
           {/if}
         </section>
@@ -557,6 +673,223 @@
     display: grid;
     gap: 0.12rem;
     min-width: 0;
+  }
+
+  .sidebar-child-list,
+  .sidebar-workflow-list {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+  }
+
+  .sidebar-child-list {
+    margin: -0.02rem 0 0.18rem 0.72rem;
+    padding-left: 0.44rem;
+    border-left: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+  }
+
+  .sidebar-workflow-list {
+    margin-left: 0.62rem;
+    padding-left: 0.5rem;
+    border-left: 1px solid color-mix(in oklab, var(--ui-border-soft) 52%, transparent);
+  }
+
+  .sidebar-child-row {
+    position: relative;
+    display: grid;
+    align-items: start;
+    width: 100%;
+    min-width: 0;
+    padding: 0.32rem 0.42rem 0.3rem 0.82rem;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius-sm);
+    background: transparent;
+    color: var(--ui-text-secondary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .sidebar-child-row::before {
+    content: "";
+    position: absolute;
+    top: 0.32rem;
+    bottom: 0.32rem;
+    left: 0.32rem;
+    width: 0.12rem;
+    border-radius: 999px;
+    background: transparent;
+    transition: background-color 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .sidebar-child-row:hover:not(:disabled),
+  .sidebar-child-row:focus-visible {
+    outline: none;
+    background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .sidebar-child-row:focus-visible {
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .sidebar-child-row.active {
+    border-color: transparent;
+    background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+  }
+
+  .sidebar-child-row.active::before {
+    background: color-mix(in oklab, var(--ui-accent) 84%, transparent);
+  }
+
+  .sidebar-child-row.open-in-pane:not(.active) {
+    border-color: transparent;
+    background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
+  }
+
+  .sidebar-child-row.open-in-pane:not(.active)::before {
+    background: color-mix(in oklab, var(--ui-text-tertiary) 42%, transparent);
+  }
+
+  .sidebar-child-row.open-tone-waiting:not(.active) {
+    border-color: transparent;
+    background: color-mix(in oklab, var(--ui-status-waiting-soft) 28%, transparent);
+  }
+
+  .sidebar-child-row.open-tone-waiting:not(.active)::before {
+    background: color-mix(in oklab, var(--ui-status-waiting) 54%, transparent);
+  }
+
+  .sidebar-child-row.open-tone-error:not(.active) {
+    border-color: transparent;
+    background: color-mix(in oklab, var(--ui-danger-soft) 30%, transparent);
+  }
+
+  .sidebar-child-row.open-tone-error:not(.active)::before {
+    background: color-mix(in oklab, var(--ui-danger) 56%, transparent);
+  }
+
+  .sidebar-child-row:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .workflow-row {
+    padding-block: 0.25rem;
+    color: var(--ui-text-tertiary);
+  }
+
+  .sidebar-child-content {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+
+  .sidebar-child-title {
+    min-width: 0;
+    overflow: hidden;
+    color: inherit;
+    font-size: 0.62rem;
+    font-weight: 560;
+    line-height: 1.22;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workflow-row .sidebar-child-title {
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-weight: 520;
+  }
+
+  .sidebar-child-subtitle {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.28rem;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.58rem;
+    line-height: 1.25;
+    color: var(--ui-text-tertiary);
+  }
+
+  .sidebar-child-subtitle span:first-child {
+    font-family: var(--font-mono);
+    font-size: 0.49rem;
+    font-weight: 650;
+    text-transform: lowercase;
+    white-space: nowrap;
+  }
+
+  .sidebar-child-subtitle span:last-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-child-subtitle.tone-waiting {
+    color: color-mix(in oklab, var(--ui-status-waiting) 76%, var(--ui-text-primary));
+  }
+
+  .sidebar-child-subtitle.tone-error {
+    color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
+  }
+
+  .sidebar-child-subtitle.text-only {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar-child-subtitle.text-only span {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .sidebar-child-context {
+    display: block;
+    margin-top: 0.1rem;
+  }
+
+  .sidebar-child-context :global(.context-budget-compact) {
+    position: static;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar-child-context :global(.context-budget-compact-label) {
+    display: none;
+  }
+
+  .blinking {
+    animation: sidebar-working-blink 1.8s ease-in-out infinite;
+  }
+
+  @keyframes sidebar-working-blink {
+    0%,
+    100% {
+      opacity: 0.38;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blinking {
+      animation: none;
+    }
   }
 
   .sidebar-section-label {

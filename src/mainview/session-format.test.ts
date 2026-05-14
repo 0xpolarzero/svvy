@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { formatRelativeSessionTime, formatSessionStatusLabel } from "./session-format";
+import {
+  formatCompactRelativeSessionTime,
+  formatRelativeSessionTime,
+  formatSessionStatusLabel,
+  getSessionSidebarSubtitle,
+} from "./session-format";
 import type { WorkspaceSessionSummary } from "../shared/workspace-contract";
 
 const realDateNow = Date.now;
@@ -65,6 +70,24 @@ describe("formatRelativeSessionTime", () => {
   });
 });
 
+describe("formatCompactRelativeSessionTime", () => {
+  it("formats past session times without ago copy", () => {
+    freezeNow("2026-04-10T10:00:00.000Z");
+
+    expect(formatCompactRelativeSessionTime("2026-04-10T09:59:31.000Z")).toBe("now");
+    expect(formatCompactRelativeSessionTime("2026-04-10T09:59:00.000Z")).toBe("1 min");
+    expect(formatCompactRelativeSessionTime("2026-04-10T09:45:00.000Z")).toBe("15 min");
+    expect(formatCompactRelativeSessionTime("2026-04-10T08:00:00.000Z")).toBe("2 hr");
+    expect(formatCompactRelativeSessionTime("2026-04-07T10:00:00.000Z")).toBe("3 days");
+  });
+
+  it("keeps future compact labels explicit", () => {
+    freezeNow("2026-04-10T10:00:00.000Z");
+
+    expect(formatCompactRelativeSessionTime("2026-04-10T10:01:00.000Z")).toBe("in 1 min");
+  });
+});
+
 describe("formatSessionStatusLabel", () => {
   it("formats delegated running work as threading", () => {
     expect(
@@ -101,5 +124,68 @@ describe("formatSessionStatusLabel", () => {
     expect(
       formatSessionStatusLabel(session({ id: "session-idle", title: "Idle", status: "idle" })),
     ).toBe("Idle");
+  });
+});
+
+describe("getSessionSidebarSubtitle", () => {
+  it("does not render generic idle previews as sidebar subtitles", () => {
+    expect(
+      getSessionSidebarSubtitle(
+        session({ id: "session-new", title: "New Session", preview: "(no message)" }),
+      ),
+    ).toBeNull();
+    expect(
+      getSessionSidebarSubtitle(
+        session({ id: "session-old", title: "Parser", preview: "Fix the parser" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("renders only relevant row-local waiting, error, and running states", () => {
+    expect(
+      getSessionSidebarSubtitle(
+        session({
+          id: "session-wait",
+          title: "Waiting",
+          status: "waiting",
+          wait: {
+            kind: "user",
+            reason: "Pick a deployment target.",
+            resumeWhen: "user replies",
+            since: "2026-04-10T10:00:00.000Z",
+          },
+        }),
+      ),
+    ).toEqual({
+      badge: "waiting",
+      text: "Pick a deployment target.",
+      tone: "waiting",
+      blinking: false,
+    });
+
+    expect(
+      getSessionSidebarSubtitle(
+        session({
+          id: "session-error",
+          title: "Error",
+          status: "error",
+          preview: "Provider credentials are missing.",
+        }),
+      ),
+    ).toEqual({
+      badge: "error",
+      text: "Provider credentials are missing.",
+      tone: "error",
+      blinking: false,
+    });
+
+    expect(
+      getSessionSidebarSubtitle(session({ id: "session-running", title: "Running", status: "running" })),
+    ).toEqual({
+      badge: null,
+      text: "...",
+      tone: "muted",
+      blinking: true,
+    });
   });
 });

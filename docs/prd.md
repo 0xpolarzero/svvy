@@ -549,6 +549,9 @@ The adopted navigation model is deliberately small:
 - the Archived group is the only folder-like grouping and is collapsed by default
 - arbitrary user-created session folders are not part of the product model
 - archiving hides a session from the active list without deleting pi session data, structured state, artifacts, threads, workflow runs, or episodes
+- each top-level session row represents the orchestrator layer only; child handler and workflow state must not make the session row appear running, waiting, or broken
+- delegated handler threads appear as nested rows under their parent session, and workflow runs appear as nested rows under their owning handler thread
+- sidebar subtitles are row-local relevance signals: orchestrator rows show orchestrator-local waits, commands, turns, or explicit handoff summaries; handler rows show handler-local waits and active workflow supervision; workflow rows show workflow-local running and waiting state; workflow troubleshooting is muted because it is handler-owned repair work, while `error` is reserved for row-local unrecoverable state that needs user action
 
 ### Surface Identity
 
@@ -927,10 +930,16 @@ It should show:
 - pinned active sessions first
 - remaining active sessions by recency
 - one Archived group for archived sessions
+- handler thread rows nested under the session that owns them
+- workflow run rows nested under the handler thread that owns them
 
 The Archived group is collapsed by default, and its collapsed state is persisted per workspace.
 
 Archiving is reversible and non-destructive. It must not delete durable session, thread, workflow-run, episode, artifact, or transcript data.
+
+Session sidebar state is layered. A handler thread in `waiting`, `running-workflow`, or `troubleshooting` does not automatically change the parent session row's status or subtitle. A workflow run in `running`, `waiting`, `failed`, or `cancelled` does not automatically change the owning handler's parent session row. `troubleshooting` means the handler is working through workflow repair locally and is rendered as muted workflow state, not as parent-session error. `error` is reserved for row-local unrecoverable state that needs user action. The orchestrator row updates from explicit orchestrator-owned state and explicit handoff/reconciliation events such as `thread.handoff`.
+
+Active row subtitles blink only for agent or workflow work that is currently running, not for waiting or error rows. If a row is doing agent work but has no useful subtitle to surface, it shows only a compact blinking ellipsis. Rows that are open in Dockview use local border/background treatment instead of a text badge, and that treatment follows the row's waiting or error tone. Open orchestrator and handler rows also show a compact context-budget rail along the bottom of the row.
 
 ### Command Palette And Quick Open
 

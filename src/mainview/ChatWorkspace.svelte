@@ -48,6 +48,8 @@
     WorkspacePaneSurfaceTarget,
     WorkspaceSessionNavigationReadModel,
     WorkspaceSessionSummary,
+    WorkspaceSidebarHandlerThreadRow,
+    WorkspaceSidebarWorkflowRow,
   } from "../shared/workspace-contract";
   import type { WorkspaceInspectorSelection } from "./chat-storage";
   import type { PromptHistoryEntry } from "./prompt-history";
@@ -67,7 +69,6 @@
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
-    getOpenPaneLocations,
   } from "./pane-layout";
   import {
     buildCommandRegistry,
@@ -232,15 +233,102 @@
   const currentSession = $derived(sessions.find((session) => session.id === activeSessionId) ?? null);
   const currentCommandRollups = $derived(getVisibleCommandRollups(currentSession));
   const currentSurface = $derived(focusedSurfaceTarget);
+  type SidebarPaneTone = "neutral" | "waiting" | "error";
+  type SidebarPaneLocation = {
+    paneId: string;
+    panelId: string;
+    label: string;
+    focused: boolean;
+    tone: SidebarPaneTone;
+    contextBudget: ContextBudget | null;
+  };
+
+  function getSidebarPaneTone(
+    binding: WorkspacePaneSurfaceTarget | null | undefined,
+    paneController: ChatSurfaceController | null,
+  ): SidebarPaneTone {
+    if (paneController?.agent.state.error) {
+      return "error";
+    }
+    if (!binding?.workspaceSessionId) {
+      return "neutral";
+    }
+    const session = sessions.find((candidate) => candidate.id === binding.workspaceSessionId);
+    if (!session) {
+      return "neutral";
+    }
+    if (binding.surface === "orchestrator") {
+      if (session.status === "error") return "error";
+      if (session.status === "waiting") return "waiting";
+      return "neutral";
+    }
+    if (binding.surface === "thread") {
+      const threadId = binding.threadId;
+      if (threadId && session.threadIdsByStatus?.waiting.includes(threadId)) {
+        return "waiting";
+      }
+    }
+    return "neutral";
+  }
+
+  function buildSidebarPaneLocations(
+    predicate: (binding: WorkspacePaneSurfaceTarget) => boolean,
+  ): SidebarPaneLocation[] {
+    return paneLayout.panels
+      .filter((panel) => panel.binding && predicate(panel.binding))
+      .map((panel, index) => {
+        const paneController = runtime.getPaneController(panel.panelId);
+        return {
+          paneId: panel.panelId,
+          panelId: panel.panelId,
+          label: panel.restore?.lastKnownLocationLabel ?? (index === 0 ? "Docked" : `Docked ${index + 1}`),
+          focused: panel.panelId === paneLayout.focusedPanelId,
+          tone: getSidebarPaneTone(panel.binding, paneController),
+          contextBudget: getPaneContextBudget(paneController),
+        };
+      });
+  }
+
   const paneLocationsBySessionId = $derived(
     Object.fromEntries(
       sessions.map((session) => [
         session.id,
-        getOpenPaneLocations(
-          paneLayout,
-          (binding) => binding.workspaceSessionId === session.id,
+        buildSidebarPaneLocations(
+          (binding) => binding.workspaceSessionId === session.id && binding.surface === "orchestrator",
         ),
       ]),
+    ),
+  );
+  const paneLocationsByThreadId = $derived(
+    Object.fromEntries(
+      sessions.flatMap((session) =>
+        (session.sidebarThreads ?? []).map((thread) => [
+          thread.threadId,
+          buildSidebarPaneLocations(
+            (binding) =>
+              binding.workspaceSessionId === session.id &&
+              binding.surface === "thread" &&
+              binding.threadId === thread.threadId,
+          ),
+        ]),
+      ),
+    ),
+  );
+  const paneLocationsByWorkflowRunId = $derived(
+    Object.fromEntries(
+      sessions.flatMap((session) =>
+        (session.sidebarThreads ?? []).flatMap((thread) =>
+          thread.workflows.map((workflow) => [
+            workflow.workflowRunId,
+            buildSidebarPaneLocations(
+              (binding) =>
+                binding.workspaceSessionId === session.id &&
+                binding.surface === "workflow-inspector" &&
+                binding.workflowRunId === workflow.workflowRunId,
+            ),
+          ]),
+        ),
+      ),
     ),
   );
   const currentSurfaceLabel = $derived.by(() => {
@@ -1516,6 +1604,30 @@
     }, 0);
   }
 
+  function handleOpenSidebarHandlerThread(
+    sessionId: string,
+    thread: Pick<WorkspaceSidebarHandlerThreadRow, "threadId" | "surfacePiSessionId">,
+  ) {
+    void runSessionMutation(() =>
+      runtime.openSurface(
+        {
+          workspaceSessionId: sessionId,
+          surface: "thread",
+          surfacePiSessionId: thread.surfacePiSessionId,
+          threadId: thread.threadId,
+        },
+        { kind: "new-panel", direction: "right" },
+      ),
+    );
+  }
+
+  function handleOpenSidebarWorkflowRun(
+    sessionId: string,
+    workflow: Pick<WorkspaceSidebarWorkflowRow, "workflowRunId">,
+  ) {
+    openWorkflowInspector(workflow.workflowRunId, sessionId);
+  }
+
   async function sendPromptToHandlerThread(
     thread: Pick<WorkspaceHandlerThreadSummary, "threadId" | "surfacePiSessionId">,
     prompt: string,
@@ -2042,14 +2154,18 @@
             workspaceLabel={runtime.workspaceLabel}
             navigation={sessionNavigation}
             {activeSessionId}
-            activeSurface={currentSurface?.surface}
+            activeThreadId={currentSurface?.threadId}
             {paneLocationsBySessionId}
+            {paneLocationsByThreadId}
+            {paneLocationsByWorkflowRunId}
             {appLogSummary}
             busy={mutatingSession}
             errorMessage={sidebarError}
             onCreateSession={handleCreateSession}
             onCreateDumbSession={handleCreateDumbSession}
             onOpenSession={handleOpenSession}
+            onOpenHandlerThread={handleOpenSidebarHandlerThread}
+            onOpenWorkflowRun={handleOpenSidebarWorkflowRun}
             onRenameSession={handleRenameSession}
             onPinSession={handlePinSession}
             onUnpinSession={handleUnpinSession}

@@ -251,6 +251,31 @@ export interface StructuredHandlerThreadInspector extends StructuredHandlerThrea
   artifacts: StructuredCommandArtifactLink[];
 }
 
+export interface StructuredSidebarRowSubtitle {
+  badge: "waiting" | "error" | "workflow" | "text";
+  text: string;
+  tone: "muted" | "waiting" | "error";
+}
+
+export interface StructuredSidebarWorkflowRow {
+  workflowRunId: string;
+  workflowName: string;
+  status: StructuredWorkflowRunRecord["status"];
+  subtitle: StructuredSidebarRowSubtitle | null;
+  updatedAt: string;
+}
+
+export interface StructuredSidebarHandlerThreadRow {
+  threadId: string;
+  surfacePiSessionId: string;
+  title: string;
+  objective: string;
+  status: StructuredThreadRecord["status"];
+  subtitle: StructuredSidebarRowSubtitle | null;
+  updatedAt: string;
+  workflows: StructuredSidebarWorkflowRow[];
+}
+
 export interface StructuredSessionView {
   title: string;
   sessionStatus: StructuredSessionStatus;
@@ -275,6 +300,7 @@ export interface StructuredSessionView {
   threadIds: string[];
   latestEpisodePreview?: string | null;
   latestWorkflowRunSummary?: string | null;
+  sidebarThreads: StructuredSidebarHandlerThreadRow[];
   commandRollups: StructuredCommandRollup[];
 }
 
@@ -309,13 +335,6 @@ function getMostRecentEpisode(session: StructuredSessionSnapshot): StructuredEpi
   );
 }
 
-function getMostRecentProjectCiRun(session: StructuredSessionSnapshot) {
-  return (
-    session.ciRuns.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
-    null
-  );
-}
-
 function getMostRecentWorkflowRun(
   session: StructuredSessionSnapshot,
 ): StructuredWorkflowRunRecord | null {
@@ -326,21 +345,13 @@ function getMostRecentWorkflowRun(
   );
 }
 
-function getMostRecentActiveWorkflowRun(
+function getMostRecentOrchestratorTurnRequestSummary(
   session: StructuredSessionSnapshot,
-): StructuredWorkflowRunRecord | null {
-  return (
-    session.workflowRuns
-      .filter((workflowRun) => workflowRun.status === "running" || workflowRun.status === "waiting")
-      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null
-  );
-}
-
-function getMostRecentThread(session: StructuredSessionSnapshot): StructuredThreadRecord | null {
-  return (
-    session.threads.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
-    null
-  );
+): string | null {
+  const latestTurn = session.turns
+    .filter((turn) => turn.threadId === null && turn.requestSummary.trim().length > 0)
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  return latestTurn?.requestSummary ?? null;
 }
 
 function isCommandRollupSource(
@@ -586,6 +597,89 @@ function buildThreadWorkflowSummary(
     updatedAt: workflowRun.updatedAt,
     artifacts: buildWorkflowRunArtifactLinks(session, workflowRun.id),
   };
+}
+
+function buildWorkflowSidebarSubtitle(
+  workflowRun: StructuredWorkflowRunRecord,
+): StructuredSidebarRowSubtitle | null {
+  switch (workflowRun.status) {
+    case "running":
+      return { badge: "workflow", text: workflowRun.summary, tone: "muted" };
+    case "waiting":
+      return { badge: "waiting", text: workflowRun.summary, tone: "waiting" };
+    case "continued":
+    case "failed":
+    case "cancelled":
+      return { badge: "workflow", text: "troubleshooting", tone: "muted" };
+    default:
+      return null;
+  }
+}
+
+function buildHandlerSidebarSubtitle(
+  thread: StructuredThreadRecord,
+  latestWorkflowRun: StructuredWorkflowRunRecord | null,
+): StructuredSidebarRowSubtitle | null {
+  if (thread.wait) {
+    return { badge: "waiting", text: thread.wait.reason, tone: "waiting" };
+  }
+
+  if (thread.status === "troubleshooting") {
+    return { badge: "workflow", text: "troubleshooting", tone: "muted" };
+  }
+
+  if (
+    latestWorkflowRun &&
+    (thread.status === "running-workflow" ||
+      latestWorkflowRun.status === "running" ||
+      latestWorkflowRun.status === "waiting")
+  ) {
+    return { badge: "workflow", text: latestWorkflowRun.summary, tone: "muted" };
+  }
+
+  return null;
+}
+
+function buildSidebarWorkflowRow(
+  workflowRun: StructuredWorkflowRunRecord,
+): StructuredSidebarWorkflowRow {
+  return {
+    workflowRunId: workflowRun.id,
+    workflowName: workflowRun.workflowName,
+    status: workflowRun.status,
+    subtitle: buildWorkflowSidebarSubtitle(workflowRun),
+    updatedAt: workflowRun.updatedAt,
+  };
+}
+
+function buildSidebarThreadRow(
+  session: StructuredSessionSnapshot,
+  thread: StructuredThreadRecord,
+): StructuredSidebarHandlerThreadRow {
+  const workflowRuns = session.workflowRuns
+    .filter((workflowRun) => workflowRun.threadId === thread.id)
+    .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const latestWorkflowRun = workflowRuns[0] ?? null;
+
+  return {
+    threadId: thread.id,
+    surfacePiSessionId: thread.surfacePiSessionId,
+    title: thread.title || thread.objective,
+    objective: thread.objective,
+    status: thread.status,
+    subtitle: buildHandlerSidebarSubtitle(thread, latestWorkflowRun),
+    updatedAt: thread.updatedAt,
+    workflows: workflowRuns.map((workflowRun) => buildSidebarWorkflowRow(workflowRun)),
+  };
+}
+
+export function buildStructuredSidebarThreadRows(
+  session: StructuredSessionSnapshot,
+): StructuredSidebarHandlerThreadRow[] {
+  return session.threads
+    .filter((thread) => isDelegatedHandlerThread(session, thread))
+    .toSorted((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt))
+    .map((thread) => buildSidebarThreadRow(session, thread));
 }
 
 function buildProjectCiRunSummary(
@@ -860,33 +954,6 @@ function deriveThreadIds(threads: StructuredThreadRecord[]): string[] {
     .map((thread) => thread.id);
 }
 
-function describeWaitingThread(thread: StructuredThreadRecord): string {
-  if (thread.wait) {
-    return `Waiting: ${thread.wait.reason}`;
-  }
-
-  return `Waiting: ${thread.title}`;
-}
-
-function describeTroubleshootingThread(thread: StructuredThreadRecord): string {
-  if (thread.wait) {
-    return `Troubleshooting: ${thread.wait.reason}`;
-  }
-
-  return `Troubleshooting: ${thread.title || thread.objective}`;
-}
-
-function formatEpisodePreview(episode: StructuredEpisodeRecord): string {
-  switch (episode.kind) {
-    case "workflow":
-      return `Workflow: ${episode.summary}`;
-    case "clarification":
-      return `Waiting: ${episode.summary}`;
-    default:
-      return episode.summary;
-  }
-}
-
 function deriveLatestEpisodePreview(session: StructuredSessionSnapshot): string | null {
   return getMostRecentEpisode(session)?.summary ?? null;
 }
@@ -895,70 +962,48 @@ function deriveLatestWorkflowRunSummary(session: StructuredSessionSnapshot): str
   return getMostRecentWorkflowRun(session)?.summary ?? null;
 }
 
+function isOrchestratorOwnedWait(
+  wait: StructuredSessionSnapshot["session"]["wait"],
+): wait is NonNullable<StructuredSessionSnapshot["session"]["wait"]> & {
+  owner: { kind: "orchestrator" };
+} {
+  return wait?.owner.kind === "orchestrator";
+}
+
 function derivePreview(session: StructuredSessionSnapshot): string {
-  const commandRollups = buildCommandRollups(session);
-  if (session.session.wait) {
-    return `Waiting: ${session.session.wait.reason}`;
+  const wait = session.session.wait;
+  if (isOrchestratorOwnedWait(wait)) {
+    return wait.reason;
   }
 
-  const activeWorkflowRun = getMostRecentActiveWorkflowRun(session);
-  if (activeWorkflowRun) {
-    return `Workflow: ${activeWorkflowRun.summary}`;
-  }
-
-  const latestEpisode = getMostRecentEpisode(session);
-  if (latestEpisode) {
-    return formatEpisodePreview(latestEpisode);
-  }
-
-  const latestCommandRollup = commandRollups[0];
+  const commandRollups = buildCommandRollups({
+    commands: session.commands.filter((command) => command.threadId === null),
+  });
+  const latestCommandRollup = commandRollups[0] ?? null;
   if (latestCommandRollup) {
     return latestCommandRollup.summary;
   }
 
-  const latestProjectCiRun = getMostRecentProjectCiRun(session);
-  if (latestProjectCiRun) {
-    return `Project CI: ${latestProjectCiRun.summary}`;
+  const latestEpisode = getMostRecentEpisode(session);
+  if (latestEpisode) {
+    return latestEpisode.summary;
   }
 
-  const latestWorkflowRun = getMostRecentWorkflowRun(session);
-  if (latestWorkflowRun) {
-    return `Workflow: ${latestWorkflowRun.summary}`;
-  }
-
-  const latestThread = getMostRecentThread(session);
-  if (latestThread?.status === "waiting") {
-    return describeWaitingThread(latestThread);
-  }
-
-  if (latestThread?.status === "troubleshooting") {
-    return describeTroubleshootingThread(latestThread);
-  }
-
-  if (latestThread) {
-    return latestThread.title || latestThread.objective;
-  }
-
-  return session.pi.title;
+  return getMostRecentOrchestratorTurnRequestSummary(session) ?? "";
 }
 
 function deriveUpdatedAt(session: StructuredSessionSnapshot): string {
+  const wait = session.session.wait;
   const timestamps = [
     Date.parse(session.pi.updatedAt),
-    ...session.turns.map((turn) => Date.parse(turn.updatedAt)),
-    ...session.threads.map((thread) => Date.parse(thread.updatedAt)),
-    ...session.commands.map((command) => Date.parse(command.updatedAt)),
+    ...session.turns
+      .filter((turn) => turn.threadId === null)
+      .map((turn) => Date.parse(turn.updatedAt)),
+    ...session.commands
+      .filter((command) => command.threadId === null)
+      .map((command) => Date.parse(command.updatedAt)),
     ...session.episodes.map((episode) => Date.parse(episode.createdAt)),
-    ...session.ciRuns.map((ciRun) => Date.parse(ciRun.updatedAt)),
-    ...session.ciCheckResults.map((checkResult) => Date.parse(checkResult.updatedAt)),
-    ...session.workflowRuns.map((workflowRun) => Date.parse(workflowRun.updatedAt)),
-    ...session.workflowTaskAttempts.map((workflowTaskAttempt) =>
-      Date.parse(workflowTaskAttempt.updatedAt),
-    ),
-    ...session.workflowTaskMessages.map((message) => Date.parse(message.createdAt)),
-    ...session.artifacts.map((artifact) => Date.parse(artifact.createdAt)),
-    ...session.events.map((event) => Date.parse(event.at)),
-    ...(session.session.wait ? [Date.parse(session.session.wait.since)] : []),
+    ...(isOrchestratorOwnedWait(wait) ? [Date.parse(wait.since)] : []),
   ].filter((value) => Number.isFinite(value));
 
   const latest = timestamps.length > 0 ? Math.max(...timestamps) : Date.parse(session.pi.updatedAt);
@@ -978,21 +1023,22 @@ function getLatestFailureTimestamp(session: StructuredSessionSnapshot): number |
 
 export function deriveStructuredSessionStatus(input: {
   wait: StructuredSessionSnapshot["session"]["wait"];
-  threads: Array<Pick<StructuredThreadRecord, "status" | "updatedAt">>;
+  turns?: Array<Pick<StructuredTurnRecord, "threadId" | "status" | "updatedAt">>;
 }): StructuredSessionStatus {
-  if (input.wait) {
+  if (isOrchestratorOwnedWait(input.wait)) {
     return "waiting";
   }
 
-  if (input.threads.some((thread) => thread.status === "troubleshooting")) {
+  const orchestratorTurns = input.turns?.filter((turn) => turn.threadId === null) ?? [];
+  if (orchestratorTurns.some((turn) => turn.status === "failed")) {
     return "error";
   }
 
-  if (
-    input.threads.some(
-      (thread) => thread.status === "running-handler" || thread.status === "running-workflow",
-    )
-  ) {
+  if (orchestratorTurns.some((turn) => turn.status === "waiting")) {
+    return "waiting";
+  }
+
+  if (orchestratorTurns.some((turn) => turn.status === "running")) {
     return "running";
   }
 
@@ -1014,9 +1060,10 @@ export function buildStructuredSessionView(
     title: session.pi.title,
     sessionStatus: deriveStructuredSessionStatus({
       wait: session.session.wait,
-      threads: session.threads.map((thread) => ({
-        status: thread.status,
-        updatedAt: thread.updatedAt,
+      turns: session.turns.map((turn) => ({
+        threadId: turn.threadId,
+        status: turn.status,
+        updatedAt: turn.updatedAt,
       })),
     }),
     wait: structuredClone(session.session.wait),
@@ -1035,6 +1082,7 @@ export function buildStructuredSessionView(
     threadIds: deriveThreadIds(delegatedThreads),
     latestEpisodePreview,
     latestWorkflowRunSummary,
+    sidebarThreads: buildStructuredSidebarThreadRows(session),
     commandRollups,
   };
 }

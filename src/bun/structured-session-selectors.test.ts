@@ -370,26 +370,27 @@ function createSessionSnapshot(
 }
 
 describe("structured session selectors", () => {
-  it("derives session status from wait, running work, latest failed thread, and idle state", () => {
+  it("derives session status from orchestrator-local wait and turns only", () => {
     expect(
       deriveStructuredSessionStatus({
         wait: {
-          owner: { kind: "thread", threadId: "thread-001" },
+          owner: { kind: "orchestrator" },
           kind: "user",
           reason: "Need clarification",
           resumeWhen: "Resume on answer",
           since: "2026-04-18T10:00:00.000Z",
         },
-        threads: [],
+        turns: [],
       }),
     ).toBe("waiting");
 
     expect(
       deriveStructuredSessionStatus({
         wait: null,
-        threads: [
+        turns: [
           {
-            status: "running-handler",
+            threadId: null,
+            status: "running",
             updatedAt: "2026-04-18T10:05:00.000Z",
           },
         ],
@@ -399,13 +400,15 @@ describe("structured session selectors", () => {
     expect(
       deriveStructuredSessionStatus({
         wait: null,
-        threads: [
+        turns: [
           {
-            status: "completed",
+            threadId: "thread-child",
+            status: "failed",
             updatedAt: "2026-04-18T10:01:00.000Z",
           },
           {
-            status: "troubleshooting",
+            threadId: null,
+            status: "failed",
             updatedAt: "2026-04-18T10:02:00.000Z",
           },
         ],
@@ -415,9 +418,10 @@ describe("structured session selectors", () => {
     expect(
       deriveStructuredSessionStatus({
         wait: null,
-        threads: [
+        turns: [
           {
-            status: "completed",
+            threadId: "thread-child",
+            status: "failed",
             updatedAt: "2026-04-18T10:05:00.000Z",
           },
         ],
@@ -578,7 +582,7 @@ describe("structured session selectors", () => {
     const view = buildStructuredSessionView(snapshot);
     expect(view).toEqual({
       title: "Selector Session",
-      sessionStatus: "waiting",
+      sessionStatus: "idle",
       wait: snapshot.session.wait,
       counts: {
         turns: 1,
@@ -600,6 +604,58 @@ describe("structured session selectors", () => {
       threadIds: ["thread-001", "thread-002", "thread-003"],
       latestEpisodePreview: "Workflow episode summary",
       latestWorkflowRunSummary: "Workflow waiting for clarification",
+      sidebarThreads: [
+        {
+          threadId: "thread-001",
+          surfacePiSessionId: "pi-thread-002",
+          title: "Direct objective",
+          objective: "Direct body",
+          status: "completed",
+          subtitle: null,
+          updatedAt: "2026-04-18T10:01:00.000Z",
+          workflows: [],
+        },
+        {
+          threadId: "thread-002",
+          surfacePiSessionId: "pi-thread-003",
+          title: "Project CI objective",
+          objective: "Project CI body",
+          status: "troubleshooting",
+          subtitle: {
+            badge: "workflow",
+            text: "troubleshooting",
+            tone: "muted",
+          },
+          updatedAt: "2026-04-18T10:02:00.000Z",
+          workflows: [],
+        },
+        {
+          threadId: "thread-003",
+          surfacePiSessionId: "pi-thread-001",
+          title: "Workflow objective",
+          objective: "Workflow body",
+          status: "waiting",
+          subtitle: {
+            badge: "waiting",
+            text: "Need clarification",
+            tone: "waiting",
+          },
+          updatedAt: "2026-04-18T10:03:00.000Z",
+          workflows: [
+            {
+              workflowRunId: "workflow-001",
+              workflowName: "selector-workflow",
+              status: "waiting",
+              subtitle: {
+                badge: "waiting",
+                text: "Workflow waiting for clarification",
+                tone: "waiting",
+              },
+              updatedAt: "2026-04-18T10:03:00.000Z",
+            },
+          ],
+        },
+      ],
       commandRollups: [
         {
           commandId: "command-001",
@@ -624,9 +680,9 @@ describe("structured session selectors", () => {
     expect(summary).toEqual({
       sessionId: "session-selectors",
       title: "Selector Session",
-      sessionStatus: "waiting",
-      status: "waiting",
-      preview: "Waiting: Need workflow ownership decision",
+      sessionStatus: "idle",
+      status: "idle",
+      preview: "Workflow episode summary",
       updatedAt: "2026-04-18T10:03:30.000Z",
       isPinned: false,
       pinnedAt: null,
@@ -1295,7 +1351,7 @@ describe("structured session selectors", () => {
     });
 
     expect(buildStructuredSessionView(snapshot)).toMatchObject({
-      sessionStatus: "running",
+      sessionStatus: "idle",
       counts: {
         threads: 1,
       },
@@ -1306,10 +1362,17 @@ describe("structured session selectors", () => {
         troubleshooting: [],
       },
       threadIds: ["thread-handler-complete"],
+      sidebarThreads: [
+        {
+          threadId: "thread-handler-complete",
+          status: "completed",
+          subtitle: null,
+        },
+      ],
     });
 
     expect(buildStructuredSessionSummaryProjection(snapshot)).toMatchObject({
-      status: "running",
+      status: "idle",
       counts: {
         threads: 1,
       },
@@ -1317,13 +1380,22 @@ describe("structured session selectors", () => {
     });
   });
 
-  it("prefers active workflow runs, then terminal episodes, then Project CI summaries in preview", () => {
+  it("keeps workflow and CI summaries out of the parent preview and exposes them on child rows", () => {
     const workflowSnapshot = createSessionSnapshot({
       session: {
         id: "session-workflow-preview",
         orchestratorPiSessionId: "session-workflow-preview",
         wait: null,
       },
+      threads: [
+        {
+          id: "thread-300",
+          title: "Workflow handler",
+          objective: "Run delegated workflow.",
+          status: "running-workflow",
+          updatedAt: "2026-04-18T10:03:00.000Z",
+        },
+      ],
       workflowRuns: [
         {
           id: "workflow-300",
@@ -1333,19 +1405,21 @@ describe("structured session selectors", () => {
           updatedAt: "2026-04-18T10:03:00.000Z",
         },
       ],
-      episodes: [
-        {
-          id: "episode-300",
-          threadId: "thread-300",
-          kind: "workflow",
-          summary: "Workflow episode summary",
-          createdAt: "2026-04-18T10:04:00.000Z",
-        },
-      ],
     });
     const workflowSummary = buildStructuredSessionSummaryProjection(workflowSnapshot);
-    expect(workflowSummary.preview).toBe("Workflow: Delegated workflow is running.");
+    const workflowView = buildStructuredSessionView(workflowSnapshot);
+    expect(workflowSummary.preview).toBe("");
     expect(workflowSummary.latestWorkflowRunSummary).toBe("Delegated workflow is running.");
+    expect(workflowView.sidebarThreads[0]?.subtitle).toEqual({
+      badge: "workflow",
+      text: "Delegated workflow is running.",
+      tone: "muted",
+    });
+    expect(workflowView.sidebarThreads[0]?.workflows[0]?.subtitle).toEqual({
+      badge: "workflow",
+      text: "Delegated workflow is running.",
+      tone: "muted",
+    });
 
     const episodeSnapshot = createSessionSnapshot({
       session: {
@@ -1398,7 +1472,7 @@ describe("structured session selectors", () => {
       ],
     });
     const ciSummary = buildStructuredSessionSummaryProjection(ciSnapshot);
-    expect(ciSummary.preview).toBe("Project CI: Project CI passed.");
+    expect(ciSummary.preview).toBe("");
 
     const waitingSnapshot = createSessionSnapshot({
       session: {
@@ -1412,6 +1486,22 @@ describe("structured session selectors", () => {
           since: "2026-04-18T10:03:00.000Z",
         },
       },
+      threads: [
+        {
+          id: "thread-500",
+          title: "Waiting handler",
+          objective: "Resume workflow after clarification.",
+          status: "waiting",
+          wait: {
+            owner: "workflow",
+            kind: "user",
+            reason: "Need clarification before workflow resume.",
+            resumeWhen: "Resume when the rollout owner is confirmed.",
+            since: "2026-04-18T10:03:00.000Z",
+          },
+          updatedAt: "2026-04-18T10:03:00.000Z",
+        },
+      ],
       workflowRuns: [
         {
           id: "workflow-500",
@@ -1423,8 +1513,67 @@ describe("structured session selectors", () => {
       ],
     });
     const waitingSummary = buildStructuredSessionSummaryProjection(waitingSnapshot);
-    expect(waitingSummary.preview).toBe("Waiting: Need clarification before workflow resume.");
-    expect(waitingSummary.status).toBe("waiting");
+    const waitingView = buildStructuredSessionView(waitingSnapshot);
+    expect(waitingSummary.preview).toBe("");
+    expect(waitingSummary.status).toBe("idle");
+    expect(waitingView.sidebarThreads[0]?.subtitle).toEqual({
+      badge: "waiting",
+      text: "Need clarification before workflow resume.",
+      tone: "waiting",
+    });
+
+    const failedWorkflowSnapshot = createSessionSnapshot({
+      session: {
+        id: "session-failed-workflow-preview",
+        orchestratorPiSessionId: "session-failed-workflow-preview",
+        wait: null,
+      },
+      threads: [
+        {
+          id: "thread-600",
+          title: "Repair workflow",
+          objective: "Inspect failed workflow.",
+          status: "troubleshooting",
+          updatedAt: "2026-04-18T10:06:00.000Z",
+        },
+      ],
+      workflowRuns: [
+        {
+          id: "workflow-600",
+          threadId: "thread-600",
+          status: "failed",
+          summary: "Workflow failed while editing.",
+          updatedAt: "2026-04-18T10:06:00.000Z",
+        },
+      ],
+    });
+    const failedWorkflowView = buildStructuredSessionView(failedWorkflowSnapshot);
+    expect(failedWorkflowView.sidebarThreads[0]?.workflows[0]?.subtitle).toEqual({
+      badge: "workflow",
+      text: "troubleshooting",
+      tone: "muted",
+    });
+  });
+
+  it("falls back to the latest turn request instead of repeating the session title", () => {
+    const snapshot = createSessionSnapshot({
+      turns: [
+        {
+          id: "turn-older",
+          requestSummary: "Initial parser investigation request.",
+          updatedAt: "2026-04-18T10:00:00.000Z",
+        },
+        {
+          id: "turn-newer",
+          requestSummary: "Check whether the sidebar preview duplicates the title.",
+          updatedAt: "2026-04-18T10:05:00.000Z",
+        },
+      ],
+    });
+
+    const summary = buildStructuredSessionSummaryProjection(snapshot);
+    expect(summary.title).toBe("Selector Session");
+    expect(summary.preview).toBe("Check whether the sidebar preview duplicates the title.");
   });
 
   it("groups thread ids by status and ignores completed threads", () => {

@@ -40,6 +40,13 @@ function assistantMessage(
   };
 }
 
+function assistantThinkingMessage(thinking: string, timestamp = Date.now()): AgentMessage {
+  return {
+    ...assistantMessage("", "stop", timestamp),
+    content: [{ type: "thinking", thinking }],
+  } as unknown as AgentMessage;
+}
+
 describe("session projection", () => {
   it("prefers explicit names over generated titles", () => {
     expect(
@@ -66,13 +73,33 @@ describe("session projection", () => {
     ).toBe("New Session");
   });
 
-  it("uses the latest visible message for the preview", () => {
+  it("uses the latest user message for the preview", () => {
     expect(
       getSessionPreview({
         firstMessage: "fallback",
-        messages: [userMessage("first"), assistantMessage("latest assistant reply")],
+        messages: [
+          userMessage("first"),
+          assistantMessage("latest assistant reply"),
+          userMessage("latest user request"),
+        ],
       }),
-    ).toBe("latest assistant reply");
+    ).toBe("latest user request");
+  });
+
+  it("does not expose assistant thinking in the preview", () => {
+    expect(
+      getSessionPreview({
+        firstMessage: "fallback",
+        messages: [
+          userMessage("fork from this request"),
+          assistantThinkingMessage("private reasoning that should not appear"),
+        ],
+      }),
+    ).toBe("fork from this request");
+  });
+
+  it("leaves the preview empty before the first turn", () => {
+    expect(getSessionPreview({ firstMessage: "", messages: [] })).toBe("");
   });
 
   it("projects parent session ids from persisted paths", () => {
@@ -101,7 +128,7 @@ describe("session projection", () => {
     });
 
     expect(summary.title).toBe("Investigate");
-    expect(summary.preview).toBe("Done");
+    expect(summary.preview).toBe("Investigate");
     expect(summary.parentSessionId).toBeUndefined();
     expect(summary.status).toBe("idle");
     expect(summary.updatedAt).toBe("2026-04-10T10:06:00.000Z");
@@ -127,7 +154,7 @@ describe("session projection", () => {
     });
 
     expect(summary.status).toBe("idle");
-    expect(summary.preview).toBe("The workflow failed.");
+    expect(summary.preview).toBe("Investigate the failing workflow.");
   });
 
   it("projects inactive session summaries from metadata only", () => {
