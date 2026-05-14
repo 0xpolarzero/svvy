@@ -43,7 +43,6 @@
   ];
 
   let readModel = $state<AppLogReadModel | null>(null);
-  let selectedId = $state<string | null>(null);
   let expandedIds = $state(new Set<string>());
   let levelFilter = $state<AppLogLevel | "all">("all");
   let sourceFilter = $state<AppLogSource | "all">("all");
@@ -77,9 +76,6 @@
       source: sourceFilter,
       query,
     }),
-  );
-  const selectedEntry = $derived(
-    visibleEntries.find((entry) => entry.id === selectedId) ?? visibleEntries.at(-1) ?? null,
   );
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 0,
@@ -189,7 +185,6 @@
   }
 
   function toggleLogRow(entry: AppLogEntry) {
-    selectedId = entry.id;
     toggleExpanded(entry.id);
   }
 
@@ -292,9 +287,6 @@
       });
       readModel = next;
       hasOlderLogs = next.entries.length >= LOG_LIST_LIMIT;
-      if (!selectedId || !next.entries.some((entry) => entry.id === selectedId)) {
-        selectedId = next.entries.at(-1)?.id ?? null;
-      }
       if (shouldFollowTail) {
         scrollToTail();
       } else {
@@ -644,7 +636,6 @@
           <div
             data-index={row.index}
             use:measureLogRow
-            class:active={selectedEntry?.id === entry.id}
             class:expanded={expandedIds.has(entry.id)}
             class={`log-row level-${entry.level}`.trim()}
             role="button"
@@ -734,33 +725,6 @@
           </button>
         {/if}
       </div>
-
-      <aside class="logs-detail" aria-label="Selected log details">
-        {#if selectedEntry}
-          <header>
-            <Badge tone={levelTone(selectedEntry.level)}>{selectedEntry.level}</Badge>
-            <h3>{selectedEntry.message}</h3>
-            <code>{selectedEntry.source}</code>
-          </header>
-          <dl>
-            <dt>Sequence</dt><dd>#{selectedEntry.seq}</dd>
-            <dt>Created</dt><dd>{selectedEntry.createdAt}</dd>
-            {#each relatedIds(selectedEntry) as related (`selected:${related.label}`)}
-              <dt>{related.label}</dt><dd><code>{related.value}</code></dd>
-            {/each}
-          </dl>
-          {#if selectedEntry.details}
-            <h4>Details</h4>
-            <pre>{JSON.stringify(selectedEntry.details, null, 2)}</pre>
-          {/if}
-          {#if selectedEntry.error}
-            <h4>Error</h4>
-            <pre class="error-block">{JSON.stringify(selectedEntry.error, null, 2)}</pre>
-          {/if}
-        {:else}
-          <p class="logs-empty">Select a log entry.</p>
-        {/if}
-      </aside>
     </div>
   {/if}
 </section>
@@ -813,8 +777,6 @@
 
   .logs-header p,
   .logs-header h2,
-  .logs-detail h3,
-  .logs-detail h4,
   .logs-message,
   .logs-empty {
     margin: 0;
@@ -965,8 +927,6 @@
   }
 
   .logs-body {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(14rem, 30%);
     min-height: 0;
     overflow: hidden;
   }
@@ -977,7 +937,6 @@
     overflow: auto;
     overscroll-behavior: contain;
     padding: 0.5rem;
-    border-right: 1px solid var(--ui-border-soft);
   }
 
   .logs-virtual-spacer {
@@ -1019,11 +978,6 @@
   .log-row:hover {
     border-color: color-mix(in oklab, var(--ui-border-strong) 45%, transparent);
     background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
-  }
-
-  .log-row.active {
-    border-color: var(--ui-border-accent);
-    background: color-mix(in oklab, var(--ui-accent-soft) 70%, transparent);
   }
 
   .row-main {
@@ -1169,32 +1123,6 @@
     background: color-mix(in oklab, var(--ui-surface) 62%, transparent);
   }
 
-  .logs-detail {
-    min-width: 0;
-    overflow: auto;
-    padding: 0.7rem;
-  }
-
-  .logs-detail header {
-    display: grid;
-    gap: 0.28rem;
-    margin-bottom: 0.7rem;
-  }
-
-  .logs-detail h3 {
-    font-size: 0.88rem;
-    line-height: 1.35;
-  }
-
-  .logs-detail h4 {
-    margin-top: 0.8rem;
-    margin-bottom: 0.34rem;
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: 0.62rem;
-    text-transform: uppercase;
-  }
-
   dl {
     display: grid;
     grid-template-columns: 5.5rem minmax(0, 1fr);
@@ -1304,16 +1232,5 @@
       overflow-x: auto;
     }
 
-    .logs-body {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .logs-detail {
-      display: none;
-    }
-
-    .logs-list {
-      border-right: 0;
-    }
   }
 </style>
