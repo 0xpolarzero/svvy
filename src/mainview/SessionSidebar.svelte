@@ -71,7 +71,7 @@
     workspaceLabel,
     navigation,
     activeSessionId,
-    activeOrchestratorSessionId = activeSessionId,
+    activeOrchestratorSessionId,
     activeThreadId,
     paneLocationsBySessionId = {},
     paneLocationsByThreadId = {},
@@ -687,7 +687,6 @@
   .sidebar-child-list {
     margin: -0.02rem 0 0.18rem 0.72rem;
     padding-left: 0.44rem;
-    border-left: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
   }
 
   .sidebar-workflow-list {
