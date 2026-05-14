@@ -41,6 +41,7 @@
     workspaceLabel: string;
     navigation: WorkspaceSessionNavigationReadModel;
     activeSessionId?: string;
+    activeOrchestratorSessionId?: string;
     activeThreadId?: string;
     paneLocationsBySessionId?: Record<string, SidebarPaneLocation[]>;
     paneLocationsByThreadId?: Record<string, SidebarPaneLocation[]>;
@@ -70,6 +71,7 @@
     workspaceLabel,
     navigation,
     activeSessionId,
+    activeOrchestratorSessionId = activeSessionId,
     activeThreadId,
     paneLocationsBySessionId = {},
     paneLocationsByThreadId = {},
@@ -329,7 +331,7 @@
           <p class="sidebar-section-label">Pinned</p>
           {#each navigation.pinnedSessions as session (session.id)}
             <SessionListItem
-              active={session.id === activeSessionId}
+              active={session.id === activeOrchestratorSessionId}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {session}
@@ -350,7 +352,7 @@
           <p class="sidebar-section-label">Active</p>
           {#each navigation.activeSessions as session (session.id)}
             <SessionListItem
-              active={session.id === activeSessionId}
+              active={session.id === activeOrchestratorSessionId}
               disabled={busy && session.id !== activeSessionId}
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {session}
@@ -386,7 +388,7 @@
           {#if !navigation.archived.collapsed}
             {#each navigation.archived.sessions as session (session.id)}
               <SessionListItem
-                active={session.id === activeSessionId}
+                active={session.id === activeOrchestratorSessionId}
                 disabled={busy && session.id !== activeSessionId}
                 paneLocations={paneLocationsBySessionId[session.id] ?? []}
                 {session}

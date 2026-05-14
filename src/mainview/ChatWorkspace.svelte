@@ -3,7 +3,6 @@
   import { createHotkeys } from "@tanstack/svelte-hotkeys";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
-  import PanelRightIcon from "@lucide/svelte/icons/panel-right";
   import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import type { SessionMode } from "../shared/agent-settings";
@@ -2154,6 +2153,7 @@
             workspaceLabel={runtime.workspaceLabel}
             navigation={sessionNavigation}
             {activeSessionId}
+            activeOrchestratorSessionId={currentSurface?.surface === "orchestrator" ? activeSessionId : undefined}
             activeThreadId={currentSurface?.threadId}
             {paneLocationsBySessionId}
             {paneLocationsByThreadId}
@@ -2203,28 +2203,6 @@
     <section class="workspace-main">
       <header class="workspace-main-header">
         <div class="workspace-main-meta" role="toolbar" aria-label="Workspace actions">
-          {#if currentSurface?.surface === "thread"}
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={mutatingSession}
-              onclick={() => void handleResetSurfaceTarget()}
-            >
-              Return to orchestrator
-            </Button>
-          {/if}
-          <Tooltip label={showArtifactsPanel ? "Hide artifacts inspector" : "Show artifacts inspector"} side="bottom" disabled={!hasArtifacts}>
-            <button
-              class="header-icon-button"
-              type="button"
-              aria-pressed={showArtifactsPanel}
-              aria-label="Toggle artifacts inspector"
-              disabled={!hasArtifacts}
-              onclick={() => (showArtifactsPanel = !showArtifactsPanel)}
-            >
-              <PanelRightIcon aria-hidden="true" size={14} strokeWidth={1.85} />
-            </button>
-          </Tooltip>
           {#if projectCiStatus && hasActionableProjectCiStatus}
             <div class="project-ci-compact" aria-label="Project CI summary">
               <Badge tone={getProjectCiStatusTone(projectCiStatus.status)}>
