@@ -112,6 +112,8 @@
         {/if}
         {#if session.isUnread}
           <span class="session-unread-dot" aria-hidden="true"></span>
+        {:else if isWorking}
+          <span class="session-unread-dot session-working-dot" aria-hidden="true"></span>
         {:else}
           <span>{formatCompactRelativeSessionTime(session.updatedAt)}</span>
         {/if}
@@ -337,6 +339,12 @@
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--ui-accent) 16%, transparent);
   }
 
+  .session-working-dot {
+    background: color-mix(in oklab, var(--ui-text-tertiary) 86%, var(--ui-surface));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ui-text-tertiary) 14%, transparent);
+    animation: session-working-dot-blink 1.4s ease-in-out infinite;
+  }
+
   .session-main-body {
     display: grid;
     gap: 0.16rem;
@@ -411,6 +419,18 @@
     }
   }
 
+  @keyframes session-working-dot-blink {
+    0%,
+    100% {
+      opacity: 0.32;
+      transform: scale(0.86);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
   .session-inline-actions {
     position: absolute;
     top: 0.32rem;
@@ -469,7 +489,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .blinking {
+    .blinking,
+    .session-working-dot {
       animation: none;
     }
   }

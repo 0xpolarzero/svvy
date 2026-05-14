@@ -129,15 +129,6 @@ export function getSessionSidebarSubtitle(summary: WorkspaceSessionSummary): Ses
     };
   }
 
-  if (summary.status === "running") {
-    return {
-      badge: null,
-      text: "...",
-      tone: "muted",
-      blinking: true,
-    };
-  }
-
   return null;
 }
 

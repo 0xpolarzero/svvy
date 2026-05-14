@@ -185,11 +185,6 @@ describe("getSessionSidebarSubtitle", () => {
 
     expect(
       getSessionSidebarSubtitle(session({ id: "session-running", title: "Running", status: "running" })),
-    ).toEqual({
-      badge: null,
-      text: "...",
-      tone: "muted",
-      blinking: true,
-    });
+    ).toBeNull();
   });
 });

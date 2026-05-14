@@ -311,7 +311,6 @@
           {@const threadPaneLocations = paneLocationsByThreadId[thread.threadId] ?? []}
           {@const threadPrimaryPane = getPrimaryPaneLocation(threadPaneLocations)}
           {@const threadWorking = isThreadWorking(thread)}
-          {@const threadPreview = thread.subtitle ? null : threadWorking ? "..." : null}
           <button
             type="button"
             class={`sidebar-child-row handler-row status-${thread.status} ${session.id === activeSessionId && thread.threadId === activeThreadId ? "active" : ""} ${threadPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(threadPaneLocations)} ${threadWorking ? "working" : ""}`.trim()}
@@ -324,10 +323,6 @@
                 <span class={getSubtitleClass(thread.subtitle, threadWorking)}>
                   <span>{thread.subtitle.badge}</span>
                   <span>{thread.subtitle.text}</span>
-                </span>
-              {:else if threadPreview}
-                <span class="sidebar-child-subtitle text-only blinking">
-                  <span>{threadPreview}</span>
                 </span>
               {/if}
               {#if threadPrimaryPane?.contextBudget}
