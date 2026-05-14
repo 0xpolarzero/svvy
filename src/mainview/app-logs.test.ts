@@ -1,7 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type { AppLogEntry } from "../shared/workspace-contract";
 import { deriveAppLogUpdatePolicy, isAppLogViewportBottomPinned } from "./app-log-scroll";
-import { filterAppLogEntries, formatAppLogCount } from "./app-logs";
+import {
+  filterAppLogEntries,
+  formatAppLogCount,
+  formatAppLogUnreadTitle,
+  getVisibleAppLogUnreadBadges,
+} from "./app-logs";
 
 function entry(overrides: Partial<AppLogEntry>): AppLogEntry {
   return {
@@ -20,6 +25,35 @@ describe("formatAppLogCount", () => {
     expect(formatAppLogCount(0)).toBe("0");
     expect(formatAppLogCount(99)).toBe("99");
     expect(formatAppLogCount(100)).toBe("99+");
+  });
+});
+
+describe("getVisibleAppLogUnreadBadges", () => {
+  it("shows unread badges for warnings and errors but not info logs", () => {
+    const summary = {
+      latestSeq: 4,
+      seenSeq: 0,
+      unread: { total: 4, info: 2, warning: 1, error: 1 },
+      totals: { total: 4, info: 2, warning: 1, error: 1 },
+    };
+
+    expect(getVisibleAppLogUnreadBadges(summary)).toEqual([
+      { level: "error", count: 1 },
+      { level: "warning", count: 1 },
+    ]);
+    expect(formatAppLogUnreadTitle(summary)).toBe("Open app logs: 1 errors, 1 warnings unread");
+  });
+
+  it("does not expose a sidebar unread count for info-only logs", () => {
+    const summary = {
+      latestSeq: 2,
+      seenSeq: 0,
+      unread: { total: 2, info: 2, warning: 0, error: 0 },
+      totals: { total: 2, info: 2, warning: 0, error: 0 },
+    };
+
+    expect(getVisibleAppLogUnreadBadges(summary)).toEqual([]);
+    expect(formatAppLogUnreadTitle(summary)).toBe("Open app logs");
   });
 });
 

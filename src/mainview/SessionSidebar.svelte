@@ -11,7 +11,11 @@
   import ZapIcon from "@lucide/svelte/icons/zap";
   import { getShortcutCompact } from "../shared/shortcut-registry";
   import type { AppLogSummary, WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
-  import { formatAppLogCount } from "./app-logs";
+  import {
+    formatAppLogCount,
+    formatAppLogUnreadTitle,
+    getVisibleAppLogUnreadBadges,
+  } from "./app-logs";
   import SessionListItem from "./SessionListItem.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
@@ -100,10 +104,9 @@
   }
 
   const appLogUnreadTitle = $derived.by(() => {
-    const unread = appLogSummary?.unread;
-    if (!unread || unread.total === 0) return "Open app logs";
-    return `Open app logs: ${unread.error} errors, ${unread.warning} warnings, ${unread.info} info unread`;
+    return formatAppLogUnreadTitle(appLogSummary);
   });
+  const appLogUnreadBadges = $derived(getVisibleAppLogUnreadBadges(appLogSummary));
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -301,15 +304,9 @@
             <span class="sidebar-action-icon"><LogsIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Logs</span>
             <span class="log-unread-badges" aria-hidden="true">
-              {#if (appLogSummary?.unread.error ?? 0) > 0}
-                <small class="log-badge error">{formatAppLogCount(appLogSummary!.unread.error)}</small>
-              {/if}
-              {#if (appLogSummary?.unread.warning ?? 0) > 0}
-                <small class="log-badge warning">{formatAppLogCount(appLogSummary!.unread.warning)}</small>
-              {/if}
-              {#if (appLogSummary?.unread.info ?? 0) > 0}
-                <small class="log-badge info">{formatAppLogCount(appLogSummary!.unread.info)}</small>
-              {/if}
+              {#each appLogUnreadBadges as badge (badge.level)}
+                <small class={`log-badge ${badge.level}`}>{formatAppLogCount(badge.count)}</small>
+              {/each}
             </span>
           </button>
         </Tooltip>

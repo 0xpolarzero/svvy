@@ -27,11 +27,12 @@ This is product observability, not a developer console dump. Logs should be conc
 
 The left sidebar gains a `Logs` button directly above `Saved workflows`.
 
-The `Logs` button shows compact unread counts by category:
+The `Logs` button shows compact unread counts for action-worthy categories:
 
-- info count with the info semantic color
 - warning count with the warning semantic color
 - error count with the danger semantic color
+
+Info logs still contribute to the logs pane's totals and filters, but the sidebar does not show an unread info badge.
 
 Unread counts are based on log sequence numbers, not timestamps. Opening or focusing the app logs pane marks logs as seen through the current latest sequence.
 
@@ -203,15 +204,17 @@ Add requests to `ChatRPCSchema.bun.requests`:
 getAppLogs: {
   params: AppLogQuery | undefined;
   response: AppLogReadModel;
-};
+}
 getAppLogSummary: {
   params: undefined;
   response: AppLogSummary;
-};
+}
 markAppLogsSeen: {
-  params: { throughSeq: number };
+  params: {
+    throughSeq: number;
+  }
   response: AppLogSummary;
-};
+}
 ```
 
 Add webview message:
@@ -249,12 +252,11 @@ Visual rules:
 
 - use an existing lucide log/list icon, such as `Logs`, `ListTree`, or closest available equivalent
 - label is `Logs`
-- show compact unread indicators on the right
+- show compact warning and error unread indicators on the right
 - cap displayed counts at `99+`
 - hide zero categories
 - use tabular numerals
 - use semantic colors from the design system:
-  - info: `--ui-info`
   - warning: `--ui-warning`
   - error: `--ui-danger`
 - when unread errors exist, the row may receive subtle danger emphasis, but must not become a loud alert block
