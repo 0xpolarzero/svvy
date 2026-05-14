@@ -113,6 +113,19 @@ function userMessage(text: string): Message {
   };
 }
 
+function userMessageText(message: AgentMessage | null | undefined): string {
+  if (!message || message.role !== "user") {
+    return "";
+  }
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  return message.content
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
 function assistantMessage(
   text: string,
   options: {
@@ -384,6 +397,7 @@ async function createHandlerThreadHarness(
         objective: string;
         contextKeys: [];
         loadedByCommandId: string;
+        autoStart?: boolean;
       }): Promise<{ id: string; surfacePiSessionId: string }>;
     }
   ).createHandlerThread({
@@ -394,6 +408,7 @@ async function createHandlerThreadHarness(
     objective: input.objective,
     contextKeys: [],
     loadedByCommandId: orchestratorThread.id,
+    autoStart: false,
   });
 
   return {
@@ -1286,6 +1301,115 @@ describe("WorkspaceSessionCatalog", () => {
           (payload) => payload.target.surfacePiSessionId === created.target.surfacePiSessionId,
         ),
       ).toBe(false);
+    } finally {
+      catalog.setSurfaceSyncListener(null);
+      await catalog.dispose();
+    }
+  });
+
+  it("auto-starts a new handler thread and clears live handler activity after a normal reply", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
+
+    try {
+      const created = await catalog.createSession({ title: "Auto Start Handler" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const sessionPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const handlerPrompts: string[] = [];
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        const surface = findManagedSurfaceBySession(catalog, this);
+        if (surface?.actorKind === "handler") {
+          handlerPrompts.push(promptText);
+          appendMessagesToSession(this, [
+            userMessage("Inspect the repository and report the result."),
+            assistantMessage("I started the delegated objective."),
+          ]);
+          return;
+        }
+
+        appendMessagesToSession(this, [
+          userMessage(promptText),
+          assistantMessage("Auto-start handler title"),
+        ]);
+      });
+
+      try {
+        const store = getStructuredSessionStore(catalog);
+        const turn = store.startTurn({
+          sessionId: created.target.workspaceSessionId,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          requestSummary: "Delegate auto-start work",
+        });
+        const orchestratorThread = store.createThread({
+          turnId: turn.id,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          title: "Delegate auto-start work",
+          objective: "Open a handler thread for auto-start verification.",
+        });
+        const handlerThread = await (
+          catalog as unknown as {
+            createHandlerThread(input: {
+              sessionId: string;
+              turnId: string;
+              parentThreadId: string;
+              parentSurfacePiSessionId: string;
+              objective: string;
+              contextKeys: [];
+              loadedByCommandId: string;
+              sessionAgentSettings: null;
+            }): Promise<{ id: string; surfacePiSessionId: string }>;
+          }
+        ).createHandlerThread({
+          sessionId: created.target.workspaceSessionId,
+          turnId: turn.id,
+          parentThreadId: orchestratorThread.id,
+          parentSurfacePiSessionId: created.target.surfacePiSessionId,
+          objective: "Inspect the repository and report the result.",
+          contextKeys: [],
+          loadedByCommandId: orchestratorThread.id,
+          sessionAgentSettings: null,
+        });
+
+        await waitFor(() => handlerPrompts.length === 1);
+        expect(handlerPrompts[0]).toContain("Inspect the repository and report the result.");
+        expect(handlerPrompts[0]).not.toContain("System event:");
+        expect(handlerPrompts[0]).not.toContain("Thread id:");
+        expect(handlerPrompts[0]).not.toContain("Thread title:");
+        await waitFor(() =>
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "background.started" &&
+              payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId &&
+              payload.snapshot?.pendingUserMessage?.role === "user",
+          ),
+        );
+        const startedSnapshot = surfaceSyncs.find(
+          (payload) =>
+            payload.reason === "background.started" &&
+            payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId,
+        )?.snapshot;
+        expect(startedSnapshot?.messages).toHaveLength(0);
+        expect(userMessageText(startedSnapshot?.pendingUserMessage)).toBe(
+          "Inspect the repository and report the result.",
+        );
+        await waitFor(
+          () =>
+            store
+              .getSessionState(created.target.workspaceSessionId)
+              .threads.find((thread) => thread.id === handlerThread.id)?.status === "idle",
+        );
+      } finally {
+        promptSpy.mockRestore();
+      }
     } finally {
       catalog.setSurfaceSyncListener(null);
       await catalog.dispose();

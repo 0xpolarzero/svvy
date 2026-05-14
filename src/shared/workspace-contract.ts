@@ -705,7 +705,13 @@ export interface WorkspaceHandlerThreadSummary {
   surfacePiSessionId: string;
   title: string;
   objective: string;
-  status: "running-handler" | "running-workflow" | "waiting" | "troubleshooting" | "completed";
+  status:
+    | "idle"
+    | "running-handler"
+    | "running-workflow"
+    | "waiting"
+    | "troubleshooting"
+    | "completed";
   wait: {
     owner: "handler" | "workflow";
     kind: "user" | "external" | "approval" | "signal" | "timer";
@@ -845,6 +851,7 @@ export interface WorkspaceArtifactPreview {
 export interface ConversationSurfaceSnapshot {
   target: PromptTarget;
   messages: AgentMessage[];
+  pendingUserMessage?: AgentMessage | null;
   provider: string;
   model: string;
   reasoningEffort: ReasoningEffort;

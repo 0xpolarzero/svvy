@@ -30,6 +30,7 @@
     type TranscriptSemanticBlock,
   } from "./transcript-projection";
   import { buildSessionTranscriptExport } from "./session-transcript";
+  import { getSurfaceDisplayTitle } from "./surface-title";
   import type {
     WorkspaceCommandArtifactLink,
     WorkspaceCommandInspector,
@@ -1026,7 +1027,11 @@
     const exportText = buildSessionTranscriptExport({
       session: {
         id: session?.id ?? agent.sessionId ?? "unknown-session",
-        title: session?.title ?? "New Session",
+        title: getSurfaceDisplayTitle(
+          paneController.target,
+          sessions,
+          session?.title ?? "New Session",
+        ),
         status: session?.status ?? "idle",
         createdAt: session?.createdAt ?? new Date(0).toISOString(),
         updatedAt: session?.updatedAt ?? new Date().toISOString(),
@@ -1105,6 +1110,8 @@
       | WorkspaceHandlerThreadWorkflowSummary["status"],
   ): string {
     switch (status) {
+      case "idle":
+        return "Idle";
       case "running-handler":
         return "Handler Running";
       case "running-workflow":
@@ -1133,6 +1140,8 @@
       | WorkspaceHandlerThreadWorkflowSummary["status"],
   ): "neutral" | "info" | "success" | "warning" | "danger" {
     switch (status) {
+      case "idle":
+        return "neutral";
       case "running-handler":
       case "running-workflow":
         return "info";
@@ -1152,6 +1161,8 @@
 
   function getReferenceThreadStatus(status: WorkspaceHandlerThreadSummary["status"]): ReferenceStatus {
     switch (status) {
+      case "idle":
+        return "idle";
       case "running-handler":
       case "running-workflow":
         return "running";
@@ -1256,6 +1267,8 @@
     thread: WorkspaceHandlerThreadSummary | WorkspaceHandlerThreadInspector,
   ): string {
     switch (thread.status) {
+      case "idle":
+        return "Handler thread is ready for follow-up.";
       case "running-handler":
         return "Handler is actively reasoning or using thread-local tools.";
       case "running-workflow":

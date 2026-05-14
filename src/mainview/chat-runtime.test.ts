@@ -223,6 +223,7 @@ function createSummary(
 function createSurfaceSnapshot(input: {
   target: PromptTarget;
   messages: AgentMessage[];
+  pendingUserMessage?: AgentMessage | null;
   provider?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
@@ -236,6 +237,7 @@ function createSurfaceSnapshot(input: {
   return {
     target: structuredClone(input.target),
     messages: structuredClone(input.messages),
+    pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
     provider: input.provider ?? "openai",
     model: input.model ?? "gpt-4o",
     reasoningEffort: input.reasoningEffort ?? "medium",

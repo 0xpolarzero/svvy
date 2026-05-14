@@ -364,7 +364,7 @@ function applySurfaceSnapshotToAgent(agent: Agent, payload: ConversationSurfaceS
     ),
   );
   agent.setThinkingLevel(payload.reasoningEffort);
-  agent.replaceMessages(payload.messages);
+  agent.replaceMessages(buildDisplayMessages(payload));
   agent.setTools(currentTools);
 }
 
@@ -377,7 +377,7 @@ function createInitialAgent(snapshot: ConversationSurfaceSnapshot, streamFn: Str
         snapshot.model as Parameters<typeof getModel>[1],
       ),
       thinkingLevel: snapshot.reasoningEffort,
-      messages: structuredClone(snapshot.messages),
+      messages: buildDisplayMessages(snapshot),
       tools: [],
     },
     convertToLlm,
@@ -385,6 +385,43 @@ function createInitialAgent(snapshot: ConversationSurfaceSnapshot, streamFn: Str
   });
   agent.sessionId = snapshot.target.surfacePiSessionId;
   return agent;
+}
+
+function buildDisplayMessages(snapshot: ConversationSurfaceSnapshot): AgentMessage[] {
+  const messages = structuredClone(snapshot.messages);
+  if (!snapshot.pendingUserMessage) {
+    return messages;
+  }
+
+  const pending = structuredClone(snapshot.pendingUserMessage);
+  const pendingText = messageSignatureText(pending);
+  const alreadyVisible = messages.some(
+    (message) =>
+      message.role === pending.role &&
+      message.timestamp === pending.timestamp &&
+      messageSignatureText(message) === pendingText,
+  );
+  return alreadyVisible ? messages : [...messages, pending];
+}
+
+function messageSignatureText(message: AgentMessage): string {
+  if (!("content" in message)) {
+    return "";
+  }
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+  return message.content
+    .map((block) => {
+      if (block && typeof block === "object" && "text" in block && typeof block.text === "string") {
+        return block.text;
+      }
+      return "";
+    })
+    .join("\n");
 }
 
 class SurfaceControllerImpl implements ChatSurfaceControllerInternal {

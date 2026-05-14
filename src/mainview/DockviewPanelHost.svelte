@@ -8,6 +8,7 @@
   import { projectConversation } from "./conversation-projection";
   import { buildSurfaceContextBudget } from "./context-budget";
   import { formatUsage } from "./chat-format";
+  import { getSurfaceDisplayTitle } from "./surface-title";
   import type { PromptHistoryEntry } from "./prompt-history";
   import type { ChatRuntime } from "./chat-runtime";
   import type { ChatSurfaceController } from "./chat-runtime";
@@ -35,6 +36,13 @@
 
   const conversation = $derived(projectConversation(messages));
   const contextBudget = $derived(currentModel ? buildSurfaceContextBudget(messages, currentModel) : null);
+  const surfaceDisplayTitle = $derived(
+    getSurfaceDisplayTitle(
+      controller?.target,
+      runtime.sessions,
+      pane?.target?.surface === "thread" ? "Handler Thread" : "Orchestrator",
+    ),
+  );
   const visibleStreamMessage = $derived(
     controller?.promptStatus === "streaming" && streamMessage?.role === "assistant"
       ? streamMessage
@@ -129,6 +137,7 @@
   <section class="dockview-chat-panel" data-testid="workspace-pane">
     <ChatTranscript
       {conversation}
+      target={controller.target}
       sessionId={controller.agent.sessionId ?? controller.target.surfacePiSessionId}
       systemPrompt={controller.resolvedSystemPrompt}
       streamMessage={visibleStreamMessage}
@@ -147,7 +156,7 @@
       {promptHistory}
       usageText={formatUsage(conversation.usage) || undefined}
       {contextBudget}
-      sessionName={pane?.target?.surface === "thread" ? "Handler Thread" : "Orchestrator"}
+      sessionName={surfaceDisplayTitle}
       targetLabel={pane?.target?.surface === "thread" ? "Messaging handler thread" : "Messaging orchestrator"}
       worktreeLabel={runtime.branch ?? runtime.workspaceLabel}
       onAbort={() => void controller?.abort()}

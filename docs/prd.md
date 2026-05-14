@@ -398,6 +398,7 @@ In the adopted delegated model:
 - a handler thread may run through many internal workflow runs
 - a handler thread may wait, resume, rerun, and repair internally
 - ordinary handler-thread replies stay inside the thread and do not emit handoff episodes
+- a handler thread may be idle between turns while still remaining open, owned, and ready for direct follow-up
 - a handler thread returns control to the orchestrator by explicitly calling `thread.handoff`, which marks the current objective span terminal and emits a handoff episode only after the thread no longer owns a running or waiting workflow run for that span
 - the thread surface remains open for later inspection, direct follow-up chat, and resumed work on that same objective
 

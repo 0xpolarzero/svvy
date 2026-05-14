@@ -26,7 +26,7 @@
 	import ToolCallCard from "./reference-cards/ToolCallCard.svelte";
 	import WaitingCard from "./reference-cards/WaitingCard.svelte";
 	import WorkflowCard, { type ReferenceWorkflow } from "./reference-cards/WorkflowCard.svelte";
-	import type { WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
+	import type { PromptTarget, WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
 	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
 	import Tooltip from "./ui/Tooltip.svelte";
@@ -35,6 +35,7 @@
 
 	type Props = {
 		conversation: ConversationProjection;
+		target?: PromptTarget | null;
 		sessionId?: string;
 		systemPrompt?: string;
 		streamMessage?: AssistantMessage;
@@ -57,6 +58,7 @@
 
 	let {
 		conversation,
+		target = null,
 		sessionId,
 		systemPrompt,
 		streamMessage,
@@ -148,6 +150,14 @@
 		return message.content.map((block) =>
 			block.type === "text" ? stripUserDisplayWrapper(block.text) : `[${block.mimeType} image]`,
 		);
+	}
+
+	function isHandlerObjectiveMessage(message: UserMessage): boolean {
+		if (target?.surface !== "thread") return false;
+		const firstUserMessage = conversation.visibleMessages.find(
+			(candidate): candidate is UserMessage => candidate.role === "user",
+		);
+		return firstUserMessage === message;
 	}
 
 	function stripUserDisplayWrapper(text: string): string {
@@ -520,7 +530,7 @@
 					>
 						<div class="message-bubble assistant-bubble system-bubble">
 							<details class="thinking-block system-prompt-block">
-								<summary>Surface system prompt metadata</summary>
+								<summary>{target?.surface === "thread" ? "Handler system prompt" : "Surface system prompt metadata"}</summary>
 								<pre>{row.systemPrompt}</pre>
 							</details>
 						</div>
@@ -592,9 +602,9 @@
 						class="message-row virtual-row user-row"
 						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
 					>
-					<div class="message-bubble user-bubble">
+					<div class={`message-bubble user-bubble ${isHandlerObjectiveMessage(message) ? "handler-objective-bubble" : ""}`.trim()}>
 						<header>
-							<span>You</span>
+							<span>{isHandlerObjectiveMessage(message) ? "Objective" : "You"}</span>
 							<time>{formatTimestamp(message.timestamp)}</time>
 						</header>
 						{#each userLines(message) as line, lineIndex (`${message.timestamp}:line:${lineIndex}`)}
@@ -833,6 +843,12 @@
 		padding: 0.68rem 0.78rem;
 		border: 1px solid var(--ui-border-soft);
 		background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
+	}
+
+	.handler-objective-bubble {
+		width: min(100%, 45.5rem);
+		border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-accent-soft) 34%, var(--ui-surface-subtle));
 	}
 
 	.assistant-bubble {

@@ -15,6 +15,7 @@
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
   import type { ChatRuntime } from "./chat-runtime";
   import type { WorkspaceDockviewPanelState } from "./pane-layout";
+  import { getSurfaceDisplayTitle } from "./surface-title";
 
   type DockviewPanelRenderer = "onlyWhenVisible" | "always";
 
@@ -165,7 +166,11 @@
       : null;
     const controller = runtime.getPaneController(panelId);
     const typeLabel = getPaneTypeLabel(panel);
-    const title = session?.title ?? panel?.chrome?.title ?? "Surface";
+    const title = getSurfaceDisplayTitle(
+      binding,
+      runtime.sessions,
+      session?.title ?? panel?.chrome?.title ?? "Surface",
+    );
 
     return {
       title,

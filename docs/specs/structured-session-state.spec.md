@@ -183,7 +183,7 @@ type StructuredSessionState = {
     surfacePiSessionId: string;
     title: string;
     objective: string;
-    status: "running-handler" | "running-workflow" | "waiting" | "troubleshooting" | "completed";
+    status: "idle" | "running-handler" | "running-workflow" | "waiting" | "troubleshooting" | "completed";
     wait: null | {
       owner: "handler" | "workflow";
       kind: "user" | "external" | "approval" | "signal" | "timer";
@@ -609,6 +609,7 @@ Use thread status this way:
 
 - `running-handler` while the handler is actively reasoning or issuing tools and no live workflow run currently owns forward progress
 - `running-workflow` while a Smithers workflow run is actively executing and the handler is idle but still owns the delegated objective
+- `idle` while the handler owns an open delegated objective but has no active handler turn, active workflow run, durable wait, troubleshooting state, or terminal handoff
 - `waiting` when the delegated objective is durably blocked on user, approval, signal, timer, or other external input and no troubleshooting is required yet
 - `troubleshooting` when a workflow failed, was cancelled, continued into new lineage, or lost reliable supervision and the handler must inspect or repair before deciding what to do next
 - `completed` when the delegated objective reached an explicit terminal handoff point, `thread.handoff` emitted a handoff episode, and no running or waiting workflow run still belongs to that active span
@@ -969,14 +970,17 @@ The adopted session summary selector should return:
 
 ### Session Status Rules
 
-The summary selector should derive session status in this order:
+The summary selector should derive parent session status from orchestrator-local state in this order:
 
-1. if `session.wait` exists, the session status is `waiting`
-2. else if any thread is `troubleshooting`, the session status is `error`
-3. else if any thread is `running-handler` or `running-workflow`, the session status is `running`
-4. else the session status is `idle`
+1. if `session.wait` exists and is orchestrator-owned, the session status is `waiting`
+2. else if any orchestrator turn failed, the session status is `error`
+3. else if any orchestrator turn is waiting, the session status is `waiting`
+4. else if any orchestrator turn is running, the session status is `running`
+5. else the session status is `idle`
 
-No other input participates in session status:
+Handler-thread and workflow-run activity stays row-local through handler and workflow sidebar projections rather than changing the parent session row's status.
+
+No other input participates in parent session status:
 
 - not live `activePrompt` flags
 - not transcript stop reasons
@@ -1031,7 +1035,7 @@ Recommended implementation rules:
 Write responsibility is:
 
 - ordinary orchestrator-turn writes, including turn decisions, and root command writes belong to the `svvy` runtime
-- `thread.start` writes any preloaded optional prompt context keys before the handler's first turn runs
+- `thread.start` writes any preloaded optional prompt context keys before the handler's first turn runs, then dispatches that first handler turn without waiting for the user to manually send a message in the new thread
 - handler-thread turn writes, including turn decisions, and command writes belong to the `svvy` runtime over pi thread surfaces
 - `request_context` writes loaded optional prompt context keys for the current handler thread and is idempotent per `threadId + contextKey`
 - workflow-run writes belong to the Smithers bridge

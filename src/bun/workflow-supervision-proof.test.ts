@@ -160,21 +160,27 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
       thread.surfacePiSessionId,
       thread.id,
     );
-    await catalog.sendPrompt({
-      ...TEST_DEFAULTS,
-      target: handlerTarget,
-      messages: [
-        createUserMessage(
-          [
-            "Discover the available smithers.* tools on your own.",
-            "Use them to run a real signal workflow that requires diagnosis.",
-            "Then run a real transcript-producing workflow and inspect it with transcript, node, artifact, frame, and DevTools tools.",
-            "Hand back a concise report with concrete evidence.",
-          ].join(" "),
-        ),
-      ],
-      onEvent: () => {},
-    });
+    const threadAfterAutoStart =
+      getStructuredSessionState(catalog, workspaceSessionId).threads.find(
+        (entry) => entry.id === thread.id,
+      ) ?? null;
+    if (threadAfterAutoStart?.status !== "completed") {
+      await catalog.sendPrompt({
+        ...TEST_DEFAULTS,
+        target: handlerTarget,
+        messages: [
+          createUserMessage(
+            [
+              "Discover the available smithers.* tools on your own.",
+              "Use them to run a real signal workflow that requires diagnosis.",
+              "Then run a real transcript-producing workflow and inspect it with transcript, node, artifact, frame, and DevTools tools.",
+              "Hand back a concise report with concrete evidence.",
+            ].join(" "),
+          ),
+        ],
+        onEvent: () => {},
+      });
+    }
 
     await waitFor(
       () => {
@@ -407,7 +413,10 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
     const handlerRequest = stub.requests.find(
       (request) =>
         hasAvailableTool(request, "smithers.list_workflows") &&
-        getLatestUserText(request.messages).includes("Discover the available smithers.* tools"),
+        (getLatestUserText(request.messages).includes("Discover the available smithers.* tools") ||
+          getLatestUserText(request.messages).includes(
+            "Discover the smithers.* supervision surface",
+          )),
     );
     expect(handlerRequest).toBeTruthy();
     expect(availableToolNames(handlerRequest)).toEqual(
@@ -573,9 +582,16 @@ async function buildSurfaceTranscriptSession(
 }
 
 function projectHandlerThreadStatus(
-  status: "running-handler" | "running-workflow" | "waiting" | "troubleshooting" | "completed",
+  status:
+    | "idle"
+    | "running-handler"
+    | "running-workflow"
+    | "waiting"
+    | "troubleshooting"
+    | "completed",
 ): "idle" | "running" | "waiting" | "error" {
   switch (status) {
+    case "idle":
     case "completed":
       return "idle";
     case "waiting":

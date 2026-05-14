@@ -25,6 +25,7 @@ export type StructuredTurnDecision =
   | "wait"
   | `smithers.${string}`;
 export type StructuredThreadStatus =
+  | "idle"
   | "running-handler"
   | "running-workflow"
   | "waiting"

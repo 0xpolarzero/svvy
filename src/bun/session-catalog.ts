@@ -132,6 +132,7 @@ interface ManagedSession {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   activePrompt: boolean;
+  pendingUserMessage: Message | null;
   recreateOnNextPrompt: boolean;
   abortRequested: boolean;
   retainCount: number;
@@ -1013,14 +1014,17 @@ export class WorkspaceSessionCatalog {
     });
   }
 
-  private async releaseManagedSurface(surfacePiSessionId: string): Promise<void> {
+  private async releaseManagedSurface(
+    surfacePiSessionId: string,
+    options: { emitClosed?: boolean } = {},
+  ): Promise<void> {
     const session = this.managedSurfaces.get(surfacePiSessionId);
     if (!session) {
       return;
     }
 
     session.retainCount = Math.max(0, session.retainCount - 1);
-    await this.disposeManagedSurfaceIfUnused(session);
+    await this.disposeManagedSurfaceIfUnused(session, options);
   }
 
   private async prepareManagedSession(
@@ -1130,13 +1134,20 @@ export class WorkspaceSessionCatalog {
     return session;
   }
 
-  private async disposeManagedSurfaceIfUnused(session: ManagedSession): Promise<void> {
+  private async disposeManagedSurfaceIfUnused(
+    session: ManagedSession,
+    options: { emitClosed?: boolean } = {},
+  ): Promise<void> {
     if (session.retainCount > 0 || session.activePrompt) {
       return;
     }
     session.session.dispose();
     this.managedSurfaces.delete(session.sessionId);
-    await this.emitSurfaceClosed(this.resolvePromptTargetForSurfacePiSessionId(session.sessionId));
+    if (options.emitClosed ?? true) {
+      await this.emitSurfaceClosed(
+        this.resolvePromptTargetForSurfacePiSessionId(session.sessionId),
+      );
+    }
   }
 
   private buildLiveSummaryFromManagedSession(session: ManagedSession): WorkspaceSessionSummary {
@@ -1212,6 +1223,9 @@ export class WorkspaceSessionCatalog {
       systemPrompt: session.systemPrompt,
       resolvedSystemPrompt: getResolvedSystemPrompt(session),
       messages: structuredClone(session.session.agent.state.messages),
+      pendingUserMessage: session.pendingUserMessage
+        ? structuredClone(session.pendingUserMessage)
+        : null,
       promptStatus: session.activePrompt ? "streaming" : "idle",
     };
   }
@@ -1676,6 +1690,7 @@ export class WorkspaceSessionCatalog {
     contextKeys: OptionalPromptContextKey[];
     sessionAgentSettings: SessionAgentSettings | null;
     loadedByCommandId: string;
+    autoStart?: boolean;
   }) {
     const initialTitle = input.objective.trim();
     const parentSessionFile = await this.getSessionFileForId(input.parentSurfacePiSessionId);
@@ -1705,12 +1720,108 @@ export class WorkspaceSessionCatalog {
         loadedByCommandId: input.loadedByCommandId,
       });
     }
+    if (input.autoStart !== false) {
+      setTimeout(() => {
+        void this.startInitialHandlerThreadPrompt({
+          sessionId: input.sessionId,
+          threadId: thread.id,
+        }).catch((error) => {
+          if (!this.closed) {
+            console.error("Failed to start initial handler thread prompt:", error);
+          }
+        });
+      }, 0);
+    }
     setTimeout(() => {
       void this.runThreadTitleGenerationJob(thread.id).catch((error) => {
         console.error("Failed to generate handler thread title:", error);
       });
     }, 0);
     return this.structuredSessionStore.getThreadDetail(thread.id).thread;
+  }
+
+  private async startInitialHandlerThreadPrompt(input: {
+    sessionId: string;
+    threadId: string;
+  }): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+
+    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === input.threadId) ?? null;
+    if (!snapshot || !thread || thread.status !== "running-handler") {
+      return;
+    }
+
+    const target: PromptTarget = {
+      workspaceSessionId: input.sessionId,
+      surface: "thread",
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+    };
+    let handlerSession: ManagedSession | null = null;
+    try {
+      handlerSession = await this.retainManagedSurface(target);
+      if (handlerSession.activePrompt) {
+        return;
+      }
+
+      handlerSession.abortRequested = false;
+      handlerSession.activePrompt = true;
+      const initialMessage = createSyntheticUserMessage(buildInitialHandlerThreadPrompt(thread));
+      handlerSession.pendingUserMessage = initialMessage;
+      await this.emitSurfaceSync({
+        session: handlerSession,
+        reason: "background.started",
+        target,
+      });
+      const options: SendAgentPromptOptions = {
+        target,
+        provider: handlerSession.provider,
+        model: handlerSession.model,
+        thinkingLevel: handlerSession.thinkingLevel,
+        systemPrompt: handlerSession.systemPrompt,
+        messages: [
+          ...convertToLlmMessages(handlerSession.session.agent.state.messages),
+          initialMessage,
+        ],
+        onEvent: () => {},
+      };
+      const promptContext = this.createPromptExecutionContext(handlerSession, options);
+      if (promptContext) {
+        promptContext.durableSurfaceContext = undefined;
+      }
+      await this.runAgentPrompt(handlerSession, options, promptContext);
+    } catch (error) {
+      if (this.closed) {
+        return;
+      }
+      const message =
+        error instanceof Error ? error.message : "Failed to start delegated handler thread.";
+      try {
+        this.structuredSessionStore.updateThread({
+          threadId: input.threadId,
+          status: "troubleshooting",
+        });
+        this.structuredSessionStore.recordLifecycleEvent({
+          sessionId: input.sessionId,
+          kind: "thread.initial_prompt_failed",
+          subjectKind: "thread",
+          subjectId: input.threadId,
+          data: { error: message },
+        });
+        await this.emitWorkspaceSync("structured.updated");
+      } catch (stateError) {
+        console.error("Failed to record initial handler prompt failure:", stateError);
+      }
+      throw error;
+    } finally {
+      if (handlerSession) {
+        handlerSession.pendingUserMessage = null;
+        await this.releaseManagedSurface(target.surfacePiSessionId, { emitClosed: false });
+      }
+    }
   }
 
   private startTopLevelTitleGeneration(
@@ -2026,6 +2137,7 @@ export class WorkspaceSessionCatalog {
         });
         session.abortRequested = false;
         session.activePrompt = false;
+        session.pendingUserMessage = null;
         this.syncManagedState(session);
         if (options.target.surface === "orchestrator") {
           this.syncStructuredPiSessionFromOrchestratorSession(session);
@@ -2038,7 +2150,8 @@ export class WorkspaceSessionCatalog {
         await this.emitWorkspaceSync("workspace.updated");
         if (
           promptContext?.surfaceKind === "handler" &&
-          !promptContext.suppressPendingWorkflowAttentionDelivery
+          !promptContext.suppressPendingWorkflowAttentionDelivery &&
+          this.shouldDeliverPendingHandlerAttention(promptContext)
         ) {
           await this.smithersRuntimeManager.deliverPendingHandlerAttention(
             promptContext.sessionId,
@@ -2049,6 +2162,30 @@ export class WorkspaceSessionCatalog {
       }
     } finally {
       session.promptExecutionRuntime.current = null;
+    }
+  }
+
+  private shouldDeliverPendingHandlerAttention(promptContext: PromptExecutionContext): boolean {
+    if (!promptContext.rootThreadId) {
+      return false;
+    }
+
+    if (this.closed) {
+      return false;
+    }
+
+    try {
+      const snapshot = this.structuredSessionStore.getSessionState(promptContext.sessionId);
+      const turn = snapshot.turns.find((entry) => entry.id === promptContext.turnId) ?? null;
+      if (turn?.turnDecision === "thread.handoff") {
+        return false;
+      }
+
+      const thread =
+        snapshot.threads.find((entry) => entry.id === promptContext.rootThreadId) ?? null;
+      return thread?.status !== "completed";
+    } catch {
+      return false;
     }
   }
 
@@ -2231,9 +2368,44 @@ export class WorkspaceSessionCatalog {
         turnId: promptContext.turnId,
         status: "completed",
       });
+      this.settleHandlerThreadAfterPrompt(promptContext);
     } catch (error) {
-      console.error("Failed to finalize prompt execution:", error);
+      if (!this.closed) {
+        console.error("Failed to finalize prompt execution:", error);
+      }
     }
+  }
+
+  private settleHandlerThreadAfterPrompt(promptContext: PromptExecutionContext): void {
+    if (promptContext.surfaceKind !== "handler" || !promptContext.rootThreadId) {
+      return;
+    }
+
+    const snapshot = this.structuredSessionStore.getSessionState(promptContext.sessionId);
+    const thread =
+      snapshot.threads.find((entry) => entry.id === promptContext.rootThreadId) ?? null;
+    if (!thread || thread.status !== "running-handler" || thread.wait) {
+      return;
+    }
+
+    const turn = snapshot.turns.find((entry) => entry.id === promptContext.turnId) ?? null;
+    if (!turn || turn.turnDecision === "thread.handoff" || turn.status !== "completed") {
+      return;
+    }
+
+    const hasActiveWorkflow = snapshot.workflowRuns.some(
+      (workflowRun) =>
+        workflowRun.threadId === thread.id &&
+        (workflowRun.status === "running" || workflowRun.status === "waiting"),
+    );
+    if (hasActiveWorkflow) {
+      return;
+    }
+
+    this.structuredSessionStore.updateThread({
+      threadId: thread.id,
+      status: "idle",
+    });
   }
 
   private failPromptExecution(
@@ -2271,7 +2443,9 @@ export class WorkspaceSessionCatalog {
         status: "failed",
       });
     } catch (error) {
-      console.error("Failed to mark prompt execution failure:", error);
+      if (!this.closed) {
+        console.error("Failed to mark prompt execution failure:", error);
+      }
     }
   }
 
@@ -2471,6 +2645,7 @@ async function createManagedSession(
     authStorage,
     modelRegistry,
     activePrompt: false,
+    pendingUserMessage: null,
     recreateOnNextPrompt: false,
     abortRequested: false,
     retainCount: 0,
@@ -2634,6 +2809,12 @@ function buildHandlerWorkflowAttentionPrompt(input: {
     `Current workflow summary: ${input.summary}`,
     "Inspect durable workflow state with smithers.* tools and decide the next handler action.",
   ].join("\n");
+}
+
+function buildInitialHandlerThreadPrompt(
+  thread: StructuredSessionSnapshot["threads"][number],
+): string {
+  return thread.objective.trim();
 }
 
 function projectWorkspaceWait(
