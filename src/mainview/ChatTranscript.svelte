@@ -146,9 +146,9 @@
 	}
 
 	function userLines(message: UserMessage): string[] {
-		if (typeof message.content === "string") return [stripUserDisplayWrapper(message.content)];
+		if (typeof message.content === "string") return [message.content];
 		return message.content.map((block) =>
-			block.type === "text" ? stripUserDisplayWrapper(block.text) : `[${block.mimeType} image]`,
+			block.type === "text" ? block.text : `[${block.mimeType} image]`,
 		);
 	}
 
@@ -158,20 +158,6 @@
 			(candidate): candidate is UserMessage => candidate.role === "user",
 		);
 		return firstUserMessage === message;
-	}
-
-	function stripUserDisplayWrapper(text: string): string {
-		const continuationMarker =
-			"Continue the conversation from the latest user message. Respond only as the assistant.";
-		let displayText = text.trim();
-		if (displayText.startsWith("User:")) {
-			displayText = displayText.slice("User:".length).trimStart();
-		}
-		const markerIndex = displayText.indexOf(continuationMarker);
-		if (markerIndex >= 0) {
-			displayText = displayText.slice(0, markerIndex).trimEnd();
-		}
-		return displayText;
 	}
 
 	function userLineSegments(line: string) {

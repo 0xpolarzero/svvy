@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -93,6 +92,12 @@ import { createSessionAgentSettingsStore } from "./session-agent-settings";
 import { createSvvyDirectTools } from "./svvy-direct-tools";
 import { createListToolsTool } from "./list-tools-tool";
 import { createWebProvider } from "./web-runtime/provider-registry";
+import {
+  createRuntimeCurrentTool,
+  createThreadCurrentTool,
+  createThreadHandoffsTool,
+  createThreadListTool,
+} from "./runtime-state-tools";
 
 const ZERO_USAGE: AssistantMessage["usage"] = {
   input: 0,
@@ -127,7 +132,6 @@ interface ManagedSession {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   systemPrompt: string;
-  promptSyncCursor: PromptSyncCursor;
   session: AgentSession;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
@@ -171,11 +175,6 @@ interface VisibleStreamState {
   partial: AssistantMessage;
   activeTextIndex: number | null;
   activeThinkingIndex: number | null;
-}
-
-interface PromptSyncCursor {
-  messageCount: number;
-  boundarySignature: string;
 }
 
 type WorkspaceSessionInfo = Awaited<ReturnType<typeof SessionManager.list>>[number];
@@ -1071,16 +1070,6 @@ export class WorkspaceSessionCatalog {
       });
     }
 
-    if (
-      session.promptSyncCursor.messageCount > 0 &&
-      !canAppendLatestUserTurn(session.promptSyncCursor, options.messages)
-    ) {
-      return this.recreateManagedSurface(session, {
-        actorKind,
-        systemPrompt: resolvedSystemPrompt,
-      });
-    }
-
     return session;
   }
 
@@ -1682,10 +1671,6 @@ export class WorkspaceSessionCatalog {
         threadWasTerminalAtStart: targetThread
           ? isTerminalThreadStatus(targetThread.status)
           : false,
-        durableSurfaceContext:
-          target?.surface === "thread" && targetThread
-            ? buildHandlerDurablePromptContext(preTurnSnapshot, targetThread.id)
-            : buildOrchestratorDurablePromptContext(preTurnSnapshot),
       });
     } catch (error) {
       console.error("Failed to start prompt execution state:", error);
@@ -1824,9 +1809,6 @@ export class WorkspaceSessionCatalog {
         reason: "background.started",
         target,
       });
-      if (promptContext) {
-        promptContext.durableSurfaceContext = undefined;
-      }
       await this.runAgentPrompt(handlerSession, options, promptContext);
     } catch (error) {
       if (this.closed) {
@@ -2140,7 +2122,7 @@ export class WorkspaceSessionCatalog {
       try {
         syncAuthStorage(session.authStorage);
 
-        const promptText = buildPromptText(session, options.messages, promptContext);
+        const promptText = promptContext?.promptText ?? getLatestUserPromptText(options.messages);
         if (!promptText) {
           throw new Error("No user message to send.");
         }
@@ -2178,7 +2160,6 @@ export class WorkspaceSessionCatalog {
           });
         }
 
-        updatePromptSyncCursor(session, [...options.messages, visibleMessage]);
         session.provider = options.provider;
         session.model = options.model;
         session.thinkingLevel = options.thinkingLevel;
@@ -2209,7 +2190,6 @@ export class WorkspaceSessionCatalog {
           error: failure,
         });
 
-        updatePromptSyncCursor(session, [...options.messages, failure]);
         session.provider = options.provider;
         session.model = options.model;
         session.thinkingLevel = options.thinkingLevel;
@@ -2567,7 +2547,6 @@ export class WorkspaceSessionCatalog {
     session.provider = activeModel?.provider ?? restoredDefaults.provider;
     session.model = activeModel?.id ?? restoredDefaults.model;
     session.thinkingLevel = restoredDefaults.thinkingLevel;
-    updatePromptSyncCursor(session, convertToLlmMessages(session.session.agent.state.messages));
   }
 
   private persistManagedSessionSnapshot(session: ManagedSession): void {
@@ -2616,10 +2595,28 @@ async function createManagedSession(
     workflowLibrary: createWorkflowLibrary(options.sessionManager.getCwd()),
     webProvider,
   });
+  const runtimeCurrentTool = createRuntimeCurrentTool({
+    runtime: promptExecutionRuntime,
+  });
+  const threadListTool = createThreadListTool({
+    runtime: promptExecutionRuntime,
+    store: options.structuredSessionStore,
+  });
+  const threadHandoffsTool = createThreadHandoffsTool({
+    runtime: promptExecutionRuntime,
+    store: options.structuredSessionStore,
+  });
+  const threadCurrentTool = createThreadCurrentTool({
+    runtime: promptExecutionRuntime,
+    store: options.structuredSessionStore,
+  });
   const sharedWorkTools = [
     createListToolsTool({
       getSession: () => sessionForListTools,
     }),
+    runtimeCurrentTool,
+    threadListTool,
+    threadHandoffsTool,
     ...createCxTools({ cwd: options.sessionManager.getCwd() }),
     ...directTools.codingTools,
     ...directTools.artifactTools,
@@ -2642,6 +2639,7 @@ async function createManagedSession(
     [
       ...sharedWorkTools,
       ...directTools.workflowTools,
+      threadCurrentTool,
       requestContextTool,
       threadHandoffTool,
       ...createSmithersTools({
@@ -2724,7 +2722,6 @@ async function createManagedSession(
     sessionMode: options.sessionMode ?? "orchestrator",
     sessionAgentKey: options.sessionAgentKey ?? "defaultSession",
     systemPrompt: options.systemPrompt,
-    promptSyncCursor: createPromptSyncCursor(convertToLlmMessages(session.agent.state.messages)),
     session,
     authStorage,
     modelRegistry,
@@ -2861,21 +2858,16 @@ function getLatestThreadEpisode(
 }
 
 function buildOrchestratorHandoffResumePrompt(
-  thread: StructuredSessionSnapshot["threads"][number],
-  episode: StructuredSessionSnapshot["episodes"][number],
+  _thread: StructuredSessionSnapshot["threads"][number],
+  _episode: StructuredSessionSnapshot["episodes"][number],
 ): string {
   return [
     "System event: A handler thread emitted a durable handoff.",
-    `Thread id: ${thread.id}`,
-    `Thread title: ${thread.title}`,
-    `Objective: ${thread.objective}`,
-    `Latest handoff title: ${episode.title}`,
-    `Latest handoff summary: ${episode.summary}`,
-    "Reconcile the latest durable handoff from state for this thread and decide the next orchestrator action.",
+    "Use thread.list and thread.handoffs if durable delegated-thread state matters, then decide the next orchestrator action.",
   ].join("\n");
 }
 
-function buildHandlerWorkflowAttentionPrompt(input: {
+function buildHandlerWorkflowAttentionPrompt(_input: {
   thread: StructuredSessionSnapshot["threads"][number];
   workflowRun: StructuredSessionSnapshot["workflowRuns"][number] | null;
   reason: string;
@@ -2885,14 +2877,7 @@ function buildHandlerWorkflowAttentionPrompt(input: {
 }): string {
   return [
     "System event: A supervised Smithers workflow now requires handler attention.",
-    `Thread id: ${input.thread.id}`,
-    `Thread title: ${input.thread.title}`,
-    `Objective: ${input.thread.objective}`,
-    `Workflow entry id: ${input.workflowId}`,
-    `Smithers run id: ${input.smithersRunId}`,
-    `Attention reason: ${input.reason}`,
-    `Current workflow summary: ${input.summary}`,
-    "Inspect durable workflow state with smithers.* tools and decide the next handler action.",
+    "Use thread.current for current handler state and active workflow run ids, then inspect workflow details with smithers.* tools and decide the next handler action.",
   ].join("\n");
 }
 
@@ -2992,158 +2977,8 @@ function shouldResumeThreadUserWaitOnPromptEntry(input: {
   );
 }
 
-function buildOrchestratorDurablePromptContext(
-  snapshot: StructuredSessionSnapshot | null,
-): string | undefined {
-  if (!snapshot) {
-    return undefined;
-  }
-
-  const handoffs = snapshot.threads
-    .filter((thread) => thread.surfacePiSessionId !== snapshot.session.orchestratorPiSessionId)
-    .map((thread) => {
-      const latestEpisode =
-        snapshot.episodes
-          .filter((episode) => episode.threadId === thread.id)
-          .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-      if (!latestEpisode) {
-        return null;
-      }
-
-      const latestWorkflow = resolveLatestWorkflowRunForThread(snapshot, thread.id);
-
-      return {
-        thread,
-        latestEpisode,
-        latestWorkflow,
-      };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
-    .toSorted((left, right) =>
-      right.latestEpisode.createdAt.localeCompare(left.latestEpisode.createdAt),
-    )
-    .slice(0, 6);
-
-  if (handoffs.length === 0) {
-    return undefined;
-  }
-
-  const parts = ["Latest handler-thread handoffs from durable state:"];
-  for (const handoff of handoffs) {
-    parts.push(
-      `Thread ${handoff.thread.id} (${collapsePromptContextValue(handoff.thread.title, 80)})`,
-    );
-    parts.push(`Status: ${handoff.thread.status}`);
-    parts.push(`Objective: ${collapsePromptContextValue(handoff.thread.objective, 220)}`);
-    if (handoff.latestWorkflow) {
-      parts.push(
-        `Latest workflow: ${collapsePromptContextValue(handoff.latestWorkflow.summary, 220)}`,
-      );
-    }
-    parts.push(
-      `Latest handoff summary: ${collapsePromptContextValue(handoff.latestEpisode.summary, 220)}`,
-    );
-    parts.push(
-      `Latest handoff body: ${collapsePromptContextValue(handoff.latestEpisode.body, 320)}`,
-    );
-    parts.push("");
-  }
-
-  return parts.join("\n").trim();
-}
-
-function buildHandlerDurablePromptContext(
-  snapshot: StructuredSessionSnapshot | null,
-  threadId: string,
-): string | undefined {
-  if (!snapshot) {
-    return undefined;
-  }
-
-  const thread = snapshot.threads.find((entry) => entry.id === threadId) ?? null;
-  if (!thread) {
-    return undefined;
-  }
-
-  const latestWorkflow = resolveLatestWorkflowRunForThread(snapshot, thread.id);
-  const latestEpisode =
-    snapshot.episodes
-      .filter((episode) => episode.threadId === thread.id)
-      .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-
-  const parts = [
-    "Current interactive surface: handler thread.",
-    "You are currently inside the delegated handler-thread surface, not the orchestrator surface.",
-    `Thread id: ${thread.id}`,
-    `Title: ${collapsePromptContextValue(thread.title, 120)}`,
-    `Objective: ${collapsePromptContextValue(thread.objective, 280)}`,
-    `Current objective status: ${thread.status}`,
-    `Loaded context keys: ${
-      thread.loadedContextKeys.length > 0 ? thread.loadedContextKeys.join(", ") : "none"
-    }`,
-    "Use thread.handoff only when you want to return control to the orchestrator with a durable episode.",
-    "Workflow waits, approvals, and resumes stay inside this thread. Do not call thread.handoff while this thread still owns a running or waiting workflow run.",
-    "Ordinary replies, clarification, and follow-up chat should stay inside this thread.",
-  ];
-
-  if (thread.wait) {
-    parts.push(
-      `Current wait: ${thread.wait.kind} - ${collapsePromptContextValue(thread.wait.reason, 220)}`,
-    );
-  }
-
-  if (latestWorkflow) {
-    parts.push(
-      `Latest workflow summary: ${collapsePromptContextValue(latestWorkflow.summary, 220)}`,
-    );
-  }
-
-  if (latestEpisode) {
-    parts.push(`Latest handoff summary: ${collapsePromptContextValue(latestEpisode.summary, 220)}`);
-  }
-
-  return parts.join("\n");
-}
-
-function resolveLatestWorkflowRunForThread(
-  snapshot: StructuredSessionSnapshot,
-  threadId: string,
-): StructuredSessionSnapshot["workflowRuns"][number] | null {
-  const workflowRuns = snapshot.workflowRuns.filter(
-    (workflowRun) => workflowRun.threadId === threadId,
-  );
-  if (workflowRuns.length === 0) {
-    return null;
-  }
-
-  const workflowRunsById = new Map(
-    workflowRuns.map((workflowRun) => [workflowRun.id, workflowRun]),
-  );
-  let current =
-    workflowRuns.toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
-    null;
-  while (current?.status === "continued" && current.activeDescendantRunId) {
-    const descendant = workflowRunsById.get(current.activeDescendantRunId);
-    if (!descendant) {
-      break;
-    }
-    current = descendant;
-  }
-
-  return current;
-}
-
 function getActorKindForTarget(target: PromptTarget): SvvyActorKind {
   return target.surface === "thread" ? "handler" : "orchestrator";
-}
-
-function collapsePromptContextValue(value: string, limit: number): string {
-  const collapsed = value.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= limit) {
-    return collapsed;
-  }
-
-  return `${collapsed.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function syncAuthStorage(authStorage: AuthStorage): void {
@@ -3539,85 +3374,6 @@ function isPreservedWord(word: string): boolean {
   );
 }
 
-function buildPromptText(
-  session: ManagedSession,
-  messages: Message[],
-  promptContext?: PromptExecutionContext | null,
-): string {
-  const durableSurfaceContext = promptContext?.durableSurfaceContext?.trim() || undefined;
-  if (!durableSurfaceContext && !canAppendLatestUserTurn(session.promptSyncCursor, messages)) {
-    return buildTranscript(messages);
-  }
-
-  if (durableSurfaceContext && !canAppendLatestUserTurn(session.promptSyncCursor, messages)) {
-    return buildTranscript(messages, durableSurfaceContext);
-  }
-
-  const nextMessage = messages[session.promptSyncCursor.messageCount];
-  if (!nextMessage || nextMessage.role !== "user") {
-    return buildTranscript(messages, durableSurfaceContext);
-  }
-
-  if (!durableSurfaceContext) {
-    return messageToPlainText(nextMessage);
-  }
-
-  return buildTranscript([nextMessage], durableSurfaceContext);
-}
-
-function buildTranscript(messages: Message[], durableSurfaceContext?: string): string {
-  const parts: string[] = [];
-
-  if (durableSurfaceContext?.trim()) {
-    parts.push("Durable Surface Context:");
-    parts.push(durableSurfaceContext.trim());
-    parts.push("");
-  }
-
-  for (const message of messages) {
-    const text = messageToPlainText(message).trim();
-    if (!text) continue;
-
-    const label =
-      message.role === "user"
-        ? "User"
-        : message.role === "assistant"
-          ? "Assistant"
-          : `Tool Result (${message.toolName})`;
-    parts.push(`${label}:`);
-    parts.push(text);
-    parts.push("");
-  }
-
-  parts.push(
-    "Continue the conversation from the latest user message. Respond only as the assistant.",
-  );
-  return parts.join("\n").trim();
-}
-
-function canAppendLatestUserTurn(cursor: PromptSyncCursor, currentMessages: Message[]): boolean {
-  if (cursor.messageCount === 0 || cursor.messageCount >= currentMessages.length) {
-    return false;
-  }
-
-  return (
-    currentMessages.length === cursor.messageCount + 1 &&
-    currentMessages.at(-1)?.role === "user" &&
-    hashPromptMessageSequence(currentMessages, cursor.messageCount) === cursor.boundarySignature
-  );
-}
-
-function updatePromptSyncCursor(session: ManagedSession, messages: Message[]): void {
-  session.promptSyncCursor = createPromptSyncCursor(messages);
-}
-
-function createPromptSyncCursor(messages: Message[]): PromptSyncCursor {
-  return {
-    messageCount: messages.length,
-    boundarySignature: hashPromptMessageSequence(messages),
-  };
-}
-
 function persistSessionManagerSnapshot(sessionManager: SessionManager): void {
   const sessionFile = sessionManager.getSessionFile();
   if (!sessionFile) {
@@ -3632,27 +3388,6 @@ function persistSessionManagerSnapshot(sessionManager: SessionManager): void {
   const entries = sessionManager.getEntries();
   const lines = [header, ...entries].map((entry) => JSON.stringify(entry));
   writeFileSync(sessionFile, `${lines.join("\n")}\n`);
-}
-
-function hashPromptMessageSequence(messages: Message[], limit = messages.length): string {
-  const hash = createHash("sha256");
-  for (let index = 0; index < limit; index += 1) {
-    hashPromptMessage(hash, messages[index]!);
-    hash.update("\u001e");
-  }
-  return hash.digest("hex");
-}
-
-function hashPromptMessage(hash: ReturnType<typeof createHash>, message: Message): void {
-  hash.update(message.role);
-  hash.update("\u001f");
-
-  if (message.role === "toolResult") {
-    hash.update(message.toolName);
-    hash.update("\u001f");
-  }
-
-  hash.update(messageToPlainText(message).trim());
 }
 
 function messageToPlainText(message: Message): string {

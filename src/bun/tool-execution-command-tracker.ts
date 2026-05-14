@@ -5,6 +5,12 @@ import type {
   StructuredCommandVisibility,
   StructuredSessionStateStore,
 } from "./structured-session-state";
+import {
+  RUNTIME_CURRENT_TOOL_NAME,
+  THREAD_CURRENT_TOOL_NAME,
+  THREAD_HANDOFFS_TOOL_NAME,
+  THREAD_LIST_TOOL_NAME,
+} from "./runtime-state-tools";
 
 const SPECIALIZED_TOOL_NAMES = new Set([
   "execute_typescript",
@@ -12,6 +18,10 @@ const SPECIALIZED_TOOL_NAMES = new Set([
   "request_context",
   "thread.handoff",
   "wait",
+  RUNTIME_CURRENT_TOOL_NAME,
+  THREAD_CURRENT_TOOL_NAME,
+  THREAD_LIST_TOOL_NAME,
+  THREAD_HANDOFFS_TOOL_NAME,
 ]);
 
 export interface ToolExecutionCommandTracker {

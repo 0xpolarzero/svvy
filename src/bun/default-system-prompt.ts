@@ -48,6 +48,9 @@ function buildActorInstructions(actor: SvvyActorKind): string[] {
     "Prefer read, grep, find, and ls over bash for file exploration; use bash when the work actually requires a shell command.",
     "Use read for visual inspection of local image files as well as text files; image reads return image attachments to the model.",
     "Use list_tools when you need to inspect the exact callable tool surface for the current actor.",
+    "Use runtime.current only when you need to confirm which svvy runtime actor and surface you are operating in.",
+    "Use thread.list when delegated thread state matters, and use thread.handoffs when reconciling or checking durable handoff episodes.",
+    "Do not expect runtime, thread, handoff, or workflow state to be repeated in user messages.",
     "Create artifacts only for durable byproducts or evidence that should remain inspectable but should not normally be placed in the repository; use write/edit for requested workspace files and prose for small answers.",
   ];
 
@@ -69,6 +72,8 @@ function buildActorInstructions(actor: SvvyActorKind): string[] {
         "Use thread.handoff only when the current objective span is ready to hand control back to the orchestrator with durable state.",
         "Workflow waits, approvals, and resumes stay inside this handler thread. Do not call thread.handoff while a supervised workflow on this thread is still running or waiting; resolve it, wait for the needed input, or cancel it first.",
         "Do not call thread.start from this surface in the adopted supervision model.",
+        "Use thread.current when the current objective, wait state, active workflow ownership, loaded prompt context, or prior handoff state matters.",
+        "Do not infer current workflow details from prompt context; call Smithers tools using active workflow run ids from thread.current.",
         "When workflow help is justified, use this decision order: direct tool work, then saved runnable entries, then artifact-workflow authoring, and save reusable pieces only on explicit request through normal workspace writes into `.svvy/workflows/...`.",
         "When authoring Smithers workflow tasks, inspect `.svvy/workflows/components/agents.ts` and reuse its `explorer`, `implementer`, or `reviewer` exports when one matches the task. If none fit, define a task-specific agent in the artifact workflow. Add or revise saved workflow agent components only when the user explicitly wants reusable workspace infrastructure.",
         buildOptionalPromptContextRegistryPrompt(),

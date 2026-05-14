@@ -67,9 +67,6 @@ type ManagedSurfaceRecord = {
   thinkingLevel: ThinkingLevel;
   systemPrompt: string;
   smithersToolSurfaceVersion?: string | null;
-  promptSyncCursor: {
-    messageCount: number;
-  };
   session: PromptableSession;
   activePrompt: boolean;
   abortRequested: boolean;
@@ -277,6 +274,26 @@ function getManagedSurface(
     throw new Error(`Managed surface not found: ${surfacePiSessionId}`);
   }
   return surface;
+}
+
+function getActiveToolNames(surface: ManagedSurfaceRecord): string[] {
+  return (
+    surface.session as unknown as {
+      getActiveToolNames(): string[];
+    }
+  ).getActiveToolNames();
+}
+
+function expectNoPromptReconstruction(promptText: string): void {
+  const oldDurableContextHeader = ["Durable Surface", "Context:"].join(" ");
+  const oldContinuationWrapper = [
+    "Continue the conversation from the latest user message.",
+    "Respond only as the assistant.",
+  ].join(" ");
+  expect(promptText).not.toContain(oldDurableContextHeader);
+  expect(promptText).not.toContain(oldContinuationWrapper);
+  expect(promptText).not.toContain("\nUser:");
+  expect(promptText).not.toContain("\nAssistant:");
 }
 
 function captureTitleGenerationLogs(catalog: WorkspaceSessionCatalog): TitleGenerationLogEvent[] {
@@ -935,6 +952,150 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("sends first orchestrator prompts as raw user text without prompt reconstruction", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Raw Prompt" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const sentPrompts: string[] = [];
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText.startsWith("First user message:")) {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Raw prompt")]);
+          return;
+        }
+
+        sentPrompts.push(promptText);
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Done.")]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("User: keep this exact label")],
+          onEvent: () => {},
+        });
+
+        await waitFor(() => sentPrompts.length === 1);
+        const sentPrompt = sentPrompts[0]!;
+        expect(sentPrompt).toBe("User: keep this exact label");
+        expectNoPromptReconstruction(sentPrompt);
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("sends handler follow-up prompts as raw latest user text only", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Handler Follow Up" }, DEFAULTS);
+      const handler = await createHandlerThreadHarness(catalog, created.target.workspaceSessionId, {
+        title: "Follow Up Handler",
+        objective: "Handle follow-up prompts.",
+      });
+      await catalog.openSurface(handler.target);
+      const handlerManaged = getManagedSurface(catalog, handler.target.surfacePiSessionId);
+      const sessionPrototype = Object.getPrototypeOf(handlerManaged.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const sentPrompts: string[] = [];
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        const surface = findManagedSurfaceBySession(catalog, this);
+        if (surface?.sessionId !== handler.target.surfacePiSessionId) {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Ignored.")]);
+          return;
+        }
+        sentPrompts.push(promptText);
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Handled.")]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: handler.target,
+          messages: [
+            userMessage("Earlier handler question"),
+            assistantMessage("Earlier handler answer"),
+            userMessage("Assistant: keep this literal follow-up"),
+          ],
+          onEvent: () => {},
+        });
+
+        await waitFor(() => sentPrompts.length === 1);
+        const sentPrompt = sentPrompts[0]!;
+        expect(sentPrompt).toBe("Assistant: keep this literal follow-up");
+        expectNoPromptReconstruction(sentPrompt);
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("exposes runtime/thread state tools on the intended actor surfaces", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Tool Surface" }, DEFAULTS);
+      const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const orchestratorTools = getActiveToolNames(orchestratorManaged);
+      expect(orchestratorTools).toEqual(
+        expect.arrayContaining([
+          "runtime.current",
+          "thread.list",
+          "thread.handoffs",
+          "thread.start",
+          "wait",
+        ]),
+      );
+      expect(orchestratorTools).not.toContain("thread.current");
+      expect(orchestratorTools).not.toContain("thread.handoff");
+      expect(orchestratorTools.some((name) => name.startsWith("smithers."))).toBe(false);
+
+      const handler = await createHandlerThreadHarness(catalog, created.target.workspaceSessionId, {
+        title: "Tool Surface Handler",
+        objective: "Inspect handler tool surface.",
+      });
+      await catalog.openSurface(handler.target);
+      const handlerManaged = getManagedSurface(catalog, handler.target.surfacePiSessionId);
+      const handlerTools = getActiveToolNames(handlerManaged);
+      expect(handlerTools).toEqual(
+        expect.arrayContaining([
+          "runtime.current",
+          "thread.current",
+          "thread.list",
+          "thread.handoffs",
+          "thread.handoff",
+          "request_context",
+          "wait",
+          "smithers.list_workflows",
+          "smithers.run_workflow",
+        ]),
+      );
+      expect(handlerTools).not.toContain("thread.start");
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("preloads optional prompt context into handler surface prompts", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
@@ -1396,10 +1557,9 @@ describe("WorkspaceSessionCatalog", () => {
         });
 
         await waitFor(() => handlerPrompts.length === 1);
-        expect(handlerPrompts[0]).toContain("Inspect the repository and report the result.");
-        expect(handlerPrompts[0]).not.toContain("System event:");
-        expect(handlerPrompts[0]).not.toContain("Thread id:");
-        expect(handlerPrompts[0]).not.toContain("Thread title:");
+        const handlerPrompt = handlerPrompts[0]!;
+        expect(handlerPrompt).toBe("Inspect the repository and report the result.");
+        expectNoPromptReconstruction(handlerPrompt);
         await waitFor(() =>
           surfaceSyncs.some(
             (payload) =>
@@ -1687,7 +1847,13 @@ describe("WorkspaceSessionCatalog", () => {
 
         expect(delivered).toBe(true);
         expect(handlerAPrompts).toHaveLength(1);
-        expect(handlerAPrompts[0]).toContain("smithers-run-workflow-a");
+        expect(handlerAPrompts[0]).toBe(
+          [
+            "System event: A supervised Smithers workflow now requires handler attention.",
+            "Use thread.current for current handler state and active workflow run ids, then inspect workflow details with smithers.* tools and decide the next handler action.",
+          ].join("\n"),
+        );
+        expect(handlerAPrompts[0]).not.toContain("smithers-run-workflow-a");
         expect(handlerBPromptSpy).not.toHaveBeenCalled();
 
         const attentionEvents = surfaceSyncs.filter(

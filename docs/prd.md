@@ -87,7 +87,8 @@ Everything the agent does is still driven through turns, tools, runtime handlers
 Before any target surface runs a turn through pi:
 
 - `svvy` must load that surface's resolved instructions through pi's real `systemPrompt` channel
-- synthesized prompt bodies may include durable surface context plus user, assistant, and tool transcript material when reconstruction is required, but they must not flatten the system prompt into `System:` transcript text
+- the submitted prompt body is the real new user message for that surface; `svvy` does not repair or advance a surface by flattening prior messages into role-labelled transcript prose
+- committed conversation history stays in pi's session history, while runtime, thread, handoff, and workflow state stays in structured state and targeted tools
 - the UI should project the active system prompt as expandable surface metadata rather than as inline transcript prose
 - each surface must receive only the generated tool declarations and SDK blocks that are callable from that surface
 - each surface may receive compact knowledge about what another surface can do, but it must not receive that other surface's full callable API block just for awareness
@@ -95,7 +96,8 @@ Before any target surface runs a turn through pi:
 The actor-specific capability split is:
 
 - the orchestrator prompt knows that handler threads can supervise Smithers workflows, but it does not receive the `smithers.*` tool declarations; if it wants workflow action, it must delegate by calling `thread.start`
-- a handler-thread prompt receives `smithers.*`, `request_context`, `thread.handoff`, `wait`, direct tools, and `execute_typescript` for typed composition, but it does not receive `thread.start` in the default adopted model
+- a handler-thread prompt receives `smithers.*`, `request_context`, `thread.handoff`, `thread.current`, `wait`, direct tools, and `execute_typescript` for typed composition, but it does not receive `thread.start` in the default adopted model
+- orchestrator and handler prompts receive `runtime.current`, `thread.list`, and `thread.handoffs` so runtime binding, delegated-thread state, and durable handoff episodes are read through focused tools instead of prompt stuffing
 - a workflow-task-agent prompt receives only task-local instructions and task-local callable declarations; in the default adopted model it receives task-local direct tools plus `execute_typescript`, and not `thread.start`, `thread.handoff`, `wait`, or `smithers.*`
 - a workflow-task-agent runtime must not load ambient pi built-in tools or workspace-discovered extension tools that would widen that callable surface beyond the explicit task-local tool set
 - if `svvy` later adopts nested delegation or additional actor classes, those capabilities must be added explicitly rather than leaked through one shared global prompt surface
@@ -646,6 +648,8 @@ Each handler thread should have:
 
 Optional prompt context keys describe product knowledge loaded into a handler prompt on demand, such as `ci`.
 
+The current handler objective, wait state, loaded optional context keys, active workflow run ids, and latest handoff metadata are exposed to the handler through `thread.current`. The orchestrator and handlers inspect delegated thread rows through `thread.list`, and exact durable handoff episode bodies through `thread.handoffs`. These read tools do not include transcripts, workflow summaries, or Smithers internals; handlers use active workflow run ids with `smithers.*` tools when workflow details matter.
+
 Session agent settings describe the model, reasoning level, prompt selection, and callable surface used by pi-backed product agents. The `defaultSession` and `dumbOrchestrator` agents back interactive orchestrator surfaces. The `namer` agent is the same product-agent family as the orchestrator, not a Smithers workflow agent, but it runs as a one-shot non-interactive title-generation surface whose settings prompt is the only title-generation instruction.
 
 The app owns three app-wide session-agent defaults:
@@ -831,7 +835,7 @@ Every user request goes through one orchestrator-controlled product loop:
 
 1. load current workspace, session, thread, workflow-run, episode, artifact, Project CI, and wait context
 2. identify the target surface of the message
-3. resolve that surface's active system prompt and load it into pi's true `systemPrompt` channel before any transcript reconstruction
+3. resolve that surface's active system prompt and load it into pi's true `systemPrompt` channel before sending the new user message
 4. open a new turn for that surface
 5. let that surface choose and persist its top-level turn decision, then decide its next tool call or direct response
 6. execute tools through the correct runtime handler

@@ -212,7 +212,7 @@ The adopted flow is:
 8. When Smithers task attempts exist under that run, `svvy` projects first-class workflow-task-attempt records keyed by `runId`, `nodeId`, `iteration`, and `attempt`, plus durable nested transcript, command, and artifact traces for task-agent work.
 9. The Bun side emits explicit workspace updates and surface updates whenever those durable projections change visible workspace state or the live handler surface state.
 10. If the workflow reaches a state that needs another handler decision, `svvy` opens a synthetic background turn on that same handler thread.
-11. The handler thread decides whether to inspect, repair, resume, ask the user, or hand control back with `thread.handoff`.
+11. The handler thread uses `thread.current` to identify active workflow run ids, uses Smithers-native tools for detailed workflow state, and decides whether to inspect, repair, resume, ask the user, or hand control back with `thread.handoff`.
 
 ## Shipped App Integration
 

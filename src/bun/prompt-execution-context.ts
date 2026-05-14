@@ -14,7 +14,6 @@ export interface PromptExecutionContext {
   rootEpisodeKind: StructuredEpisodeKind;
   sessionWaitApplied: boolean;
   threadWasTerminalAtStart: boolean;
-  durableSurfaceContext?: string;
   suppressPendingWorkflowAttentionDelivery?: boolean;
 }
 
@@ -33,7 +32,6 @@ export function createPromptExecutionContext(input: {
   promptText: string;
   rootEpisodeKind?: StructuredEpisodeKind;
   threadWasTerminalAtStart?: boolean;
-  durableSurfaceContext?: string;
   suppressPendingWorkflowAttentionDelivery?: boolean;
 }): PromptExecutionContext {
   const surfaceKind = input.surfaceKind ?? "orchestrator";
@@ -56,7 +54,6 @@ export function createPromptExecutionContext(input: {
     rootEpisodeKind: defaultEpisodeKind,
     sessionWaitApplied: false,
     threadWasTerminalAtStart: input.threadWasTerminalAtStart ?? false,
-    durableSurfaceContext: input.durableSurfaceContext,
     suppressPendingWorkflowAttentionDelivery:
       input.suppressPendingWorkflowAttentionDelivery ?? false,
   };

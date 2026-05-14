@@ -1041,6 +1041,7 @@ Write responsibility is:
 - workflow-run writes belong to the Smithers bridge
 - Project CI writes belong to the runtime or bridge path that handles terminal Smithers runs from entries declaring `productKind = "project-ci"` and validates their terminal output against the declared CI result schema
 - wait writes belong to the `svvy` runtime
+- runtime-state read tools (`runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`) read durable structured state and the active prompt runtime binding without creating command records or writing lifecycle facts
 
 No runtime component may synthesize `turnDecision`, thread, workflow-run, Project CI, or wait facts from transcript prose after the fact.
 
@@ -1055,7 +1056,7 @@ Read APIs and selectors are projection-only for lifecycle state:
 
 The implementation must enforce these invariants:
 
-- every tool call creates exactly one command record
+- every mutating or work-producing tool call creates exactly one command record; low-noise runtime-state read tools are projection reads rather than command-producing work
 - a handler thread owns exactly one backing `surfacePiSessionId`
 - loaded optional prompt context keys are durable thread state and survive resume
 - `request_context` may only run from handler-thread surfaces

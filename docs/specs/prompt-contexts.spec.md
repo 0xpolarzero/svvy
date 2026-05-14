@@ -16,6 +16,8 @@
 
 Prompt contexts keep specialized product knowledge modular while preserving one system-prompt channel per actor surface.
 
+Prompt contexts are stable or explicitly loaded product knowledge. They do not carry current thread status, wait state, handoff bodies, workflow run summaries, or reconstructed transcript text. Current runtime and thread state is read through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`; workflow details remain behind `smithers.*` tools.
+
 There are two load modes:
 
 - always-loaded contexts, included in every eligible actor prompt
