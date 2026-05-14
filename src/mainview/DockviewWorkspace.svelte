@@ -670,28 +670,38 @@
   }
 
   :global(.dockview-surface-action) {
-    display: grid;
+    position: relative;
+    display: inline-grid;
     place-items: center;
-    width: 1.45rem;
-    height: 1.45rem;
-    border: 0;
+    width: 1.55rem;
+    height: 1.55rem;
+    padding: 0;
+    border: 1px solid transparent;
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-tertiary);
     cursor: pointer;
+    transition:
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   :global(.dockview-surface-action:hover:not(:disabled)),
   :global(.dockview-surface-action:focus-visible) {
-    background: color-mix(in oklab, var(--ui-surface-subtle) 84%, var(--ui-accent) 16%);
+    border-color: var(--ui-border-soft);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 78%, transparent);
     color: var(--ui-text-primary);
     outline: none;
   }
 
-  :global(.dockview-surface-action.action-close:hover:not(:disabled)),
-  :global(.dockview-surface-action.action-close:focus-visible) {
-    background: color-mix(in oklab, var(--ui-danger-soft) 72%, var(--ui-surface) 28%);
-    color: var(--ui-danger);
+  :global(.dockview-surface-action:focus-visible) {
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  :global(.dockview-surface-action:active:not(:disabled)) {
+    transform: translateY(1px) scale(0.94);
   }
 
   :global(.dockview-surface-action:disabled) {
@@ -707,6 +717,19 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 1.55;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.dockview-surface-action) {
+      transition:
+        border-color 0.01ms linear,
+        background-color 0.01ms linear,
+        color 0.01ms linear;
+    }
+
+    :global(.dockview-surface-action:active:not(:disabled)) {
+      transform: none;
+    }
   }
 
   :global(.imperative-action-tooltip) {
