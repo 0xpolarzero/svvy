@@ -22,6 +22,10 @@ function createSessionSummary(): WorkspaceSessionSummary {
     pinnedAt: null,
     isArchived: false,
     archivedAt: null,
+    isUnread: false,
+    unreadAt: null,
+    unreadReason: null,
+    lastReadAt: null,
     wait: null,
     commandRollups: [
       {

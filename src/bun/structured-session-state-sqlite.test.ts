@@ -83,6 +83,7 @@ describe("structured session state SQLite persistence", () => {
     });
     first.store.setSessionPinned({ sessionId: "session-navigation", pinned: true });
     first.store.setSessionArchived({ sessionId: "session-navigation", archived: true });
+    first.store.markSessionUnread({ sessionId: "session-navigation", reason: "manual" });
     first.store.setArchivedGroupCollapsed({ collapsed: false });
     closeTrackedStore(first.store);
 
@@ -93,10 +94,13 @@ describe("structured session state SQLite persistence", () => {
     const snapshot = second.store.getSessionState("session-navigation");
     expect(snapshot.session.pinnedAt).toBeNull();
     expect(snapshot.session.archivedAt).toBe("2026-04-18T12:00:01.000Z");
+    expect(snapshot.session.unreadAt).toBe("2026-04-18T12:00:02.000Z");
+    expect(snapshot.session.unreadReason).toBe("manual");
+    expect(snapshot.session.lastReadAt).toBeNull();
     expect(snapshot.pi.title).toBe("Navigation session");
     expect(second.store.getWorkspaceSidebarState()).toEqual({
       archivedGroupCollapsed: false,
-      updatedAt: "2026-04-18T12:00:02.000Z",
+      updatedAt: "2026-04-18T12:00:03.000Z",
     });
   });
 

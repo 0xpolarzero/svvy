@@ -195,6 +195,10 @@ function createSummary(
     pinnedAt: null,
     isArchived: false,
     archivedAt: null,
+    isUnread: false,
+    unreadAt: null,
+    unreadReason: null,
+    lastReadAt: null,
     provider: "openai",
     modelId: "gpt-4o",
     thinkingLevel: reasoningEffort,
@@ -597,6 +601,7 @@ function createFakeRpc(input: {
   const requestCounts = {
     listSessions: 0,
   };
+  let focusedSurfacePiSessionId: string | null = null;
 
   const listSessions = (): WorkspaceSessionSummary[] =>
     Array.from(summaries.values()).map((summary) => structuredClone(summary));
@@ -1122,6 +1127,26 @@ function createFakeRpc(input: {
           });
           return { ok: true };
         },
+        markSessionUnread: async ({ sessionId }) => {
+          updateSummary(sessionId, (summary) => {
+            summary.isUnread = true;
+            summary.unreadAt = "2026-04-10T10:10:00.000Z";
+            summary.unreadReason = "manual";
+          });
+          return { ok: true };
+        },
+        recordFocusedSession: async ({ sessionId, surfacePiSessionId }) => {
+          focusedSurfacePiSessionId = sessionId ? (surfacePiSessionId ?? null) : null;
+          if (sessionId) {
+            updateSummary(sessionId, (summary) => {
+              summary.isUnread = false;
+              summary.unreadAt = null;
+              summary.unreadReason = null;
+              summary.lastReadAt = "2026-04-10T10:11:00.000Z";
+            });
+          }
+          return { ok: true };
+        },
         setArchivedGroupCollapsed: async ({ collapsed }) => {
           archivedGroupCollapsed = collapsed;
           return { ok: true };
@@ -1140,6 +1165,10 @@ function createFakeRpc(input: {
             streamMessage: null,
             promptStatus: "streaming",
           };
+          updateSummary(request.target.workspaceSessionId, (summary) => {
+            summary.status = "running";
+          });
+          emitWorkspaceSync("workspace.updated");
           queueMicrotask(() => {
             emitSurfaceSync({
               reason: "background.started",
@@ -1182,6 +1211,11 @@ function createFakeRpc(input: {
             summary.preview = result.assistantText;
             summary.messageCount = nextMessages.length;
             summary.status = "idle";
+            if (focusedSurfacePiSessionId !== request.target.surfacePiSessionId) {
+              summary.isUnread = true;
+              summary.unreadAt = "2026-04-10T10:12:00.000Z";
+              summary.unreadReason = "assistant-turn-finished";
+            }
           });
 
           queueMicrotask(() => {
@@ -1659,6 +1693,96 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("keeps sidebar state live for a background prompt after its pane closes", async () => {
+    const promptGate = createDeferred<void>();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Background", "ready")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [],
+        }),
+      ],
+    });
+    harness.setPromptHandler("session-1", async () => {
+      await promptGate.promise;
+      return { assistantText: "Finished in the background." };
+    });
+
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController(runtime.primaryPaneId);
+    if (!controller) {
+      throw new Error("Expected an orchestrator controller.");
+    }
+
+    const prompt = controller.sendPrompt("Run in the background");
+    await waitFor(
+      () => runtime.sessions.find((session) => session.id === "session-1")?.status === "running",
+    );
+
+    await runtime.closePaneSurface(runtime.primaryPaneId);
+    expect(runtime.sessions.find((session) => session.id === "session-1")?.status).toBe(
+      "running",
+    );
+
+    promptGate.resolve();
+    await prompt;
+    await waitFor(
+      () => runtime.sessions.find((session) => session.id === "session-1")?.isUnread === true,
+    );
+    expect(runtime.sessions.find((session) => session.id === "session-1")?.preview).toBe(
+      "Finished in the background.",
+    );
+
+    runtime.dispose();
+  });
+
+  it("marks an open but unfocused pane unread when its assistant turn finishes", async () => {
+    const harness = createFakeRpc({
+      sessions: [
+        createSummary("session-1", "Focused", "ready"),
+        createSummary("session-2", "Unfocused", "ready"),
+      ],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [],
+        }),
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-2"),
+          messages: [],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSession("session-2", {
+      kind: "split",
+      panelId: runtime.primaryPaneId,
+      direction: "right",
+    });
+    const session2PaneId = runtime.paneLayout.focusedPanelId;
+    if (!session2PaneId) {
+      throw new Error("Expected session 2 pane to be focused after opening.");
+    }
+    runtime.focusPane(runtime.primaryPaneId);
+
+    const controller = runtime.getSurfaceController("session-2");
+    if (!controller) {
+      throw new Error("Expected session 2 controller.");
+    }
+
+    await controller.sendPrompt("Finish while unfocused");
+    await waitFor(
+      () => runtime.sessions.find((session) => session.id === "session-2")?.isUnread === true,
+    );
+    expect(runtime.sessions.find((session) => session.id === "session-2")?.unreadReason).toBe(
+      "assistant-turn-finished",
+    );
+
+    runtime.dispose();
+  });
+
   it("renders pending user and surface-owned stream state from snapshots", async () => {
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
     const pendingUser = userMessage("Inspect the repo");
@@ -1955,6 +2079,12 @@ describe("createChatRuntime", () => {
       "session-2",
     );
     expect(runtime.sessions.find((session) => session.id === "session-2")?.isPinned).toBe(false);
+
+    await runtime.markSessionUnread("session-2");
+    expect(runtime.sessions.find((session) => session.id === "session-2")?.isUnread).toBe(true);
+    expect(runtime.sessions.find((session) => session.id === "session-2")?.unreadReason).toBe(
+      "manual",
+    );
 
     runtime.dispose();
   });

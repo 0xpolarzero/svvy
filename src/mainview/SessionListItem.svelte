@@ -32,6 +32,7 @@
     onUnpin: () => void;
     onArchive: () => void;
     onUnarchive: () => void;
+    onContextMenu?: (event: MouseEvent | KeyboardEvent) => void;
     onArrowUp?: () => void;
     onArrowDown?: () => void;
   };
@@ -47,11 +48,18 @@
     onUnpin,
     onArchive,
     onUnarchive,
+    onContextMenu,
     onArrowUp,
     onArrowDown,
   }: Props = $props();
 
   function handleKeydown(event: KeyboardEvent) {
+    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      onContextMenu?.(event);
+      return;
+    }
+
     if (event.key === "ArrowUp") {
       event.preventDefault();
       onArrowUp?.();
@@ -79,15 +87,20 @@
 </script>
 
 <article
-  class={`session-item ${active ? "active" : ""} ${session.isArchived ? "archived" : ""} ${hasPane ? "open-in-pane" : ""} open-tone-${paneTone} ${isWorking ? "working" : ""}`.trim()}
+  class={`session-item ${active ? "active" : ""} ${session.isArchived ? "archived" : ""} ${session.isUnread ? "unread" : ""} ${hasPane ? "open-in-pane" : ""} open-tone-${paneTone} ${isWorking ? "working" : ""}`.trim()}
 >
   <button
     class="session-main"
     type="button"
     aria-current={active ? "true" : undefined}
+    aria-label={`${session.isUnread ? "Unread session: " : ""}${session.title}`}
     disabled={disabled}
     onclick={onOpen}
     ondblclick={onRename}
+    oncontextmenu={(event) => {
+      event.preventDefault();
+      onContextMenu?.(event);
+    }}
     onkeydown={handleKeydown}
     title={renameLocked ? session.title : `${session.title} · double-click to rename`}
   >
@@ -97,7 +110,11 @@
         {#if session.parentSessionId}
           <GitForkIcon aria-label="Forked session" size={11} strokeWidth={1.85} />
         {/if}
-        <span>{formatCompactRelativeSessionTime(session.updatedAt)}</span>
+        {#if session.isUnread}
+          <span class="session-unread-dot" aria-hidden="true"></span>
+        {:else}
+          <span>{formatCompactRelativeSessionTime(session.updatedAt)}</span>
+        {/if}
       </div>
     </div>
     <div class="session-main-body">
@@ -298,8 +315,8 @@
       visibility 120ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  .session-item:hover .session-main-top-meta,
-  .session-item:focus-within .session-main-top-meta {
+  .session-item:not(.unread):hover .session-main-top-meta,
+  .session-item:not(.unread):focus-within .session-main-top-meta {
     opacity: 0;
     visibility: hidden;
   }
@@ -310,6 +327,14 @@
 
   .session-main-top-meta :global(svg) {
     color: var(--ui-text-tertiary);
+  }
+
+  .session-unread-dot {
+    width: 0.46rem;
+    height: 0.46rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ui-accent) 88%, var(--ui-text-primary));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--ui-accent) 16%, transparent);
   }
 
   .session-main-body {

@@ -44,6 +44,10 @@ function session(
     pinnedAt: options.isPinned ? "2026-04-27T10:00:00.000Z" : null,
     isArchived: options.isArchived ?? false,
     archivedAt: options.isArchived ? "2026-04-27T10:00:00.000Z" : null,
+    isUnread: false,
+    unreadAt: null,
+    unreadReason: null,
+    lastReadAt: null,
     wait: null,
   };
 }

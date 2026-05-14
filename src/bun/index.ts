@@ -840,6 +840,30 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         appLog.info("session", "Workspace session unarchived.", { workspaceSessionId: sessionId });
         return result;
       },
+      markSessionUnread: async ({ sessionId }: { sessionId: string }) => {
+        const result = await workspaceSessionCatalog.markSessionUnread(sessionId);
+        recordBridgeEvent("session.marked-unread", { sessionId });
+        appLog.info("session", "Workspace session marked unread.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
+      recordFocusedSession: async ({
+        sessionId,
+        surfacePiSessionId,
+      }: {
+        sessionId: string | null;
+        surfacePiSessionId?: string | null;
+      }) => {
+        const result = await workspaceSessionCatalog.recordFocusedSession({
+          sessionId,
+          surfacePiSessionId,
+        });
+        if (sessionId) {
+          recordBridgeEvent("session.focused", { sessionId });
+        }
+        return result;
+      },
       setArchivedGroupCollapsed: async ({ collapsed }: { collapsed: boolean }) => {
         const result = await workspaceSessionCatalog.setArchivedGroupCollapsed({ collapsed });
         recordBridgeEvent("session.archived-group.toggled", { collapsed });

@@ -200,6 +200,7 @@ export class WorkspaceSessionCatalog {
   private readonly agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
   private readonly titleGenerationJobs = new Set<string>();
   private closed = false;
+  private focusedSurfacePiSessionId: string | null = null;
   private workspaceSyncListener: ((payload: WorkspaceSyncMessage) => void) | null = null;
   private surfaceSyncListener: ((payload: SurfaceSyncMessage) => void) | null = null;
   private titleGenerationLogListener: ((event: TitleGenerationLogEvent) => void) | null = null;
@@ -631,6 +632,29 @@ export class WorkspaceSessionCatalog {
     return { ok: true };
   }
 
+  async markSessionUnread(sessionId: string): Promise<WorkspaceMutationResponse> {
+    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    this.structuredSessionStore.markSessionUnread({ sessionId, reason: "manual" });
+    await this.emitWorkspaceSync("workspace.updated");
+    return { ok: true };
+  }
+
+  async recordFocusedSession(input: {
+    sessionId: string | null;
+    surfacePiSessionId?: string | null;
+  }): Promise<WorkspaceMutationResponse> {
+    const sessionId = input.sessionId;
+    this.focusedSurfacePiSessionId = input.surfacePiSessionId ?? null;
+    if (!sessionId) {
+      return { ok: true };
+    }
+
+    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    this.structuredSessionStore.markSessionRead({ sessionId });
+    await this.emitWorkspaceSync("workspace.updated");
+    return { ok: true };
+  }
+
   async setArchivedGroupCollapsed(input: {
     collapsed: boolean;
   }): Promise<WorkspaceMutationResponse> {
@@ -818,6 +842,7 @@ export class WorkspaceSessionCatalog {
       reason: "background.started",
       target: options.target,
     });
+    await this.emitWorkspaceSync("workspace.updated");
 
     setTimeout(() => {
       void (async () => {
@@ -1575,6 +1600,10 @@ export class WorkspaceSessionCatalog {
       pinnedAt: snapshot.session.pinnedAt,
       isArchived: snapshot.session.archivedAt !== null,
       archivedAt: snapshot.session.archivedAt,
+      isUnread: snapshot.session.unreadAt !== null,
+      unreadAt: snapshot.session.unreadAt,
+      unreadReason: snapshot.session.unreadReason,
+      lastReadAt: snapshot.session.lastReadAt,
       titleGeneration: {
         status: snapshot.pi.titleGenerationStatus ?? "not-started",
         renameLocked:
@@ -2419,6 +2448,12 @@ export class WorkspaceSessionCatalog {
           turnId: promptContext.turnId,
           status: "waiting",
         });
+        if (this.focusedSurfacePiSessionId !== promptContext.surfacePiSessionId) {
+          this.structuredSessionStore.markSessionUnread({
+            sessionId: promptContext.sessionId,
+            reason: "assistant-turn-finished",
+          });
+        }
         return;
       }
 
@@ -2433,6 +2468,12 @@ export class WorkspaceSessionCatalog {
         status: "completed",
       });
       this.settleHandlerThreadAfterPrompt(promptContext);
+      if (this.focusedSurfacePiSessionId !== promptContext.surfacePiSessionId) {
+        this.structuredSessionStore.markSessionUnread({
+          sessionId: promptContext.sessionId,
+          reason: "assistant-turn-finished",
+        });
+      }
     } catch (error) {
       if (!this.closed) {
         console.error("Failed to finalize prompt execution:", error);

@@ -15,6 +15,10 @@ function session(input: Partial<WorkspaceSessionSummary> = {}): WorkspaceSession
     pinnedAt: null,
     isArchived: false,
     archivedAt: null,
+    isUnread: false,
+    unreadAt: null,
+    unreadReason: null,
+    lastReadAt: null,
     wait: null,
     counts: {
       turns: 0,

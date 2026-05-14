@@ -49,6 +49,10 @@ function sessionWithWait(): WorkspaceSessionSummary {
     pinnedAt: null,
     isArchived: false,
     archivedAt: null,
+    isUnread: false,
+    unreadAt: null,
+    unreadReason: null,
+    lastReadAt: null,
     wait: {
       threadId: "thread-1",
       kind: "approval",

@@ -167,6 +167,8 @@ export interface ChatRuntimeRpcClient {
     unpinSession: typeof rpc.request.unpinSession;
     archiveSession: typeof rpc.request.archiveSession;
     unarchiveSession: typeof rpc.request.unarchiveSession;
+    markSessionUnread: typeof rpc.request.markSessionUnread;
+    recordFocusedSession: typeof rpc.request.recordFocusedSession;
     setArchivedGroupCollapsed: typeof rpc.request.setArchivedGroupCollapsed;
     sendPrompt: typeof rpc.request.sendPrompt;
     setSurfaceModel: typeof rpc.request.setSurfaceModel;
@@ -281,6 +283,7 @@ export interface ChatRuntime {
   unpinSession: (sessionId: string) => Promise<void>;
   archiveSession: (sessionId: string) => Promise<void>;
   unarchiveSession: (sessionId: string) => Promise<void>;
+  markSessionUnread: (sessionId: string) => Promise<void>;
   setArchivedGroupCollapsed: (collapsed: boolean) => Promise<void>;
   setPaneInspectorSelection: (
     panelId: string,
@@ -775,6 +778,7 @@ export async function createChatRuntime(
       }
       upsertSurfaceController({ ...snapshot, target: nextTarget }).attachPane(panelId);
       emit();
+      recordFocusedSession();
       if (persist) {
         persistWorkspaceUiRestore();
       }
@@ -788,6 +792,7 @@ export async function createChatRuntime(
     }
     controller.attachPane(panelId);
     emit();
+    recordFocusedSession();
 
     if (isPromptTarget(previousTarget)) {
       surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(panelId);
@@ -807,6 +812,7 @@ export async function createChatRuntime(
     paneLayout = bindPane(paneLayout, panelId, nextTarget);
     controller.attachPane(panelId);
     emit();
+    recordFocusedSession();
 
     if (
       isPromptTarget(previousTarget) &&
@@ -823,6 +829,34 @@ export async function createChatRuntime(
     sessionNavigation = response.navigation;
     emit();
     return sessions;
+  };
+
+  let lastRecordedFocusedSessionId: string | null | undefined = undefined;
+  let lastRecordedFocusedSurfacePiSessionId: string | null | undefined = undefined;
+  const recordFocusedSession = (): void => {
+    const focusedTarget =
+      paneLayout.panels.find((pane) => pane.panelId === paneLayout.focusedPanelId)?.binding ?? null;
+    const focusedSessionId = isPromptTarget(focusedTarget) ? focusedTarget.workspaceSessionId : null;
+    const focusedSurfacePiSessionId = isPromptTarget(focusedTarget)
+      ? focusedTarget.surfacePiSessionId
+      : null;
+    if (
+      focusedSessionId === lastRecordedFocusedSessionId &&
+      focusedSurfacePiSessionId === lastRecordedFocusedSurfacePiSessionId
+    ) {
+      return;
+    }
+
+    lastRecordedFocusedSessionId = focusedSessionId;
+    lastRecordedFocusedSurfacePiSessionId = focusedSurfacePiSessionId;
+    void rpcClient.request
+      .recordFocusedSession({
+        sessionId: focusedSessionId,
+        surfacePiSessionId: focusedSurfacePiSessionId,
+      })
+      .catch((error) => {
+        console.error("Failed to record focused session:", error);
+      });
   };
 
   const getSelectedSessionId = (sessionId?: string): string | undefined => {
@@ -1223,6 +1257,7 @@ export async function createChatRuntime(
   rpcClient.addMessageListener("sendWorkspaceSync", workspaceSyncListener);
   rpcClient.addMessageListener("sendSurfaceSync", surfaceSyncListener);
   rpcClient.addMessageListener("sendAppLogUpdate", appLogUpdateListener);
+  recordFocusedSession();
 
   const runtime: ChatRuntime = {
     storage,
@@ -1303,6 +1338,7 @@ export async function createChatRuntime(
       paneLayout = focusPane(paneLayout, panelId);
       persistWorkspaceUiRestore();
       emit();
+      recordFocusedSession();
     },
     splitPane: async (panelId, direction, splitOptions = {}) => {
       const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
@@ -1331,6 +1367,7 @@ export async function createChatRuntime(
       paneLayout = closePane(paneLayout, targetPanelId);
       persistWorkspaceUiRestore();
       emit();
+      recordFocusedSession();
       await releasePaneSurface(targetPanelId, target);
     },
     setDockviewLayout: (dockview, focusedPanelId) => {
@@ -1341,6 +1378,7 @@ export async function createChatRuntime(
       );
       persistWorkspaceUiRestore();
       emit();
+      recordFocusedSession();
     },
     getCommandInspector,
     listHandlerThreads,
@@ -1385,6 +1423,7 @@ export async function createChatRuntime(
         paneLayout = focusPane(paneLayout, nextPaneId);
         persistWorkspaceUiRestore();
         emit();
+        recordFocusedSession();
         return;
       }
 
@@ -1417,6 +1456,7 @@ export async function createChatRuntime(
         paneLayout = bindPane(paneLayout, nextPaneId, { ...target });
         persistWorkspaceUiRestore();
         emit();
+        recordFocusedSession();
         return;
       }
       const normalizedTarget = normalizePromptTarget(target);
@@ -1430,6 +1470,7 @@ export async function createChatRuntime(
         surfaceControllers.get(normalizedTarget.surfacePiSessionId)?.attachPane(nextPaneId);
         persistWorkspaceUiRestore();
         emit();
+        recordFocusedSession();
         return;
       }
 
@@ -1455,6 +1496,7 @@ export async function createChatRuntime(
 
       clearPaneBinding(panelId);
       emit();
+      recordFocusedSession();
       await releasePaneSurface(panelId, target);
     },
     renameSession: async (sessionId, title) => {
@@ -1539,6 +1581,12 @@ export async function createChatRuntime(
     },
     unarchiveSession: async (sessionId) => {
       await rpcClient.request.unarchiveSession({ sessionId });
+      await refreshSessions();
+    },
+    markSessionUnread: async (sessionId) => {
+      await rpcClient.request.markSessionUnread({ sessionId });
+      lastRecordedFocusedSessionId = undefined;
+      lastRecordedFocusedSurfacePiSessionId = undefined;
       await refreshSessions();
     },
     setArchivedGroupCollapsed: async (collapsed) => {

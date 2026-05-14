@@ -59,6 +59,9 @@ type SessionNavigationMetadata = {
   workspaceSessionId: string;
   pinnedAt: string | null;
   archivedAt: string | null;
+  unreadAt: string | null;
+  unreadReason: "assistant-turn-finished" | "manual" | null;
+  lastReadAt: string | null;
   updatedAt: string;
 };
 ```
@@ -112,6 +115,18 @@ Archived sessions should sort by `archivedAt` descending so the most recently ar
 
 The Archived group should be collapsed by default in new workspaces and whenever no persisted sidebar state exists.
 
+### Unread Rules
+
+When an assistant turn finishes for a session, that session becomes unread unless the currently focused Dockview panel is bound to the same interactive surface at the moment the turn settles.
+
+Unread state is session-level navigation metadata, not panel-local state. It survives restart and applies even when the unread work happened in a handler-thread surface or a background workflow-attention turn owned by that session.
+
+Focusing any pane bound to the session clears unread state and records `lastReadAt`. Read and unread state changes must not update the session recency timestamp or reorder session navigation.
+
+The sidebar represents unread state with a small dot in place of the session timestamp. It must not add a separate row highlight beyond the dot.
+
+Users may manually set unread state from the session row context menu. Manual unread uses the same sidebar dot and clears through the same focus behavior.
+
 ### Sidebar Actions
 
 Active unpinned session rows should expose:
@@ -127,6 +142,13 @@ Active pinned session rows should expose:
 Archived session rows should expose:
 
 - Unarchive
+
+Right-clicking or keyboard-opening a session row context menu should expose:
+
+- Mark as Unread
+- Pin or Unpin
+- Rename
+- Archive or Unarchive
 
 Existing destructive session actions, such as delete, may remain available where they already exist, but archive is not delete. Archiving must not remove pi session data, structured state, artifacts, threads, workflow runs, or episodes.
 

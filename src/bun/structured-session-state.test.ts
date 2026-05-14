@@ -85,13 +85,31 @@ describe("structured session state write API", () => {
     snapshot = store.getSessionState("session-navigation");
     expect(snapshot.session.pinnedAt).toBeNull();
     expect(snapshot.session.archivedAt).toBeNull();
+
+    store.markSessionUnread({
+      sessionId: "session-navigation",
+      reason: "assistant-turn-finished",
+    });
+    snapshot = store.getSessionState("session-navigation");
+    expect(snapshot.session.unreadAt).toBe("2026-04-18T09:00:03.000Z");
+    expect(snapshot.session.unreadReason).toBe("assistant-turn-finished");
+    expect(snapshot.session.lastReadAt).toBeNull();
+
+    store.markSessionRead({ sessionId: "session-navigation" });
+    snapshot = store.getSessionState("session-navigation");
+    expect(snapshot.session.unreadAt).toBeNull();
+    expect(snapshot.session.unreadReason).toBeNull();
+    expect(snapshot.session.lastReadAt).toBe("2026-04-18T09:00:04.000Z");
     expect(
       snapshot.events.filter((event) => event.kind === "session.navigation.updated"),
     ).toHaveLength(3);
+    expect(
+      snapshot.events.filter((event) => event.kind === "session.unread.updated"),
+    ).toHaveLength(2);
 
     expect(store.setArchivedGroupCollapsed({ collapsed: false })).toEqual({
       archivedGroupCollapsed: false,
-      updatedAt: "2026-04-18T09:00:03.000Z",
+      updatedAt: "2026-04-18T09:00:05.000Z",
     });
   });
 
@@ -323,6 +341,9 @@ describe("structured session state write API", () => {
       orchestratorPiSessionId: "session-model",
       pinnedAt: null,
       archivedAt: null,
+      unreadAt: null,
+      unreadReason: null,
+      lastReadAt: null,
       wait: null,
     });
     expect(snapshot.turns).toEqual([

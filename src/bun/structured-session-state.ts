@@ -365,6 +365,9 @@ export interface StructuredSessionSnapshot {
     orchestratorPiSessionId: string;
     pinnedAt: string | null;
     archivedAt: string | null;
+    unreadAt: string | null;
+    unreadReason: "assistant-turn-finished" | "manual" | null;
+    lastReadAt: string | null;
     wait: StructuredSessionWaitState | null;
   };
   turns: StructuredTurnRecord[];
@@ -458,6 +461,11 @@ export interface StructuredSessionStateStore {
   clearSessionWait(input: { sessionId: string }): void;
   setSessionPinned(input: { sessionId: string; pinned: boolean }): void;
   setSessionArchived(input: { sessionId: string; archived: boolean }): void;
+  markSessionUnread(input: {
+    sessionId: string;
+    reason: "assistant-turn-finished" | "manual";
+  }): void;
+  markSessionRead(input: { sessionId: string }): void;
   getWorkspaceSidebarState(): StructuredWorkspaceSidebarState;
   setArchivedGroupCollapsed(input: { collapsed: boolean }): StructuredWorkspaceSidebarState;
   recordLifecycleEvent(input: {
@@ -643,6 +651,9 @@ type SessionRow = {
   orchestrator_pi_session_id: string;
   pinned_at: string | null;
   archived_at: string | null;
+  unread_at: string | null;
+  unread_reason: "assistant-turn-finished" | "manual" | null;
+  last_read_at: string | null;
   wait_owner_kind: "orchestrator" | "thread" | null;
   wait_thread_id: string | null;
   wait_kind: StructuredWaitKind | null;
@@ -958,13 +969,16 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            orchestrator_pi_session_id,
            pinned_at,
            archived_at,
+           unread_at,
+           unread_reason,
+           last_read_at,
            wait_owner_kind,
            wait_thread_id,
            wait_kind,
            wait_reason,
            wait_resume_when,
            wait_since
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         pi.sessionId,
@@ -1002,6 +1016,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         existing?.orchestrator_pi_session_id ?? pi.sessionId,
         existing?.pinned_at ?? null,
         existing?.archived_at ?? null,
+        existing?.unread_at ?? null,
+        existing?.unread_reason ?? null,
+        existing?.last_read_at ?? null,
         existing?.wait_owner_kind ?? null,
         existing?.wait_thread_id ?? null,
         existing?.wait_kind ?? null,
@@ -1636,6 +1653,59 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       data: {
         pinned: false,
         archived: input.archived,
+      },
+    });
+  }
+
+  markSessionUnread(input: {
+    sessionId: string;
+    reason: "assistant-turn-finished" | "manual";
+  }): void {
+    this.ensureSessionRow(input.sessionId);
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE session
+         SET unread_at = ?,
+             unread_reason = ?
+         WHERE session_id = ?`,
+      )
+      .run(timestamp, input.reason, input.sessionId);
+
+    this.recordEvent({
+      sessionId: input.sessionId,
+      kind: "session.unread.updated",
+      subjectKind: "session",
+      subjectId: input.sessionId,
+      at: timestamp,
+      data: {
+        unread: true,
+        reason: input.reason,
+      },
+    });
+  }
+
+  markSessionRead(input: { sessionId: string }): void {
+    this.ensureSessionRow(input.sessionId);
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE session
+         SET unread_at = NULL,
+             unread_reason = NULL,
+             last_read_at = ?
+         WHERE session_id = ?`,
+      )
+      .run(timestamp, input.sessionId);
+
+    this.recordEvent({
+      sessionId: input.sessionId,
+      kind: "session.unread.updated",
+      subjectKind: "session",
+      subjectId: input.sessionId,
+      at: timestamp,
+      data: {
+        unread: false,
       },
     });
   }
@@ -2589,6 +2659,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         orchestratorPiSessionId: session.orchestrator_pi_session_id,
         pinnedAt: session.pinned_at,
         archivedAt: session.archived_at,
+        unreadAt: session.unread_at,
+        unreadReason: session.unread_reason,
+        lastReadAt: session.last_read_at,
         wait: this.mapSessionWait(session),
       },
       turns: this.queryTurnRecords(sessionId),
@@ -3556,6 +3629,9 @@ function initializeSchema(db: Database): void {
       orchestrator_pi_session_id TEXT NOT NULL,
       pinned_at TEXT,
       archived_at TEXT,
+      unread_at TEXT,
+      unread_reason TEXT,
+      last_read_at TEXT,
       wait_owner_kind TEXT,
       wait_thread_id TEXT,
       wait_kind TEXT,
@@ -3782,6 +3858,9 @@ function initializeSchema(db: Database): void {
   `);
   ensureColumn(db, "session", "pinned_at", "TEXT");
   ensureColumn(db, "session", "archived_at", "TEXT");
+  ensureColumn(db, "session", "unread_at", "TEXT");
+  ensureColumn(db, "session", "unread_reason", "TEXT");
+  ensureColumn(db, "session", "last_read_at", "TEXT");
   ensureColumn(db, "session", "session_mode", "TEXT");
   ensureColumn(db, "session", "default_session_agent_json", "TEXT");
   ensureColumn(db, "session", "dumb_orchestrator_session_agent_json", "TEXT");

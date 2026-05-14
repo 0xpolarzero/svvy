@@ -552,6 +552,8 @@ The adopted navigation model is deliberately small:
 - the Archived group is the only folder-like grouping and is collapsed by default
 - arbitrary user-created session folders are not part of the product model
 - archiving hides a session from the active list without deleting pi session data, structured state, artifacts, threads, workflow runs, or episodes
+- sessions track durable unread state when an assistant turn finishes outside the currently focused pane surface, show that state as a small dot in place of the session timestamp in the sidebar, and clear it when a pane for that session receives focus
+- session rows expose a context menu with Mark as Unread, Pin or Unpin, Rename, and Archive or Unarchive actions while keeping normal row selection as the primary navigation behavior
 - each top-level session row represents the orchestrator layer only; child handler and workflow state must not make the session row appear running, waiting, or broken
 - delegated handler threads appear as nested rows under their parent session, and workflow runs appear as nested rows under their owning handler thread
 - sidebar subtitles are row-local relevance signals: orchestrator rows show orchestrator-local waits, commands, turns, or explicit handoff summaries; handler rows show handler-local waits and active workflow supervision; workflow rows show workflow-local running and waiting state; workflow troubleshooting is muted because it is handler-owned repair work, while `error` is reserved for row-local unrecoverable state that needs user action

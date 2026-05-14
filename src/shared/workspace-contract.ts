@@ -774,6 +774,10 @@ export interface WorkspaceSessionSummary {
   pinnedAt: string | null;
   isArchived: boolean;
   archivedAt: string | null;
+  isUnread: boolean;
+  unreadAt: string | null;
+  unreadReason: "assistant-turn-finished" | "manual" | null;
+  lastReadAt: string | null;
   sessionFile?: string;
   parentSessionId?: string;
   parentSessionFile?: string;
@@ -1094,6 +1098,14 @@ export interface ChatRPCSchema {
       };
       unarchiveSession: {
         params: { sessionId: string };
+        response: WorkspaceMutationResponse;
+      };
+      markSessionUnread: {
+        params: { sessionId: string };
+        response: WorkspaceMutationResponse;
+      };
+      recordFocusedSession: {
+        params: { sessionId: string | null; surfacePiSessionId?: string | null };
         response: WorkspaceMutationResponse;
       };
       setArchivedGroupCollapsed: {
