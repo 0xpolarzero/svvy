@@ -6,6 +6,10 @@ This document defines the resolved visual system for the Svelte renderer. The Re
 
 svvy uses a dense desktop workbench language: compact panes, narrow rows, muted surfaces, low elevation, restrained borders, and orange only where focus, live work, or primary action needs attention. The UI should feel closer to an editor shell than a marketing app.
 
+The dark interface uses graphite neutrals with only a slight warm tint. It should not read as navy, slate-blue, or a blue monochrome stack. Blue is reserved for waiting and informational state, so pane chrome, tabs, sidebars, and neutral panels should stay in the graphite family.
+
+Legacy Tailwind and shadcn-compatible aliases such as `--background`, `--card`, `--sidebar`, `--muted`, and `--border` must follow the same graphite direction so older utility-backed surfaces do not reintroduce blue chrome.
+
 Dark mode is the primary reference state. Light mode must keep the same contrast relationships and density, but with softer borders and lighter panels. The renderer exposes both through CSS variables in `src/mainview/app.css` rather than Tailwind classes.
 
 ## Typography
@@ -20,9 +24,9 @@ Dark mode is the primary reference state. Light mode must keep the same contrast
 
 The renderer token layer mirrors the artifact color roles while preserving svvy product semantics:
 
-- `--ui-bg`, `--ui-shell`, `--ui-surface`, `--ui-panel`, and `--ui-code` define the background stack.
-- `--ui-text-primary`, `--ui-text-secondary`, and `--ui-text-tertiary` define the text hierarchy.
-- `--ui-border-soft`, `--ui-border-strong`, and `--ui-border-accent` define low-contrast workbench separators and orange emphasis.
+- `--ui-bg`, `--ui-shell`, `--ui-surface`, `--ui-panel`, and `--ui-code` define the graphite background stack with enough contrast between app shell, pane chrome, and content panels to avoid a single washed layer.
+- `--ui-text-primary`, `--ui-text-secondary`, and `--ui-text-tertiary` define a warm-neutral text hierarchy, not a blue-tinted one.
+- `--ui-border-soft`, `--ui-border-strong`, and `--ui-border-accent` define low-contrast graphite separators and orange emphasis.
 - `--ui-accent` is the artifact orange, used for primary actions, active selection rails, focus rings, streaming cursors, live progress, and pane resize affordances.
 - `--ui-success`, `--ui-warning`, `--ui-danger`, and `--ui-info` define semantic status families with matching soft backgrounds; waiting-specific UI uses `--ui-status-waiting` and `--ui-status-waiting-soft`, which resolve to the blue info family.
 

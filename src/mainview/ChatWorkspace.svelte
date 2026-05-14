@@ -3353,7 +3353,7 @@
     padding: 0 0.78rem;
     border-bottom: 0;
     background: color-mix(in oklab, var(--ui-surface) 52%, transparent);
-    box-shadow: inset 0 -1px 0 var(--ui-border-soft);
+    box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--ui-border-soft) 42%, transparent);
     pointer-events: none;
   }
 

@@ -37,26 +37,26 @@
   --ui-z-overlay: 40;
   --ui-z-dialog: 1000;
 
-  --ui-bg: hsl(220 14% 6%);
-  --ui-bg-elevated: hsl(220 14% 8%);
-  --ui-shell: hsl(220 14% 7% / 0.92);
-  --ui-shell-edge: hsl(220 10% 13% / 0.88);
-  --ui-surface: hsl(220 13% 9% / 0.94);
-  --ui-surface-subtle: hsl(220 12% 12% / 0.96);
-  --ui-surface-muted: hsl(220 12% 14% / 0.98);
-  --ui-surface-raised: hsl(220 14% 8% / 0.98);
-  --ui-surface-strong: hsl(210 30% 90% / 0.96);
-  --ui-panel: hsl(220 12% 12% / 0.9);
-  --ui-panel-strong: hsl(220 12% 14% / 0.96);
-  --ui-code: hsl(220 14% 8% / 0.98);
+  --ui-bg: oklch(14.5% 0.006 55);
+  --ui-bg-elevated: oklch(18% 0.006 55);
+  --ui-shell: oklch(16.5% 0.006 55 / 0.94);
+  --ui-shell-edge: oklch(25% 0.008 55 / 0.86);
+  --ui-surface: oklch(20.5% 0.006 55 / 0.96);
+  --ui-surface-subtle: oklch(24.5% 0.007 55 / 0.96);
+  --ui-surface-muted: oklch(28.5% 0.007 55 / 0.98);
+  --ui-surface-raised: oklch(22.5% 0.006 55 / 0.98);
+  --ui-surface-strong: oklch(90% 0.012 75 / 0.96);
+  --ui-panel: oklch(22.5% 0.006 55 / 0.93);
+  --ui-panel-strong: oklch(27% 0.007 55 / 0.96);
+  --ui-code: oklch(18.5% 0.006 55 / 0.98);
 
-  --ui-text-primary: hsl(210 30% 90%);
-  --ui-text-secondary: hsl(210 25% 72%);
-  --ui-text-tertiary: hsl(215 14% 52%);
-  --ui-text-inverse: hsl(220 22% 12%);
+  --ui-text-primary: oklch(89% 0.012 75);
+  --ui-text-secondary: oklch(73% 0.01 75);
+  --ui-text-tertiary: oklch(57% 0.008 75);
+  --ui-text-inverse: oklch(20% 0.008 55);
 
-  --ui-border-soft: hsl(220 10% 14% / 0.82);
-  --ui-border-strong: hsl(220 10% 22% / 0.9);
+  --ui-border-soft: oklch(32% 0.007 55 / 0.74);
+  --ui-border-strong: oklch(42% 0.008 55 / 0.86);
   --ui-border-accent: hsl(24 95% 53% / 0.46);
 
   --ui-accent: hsl(24 95% 53%);
@@ -83,8 +83,8 @@
   --ui-status-waiting-soft: var(--ui-info-soft);
   --ui-status-danger: var(--ui-danger);
   --ui-status-danger-soft: var(--ui-danger-soft);
-  --ui-status-idle: hsl(215 14% 52%);
-  --ui-status-idle-soft: hsl(215 14% 52% / 0.1);
+  --ui-status-idle: oklch(57% 0.008 75);
+  --ui-status-idle-soft: oklch(57% 0.008 75 / 0.1);
 
   --ui-shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.2), 0 1px 2px hsl(0 0% 0% / 0.12);
   --ui-shadow-strong:
@@ -99,26 +99,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ui-bg: hsl(220 14% 6%);
-    --ui-bg-elevated: hsl(220 14% 8%);
-    --ui-shell: hsl(220 14% 7% / 0.92);
-    --ui-shell-edge: hsl(220 10% 13% / 0.88);
-    --ui-surface: hsl(220 13% 9% / 0.94);
-    --ui-surface-subtle: hsl(220 12% 12% / 0.96);
-    --ui-surface-muted: hsl(220 12% 14% / 0.98);
-    --ui-surface-raised: hsl(220 14% 8% / 0.98);
-    --ui-surface-strong: hsl(210 30% 90% / 0.96);
-    --ui-panel: hsl(220 12% 12% / 0.9);
-    --ui-panel-strong: hsl(220 12% 14% / 0.96);
-    --ui-code: hsl(220 14% 8% / 0.98);
+    --ui-bg: oklch(14.5% 0.006 55);
+    --ui-bg-elevated: oklch(18% 0.006 55);
+    --ui-shell: oklch(16.5% 0.006 55 / 0.94);
+    --ui-shell-edge: oklch(25% 0.008 55 / 0.86);
+    --ui-surface: oklch(20.5% 0.006 55 / 0.96);
+    --ui-surface-subtle: oklch(24.5% 0.007 55 / 0.96);
+    --ui-surface-muted: oklch(28.5% 0.007 55 / 0.98);
+    --ui-surface-raised: oklch(22.5% 0.006 55 / 0.98);
+    --ui-surface-strong: oklch(90% 0.012 75 / 0.96);
+    --ui-panel: oklch(22.5% 0.006 55 / 0.93);
+    --ui-panel-strong: oklch(27% 0.007 55 / 0.96);
+    --ui-code: oklch(18.5% 0.006 55 / 0.98);
 
-    --ui-text-primary: hsl(210 30% 90%);
-    --ui-text-secondary: hsl(210 25% 72%);
-    --ui-text-tertiary: hsl(215 14% 52%);
-    --ui-text-inverse: hsl(220 22% 12%);
+    --ui-text-primary: oklch(89% 0.012 75);
+    --ui-text-secondary: oklch(73% 0.01 75);
+    --ui-text-tertiary: oklch(57% 0.008 75);
+    --ui-text-inverse: oklch(20% 0.008 55);
 
-    --ui-border-soft: hsl(220 10% 14% / 0.82);
-    --ui-border-strong: hsl(220 10% 22% / 0.9);
+    --ui-border-soft: oklch(32% 0.007 55 / 0.74);
+    --ui-border-strong: oklch(42% 0.008 55 / 0.86);
     --ui-border-accent: hsl(24 95% 53% / 0.46);
 
     --ui-accent: hsl(24 95% 53%);
@@ -130,8 +130,8 @@
     --ui-warning-soft: hsl(38 92% 50% / 0.1);
     --ui-danger-soft: hsl(0 84% 60% / 0.1);
     --ui-info-soft: hsl(217 91% 60% / 0.1);
-    --ui-status-idle: hsl(215 14% 52%);
-    --ui-status-idle-soft: hsl(215 14% 52% / 0.1);
+    --ui-status-idle: oklch(57% 0.008 75);
+    --ui-status-idle-soft: oklch(57% 0.008 75 / 0.1);
 
     --ui-shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.4), 0 1px 2px hsl(0 0% 0% / 0.24);
     --ui-shadow-strong:
@@ -613,34 +613,34 @@ summary {
   --elevate-1: rgba(255,255,255,.04);
   --elevate-2: rgba(255,255,255,.08);
 
-  --background: 220 14% 6%;
-  --foreground: 210 30% 90%;
-  --border: 220 10% 14%;
-  --card: 220 13% 9%;
-  --card-foreground: 210 30% 90%;
-  --card-border: 220 10% 16%;
-  --sidebar: 220 14% 7%;
-  --sidebar-foreground: 210 25% 82%;
-  --sidebar-border: 220 10% 13%;
+  --background: 45 6% 6%;
+  --foreground: 45 9% 90%;
+  --border: 45 6% 15%;
+  --card: 45 6% 9%;
+  --card-foreground: 45 9% 90%;
+  --card-border: 45 6% 17%;
+  --sidebar: 45 6% 7%;
+  --sidebar-foreground: 45 8% 82%;
+  --sidebar-border: 45 6% 14%;
   --sidebar-primary: 24 95% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 220 12% 13%;
-  --sidebar-accent-foreground: 210 25% 82%;
+  --sidebar-accent: 45 6% 13%;
+  --sidebar-accent-foreground: 45 8% 82%;
   --sidebar-ring: 24 95% 53%;
-  --popover: 220 14% 8%;
-  --popover-foreground: 210 30% 90%;
-  --popover-border: 220 10% 17%;
+  --popover: 45 6% 8%;
+  --popover-foreground: 45 9% 90%;
+  --popover-border: 45 6% 18%;
   --primary: 24 95% 53%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 220 12% 14%;
-  --secondary-foreground: 210 25% 82%;
-  --muted: 220 12% 12%;
-  --muted-foreground: 215 14% 52%;
+  --secondary: 45 6% 14%;
+  --secondary-foreground: 45 8% 82%;
+  --muted: 45 6% 12%;
+  --muted-foreground: 45 6% 52%;
   --accent: 24 95% 53%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
-  --input: 220 10% 18%;
+  --input: 45 6% 19%;
   --ring: 24 95% 53%;
   --chart-1: 24 95% 53%;
   --chart-2: 142 71% 45%;

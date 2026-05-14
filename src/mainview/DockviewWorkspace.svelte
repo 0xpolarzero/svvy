@@ -519,14 +519,54 @@
     width: 100%;
     overflow: hidden;
     --dv-background-color: var(--ui-shell);
+    --dv-group-view-background-color: var(--ui-bg);
     --dv-paneview-active-outline-color: var(--ui-accent);
-    --dv-tabs-and-actions-container-background-color: color-mix(in oklab, var(--ui-panel) 92%, var(--ui-shell));
-    --dv-activegroup-visiblepanel-tab-background-color: var(--ui-panel);
-    --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 86%, var(--ui-shell));
-    --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 70%, var(--ui-shell));
-    --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 66%, var(--ui-shell));
-    --dv-separator-border: var(--ui-border);
+    --dv-tabs-and-actions-container-background-color: var(--ui-bg);
+    --dv-activegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 88%, var(--ui-surface-subtle));
+    --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 72%, var(--ui-shell));
+    --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 54%, var(--ui-shell));
+    --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 48%, var(--ui-shell));
+    --dv-tab-divider-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+    --dv-separator-border: var(--ui-border-soft);
+    --dv-paneview-header-border-color: var(--ui-border-soft);
+    --dv-icon-hover-background-color: color-mix(in oklab, var(--ui-surface-subtle) 78%, transparent);
+    --dv-drag-over-background-color: color-mix(in oklab, var(--ui-accent) 18%, var(--ui-panel));
     --dv-tabs-container-scrollbar-color: var(--ui-border-strong);
+  }
+
+  :global(.dockview-workbench .dockview-theme-abyss),
+  :global(.dockview-workbench .dockview-theme-abyss-spaced),
+  :global(.dockview-workbench.dockview-theme-abyss),
+  :global(.dockview-workbench.dockview-theme-abyss-spaced) {
+    --dv-color-abyss-dark: var(--ui-bg);
+    --dv-color-abyss: var(--ui-shell);
+    --dv-color-abyss-light: var(--ui-panel);
+    --dv-color-abyss-lighter: var(--ui-border-soft);
+    --dv-color-abyss-accent: var(--ui-accent);
+    --dv-color-abyss-primary-text: var(--ui-text);
+    --dv-color-abyss-secondary-text: var(--ui-text-muted);
+    --dv-group-view-background-color: var(--ui-bg);
+    --dv-tabs-and-actions-container-background-color: var(--ui-bg);
+    --dv-activegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 88%, var(--ui-surface-subtle));
+    --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 72%, var(--ui-shell));
+    --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 54%, var(--ui-shell));
+    --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 48%, var(--ui-shell));
+    --dv-tab-divider-color: color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
+    --dv-separator-border: var(--ui-border-soft);
+    --dv-paneview-header-border-color: var(--ui-border-soft);
+    --dv-paneview-active-outline-color: var(--ui-accent);
+  }
+
+  :global(.dockview-workbench .dv-dockview),
+  :global(.dockview-workbench .dv-watermark-container),
+  :global(.dockview-workbench .dv-watermark) {
+    background: var(--ui-bg);
+  }
+
+  :global(.dockview-workbench .dv-tabs-and-actions-container),
+  :global(.dockview-workbench .dv-void-container),
+  :global(.dockview-workbench .dv-right-actions-container) {
+    background: var(--dv-tabs-and-actions-container-background-color);
   }
 
   :global(.dockview-surface-content) {

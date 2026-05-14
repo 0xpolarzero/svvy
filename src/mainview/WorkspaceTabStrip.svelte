@@ -260,9 +260,9 @@
     max-width: min(16rem, 32vw);
     height: 1.68rem;
     overflow: hidden;
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
+    border: 1px solid transparent;
     border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-panel) 68%, transparent);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
     color: var(--ui-text-secondary);
     -webkit-user-drag: none;
     transition:
@@ -278,10 +278,9 @@
   }
 
   .workspace-tab.active {
-    border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-strong));
-    background: color-mix(in oklab, var(--ui-surface) 90%, var(--ui-accent) 10%);
+    border-color: transparent;
+    background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
     color: var(--ui-text-primary);
-    box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--ui-accent) 34%, transparent);
   }
 
   .workspace-tab-main,
