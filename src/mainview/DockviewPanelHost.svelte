@@ -2,6 +2,7 @@
   import ChatComposer from "./ChatComposer.svelte";
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
+  import AppLogsPane from "./AppLogsPane.svelte";
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
   import { projectConversation } from "./conversation-projection";
@@ -118,6 +119,8 @@
 
 {#if pane?.target?.surface === "workflow-inspector"}
   <WorkflowInspectorPane {runtime} sessionId={pane.target.workspaceSessionId} workflowRunId={pane.target.workflowRunId} {panelId} />
+{:else if pane?.target?.surface === "app-logs"}
+  <AppLogsPane {runtime} {panelId} />
 {:else if pane?.target?.surface === "saved-workflow-library"}
   <SavedWorkflowLibraryPane {runtime} />
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}

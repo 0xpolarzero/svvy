@@ -7,6 +7,10 @@ import {
   type Message,
 } from "@mariozechner/pi-ai";
 import type {
+  AppLogQuery,
+  AppLogReadModel,
+  AppLogSummary,
+  AppLogUpdateMessage,
   ConversationSurfaceSnapshot,
   CreateSessionRequest,
   PromptTarget,
@@ -130,6 +134,10 @@ export interface ChatRuntimeRpcClient {
     ensureWorkflowAgentsComponent: typeof rpc.request.ensureWorkflowAgentsComponent;
     getProviderAuthState: typeof rpc.request.getProviderAuthState;
     getWorkspaceInfo: typeof rpc.request.getWorkspaceInfo;
+    getAppLogs: typeof rpc.request.getAppLogs;
+    getAppLogSummary: typeof rpc.request.getAppLogSummary;
+    markAppLogsSeen: typeof rpc.request.markAppLogsSeen;
+    writeClipboardText: typeof rpc.request.writeClipboardText;
     listWorkspacePaths: typeof rpc.request.listWorkspacePaths;
     pickWorkspaceAttachments: typeof rpc.request.pickWorkspaceAttachments;
     openWorkspacePath: typeof rpc.request.openWorkspacePath;
@@ -183,12 +191,14 @@ export interface ChatRuntime {
   workspaceId: string;
   workspaceLabel: string;
   branch?: string;
+  appLogSummary: AppLogSummary;
   sessions: WorkspaceSessionSummary[];
   sessionNavigation: WorkspaceSessionNavigationReadModel;
   paneLayout: ChatPaneLayoutState;
   primaryPaneId: string;
   dispose: () => void;
   subscribe: (listener: ChatRuntimeListener) => () => void;
+  subscribeAppLogUpdate: (listener: (payload: AppLogUpdateMessage) => void) => () => void;
   subscribeAppMenuAction: (listener: (action: AppMenuAction) => void) => () => void;
   listSessions: () => Promise<WorkspaceSessionSummary[]>;
   getPane: (panelId: string) => ChatPaneState | undefined;
@@ -243,6 +253,10 @@ export interface ChatRuntime {
   ) => Promise<WorkspaceWorkflowInspectorLiveUpdate>;
   getProjectCiStatus: (sessionId?: string) => Promise<WorkspaceProjectCiStatusPanel>;
   getArtifactPreview: (artifactId: string, sessionId?: string) => Promise<WorkspaceArtifactPreview>;
+  getAppLogs: (query?: AppLogQuery) => Promise<AppLogReadModel>;
+  getAppLogSummary: () => Promise<AppLogSummary>;
+  markAppLogsSeen: (throughSeq: number) => Promise<AppLogSummary>;
+  writeClipboardText: (text: string) => Promise<void>;
   createSession: (
     request?: CreateSessionRequest,
     openTarget?: PaneOpenTarget | string,
@@ -688,9 +702,16 @@ export async function createChatRuntime(
 ): Promise<ChatRuntime> {
   const storage = storageOverride ?? initializeStorage();
   const listeners = new Set<ChatRuntimeListener>();
+  const appLogUpdateListeners = new Set<(payload: AppLogUpdateMessage) => void>();
   const surfaceControllers = new Map<string, ChatSurfaceControllerInternal>();
   let sessions: WorkspaceSessionSummary[] = [];
   let sessionNavigation: WorkspaceSessionNavigationReadModel = buildWorkspaceSessionNavigation([]);
+  let appLogSummary: AppLogSummary = {
+    latestSeq: 0,
+    seenSeq: 0,
+    unread: { total: 0, info: 0, warning: 0, error: 0 },
+    totals: { total: 0, info: 0, warning: 0, error: 0 },
+  };
   let paneLayout = createEmptyPaneLayout();
   let disposed = false;
 
@@ -1092,13 +1113,15 @@ export async function createChatRuntime(
     return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? basePaneId;
   };
 
-  const [defaults, workspaceInfo, initialCatalog] = await Promise.all([
+  const [defaults, workspaceInfo, initialCatalog, initialAppLogSummary] = await Promise.all([
     rpcClient.request.getDefaults(),
     rpcClient.request.getWorkspaceInfo(),
     rpcClient.request.listSessions(),
+    rpcClient.request.getAppLogSummary(),
   ]);
   sessions = initialCatalog.sessions;
   sessionNavigation = initialCatalog.navigation;
+  appLogSummary = initialAppLogSummary;
 
   const syncProviderAuthPromise = syncProviderAuth(defaults.provider);
   await syncProviderAuthPromise;
@@ -1114,13 +1137,20 @@ export async function createChatRuntime(
     const sessionIds = new Set(initialCatalog.sessions.map((session) => session.id));
     paneLayout = normalizePaneLayout(restoreState);
     const hasOnlyRestorablePanes = paneLayout.panels.every(
-      (paneState) => !paneState.binding || sessionIds.has(paneState.binding.workspaceSessionId),
+      (paneState) =>
+        !paneState.binding ||
+        paneState.binding.surface === "app-logs" ||
+        sessionIds.has(paneState.binding.workspaceSessionId),
     );
     if (!hasOnlyRestorablePanes) {
       paneLayout = createEmptyPaneLayout();
     }
     for (const paneState of paneLayout.panels) {
-      if (!paneState.binding || !sessionIds.has(paneState.binding.workspaceSessionId)) {
+      if (
+        !paneState.binding ||
+        (paneState.binding.surface !== "app-logs" &&
+          !sessionIds.has(paneState.binding.workspaceSessionId))
+      ) {
         continue;
       }
 
@@ -1225,8 +1255,17 @@ export async function createChatRuntime(
     emit();
   };
 
+  const appLogUpdateListener = (payload: AppLogUpdateMessage) => {
+    appLogSummary = payload.summary;
+    for (const listener of appLogUpdateListeners) {
+      listener(payload);
+    }
+    emit();
+  };
+
   rpcClient.addMessageListener("sendWorkspaceSync", workspaceSyncListener);
   rpcClient.addMessageListener("sendSurfaceSync", surfaceSyncListener);
+  rpcClient.addMessageListener("sendAppLogUpdate", appLogUpdateListener);
 
   const runtime: ChatRuntime = {
     storage,
@@ -1240,6 +1279,9 @@ export async function createChatRuntime(
     get sessionNavigation() {
       return sessionNavigation;
     },
+    get appLogSummary() {
+      return structuredClone(appLogSummary);
+    },
     get paneLayout() {
       return structuredClone(paneLayout);
     },
@@ -1247,9 +1289,11 @@ export async function createChatRuntime(
       disposed = true;
       rpcClient.removeMessageListener("sendWorkspaceSync", workspaceSyncListener);
       rpcClient.removeMessageListener("sendSurfaceSync", surfaceSyncListener);
+      rpcClient.removeMessageListener("sendAppLogUpdate", appLogUpdateListener);
       for (const controller of surfaceControllers.values()) {
         controller.dispose();
       }
+      appLogUpdateListeners.clear();
       listeners.clear();
     },
     subscribe: (listener) => {
@@ -1257,6 +1301,12 @@ export async function createChatRuntime(
       listener();
       return () => {
         listeners.delete(listener);
+      };
+    },
+    subscribeAppLogUpdate: (listener) => {
+      appLogUpdateListeners.add(listener);
+      return () => {
+        appLogUpdateListeners.delete(listener);
       };
     },
     subscribeAppMenuAction: (listener) => {
@@ -1343,6 +1393,23 @@ export async function createChatRuntime(
     streamWorkflowInspector,
     getProjectCiStatus,
     getArtifactPreview,
+    getAppLogs: (query) => rpcClient.request.getAppLogs(query),
+    getAppLogSummary: async () => {
+      appLogSummary = await rpcClient.request.getAppLogSummary();
+      emit();
+      return structuredClone(appLogSummary);
+    },
+    markAppLogsSeen: async (throughSeq) => {
+      if (throughSeq <= appLogSummary.seenSeq) {
+        return structuredClone(appLogSummary);
+      }
+      appLogSummary = await rpcClient.request.markAppLogsSeen({ throughSeq });
+      emit();
+      return structuredClone(appLogSummary);
+    },
+    writeClipboardText: async (text) => {
+      await rpcClient.request.writeClipboardText({ text });
+    },
     createSession: async (request = {}, openTarget) => {
       const nextPaneId = resolveOpenTarget(openTarget);
       const snapshot = await rpcClient.request.createSession(request);
@@ -1382,7 +1449,8 @@ export async function createChatRuntime(
         target.surface === "workflow-task-attempt" ||
         target.surface === "artifact" ||
         target.surface === "project-ci-check" ||
-        target.surface === "saved-workflow-library"
+        target.surface === "saved-workflow-library" ||
+        target.surface === "app-logs"
       ) {
         const previousTarget =
           paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;

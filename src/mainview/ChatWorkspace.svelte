@@ -36,6 +36,7 @@
     WorkspaceCommandArtifactLink,
     WorkspaceCommandInspector,
     WorkspaceCommandRollup,
+    AppLogSummary,
     WorkspaceHandlerThreadInspector,
     WorkspaceHandlerThreadSummary,
     WorkspaceHandlerThreadWorkflowSummary,
@@ -143,6 +144,12 @@
       collapsed: true,
       sessions: [],
     },
+  });
+  let appLogSummary = $state<AppLogSummary>({
+    latestSeq: 0,
+    seenSeq: 0,
+    unread: { total: 0, info: 0, warning: 0, error: 0 },
+    totals: { total: 0, info: 0, warning: 0, error: 0 },
   });
   let activeSessionId = $state<string | undefined>(undefined);
   let paneLayout = $state<ChatPaneLayoutState>({
@@ -260,6 +267,9 @@
     if (binding?.surface === "saved-workflow-library") {
       return "Saved Workflow Library";
     }
+    if (binding?.surface === "app-logs") {
+      return "Logs";
+    }
     if (binding?.surface === "command") {
       return "Command Inspector";
     }
@@ -287,6 +297,9 @@
     if (binding?.surface === "saved-workflow-library") {
       return ".svvy/workflows";
     }
+    if (binding?.surface === "app-logs") {
+      return "workspace";
+    }
     if (binding && binding.surface !== "orchestrator" && binding.surface !== "thread") {
       return binding.workspaceSessionId;
     }
@@ -300,6 +313,7 @@
   ): { label: string; value: string } {
     if (binding?.surface === "workflow-inspector") return { label: "surface", value: "workflow" };
     if (binding?.surface === "saved-workflow-library") return { label: "surface", value: "library" };
+    if (binding?.surface === "app-logs") return { label: "surface", value: "logs" };
     if (binding?.surface === "command") return { label: "surface", value: "command" };
     if (binding?.surface === "workflow-task-attempt") return { label: "surface", value: "task" };
     if (binding?.surface === "artifact") return { label: "surface", value: "artifact" };
@@ -1273,6 +1287,16 @@
     );
   }
 
+  function openAppLogs(): void {
+    void runtime.openSurface(
+      {
+        surface: "app-logs",
+      },
+      { kind: "split", panelId: focusedPanelId, direction: "right" },
+    );
+    void runtime.markAppLogsSeen(runtime.appLogSummary.latestSeq);
+  }
+
   function getWorkflowTaskAttemptStatusLabel(
     status: WorkspaceWorkflowTaskAttemptSummary["status"] | WorkspaceWorkflowTaskAttemptInspector["status"],
   ): string {
@@ -1854,6 +1878,7 @@
   function syncRuntimeState() {
     sessions = [...runtime.sessions];
     sessionNavigation = runtime.sessionNavigation;
+    appLogSummary = runtime.appLogSummary;
     paneLayout = runtime.paneLayout;
     focusedPanelId = paneLayout.focusedPanelId;
     currentPane = runtime.getPane(focusedPanelId) ?? null;
@@ -2054,6 +2079,7 @@
             {activeSessionId}
             activeSurface={currentSurface?.surface}
             {paneLocationsBySessionId}
+            {appLogSummary}
             busy={mutatingSession}
             errorMessage={sidebarError}
             onCreateSession={handleCreateSession}
@@ -2067,6 +2093,7 @@
             onToggleArchivedGroup={handleToggleArchivedGroup}
             onOpenSearch={() => openPalette("search")}
             onOpenCommandPalette={() => openPalette("commands")}
+            onOpenAppLogs={openAppLogs}
             onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
             onOpenSettings={onOpenSettings}
           />

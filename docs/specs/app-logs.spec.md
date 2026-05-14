@@ -169,6 +169,8 @@ At minimum redact:
 - bearer tokens
 - long high-entropy strings when attached to auth or provider fields
 
+Ordinary filesystem paths and workspace cwd values are not secrets and must remain visible. If the app logs workspace cwd during startup, the detail key is `workspaceCwd`, not `workspaceId`.
+
 Do not log full prompt text by default. Use a summary such as message count, character count, target surface, provider, model, and related ids.
 
 ## Logger API
@@ -269,7 +271,9 @@ Toolbar:
 - search input
 - source dropdown or compact multi-select
 - `Mark all read`
-- optional `Copy visible` command
+- `Copy all logs` icon button with the shared tooltip treatment and a first-use warning dialog that tells the user to review copied logs before public sharing because automated redaction is best-effort
+- the copy-all warning includes a `Don't show this again` checkbox that suppresses future warnings on that device
+- `Live` / `Frozen` toggle button for explicit tail-following control
 
 List rows:
 
@@ -277,6 +281,7 @@ List rows:
 - level icon or compact badge
 - source badge
 - message
+- row-level copy button with the shared tooltip treatment
 - related context chips when available:
   - session
   - surface
@@ -287,6 +292,8 @@ List rows:
 
 Expanded row details:
 
+- clicking anywhere on the log row toggles expansion, except nested related-link and copy controls
+- first-class related ids such as session, surface, thread, workflow, task, and command appear as structured facts even when they are stripped from the raw `details` object
 - formatted JSON details
 - normalized error block
 - stack trace when present
@@ -294,9 +301,11 @@ Expanded row details:
 
 Live behavior:
 
+- `Live` mode follows the tail when the user is at the bottom
+- `Frozen` mode keeps the visible list stable while new entries accumulate behind the `New logs` affordance
 - if the user is at the bottom, new entries keep the list pinned to the live tail
 - if the user has scrolled away from bottom, new entries do not steal scroll
-- show a compact `New logs` affordance when entries arrive while not pinned
+- show a compact `New logs` affordance when entries arrive while not pinned or while frozen
 - opening or focusing the pane marks logs seen through the current latest sequence
 
 Empty states:
@@ -418,4 +427,3 @@ Integration tests:
 - saved workflow validation diagnostics produce warning logs
 
 E2E tests should use the OrbStack machine lane via `bun run test:e2e` when added.
-

@@ -16,6 +16,87 @@ import type { AppMenuAction } from "./keybindings";
 export type AuthKeyType = "apikey" | "oauth" | "env" | "none";
 export type PromptSurfaceKind = "orchestrator" | "thread";
 
+export type AppLogLevel = "info" | "warning" | "error";
+
+export type AppLogSource =
+  | "app.lifecycle"
+  | "app.bridge"
+  | "app.rpc"
+  | "auth.provider"
+  | "settings"
+  | "workspace"
+  | "session"
+  | "session.title"
+  | "surface"
+  | "prompt"
+  | "thread"
+  | "smithers"
+  | "workflow.library"
+  | "workflow.run"
+  | "workflow.task"
+  | "project-ci"
+  | "direct-tool"
+  | "execute-typescript"
+  | "artifact"
+  | "external-editor"
+  | "renderer";
+
+export interface AppLogEntry {
+  id: string;
+  seq: number;
+  createdAt: string;
+  level: AppLogLevel;
+  source: AppLogSource;
+  message: string;
+  details?: Record<string, unknown>;
+  error?: {
+    name?: string;
+    message: string;
+    stack?: string;
+  };
+  workspaceSessionId?: string;
+  surfacePiSessionId?: string;
+  threadId?: string;
+  workflowRunId?: string;
+  workflowTaskAttemptId?: string;
+  commandId?: string;
+}
+
+export interface AppLogSummary {
+  latestSeq: number;
+  seenSeq: number;
+  unread: {
+    total: number;
+    info: number;
+    warning: number;
+    error: number;
+  };
+  totals: {
+    total: number;
+    info: number;
+    warning: number;
+    error: number;
+  };
+}
+
+export interface AppLogQuery {
+  levels?: AppLogLevel[];
+  sources?: AppLogSource[];
+  query?: string;
+  afterSeq?: number;
+  limit?: number;
+}
+
+export interface AppLogReadModel {
+  entries: AppLogEntry[];
+  summary: AppLogSummary;
+}
+
+export interface AppLogUpdateMessage {
+  entries: AppLogEntry[];
+  summary: AppLogSummary;
+}
+
 export interface PromptTarget {
   workspaceSessionId: string;
   surface: PromptSurfaceKind;
@@ -34,6 +115,11 @@ export interface SavedWorkflowLibraryPaneTarget {
   surface: "saved-workflow-library";
 }
 
+export interface AppLogsPaneTarget {
+  workspaceSessionId?: string;
+  surface: "app-logs";
+}
+
 export type StaticInspectorPaneTarget =
   | { workspaceSessionId: string; surface: "command"; commandId: string }
   | {
@@ -48,6 +134,7 @@ export type WorkspacePaneSurfaceTarget =
   | PromptTarget
   | WorkflowInspectorPaneTarget
   | SavedWorkflowLibraryPaneTarget
+  | AppLogsPaneTarget
   | StaticInspectorPaneTarget;
 
 export interface SendPromptRequest {
@@ -835,6 +922,18 @@ export interface ChatRPCSchema {
         params: undefined;
         response: WorkspaceInfoResponse;
       };
+      getAppLogs: {
+        params: AppLogQuery | undefined;
+        response: AppLogReadModel;
+      };
+      getAppLogSummary: {
+        params: undefined;
+        response: AppLogSummary;
+      };
+      markAppLogsSeen: {
+        params: { throughSeq: number };
+        response: AppLogSummary;
+      };
       writeClipboardText: {
         params: WriteClipboardTextRequest;
         response: WorkspaceMutationResponse;
@@ -1025,6 +1124,7 @@ export interface ChatRPCSchema {
       sendStreamEvent: StreamEventMessage;
       sendWorkspaceSync: WorkspaceSyncMessage;
       sendSurfaceSync: SurfaceSyncMessage;
+      sendAppLogUpdate: AppLogUpdateMessage;
       sendAppMenuAction: { action: AppMenuAction };
     };
   };

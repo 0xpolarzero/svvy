@@ -301,4 +301,12 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
       "docs/specs/workflow-inspector.spec.md",
     ],
   },
+  {
+    id: "app-logs-surface",
+    name: "App Logs Surface",
+    status: "shipped",
+    summary:
+      "Provides workspace-scoped product observability through structured, redacted, persisted app logs with monotonic sequence numbers, unread state, live renderer updates, a sidebar Logs entry with per-level unread counts, and a dense Dockview logs pane for level/source/search filtering, mark-read behavior, expandable details, normalized errors, stack traces, and related session, surface, thread, workflow, task, command, and artifact ids without making logs canonical product state.",
+    sourceSpecs: ["docs/specs/app-logs.spec.md"],
+  },
 ];

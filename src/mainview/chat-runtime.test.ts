@@ -3,6 +3,9 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { getModel, type AssistantMessage, type AssistantMessageEvent } from "@mariozechner/pi-ai";
 import type { ChatStorage, CustomProvider } from "./chat-storage";
 import type {
+  AppLogEntry,
+  AppLogSummary,
+  AppLogUpdateMessage,
   ConversationSurfaceSnapshot,
   PromptTarget,
   SendPromptRequest,
@@ -70,6 +73,8 @@ type FakeRpcHarness = {
   requestCounts: {
     listSessions: number;
   };
+  appLogSeenRequests: number[];
+  emitAppLogUpdate: (payload: AppLogUpdateMessage) => void;
   commandInspectorRequests: Array<{ sessionId: string; commandId: string }>;
   handlerThreadListRequests: string[];
   handlerThreadInspectorRequests: Array<{ sessionId: string; threadId: string }>;
@@ -557,6 +562,7 @@ function createFakeRpc(input: {
   >();
   const workspaceSyncListeners = new Set<(payload: WorkspaceSyncMessage) => void>();
   const surfaceSyncListeners = new Set<(payload: SurfaceSyncMessage) => void>();
+  const appLogUpdateListeners = new Set<(payload: AppLogUpdateMessage) => void>();
   const summaries = new Map(
     input.sessions.map((summary) => [summary.id, structuredClone(summary)]),
   );
@@ -584,6 +590,9 @@ function createFakeRpc(input: {
     workflowTaskAttemptId: string;
   }> = [];
   const projectCiStatusRequests: string[] = [];
+  const appLogSeenRequests: number[] = [];
+  let appLogEntries: AppLogEntry[] = [];
+  let appLogSeenSeq = 0;
   const requestCounts = {
     listSessions: 0,
   };
@@ -642,6 +651,39 @@ function createFakeRpc(input: {
     }
 
     for (const listener of surfaceSyncListeners) {
+      listener(structuredClone(payload));
+    }
+  };
+
+  const summarizeAppLogs = (): AppLogSummary => {
+    const latestSeq = appLogEntries.at(-1)?.seq ?? 0;
+    const totals = {
+      total: appLogEntries.length,
+      info: appLogEntries.filter((entry) => entry.level === "info").length,
+      warning: appLogEntries.filter((entry) => entry.level === "warning").length,
+      error: appLogEntries.filter((entry) => entry.level === "error").length,
+    };
+    const unreadEntries = appLogEntries.filter((entry) => entry.seq > appLogSeenSeq);
+    return {
+      latestSeq,
+      seenSeq: appLogSeenSeq,
+      unread: {
+        total: unreadEntries.length,
+        info: unreadEntries.filter((entry) => entry.level === "info").length,
+        warning: unreadEntries.filter((entry) => entry.level === "warning").length,
+        error: unreadEntries.filter((entry) => entry.level === "error").length,
+      },
+      totals,
+    };
+  };
+
+  const emitAppLogUpdate = (payload: AppLogUpdateMessage): void => {
+    const known = new Set(appLogEntries.map((entry) => entry.id));
+    appLogEntries = [
+      ...appLogEntries,
+      ...payload.entries.filter((entry) => !known.has(entry.id)),
+    ].sort((left, right) => left.seq - right.seq);
+    for (const listener of appLogUpdateListeners) {
       listener(structuredClone(payload));
     }
   };
@@ -783,6 +825,22 @@ function createFakeRpc(input: {
           workspaceLabel: "svvy",
           branch: "main",
         }),
+        getAppLogs: async (query = {}) => {
+          const entries = appLogEntries.filter((entry) => {
+            if (query.afterSeq !== undefined && entry.seq <= query.afterSeq) return false;
+            if (query.levels?.length && !query.levels.includes(entry.level)) return false;
+            if (query.sources?.length && !query.sources.includes(entry.source)) return false;
+            return true;
+          });
+          return { entries: structuredClone(entries), summary: summarizeAppLogs() };
+        },
+        getAppLogSummary: async () => summarizeAppLogs(),
+        markAppLogsSeen: async ({ throughSeq }) => {
+          appLogSeenRequests.push(throughSeq);
+          appLogSeenSeq = Math.max(appLogSeenSeq, throughSeq);
+          return summarizeAppLogs();
+        },
+        writeClipboardText: async () => ({ ok: true }),
         listWorkspacePaths: async () => [
           { kind: "file", workspaceRelativePath: "docs/progress.md" },
           { kind: "folder", workspaceRelativePath: "src/mainview/" },
@@ -1213,6 +1271,10 @@ function createFakeRpc(input: {
         }
         if (messageName === "sendSurfaceSync") {
           surfaceSyncListeners.add(listener as (payload: SurfaceSyncMessage) => void);
+          return;
+        }
+        if (messageName === "sendAppLogUpdate") {
+          appLogUpdateListeners.add(listener as (payload: AppLogUpdateMessage) => void);
         }
       },
       removeMessageListener: (messageName: string, listener: unknown) => {
@@ -1228,6 +1290,10 @@ function createFakeRpc(input: {
         }
         if (messageName === "sendSurfaceSync") {
           surfaceSyncListeners.delete(listener as (payload: SurfaceSyncMessage) => void);
+          return;
+        }
+        if (messageName === "sendAppLogUpdate") {
+          appLogUpdateListeners.delete(listener as (payload: AppLogUpdateMessage) => void);
         }
       },
     },
@@ -1243,12 +1309,14 @@ function createFakeRpc(input: {
     handlerThreadInspectorRequests,
     workflowTaskAttemptInspectorRequests,
     projectCiStatusRequests,
+    appLogSeenRequests,
     setPromptHandler: (surfacePiSessionId, handler) => {
       promptHandlers.set(surfacePiSessionId, handler);
     },
     updateSummary,
     emitWorkspaceSync,
     emitSurfaceSync,
+    emitAppLogUpdate,
     getRetainCount: (surfacePiSessionId) => surfaces.get(surfacePiSessionId)?.retainCount ?? 0,
     getSurfaceSnapshot: (surfacePiSessionId) =>
       structuredClone(getSurfaceRecord(surfacePiSessionId).snapshot),
@@ -2032,6 +2100,50 @@ describe("createChatRuntime", () => {
     expect(controller?.sessionMode).toBe("dumb");
     expect(controller?.sessionAgentKey).toBe("dumbOrchestrator");
     expect(harness.getSurfaceSnapshot("session-1").sessionMode).toBe("dumb");
+
+    runtime.dispose();
+  });
+
+  it("tracks app log summaries, live updates, static logs panes, and mark-seen requests", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+
+    const entry: AppLogEntry = {
+      id: "app-log-1",
+      seq: 1,
+      createdAt: "2026-05-13T10:00:00.000Z",
+      level: "error",
+      source: "prompt",
+      message: "Prompt failed",
+      workspaceSessionId: "session-1",
+      surfacePiSessionId: "session-1",
+    };
+    harness.emitAppLogUpdate({
+      entries: [entry],
+      summary: {
+        latestSeq: 1,
+        seenSeq: 0,
+        unread: { total: 1, info: 0, warning: 0, error: 1 },
+        totals: { total: 1, info: 0, warning: 0, error: 1 },
+      },
+    });
+
+    expect(runtime.appLogSummary.unread.error).toBe(1);
+    await runtime.openSurface({ surface: "app-logs" }, "primary");
+    expect(runtime.getPane("primary")?.target).toEqual({ surface: "app-logs" });
+    expect(await runtime.getAppLogs()).toMatchObject({ entries: [entry] });
+
+    await runtime.markAppLogsSeen(1);
+    expect(harness.appLogSeenRequests).toEqual([1]);
+    expect(runtime.appLogSummary.unread.total).toBe(0);
 
     runtime.dispose();
   });

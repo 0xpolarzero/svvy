@@ -6,10 +6,12 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import SettingsIcon from "@lucide/svelte/icons/settings";
+  import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import { getKeybindingDisplayShortcut } from "../shared/keybindings";
-  import type { WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
+  import type { AppLogSummary, WorkspaceSessionNavigationReadModel, WorkspaceSessionSummary } from "../shared/workspace-contract";
+  import { formatAppLogCount } from "./app-logs";
   import SessionListItem from "./SessionListItem.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
@@ -20,6 +22,7 @@
     activeSessionId?: string;
     activeSurface?: "orchestrator" | "thread";
     paneLocationsBySessionId?: Record<string, { paneId: string; label: string; focused: boolean }[]>;
+    appLogSummary?: AppLogSummary | null;
     busy?: boolean;
     errorMessage?: string;
     onCreateSession: () => void;
@@ -34,6 +37,7 @@
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
     onOpenWorkflowLibrary?: () => void;
+    onOpenAppLogs?: () => void;
     onOpenSettings?: () => void;
   };
 
@@ -43,6 +47,7 @@
     activeSessionId,
     activeSurface,
     paneLocationsBySessionId = {},
+    appLogSummary = null,
     busy = false,
     errorMessage,
     onCreateSession,
@@ -57,6 +62,7 @@
     onOpenSearch,
     onOpenCommandPalette,
     onOpenWorkflowLibrary,
+    onOpenAppLogs,
     onOpenSettings,
   }: Props = $props();
 
@@ -92,6 +98,12 @@
       shortcutAction = null;
     }
   }
+
+  const appLogUnreadTitle = $derived.by(() => {
+    const unread = appLogSummary?.unread;
+    if (!unread || unread.total === 0) return "Open app logs";
+    return `Open app logs: ${unread.error} errors, ${unread.warning} warnings, ${unread.info} info unread`;
+  });
 </script>
 
 <svelte:window onkeydown={handleWindowKeydown} />
@@ -275,15 +287,42 @@
     </div>
   </div>
 
-  {#if onOpenWorkflowLibrary}
+  {#if onOpenWorkflowLibrary || onOpenAppLogs}
     <div class="sidebar-lower-nav">
-      <Tooltip label="Open saved workflow assets" side="right" block>
-        <button class="sidebar-action-row reference-nav-row" type="button" aria-label="Open saved workflows" onclick={onOpenWorkflowLibrary}>
-          <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-          <span class="sidebar-action-label">Saved workflows</span>
-          <small class="sidebar-action-shortcut">.svvy</small>
-        </button>
-      </Tooltip>
+      {#if onOpenAppLogs}
+        <Tooltip label={appLogUnreadTitle} side="right" block>
+          <button
+            class={`sidebar-action-row reference-nav-row logs-nav-row ${(appLogSummary?.unread.error ?? 0) > 0 ? "has-errors" : ""}`.trim()}
+            type="button"
+            aria-label={appLogUnreadTitle}
+            title={appLogUnreadTitle}
+            onclick={onOpenAppLogs}
+          >
+            <span class="sidebar-action-icon"><LogsIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">Logs</span>
+            <span class="log-unread-badges" aria-hidden="true">
+              {#if (appLogSummary?.unread.error ?? 0) > 0}
+                <small class="log-badge error">{formatAppLogCount(appLogSummary!.unread.error)}</small>
+              {/if}
+              {#if (appLogSummary?.unread.warning ?? 0) > 0}
+                <small class="log-badge warning">{formatAppLogCount(appLogSummary!.unread.warning)}</small>
+              {/if}
+              {#if (appLogSummary?.unread.info ?? 0) > 0}
+                <small class="log-badge info">{formatAppLogCount(appLogSummary!.unread.info)}</small>
+              {/if}
+            </span>
+          </button>
+        </Tooltip>
+      {/if}
+      {#if onOpenWorkflowLibrary}
+        <Tooltip label="Open saved workflow assets" side="right" block>
+          <button class="sidebar-action-row reference-nav-row" type="button" aria-label="Open saved workflows" onclick={onOpenWorkflowLibrary}>
+            <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">Saved workflows</span>
+            <small class="sidebar-action-shortcut">.svvy</small>
+          </button>
+        </Tooltip>
+      {/if}
     </div>
   {/if}
 
@@ -570,6 +609,48 @@
   .reference-nav-row {
     font-size: 0.76rem;
     font-weight: 500;
+  }
+
+  .logs-nav-row.has-errors {
+    background: color-mix(in oklab, var(--ui-danger-soft) 54%, transparent);
+    color: color-mix(in oklab, var(--ui-danger) 30%, var(--ui-text-secondary));
+  }
+
+  .log-unread-badges {
+    display: inline-flex;
+    align-items: center;
+    justify-self: end;
+    gap: 0.16rem;
+    min-width: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 1rem;
+    height: 0.92rem;
+    padding: 0 0.18rem;
+    border-radius: var(--ui-radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    font-weight: 750;
+    line-height: 1;
+  }
+
+  .log-badge.info {
+    color: var(--ui-info);
+    background: var(--ui-info-soft);
+  }
+
+  .log-badge.warning {
+    color: var(--ui-warning);
+    background: var(--ui-warning-soft);
+  }
+
+  .log-badge.error {
+    color: var(--ui-danger);
+    background: var(--ui-danger-soft);
   }
 
   .sidebar-footer {

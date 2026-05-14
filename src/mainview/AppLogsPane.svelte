@@ -1,0 +1,1151 @@
+<script lang="ts">
+  import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
+  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
+  import CheckIcon from "@lucide/svelte/icons/check";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import PauseIcon from "@lucide/svelte/icons/pause";
+  import RadioIcon from "@lucide/svelte/icons/radio";
+  import RefreshCwIcon from "@lucide/svelte/icons/refresh-cw";
+  import { onMount } from "svelte";
+  import type {
+    AppLogEntry,
+    AppLogLevel,
+    AppLogReadModel,
+    AppLogSource,
+  } from "../shared/workspace-contract";
+  import type { ChatRuntime } from "./chat-runtime";
+  import { APP_LOG_SOURCES, filterAppLogEntries, formatAppLogCount } from "./app-logs";
+  import Badge from "./ui/Badge.svelte";
+  import Button from "./ui/Button.svelte";
+  import Dialog from "./ui/Dialog.svelte";
+  import Input from "./ui/Input.svelte";
+  import Tooltip from "./ui/Tooltip.svelte";
+
+  type Props = {
+    runtime: ChatRuntime;
+    panelId: string;
+  };
+
+  let { runtime, panelId }: Props = $props();
+
+  const LEVEL_FILTERS: Array<{ level: AppLogLevel | "all"; label: string; shortLabel: string }> = [
+    { level: "all", label: "All levels", shortLabel: "All" },
+    { level: "info", label: "Info logs", shortLabel: "Info" },
+    { level: "warning", label: "Warning logs", shortLabel: "Warnings" },
+    { level: "error", label: "Error logs", shortLabel: "Errors" },
+  ];
+
+  let readModel = $state<AppLogReadModel | null>(null);
+  let selectedId = $state<string | null>(null);
+  let expandedIds = $state(new Set<string>());
+  let levelFilter = $state<AppLogLevel | "all">("all");
+  let sourceFilter = $state<AppLogSource | "all">("all");
+  let query = $state("");
+  let loading = $state(true);
+  let error = $state<string | null>(null);
+  let newLogsWhileAway = $state(0);
+  let followingTail = $state(true);
+  let listElement = $state<HTMLDivElement | null>(null);
+  let copiedTarget = $state<"all" | string | null>(null);
+  let showCopyAllWarning = $state(false);
+  let skipCopyAllWarning = $state(false);
+  let copyResetTimer: number | null = null;
+  let scrollStateFrame: number | null = null;
+  let unsubscribeLogUpdate: (() => void) | null = null;
+  let unsubscribeRuntime: (() => void) | null = null;
+
+  const LOG_TAIL_THRESHOLD_PX = 40;
+  const LOG_LIST_LIMIT = 600;
+  const LOG_SCROLLBACK_LIMIT = 900;
+  const LOG_COPY_LIMIT = 10_000;
+  const COPY_ALL_WARNING_STORAGE_KEY = "svvy.appLogs.copyAllWarningDismissed";
+
+  const visibleEntries = $derived(
+    filterAppLogEntries(readModel?.entries ?? [], {
+      level: levelFilter,
+      source: sourceFilter,
+      query,
+    }),
+  );
+  const selectedEntry = $derived(
+    visibleEntries.find((entry) => entry.id === selectedId) ?? visibleEntries.at(-1) ?? null,
+  );
+
+  function levelTone(level: AppLogLevel): "info" | "warning" | "danger" {
+    if (level === "error") return "danger";
+    if (level === "warning") return "warning";
+    return "info";
+  }
+
+  function levelGlyph(level: AppLogLevel): string {
+    if (level === "error") return "E";
+    if (level === "warning") return "W";
+    return "I";
+  }
+
+  function levelFilterCount(level: AppLogLevel | "all"): number {
+    if (!readModel) return 0;
+    return level === "all" ? readModel.summary.totals.total : readModel.summary.totals[level];
+  }
+
+  function formatTime(value: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(new Date(value));
+  }
+
+  type RelatedLogTarget = {
+    label: string;
+    value: string;
+    action?: "session" | "workflow-run" | "workflow-task" | "command";
+  };
+
+  function relatedIds(entry: AppLogEntry): RelatedLogTarget[] {
+    return [
+      entry.workspaceSessionId
+        ? { label: "session", value: entry.workspaceSessionId, action: "session" }
+        : null,
+      entry.surfacePiSessionId ? { label: "surface", value: entry.surfacePiSessionId } : null,
+      entry.threadId ? { label: "thread", value: entry.threadId } : null,
+      entry.workflowRunId && entry.workspaceSessionId
+        ? { label: "workflow", value: entry.workflowRunId, action: "workflow-run" }
+        : entry.workflowRunId
+          ? { label: "workflow", value: entry.workflowRunId }
+          : null,
+      entry.workflowTaskAttemptId && entry.workspaceSessionId
+        ? { label: "task", value: entry.workflowTaskAttemptId, action: "workflow-task" }
+        : entry.workflowTaskAttemptId
+          ? { label: "task", value: entry.workflowTaskAttemptId }
+          : null,
+      entry.commandId && entry.workspaceSessionId
+        ? { label: "command", value: entry.commandId, action: "command" }
+        : entry.commandId
+          ? { label: "command", value: entry.commandId }
+          : null,
+    ].filter((item): item is RelatedLogTarget => !!item);
+  }
+
+  async function openRelated(entry: AppLogEntry, target: RelatedLogTarget) {
+    if (target.action === "session") {
+      await runtime.openSession(target.value, { kind: "new-panel", direction: "right" });
+    } else if (target.action === "workflow-run" && entry.workspaceSessionId) {
+      await runtime.openSurface(
+        {
+          workspaceSessionId: entry.workspaceSessionId,
+          surface: "workflow-inspector",
+          workflowRunId: target.value,
+        },
+        { kind: "new-panel", direction: "right" },
+      );
+    } else if (target.action === "workflow-task" && entry.workspaceSessionId) {
+      await runtime.openSurface(
+        {
+          workspaceSessionId: entry.workspaceSessionId,
+          surface: "workflow-task-attempt",
+          workflowTaskAttemptId: target.value,
+        },
+        { kind: "new-panel", direction: "right" },
+      );
+    } else if (target.action === "command" && entry.workspaceSessionId) {
+      await runtime.openSurface(
+        { workspaceSessionId: entry.workspaceSessionId, surface: "command", commandId: target.value },
+        { kind: "new-panel", direction: "right" },
+      );
+    }
+  }
+
+  function toggleExpanded(id: string) {
+    const next = new Set(expandedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    expandedIds = next;
+  }
+
+  function toggleLogRow(entry: AppLogEntry) {
+    selectedId = entry.id;
+    toggleExpanded(entry.id);
+  }
+
+  function handleLogRowKeydown(event: KeyboardEvent, entry: AppLogEntry) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggleLogRow(entry);
+    }
+  }
+
+  function isNearTail(): boolean {
+    if (!listElement) return true;
+    const remaining = listElement.scrollHeight - listElement.scrollTop - listElement.clientHeight;
+    return remaining <= LOG_TAIL_THRESHOLD_PX;
+  }
+
+  function syncTailFollowState() {
+    const nearTail = isNearTail();
+    followingTail = nearTail;
+    if (nearTail) {
+      newLogsWhileAway = 0;
+    }
+  }
+
+  function handleListScroll() {
+    if (scrollStateFrame !== null) {
+      cancelAnimationFrame(scrollStateFrame);
+    }
+    scrollStateFrame = requestAnimationFrame(() => {
+      scrollStateFrame = null;
+      syncTailFollowState();
+    });
+  }
+
+  function prefersReducedMotion(): boolean {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  function scrollToTail(options: { smooth?: boolean; markRead?: boolean } = {}) {
+    const { smooth = false, markRead = true } = options;
+    requestAnimationFrame(() => {
+      if (!listElement) return;
+      followingTail = true;
+      newLogsWhileAway = 0;
+      listElement.scrollTo({
+        top: listElement.scrollHeight,
+        behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto",
+      });
+      if (markRead) {
+        void markReadThroughLatest();
+      }
+    });
+  }
+
+  function setLiveMode(nextLive: boolean) {
+    if (nextLive) {
+      followingTail = true;
+      newLogsWhileAway = 0;
+      void loadLogs({ forceTail: true });
+      return;
+    }
+    followingTail = false;
+  }
+
+  function toggleLiveMode() {
+    setLiveMode(!followingTail);
+  }
+
+  async function markReadThroughLatest() {
+    const summary = readModel?.summary ?? runtime.appLogSummary;
+    if (summary.latestSeq <= 0 || summary.latestSeq <= summary.seenSeq) {
+      return;
+    }
+    const nextSummary = await runtime.markAppLogsSeen(summary.latestSeq);
+    if (readModel) {
+      readModel = { ...readModel, summary: nextSummary };
+    }
+  }
+
+  function restoreScrollOffsetFromBottom(bottomOffset: number) {
+    requestAnimationFrame(() => {
+      if (!listElement) return;
+      listElement.scrollTop = Math.max(0, listElement.scrollHeight - bottomOffset);
+    });
+  }
+
+  async function loadLogs(options: { forceTail?: boolean } = {}) {
+    const shouldFollowTail = options.forceTail === undefined ? followingTail : options.forceTail;
+    const bottomOffset = shouldFollowTail || !listElement ? 0 : listElement.scrollHeight - listElement.scrollTop;
+    loading = true;
+    error = null;
+    try {
+      const next = await runtime.getAppLogs({ limit: LOG_LIST_LIMIT });
+      readModel = next;
+      if (!selectedId || !next.entries.some((entry) => entry.id === selectedId)) {
+        selectedId = next.entries.at(-1)?.id ?? null;
+      }
+      if (shouldFollowTail) {
+        scrollToTail();
+      } else {
+        restoreScrollOffsetFromBottom(bottomOffset);
+        void markReadThroughLatest();
+      }
+    } catch (err) {
+      error = err instanceof Error ? err.message : "Unable to load app logs.";
+    } finally {
+      loading = false;
+    }
+  }
+
+  function formatLogEntryText(entry: AppLogEntry): string {
+    const related = relatedIds(entry)
+      .map((target) => `${target.label}=${target.value}`)
+      .join(" ");
+    const blocks = [
+      `[${entry.seq}] ${entry.createdAt} ${entry.level} ${entry.source} ${entry.message}${related ? ` ${related}` : ""}`,
+    ];
+    if (entry.details) {
+      blocks.push(`details=${JSON.stringify(entry.details, null, 2)}`);
+    }
+    if (entry.error) {
+      blocks.push(`error=${JSON.stringify(entry.error, null, 2)}`);
+    }
+    return blocks.join("\n");
+  }
+
+  async function copyTextToClipboard(text: string): Promise<void> {
+    try {
+      await runtime.writeClipboardText(text);
+      return;
+    } catch (rpcError) {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return;
+        } catch (clipboardError) {
+          throw new Error("Native and browser clipboard writes failed.", {
+            cause: { rpcError, clipboardError },
+          });
+        }
+      }
+      if (!document.queryCommandSupported?.("copy")) {
+        throw rpcError;
+      }
+    }
+
+    const fallback = document.createElement("textarea");
+    fallback.value = text;
+    fallback.setAttribute("readonly", "true");
+    fallback.style.position = "fixed";
+    fallback.style.top = "0";
+    fallback.style.left = "0";
+    fallback.style.opacity = "0";
+    document.body.appendChild(fallback);
+    fallback.focus();
+    fallback.select();
+    try {
+      const copied = document.execCommand("copy");
+      if (!copied) {
+        throw new Error("Copy command was not accepted.");
+      }
+    } finally {
+      fallback.remove();
+    }
+  }
+
+  function markCopied(target: "all" | string) {
+    copiedTarget = target;
+    if (copyResetTimer !== null) {
+      window.clearTimeout(copyResetTimer);
+    }
+    copyResetTimer = window.setTimeout(() => {
+      copiedTarget = null;
+      copyResetTimer = null;
+    }, 1800);
+  }
+
+  function shouldShowCopyAllWarning(): boolean {
+    return localStorage.getItem(COPY_ALL_WARNING_STORAGE_KEY) !== "true";
+  }
+
+  function requestCopyAllLogs() {
+    if (shouldShowCopyAllWarning()) {
+      skipCopyAllWarning = false;
+      showCopyAllWarning = true;
+      return;
+    }
+    void copyAllLogs();
+  }
+
+  function closeCopyAllWarning() {
+    showCopyAllWarning = false;
+    skipCopyAllWarning = false;
+  }
+
+  async function confirmCopyAllLogs() {
+    if (skipCopyAllWarning) {
+      localStorage.setItem(COPY_ALL_WARNING_STORAGE_KEY, "true");
+    }
+    showCopyAllWarning = false;
+    await copyAllLogs();
+  }
+
+  async function copyAllLogs() {
+    const model = await runtime.getAppLogs({ limit: LOG_COPY_LIMIT });
+    await copyTextToClipboard(model.entries.map(formatLogEntryText).join("\n\n"));
+    markCopied("all");
+  }
+
+  async function copyLogEntry(entry: AppLogEntry) {
+    await copyTextToClipboard(formatLogEntryText(entry));
+    markCopied(entry.id);
+  }
+
+  onMount(() => {
+    void loadLogs({ forceTail: true });
+    unsubscribeLogUpdate = runtime.subscribeAppLogUpdate((payload) => {
+      if (!readModel) return;
+      const known = new Set(readModel.entries.map((entry) => entry.id));
+      const appendedEntries = payload.entries.filter((entry) => !known.has(entry.id));
+      const shouldFollowTail = followingTail && isNearTail();
+      const nextEntries = shouldFollowTail
+        ? [...readModel.entries, ...appendedEntries].slice(-LOG_LIST_LIMIT)
+        : readModel.entries.slice(-LOG_SCROLLBACK_LIMIT);
+      readModel = { entries: nextEntries, summary: payload.summary };
+      if (shouldFollowTail) {
+        scrollToTail();
+      } else if (appendedEntries.length > 0) {
+        followingTail = false;
+        newLogsWhileAway += appendedEntries.length;
+      }
+    });
+    unsubscribeRuntime = runtime.subscribe(() => {
+      if (runtime.paneLayout.focusedPanelId === panelId) {
+        void markReadThroughLatest();
+      }
+    });
+    return () => {
+      if (scrollStateFrame !== null) {
+        cancelAnimationFrame(scrollStateFrame);
+      }
+      if (copyResetTimer !== null) {
+        window.clearTimeout(copyResetTimer);
+      }
+      unsubscribeLogUpdate?.();
+      unsubscribeRuntime?.();
+    };
+  });
+</script>
+
+<section class="app-logs-pane" aria-label="App logs">
+  <header class="logs-header">
+    <div>
+      <p>App Logs</p>
+      <h2>{readModel ? `${readModel.summary.totals.total} entries` : "Loading logs"}</h2>
+    </div>
+    <div class="header-actions">
+      <Tooltip label={followingTail ? "Freeze log updates" : "Resume live log updates"}>
+        <Button
+          size="sm"
+          variant={followingTail ? "primary" : "secondary"}
+          aria-pressed={followingTail}
+          aria-label={followingTail ? "Freeze log updates" : "Resume live log updates"}
+          onclick={toggleLiveMode}
+        >
+          {#if followingTail}
+            <RadioIcon aria-hidden="true" size={14} />
+            Live
+          {:else}
+            <PauseIcon aria-hidden="true" size={14} />
+            Frozen
+          {/if}
+        </Button>
+      </Tooltip>
+      <Tooltip label="Refresh logs">
+        <Button size="sm" variant="ghost" iconOnly aria-label="Refresh logs" onclick={() => loadLogs()}>
+          <RefreshCwIcon aria-hidden="true" size={14} />
+        </Button>
+      </Tooltip>
+      <Button size="sm" onclick={markReadThroughLatest}>Mark all read</Button>
+      <Tooltip label="Copy all logs">
+        <Button size="sm" variant="ghost" iconOnly aria-label="Copy all logs" onclick={requestCopyAllLogs}>
+          {#if copiedTarget === "all"}
+            <CheckIcon aria-hidden="true" size={14} />
+          {:else}
+            <CopyIcon aria-hidden="true" size={14} />
+          {/if}
+        </Button>
+      </Tooltip>
+    </div>
+  </header>
+
+  <div class="logs-toolbar">
+    <div class="severity-filter" aria-label="Severity filters">
+      <span class="filter-label">Severity</span>
+      {#each LEVEL_FILTERS as filter (filter.level)}
+        <button
+          type="button"
+          class:active={levelFilter === filter.level}
+          class={`severity-option severity-${filter.level}`.trim()}
+          aria-pressed={levelFilter === filter.level}
+          aria-label={`${filter.label}: ${levelFilterCount(filter.level)} log${levelFilterCount(filter.level) === 1 ? "" : "s"}`}
+          onclick={() => (levelFilter = filter.level)}
+        >
+          <span class="severity-dot" aria-hidden="true"></span>
+          <span>{filter.shortLabel}</span>
+          {#if readModel}
+            <strong>{levelFilterCount(filter.level)}</strong>
+          {/if}
+        </button>
+      {/each}
+    </div>
+    <Input bind:value={query} placeholder="Search message, source, id" aria-label="Search app logs" />
+    <select bind:value={sourceFilter} aria-label="Filter app logs by source">
+      <option value="all">All sources</option>
+      {#each APP_LOG_SOURCES as source (source)}
+        <option value={source}>{source}</option>
+      {/each}
+    </select>
+  </div>
+
+  {#if error}
+    <p class="logs-message error">{error}</p>
+  {:else if loading}
+    <p class="logs-message">Loading app logs...</p>
+  {:else if readModel}
+    <div class="logs-body">
+      <div class="logs-list" bind:this={listElement} role="list" onscroll={handleListScroll}>
+        {#if readModel.entries.length === 0}
+          <p class="logs-empty">No app logs yet.</p>
+        {:else if visibleEntries.length === 0}
+          <p class="logs-empty">No logs match these filters.</p>
+        {/if}
+        {#each visibleEntries as entry (entry.id)}
+          <div
+            class:active={selectedEntry?.id === entry.id}
+            class:expanded={expandedIds.has(entry.id)}
+            class={`log-row level-${entry.level}`.trim()}
+            role="button"
+            tabindex="0"
+            aria-expanded={expandedIds.has(entry.id)}
+            onclick={() => toggleLogRow(entry)}
+            onkeydown={(event) => handleLogRowKeydown(event, entry)}
+          >
+            <div class="row-main">
+              <span class="expand-indicator" aria-hidden="true">
+                {#if expandedIds.has(entry.id)}
+                  <ChevronDownIcon size={14} />
+                {:else}
+                  <ChevronRightIcon size={14} />
+                {/if}
+              </span>
+              <span class="level-mark">{levelGlyph(entry.level)}</span>
+              <span class="row-copy">
+                <span class="row-title">
+                  <Badge tone={levelTone(entry.level)}>{entry.level}</Badge>
+                  <code>{entry.source}</code>
+                  <strong>{entry.message}</strong>
+                </span>
+                {#if relatedIds(entry).length > 0}
+                  <span class="related-chips">
+                    {#each relatedIds(entry) as related (`${entry.id}:${related.label}`)}
+                      {#if related.action}
+                        <button type="button" onclick={(event) => { event.stopPropagation(); void openRelated(entry, related); }}>
+                          <em>{related.label}</em><code>{related.value}</code>
+                        </button>
+                      {:else}
+                        <span><em>{related.label}</em><code>{related.value}</code></span>
+                      {/if}
+                    {/each}
+                  </span>
+                {/if}
+              </span>
+              <span class="row-meta"><time>{formatTime(entry.createdAt)}</time><code>#{entry.seq}</code></span>
+            </div>
+            <Tooltip label="Copy log entry" side="left">
+              <Button
+                variant="ghost"
+                size="xs"
+                iconOnly
+                class="row-copy-button"
+                aria-label="Copy log entry"
+                onclick={(event) => {
+                  event.stopPropagation();
+                  void copyLogEntry(entry);
+                }}
+              >
+                {#if copiedTarget === entry.id}
+                  <CheckIcon aria-hidden="true" size={13} />
+                {:else}
+                  <CopyIcon aria-hidden="true" size={13} />
+                {/if}
+              </Button>
+            </Tooltip>
+            {#if expandedIds.has(entry.id)}
+              <div class="row-details">
+                <dl class="row-detail-facts">
+                  <dt>Sequence</dt><dd>#{entry.seq}</dd>
+                  <dt>Created</dt><dd>{entry.createdAt}</dd>
+                  {#each relatedIds(entry) as related (`expanded:${entry.id}:${related.label}`)}
+                    <dt>{related.label}</dt><dd><code>{related.value}</code></dd>
+                  {/each}
+                </dl>
+                {#if entry.details}
+                  <pre>{JSON.stringify(entry.details, null, 2)}</pre>
+                {/if}
+                {#if entry.error}
+                  <pre class="error-block">{JSON.stringify(entry.error, null, 2)}</pre>
+                {/if}
+                {#if !entry.details && !entry.error && relatedIds(entry).length === 0}
+                  <span>No extra details.</span>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/each}
+        {#if newLogsWhileAway > 0}
+          <button type="button" class="new-logs-button" onclick={() => setLiveMode(true)}>
+            {formatAppLogCount(newLogsWhileAway)} new logs. Jump to latest
+          </button>
+        {/if}
+      </div>
+
+      <aside class="logs-detail" aria-label="Selected log details">
+        {#if selectedEntry}
+          <header>
+            <Badge tone={levelTone(selectedEntry.level)}>{selectedEntry.level}</Badge>
+            <h3>{selectedEntry.message}</h3>
+            <code>{selectedEntry.source}</code>
+          </header>
+          <dl>
+            <dt>Sequence</dt><dd>#{selectedEntry.seq}</dd>
+            <dt>Created</dt><dd>{selectedEntry.createdAt}</dd>
+            {#each relatedIds(selectedEntry) as related (`selected:${related.label}`)}
+              <dt>{related.label}</dt><dd><code>{related.value}</code></dd>
+            {/each}
+          </dl>
+          {#if selectedEntry.details}
+            <h4>Details</h4>
+            <pre>{JSON.stringify(selectedEntry.details, null, 2)}</pre>
+          {/if}
+          {#if selectedEntry.error}
+            <h4>Error</h4>
+            <pre class="error-block">{JSON.stringify(selectedEntry.error, null, 2)}</pre>
+          {/if}
+        {:else}
+          <p class="logs-empty">Select a log entry.</p>
+        {/if}
+      </aside>
+    </div>
+  {/if}
+</section>
+
+{#if showCopyAllWarning}
+  <Dialog
+    title="Review logs before sharing"
+    eyebrow="App logs"
+    description="svvy redacts known sensitive values before logs are stored and copied, but automated redaction cannot guarantee that every private value is removed. Before pasting logs into a public issue, chat, or document, review the copied content and remove anything sensitive."
+    width="md"
+    onClose={closeCopyAllWarning}
+  >
+    <div class="copy-warning-body">
+      <label class="copy-warning-checkbox">
+        <input type="checkbox" bind:checked={skipCopyAllWarning} />
+        <span>Don't show this again</span>
+      </label>
+      <div class="copy-warning-actions">
+        <Button size="sm" variant="ghost" onclick={closeCopyAllWarning}>Cancel</Button>
+        <Button size="sm" variant="primary" onclick={() => void confirmCopyAllLogs()}>Copy logs</Button>
+      </div>
+    </div>
+  </Dialog>
+{/if}
+
+<style>
+  .app-logs-pane {
+    container-type: inline-size;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    height: 100%;
+    min-height: 0;
+    background: var(--ui-panel);
+    color: var(--ui-text-primary);
+  }
+
+  .logs-header,
+  .logs-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    padding: 0.58rem 0.78rem;
+    border-bottom: 1px solid var(--ui-border-soft);
+  }
+
+  .logs-header {
+    justify-content: space-between;
+  }
+
+  .logs-header p,
+  .logs-header h2,
+  .logs-detail h3,
+  .logs-detail h4,
+  .logs-message,
+  .logs-empty {
+    margin: 0;
+  }
+
+  .logs-header p {
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    text-transform: uppercase;
+  }
+
+  .logs-header h2 {
+    font-size: 0.92rem;
+  }
+
+  .header-actions,
+  .severity-filter,
+  .related-chips {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .logs-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) minmax(7rem, 12rem);
+  }
+
+  .severity-filter {
+    min-width: max-content;
+    padding: 0.18rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface) 92%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, var(--ui-text-primary) 4%, transparent);
+  }
+
+  .filter-label {
+    padding: 0 0.2rem 0 0.32rem;
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .severity-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.34rem;
+    min-height: 1.58rem;
+    padding: 0 0.42rem;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 35%, transparent);
+    color: var(--ui-text-secondary);
+    font: inherit;
+    font-size: 0.68rem;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    transition:
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      color 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .severity-option:hover {
+    border-color: color-mix(in oklab, var(--ui-border-strong) 42%, transparent);
+    background: color-mix(in oklab, var(--ui-surface-raised) 74%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .severity-option:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .severity-option.active {
+    border-color: color-mix(in oklab, var(--ui-border-accent) 62%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-accent-soft) 68%, var(--ui-surface));
+    color: var(--ui-text-primary);
+  }
+
+  .severity-option strong {
+    min-width: 1.1rem;
+    padding: 0.08rem 0.24rem;
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, var(--ui-code) 78%, transparent);
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+  }
+
+  .severity-option.active strong {
+    color: var(--ui-text-primary);
+    background: color-mix(in oklab, var(--ui-surface-raised) 82%, transparent);
+  }
+
+  .severity-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.72;
+  }
+
+  .severity-all .severity-dot {
+    background: transparent;
+    color: var(--ui-text-tertiary);
+  }
+
+  .severity-info .severity-dot {
+    color: var(--ui-info);
+  }
+
+  .severity-warning .severity-dot {
+    color: var(--ui-warning);
+  }
+
+  .severity-error .severity-dot {
+    color: var(--ui-danger);
+  }
+
+  .severity-warning.active {
+    border-color: color-mix(in oklab, var(--ui-warning) 42%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-warning-soft) 58%, var(--ui-surface));
+  }
+
+  .severity-error.active {
+    border-color: color-mix(in oklab, var(--ui-danger) 42%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-danger-soft) 58%, var(--ui-surface));
+  }
+
+  select {
+    min-height: 1.8rem;
+    border: 1px solid var(--ui-border-soft);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
+    color: var(--ui-text-secondary);
+    font: inherit;
+    font-size: 0.72rem;
+  }
+
+  .logs-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(14rem, 30%);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .logs-list {
+    position: relative;
+    display: grid;
+    align-content: start;
+    gap: 0.12rem;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.5rem;
+    border-right: 1px solid var(--ui-border-soft);
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    border: 1px solid transparent;
+    border-radius: var(--ui-radius-sm);
+    background: transparent;
+    cursor: pointer;
+    transition:
+      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .log-row:hover {
+    border-color: color-mix(in oklab, var(--ui-border-strong) 45%, transparent);
+    background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
+  }
+
+  .log-row.active {
+    border-color: var(--ui-border-accent);
+    background: color-mix(in oklab, var(--ui-accent-soft) 70%, transparent);
+  }
+
+  .row-main {
+    display: grid;
+    grid-template-columns: 0.9rem 1.1rem minmax(0, 1fr) auto;
+    gap: 0.4rem;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    padding: 0.42rem;
+  }
+
+  .log-row:focus-visible,
+  .new-logs-button:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .expand-indicator {
+    display: grid;
+    place-items: center;
+    color: var(--ui-text-tertiary);
+  }
+
+  .level-mark {
+    display: grid;
+    place-items: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: var(--ui-radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    font-weight: 750;
+  }
+
+  .level-info .level-mark { color: var(--ui-info); background: var(--ui-info-soft); }
+  .level-warning .level-mark { color: var(--ui-warning); background: var(--ui-warning-soft); }
+  .level-error .level-mark { color: var(--ui-danger); background: var(--ui-danger-soft); }
+
+  .row-copy {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+
+  .row-title {
+    display: flex;
+    align-items: center;
+    gap: 0.38rem;
+    min-width: 0;
+  }
+
+  .row-title strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.74rem;
+  }
+
+  code,
+  .row-meta,
+  .related-chips {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+  }
+
+  code {
+    color: var(--ui-text-tertiary);
+  }
+
+  .related-chips {
+    flex-wrap: wrap;
+    color: var(--ui-text-tertiary);
+  }
+
+  .related-chips span {
+    display: inline-flex;
+    gap: 0.22rem;
+    align-items: center;
+    max-width: 13rem;
+    padding: 0.08rem 0.24rem;
+    border: 1px solid var(--ui-border-soft);
+    border-radius: var(--ui-radius-xs);
+  }
+
+  .related-chips button {
+    display: inline-flex;
+    gap: 0.22rem;
+    align-items: center;
+    max-width: 13rem;
+    padding: 0.08rem 0.24rem;
+    border: 1px solid color-mix(in oklab, var(--ui-accent) 28%, var(--ui-border-soft));
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, var(--ui-accent-soft) 72%, transparent);
+    color: var(--ui-text-secondary);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .related-chips button:hover {
+    color: var(--ui-text-primary);
+    border-color: color-mix(in oklab, var(--ui-accent) 44%, var(--ui-border-soft));
+  }
+
+  .related-chips code,
+  dd code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row-meta {
+    display: grid;
+    justify-items: end;
+    gap: 0.2rem;
+    color: var(--ui-text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .row-copy-button {
+    align-self: start;
+    margin-top: 0.32rem;
+    margin-right: 0.28rem;
+  }
+
+  .row-details {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 0.4rem;
+    cursor: auto;
+    padding: 0 0.48rem 0.48rem 2.9rem;
+  }
+
+  .row-detail-facts {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    padding: 0.46rem;
+    border: 1px solid var(--ui-border-soft);
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface) 62%, transparent);
+  }
+
+  .logs-detail {
+    min-width: 0;
+    overflow: auto;
+    padding: 0.7rem;
+  }
+
+  .logs-detail header {
+    display: grid;
+    gap: 0.28rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .logs-detail h3 {
+    font-size: 0.88rem;
+    line-height: 1.35;
+  }
+
+  .logs-detail h4 {
+    margin-top: 0.8rem;
+    margin-bottom: 0.34rem;
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 0.34rem 0.5rem;
+    margin: 0;
+    font-size: 0.68rem;
+  }
+
+  dt {
+    color: var(--ui-text-tertiary);
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+  }
+
+  pre {
+    max-height: 18rem;
+    overflow: auto;
+    margin: 0;
+    padding: 0.58rem;
+    border: 1px solid var(--ui-border-soft);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-code);
+    color: var(--ui-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    line-height: 1.5;
+  }
+
+  .error-block {
+    border-color: color-mix(in oklab, var(--ui-danger) 34%, var(--ui-border-soft));
+  }
+
+  .logs-message,
+  .logs-empty {
+    padding: 0.75rem;
+    color: var(--ui-text-tertiary);
+    font-size: 0.76rem;
+  }
+
+  .logs-message.error {
+    color: var(--ui-danger);
+  }
+
+  .new-logs-button {
+    position: sticky;
+    bottom: 0.55rem;
+    justify-self: center;
+    border: 1px solid var(--ui-border-accent);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface-raised);
+    color: var(--ui-accent);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    cursor: pointer;
+    padding: 0.32rem 0.52rem;
+  }
+
+  .copy-warning-body {
+    display: grid;
+    gap: 0.82rem;
+  }
+
+  .copy-warning-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.42rem;
+    color: var(--ui-text-secondary);
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .copy-warning-checkbox input {
+    width: 0.92rem;
+    height: 0.92rem;
+    accent-color: var(--ui-accent);
+  }
+
+  .copy-warning-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.45rem;
+  }
+
+  @container (max-width: 44rem) {
+    .logs-header {
+      align-items: start;
+      gap: 0.45rem;
+    }
+
+    .header-actions {
+      flex-wrap: wrap;
+      justify-content: end;
+    }
+
+    .logs-toolbar {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .severity-filter {
+      min-width: 0;
+      overflow-x: auto;
+    }
+
+    .logs-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .logs-detail {
+      display: none;
+    }
+
+    .logs-list {
+      border-right: 0;
+    }
+  }
+</style>

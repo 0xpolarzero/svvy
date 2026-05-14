@@ -23,6 +23,7 @@ The product combines:
 - Smithers-backed workflow runs executed under those handler threads
 - authored artifact workflows plus workspace-saved reusable workflow assets and runnable workflow entries
 - first-class threads, workflow runs, commands, episodes, artifacts, Project CI, and worktree awareness
+- first-class workspace app logs for structured, redacted, live product observability
 - a VS Code-like shared palette shell where `>` switches quick-open search into command/action mode without creating a second runtime
 
 The intended feel is closer to Slate than to stock pi:
@@ -40,6 +41,7 @@ The shipped product must let a user:
 - open a local repository in a native desktop app and work in long-lived coding sessions
 - keep important sessions visible through pinning and move old sessions into a single collapsed archive without deleting their history
 - understand what the system is doing without reconstructing state from raw logs
+- inspect structured app logs with unread counts, filters, live updates, redacted details, normalized errors, and related product links when app behavior needs attention
 - inspect durable outputs from each meaningful unit of work
 - delegate bounded work while keeping top-level strategy and state visible
 - talk directly inside delegated thread surfaces when that work needs clarification or follow-up

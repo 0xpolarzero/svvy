@@ -48,6 +48,8 @@ import {
 import { createSvvyToolBridge } from "./tool-bridge";
 import { resolveWorkspaceCwd } from "./workspace-context";
 import { WorkspacePathIndex } from "./workspace-path-index";
+import { createAppLogger } from "./app-logger";
+import { createAppLogStore } from "./app-log-store";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -76,6 +78,9 @@ const workspacePathIndex = new WorkspacePathIndex(resolveWorkspaceCwd());
 const agentSettingsStore = createSessionAgentSettingsStore({
   cwd: resolveWorkspaceCwd(),
   agentDir: getSvvyAgentDir(),
+});
+const appLogStore = createAppLogStore({
+  databasePath: join(resolveWorkspaceCwd(), ".svvy", "app-logs-v1.sqlite"),
 });
 
 function appMenuItem(action: AppMenuAction): {
@@ -379,8 +384,50 @@ const svvyToolBridge = createSvvyToolBridge({
   listWorkspaceSessions: () => workspaceSessionCatalog.listSessions(),
 });
 const recordBridgeEvent = svvyToolBridge.recordEvent;
-const recordBridgeLog = svvyToolBridge.recordLog;
-const recordBridgeError = svvyToolBridge.recordError;
+const recordRawBridgeLog = svvyToolBridge.recordLog;
+const recordRawBridgeError = svvyToolBridge.recordError;
+const appLog = createAppLogger({
+  store: appLogStore,
+  forwardBridgeLog: (level, message, source, details, error) => {
+    if (level === "error") {
+      recordRawBridgeError("app", message, source, details, error);
+      return;
+    }
+    recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
+  },
+});
+
+function recordBridgeLog(
+  level: "info" | "warning",
+  message: string,
+  source: string,
+  details?: Record<string, unknown>,
+): void {
+  appLog[level](mapBridgeSource(source), message, details);
+}
+
+function recordBridgeError(
+  kind: string,
+  message: string,
+  source: string,
+  details?: Record<string, unknown>,
+  error?: unknown,
+): void {
+  appLog.error(mapBridgeSource(source, kind), message, error, details);
+}
+
+function mapBridgeSource(source: string, kind?: string) {
+  if (source.includes("auth") || source.includes("oauth")) return "auth.provider" as const;
+  if (source.includes("sendPrompt")) return "prompt" as const;
+  if (source.includes("session")) return "session" as const;
+  if (source.includes("surface")) return "surface" as const;
+  if (source.includes("workflow")) return "workflow.library" as const;
+  if (source.includes("editor")) return "external-editor" as const;
+  if (source.includes("tool-bridge")) return "app.bridge" as const;
+  if (source.includes("settings")) return "settings" as const;
+  if (kind === "rpc" || source.includes("rpc")) return "app.rpc" as const;
+  return "app.lifecycle" as const;
+}
 
 const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
   maxRequestTime: getRpcRequestTimeoutMs(),
@@ -394,12 +441,17 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       updateSessionAgentDefault: async ({ key, settings }) => {
         resolvedDefaults = null;
+        appLog.info("settings", "Session agent defaults updated.", { key });
         return agentSettingsStore.setSessionAgentDefault(key, settings);
       },
       updateWorkflowAgent: async ({ key, settings }) => {
+        appLog.info("settings", "Workflow agent settings updated.", { key });
         return agentSettingsStore.setWorkflowAgent(key, settings);
       },
       updateAppPreferences: async (preferences) => {
+        appLog.info("settings", "App preferences updated.", {
+          preferredExternalEditor: preferences.preferredExternalEditor,
+        });
         return agentSettingsStore.setAppPreferences(preferences);
       },
       ensureWorkflowAgentsComponent: async () => {
@@ -421,6 +473,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           branch: getWorkspaceBranch(cwd),
         };
       },
+      getAppLogs: (query) => appLogStore.query(query),
+      getAppLogSummary: () => appLogStore.summary(),
+      markAppLogsSeen: ({ throughSeq }) => appLogStore.markSeen(throughSeq),
       writeClipboardText: ({ text }) => {
         Utils.clipboardWriteText(text);
         return { ok: true };
@@ -497,22 +552,36 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       getSavedWorkflowLibrary: async () => {
         const state = agentSettingsStore.getState();
+        appLog.info("workflow.library", "Saved workflow library read.");
         return await readSavedWorkflowLibraryReadModel(resolveWorkspaceCwd(), state.appPreferences);
       },
       deleteSavedWorkflowLibraryItem: async ({ path }) => {
         const state = agentSettingsStore.getState();
-        return await deleteSavedWorkflowLibraryPath(
-          resolveWorkspaceCwd(),
-          path,
-          state.appPreferences,
-        );
+        try {
+          const result = await deleteSavedWorkflowLibraryPath(
+            resolveWorkspaceCwd(),
+            path,
+            state.appPreferences,
+          );
+          appLog.info("workflow.library", "Saved workflow library item deleted.", { path });
+          return result;
+        } catch (error) {
+          appLog.error("workflow.library", "Saved workflow deletion failed.", error, { path });
+          throw error;
+        }
       },
       openWorkflowSourceInEditor: ({ path }) => {
         const absolutePath = resolveSafeWorkspacePath(path);
         if (!absolutePath || getWorkspacePathKind(absolutePath) === "missing") {
+          appLog.warning("external-editor", "Workflow source file does not exist.", { path });
           throw new Error(`Workflow source file does not exist: ${path}`);
         }
         const result = openPathInPreferredEditor(absolutePath);
+        appLog.info("external-editor", "Workflow source opened in external editor.", {
+          path,
+          editor: result.editor,
+          opened: result.opened,
+        });
         return { ...result, path };
       },
       listSessions: async () => {
@@ -612,7 +681,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         recordBridgeLog("info", "Workspace session created.", "bun.session", {
           parentSessionId: parentSessionId ?? null,
-          sessionId: session.target.workspaceSessionId,
+          workspaceSessionId: session.target.workspaceSessionId,
         });
         return session;
       },
@@ -621,6 +690,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         recordBridgeEvent("session.opened", {
           sessionId,
         });
+        appLog.info("session", "Workspace session opened.", { workspaceSessionId: sessionId });
         return session;
       },
       recordSessionOpened: async ({ sessionId }: { sessionId: string }) => {
@@ -637,6 +707,12 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
+        appLog.info("surface", "Surface opened.", {
+          surface: target.surface,
+          workspaceSessionId: target.workspaceSessionId,
+          surfacePiSessionId: target.surfacePiSessionId,
+          threadId: target.threadId,
+        });
         return session;
       },
       closeSurface: async ({ target }: { target: PromptTarget }) => {
@@ -647,12 +723,22 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
+        appLog.info("surface", "Surface closed.", {
+          surface: target.surface,
+          workspaceSessionId: target.workspaceSessionId,
+          surfacePiSessionId: target.surfacePiSessionId,
+          threadId: target.threadId,
+        });
         return result;
       },
       renameSession: async ({ sessionId, title }: { sessionId: string; title: string }) => {
         const result = await workspaceSessionCatalog.renameSession(sessionId, title);
         recordBridgeEvent("session.renamed", {
           sessionId,
+          title,
+        });
+        appLog.info("session", "Workspace session renamed.", {
+          workspaceSessionId: sessionId,
           title,
         });
         return result;
@@ -702,26 +788,31 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       deleteSession: async ({ sessionId }: { sessionId: string }) => {
         const result = await workspaceSessionCatalog.deleteSession(sessionId);
         recordBridgeEvent("session.deleted", { sessionId });
+        appLog.info("session", "Workspace session deleted.", { workspaceSessionId: sessionId });
         return result;
       },
       pinSession: async ({ sessionId }: { sessionId: string }) => {
         const result = await workspaceSessionCatalog.pinSession(sessionId);
         recordBridgeEvent("session.pinned", { sessionId });
+        appLog.info("session", "Workspace session pinned.", { workspaceSessionId: sessionId });
         return result;
       },
       unpinSession: async ({ sessionId }: { sessionId: string }) => {
         const result = await workspaceSessionCatalog.unpinSession(sessionId);
         recordBridgeEvent("session.unpinned", { sessionId });
+        appLog.info("session", "Workspace session unpinned.", { workspaceSessionId: sessionId });
         return result;
       },
       archiveSession: async ({ sessionId }: { sessionId: string }) => {
         const result = await workspaceSessionCatalog.archiveSession(sessionId);
         recordBridgeEvent("session.archived", { sessionId });
+        appLog.info("session", "Workspace session archived.", { workspaceSessionId: sessionId });
         return result;
       },
       unarchiveSession: async ({ sessionId }: { sessionId: string }) => {
         const result = await workspaceSessionCatalog.unarchiveSession(sessionId);
         recordBridgeEvent("session.unarchived", { sessionId });
+        appLog.info("session", "Workspace session unarchived.", { workspaceSessionId: sessionId });
         return result;
       },
       setArchivedGroupCollapsed: async ({ collapsed }: { collapsed: boolean }) => {
@@ -739,8 +830,11 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const apiKey = resolveApiKey(resolved.provider);
         if (!apiKey) {
           const message = getApiKeyMissingError(resolved.provider);
-          recordBridgeError("rpc", message, "bun.sendPrompt", {
+          appLog.warning("auth.provider", "Configured provider is not connected for prompt.", {
             provider: resolved.provider,
+            workspaceSessionId: payload.target.workspaceSessionId,
+            surfacePiSessionId: payload.target.surfacePiSessionId,
+            threadId: payload.target.threadId,
           });
           throw new Error(message);
         }
@@ -759,6 +853,14 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           requestedWorkspaceSessionId: payload.target.workspaceSessionId,
           requestedThreadId: payload.target.threadId ?? null,
         });
+        appLog.info("prompt", "Prompt requested.", {
+          messageCount: payload.messages.length,
+          model: model.id,
+          provider: resolved.provider,
+          workspaceSessionId: payload.target.workspaceSessionId,
+          surfacePiSessionId: payload.target.surfacePiSessionId,
+          threadId: payload.target.threadId,
+        });
 
         const session = await workspaceSessionCatalog.sendPrompt({
           target: payload.target,
@@ -776,6 +878,13 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 workspaceSessionId: payload.target.workspaceSessionId,
                 threadId: payload.target.threadId ?? null,
               });
+              appLog.info("prompt", "Prompt started.", {
+                model: model.id,
+                provider: resolved.provider,
+                workspaceSessionId: payload.target.workspaceSessionId,
+                surfacePiSessionId,
+                threadId: payload.target.threadId,
+              });
             } else if (event.type === "done") {
               recordBridgeEvent("prompt.finished", {
                 model: model.id,
@@ -784,6 +893,14 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 surfacePiSessionId,
                 workspaceSessionId: payload.target.workspaceSessionId,
                 threadId: payload.target.threadId ?? null,
+              });
+              appLog.info("prompt", "Prompt finished.", {
+                model: model.id,
+                provider: resolved.provider,
+                reason: event.reason,
+                workspaceSessionId: payload.target.workspaceSessionId,
+                surfacePiSessionId,
+                threadId: payload.target.threadId,
               });
             } else if (event.type === "error") {
               const message =
@@ -827,6 +944,11 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
         });
+        appLog.info("prompt", "Prompt cancellation requested.", {
+          workspaceSessionId: target.workspaceSessionId,
+          surfacePiSessionId: target.surfacePiSessionId,
+          threadId: target.threadId,
+        });
         return { ok: true };
       },
       setSurfaceModel: async ({
@@ -845,6 +967,13 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             surfacePiSessionId: target.surfacePiSessionId,
             threadId: target.threadId ?? null,
             workspaceSessionId: target.workspaceSessionId,
+          });
+          appLog.info("surface", "Surface model changed.", {
+            model,
+            provider,
+            workspaceSessionId: target.workspaceSessionId,
+            surfacePiSessionId: target.surfacePiSessionId,
+            threadId: target.threadId,
           });
         } else {
           recordBridgeError(
@@ -874,6 +1003,12 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             threadId: target.threadId ?? null,
             workspaceSessionId: target.workspaceSessionId,
           });
+          appLog.info("surface", "Surface reasoning changed.", {
+            level,
+            workspaceSessionId: target.workspaceSessionId,
+            surfacePiSessionId: target.surfacePiSessionId,
+            threadId: target.threadId,
+          });
         } else {
           recordBridgeError(
             "rpc",
@@ -900,6 +1035,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           keyType: "apikey",
           providerId,
         });
+        appLog.info("auth.provider", "Provider auth updated.", { providerId, keyType: "apikey" });
         return { ok: true };
       },
       startOAuth: async ({
@@ -910,6 +1046,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         try {
           await startOAuthLogin(providerId);
           recordBridgeEvent("provider.oauth.started", { providerId });
+          appLog.info("auth.provider", "Provider OAuth started.", { providerId });
           return { ok: true };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -927,10 +1064,15 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       }): Promise<{ ok: boolean }> => {
         removeCredential(providerId);
         recordBridgeEvent("provider.auth.removed", { providerId });
+        appLog.info("auth.provider", "Provider auth removed.", { providerId });
         return { ok: true };
       },
     },
   },
+});
+
+appLog.subscribe((entries, summary) => {
+  rpc.send.sendAppLogUpdate({ entries, summary });
 });
 
 workspaceSessionCatalog.setWorkspaceSyncListener((payload) => {
@@ -1027,7 +1169,16 @@ mainWindow.webview.loadURL(url);
 recordBridgeEvent("app.ready", {
   bridgeUrl: mountedToolBridge.url ?? null,
   url,
-  workspaceId: resolveWorkspaceCwd(),
+  workspaceCwd: resolveWorkspaceCwd(),
+});
+appLog.info("app.lifecycle", "App startup completed.", {
+  url,
+  workspaceCwd: resolveWorkspaceCwd(),
+  branch: getWorkspaceBranch(resolveWorkspaceCwd()),
+});
+appLog.info("workspace", "Workspace cwd resolved.", {
+  cwd: resolveWorkspaceCwd(),
+  branch: getWorkspaceBranch(resolveWorkspaceCwd()),
 });
 recordBridgeLog("info", "svvy tool bridge mounted.", "tool-bridge", {
   appId: mountedToolBridge.appId,
