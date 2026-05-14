@@ -39,7 +39,12 @@ import {
 } from "./auth-store";
 import { refreshIfNeeded, startOAuthLogin, supportsOAuth } from "./oauth-login";
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./default-system-prompt";
-import { getSvvyAgentDir, WorkspaceSessionCatalog, type SessionDefaults } from "./session-catalog";
+import {
+  getSvvyAgentDir,
+  WorkspaceSessionCatalog,
+  type SessionDefaults,
+  type TitleGenerationLogEvent,
+} from "./session-catalog";
 import { createSessionAgentSettingsStore } from "./session-agent-settings";
 import {
   deleteSavedWorkflowLibraryPath,
@@ -402,6 +407,36 @@ const appLog = createAppLogger({
     recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
   },
 });
+
+workspaceSessionCatalog.setTitleGenerationLogListener((event) => {
+  const message = formatTitleGenerationLogMessage(event);
+  const details = {
+    status: event.status,
+    ...(event.status === "completed" ? { title: event.title } : {}),
+    workspaceSessionId: event.sessionId,
+  };
+  if (event.level === "warning") {
+    appLog.warning("session.title", message, {
+      ...details,
+      failureReason: event.error,
+    });
+    return;
+  }
+  appLog.info("session.title", message, details);
+});
+
+function formatTitleGenerationLogMessage(event: TitleGenerationLogEvent): string {
+  switch (event.status) {
+    case "queued":
+      return "Session title generation queued.";
+    case "started":
+      return "Session title generation started.";
+    case "completed":
+      return "Session title generation completed.";
+    case "failed":
+      return "Session title generation failed.";
+  }
+}
 
 function recordBridgeLog(
   level: "info" | "warning",

@@ -178,6 +178,20 @@ interface PromptSyncCursor {
 
 type WorkspaceSessionInfo = Awaited<ReturnType<typeof SessionManager.list>>[number];
 
+export type TitleGenerationLogEvent =
+  | {
+      level: "info";
+      status: "queued" | "started" | "completed";
+      sessionId: string;
+      title?: string;
+    }
+  | {
+      level: "warning";
+      status: "failed";
+      sessionId: string;
+      error: string;
+    };
+
 export class WorkspaceSessionCatalog {
   private readonly managedSurfaces = new Map<string, ManagedSession>();
   private readonly structuredSessionStore: StructuredSessionStateStore;
@@ -187,6 +201,7 @@ export class WorkspaceSessionCatalog {
   private closed = false;
   private workspaceSyncListener: ((payload: WorkspaceSyncMessage) => void) | null = null;
   private surfaceSyncListener: ((payload: SurfaceSyncMessage) => void) | null = null;
+  private titleGenerationLogListener: ((event: TitleGenerationLogEvent) => void) | null = null;
 
   constructor(
     private readonly cwd: string = resolveWorkspaceCwd(),
@@ -227,7 +242,7 @@ export class WorkspaceSessionCatalog {
         return await this.resumeHandlerAfterWorkflowAttention(event);
       },
     });
-    setTimeout(() => this.resumeDurableTitleGenerationJobs(), 0);
+    this.resumeDurableTitleGenerationJobs();
   }
 
   private get threadSurfaceDir(): string {
@@ -240,7 +255,7 @@ export class WorkspaceSessionCatalog {
     }
     for (const snapshot of this.structuredSessionStore.listSessionStates()) {
       const status = snapshot.pi.titleGenerationStatus;
-      if (status === "pending" || status === "running" || status === "failed") {
+      if (status === "pending" || status === "running") {
         void this.runQueuedTitleGeneration(snapshot.pi.sessionId).catch((error) => {
           console.error("Failed to resume session title generation:", error);
         });
@@ -264,6 +279,10 @@ export class WorkspaceSessionCatalog {
 
   setSurfaceSyncListener(listener: ((payload: SurfaceSyncMessage) => void) | null): void {
     this.surfaceSyncListener = listener;
+  }
+
+  setTitleGenerationLogListener(listener: ((event: TitleGenerationLogEvent) => void) | null): void {
+    this.titleGenerationLogListener = listener;
   }
 
   async listSessions(): Promise<ListSessionsResponse> {
@@ -1708,6 +1727,11 @@ export class WorkspaceSessionCatalog {
     if (!queued) {
       return;
     }
+    this.emitTitleGenerationLog({
+      level: "info",
+      status: "queued",
+      sessionId: promptContext.sessionId,
+    });
     this.syncPiSessionTitle(session, queued.title);
     void this.emitWorkspaceSync("structured.updated");
     setTimeout(() => {
@@ -1740,6 +1764,7 @@ export class WorkspaceSessionCatalog {
         return;
       }
       this.structuredSessionStore.markTitleGenerationRunning(sessionId);
+      this.emitTitleGenerationLog({ level: "info", status: "started", sessionId });
       if (!this.closed) {
         await this.emitWorkspaceSync("structured.updated");
       }
@@ -1762,6 +1787,12 @@ export class WorkspaceSessionCatalog {
           SessionManager.open(sessionFile, this.sessionDir).appendSessionInfo(completed.title);
         }
       }
+      this.emitTitleGenerationLog({
+        level: "info",
+        status: "completed",
+        sessionId,
+        title: completed.title,
+      });
       if (!this.closed) {
         await this.emitWorkspaceSync("structured.updated");
       }
@@ -1769,9 +1800,16 @@ export class WorkspaceSessionCatalog {
       if (this.closed) {
         return;
       }
+      const message = error instanceof Error ? error.message : "Title generation failed.";
       this.structuredSessionStore.failTitleGeneration({
         sessionId,
-        error: error instanceof Error ? error.message : "Title generation failed.",
+        error: message,
+      });
+      this.emitTitleGenerationLog({
+        level: "warning",
+        status: "failed",
+        sessionId,
+        error: message,
       });
       if (!this.closed) {
         await this.emitWorkspaceSync("structured.updated");
@@ -1855,6 +1893,10 @@ export class WorkspaceSessionCatalog {
   private syncPiSessionTitle(session: ManagedSession, title: string): void {
     session.session.sessionManager.appendSessionInfo(title);
     this.persistManagedSessionSnapshot(session);
+  }
+
+  private emitTitleGenerationLog(event: TitleGenerationLogEvent): void {
+    this.titleGenerationLogListener?.(event);
   }
 
   private async runAgentPrompt(

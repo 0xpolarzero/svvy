@@ -17,6 +17,7 @@ import {
   WorkspaceSessionCatalog,
   resolveRestoredSessionDefaults,
   type SessionDefaults,
+  type TitleGenerationLogEvent,
 } from "./session-catalog";
 import type { StructuredSessionStateStore } from "./structured-session-state";
 
@@ -263,6 +264,14 @@ function getManagedSurface(
     throw new Error(`Managed surface not found: ${surfacePiSessionId}`);
   }
   return surface;
+}
+
+function captureTitleGenerationLogs(catalog: WorkspaceSessionCatalog): TitleGenerationLogEvent[] {
+  const events: TitleGenerationLogEvent[] = [];
+  catalog.setTitleGenerationLogListener((event) => {
+    events.push(structuredClone(event));
+  });
+  return events;
 }
 
 function findManagedSurfaceBySession(
@@ -706,6 +715,8 @@ describe("WorkspaceSessionCatalog", () => {
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
     try {
+      await Bun.sleep(0);
+      const titleLogs = captureTitleGenerationLogs(catalog);
       const created = await catalog.createSession({ title: "New Session" }, DEFAULTS);
       const orchestratorManaged = getManagedSurface(catalog, created.target.surfacePiSessionId);
       const promptPrototype = Object.getPrototypeOf(orchestratorManaged.session) as {
@@ -751,6 +762,24 @@ describe("WorkspaceSessionCatalog", () => {
         ).pi;
         expect(titleState.title).toBe("New Session");
         expect(titleState.titleGenerationError).toBe("Provided authentication token is expired.");
+        expect(titleLogs).toEqual([
+          {
+            level: "info",
+            status: "queued",
+            sessionId: created.target.workspaceSessionId,
+          },
+          {
+            level: "info",
+            status: "started",
+            sessionId: created.target.workspaceSessionId,
+          },
+          {
+            level: "warning",
+            status: "failed",
+            sessionId: created.target.workspaceSessionId,
+            error: "Provided authentication token is expired.",
+          },
+        ]);
       } finally {
         promptSpy.mockRestore();
       }
