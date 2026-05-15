@@ -1,7 +1,9 @@
 <script lang="ts">
 	import FileIcon from "@lucide/svelte/icons/file";
 	import FolderIcon from "@lucide/svelte/icons/folder";
+	import ImageIcon from "@lucide/svelte/icons/image";
 	import PaperclipIcon from "@lucide/svelte/icons/paperclip";
+	import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
 	import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
 	import SquareIcon from "@lucide/svelte/icons/square";
 	import XIcon from "@lucide/svelte/icons/x";
@@ -19,11 +21,9 @@
 	} from "./prompt-history";
 	import {
 		getActiveMentionQuery,
-		removeMentionFromDraft,
 		searchMentionPaths,
 		selectMentionPath,
 		serializeComposerDraft,
-		type ComposerMentionLink,
 		type MentionPickerResult,
 		type WorkspacePathIndexEntry,
 	} from "./composer-mentions";
@@ -35,6 +35,12 @@
 	import { getModelComboboxValue, type ModelComboboxOption } from "./model-options";
 	import QueuedMessagesStrip from "./QueuedMessagesStrip.svelte";
 	import type { QueuedPrompt } from "./chat-runtime";
+	import type { ComposerAttachment } from "../shared/workspace-contract";
+
+	export type ComposerSubmit = {
+		text: string;
+		attachments: ComposerAttachment[];
+	};
 
 	type Props = {
 		currentModel: Model<any> | null;
@@ -51,14 +57,15 @@
 		onOpenModelPicker: () => void;
 		onListModels: () => Promise<ModelComboboxOption[]>;
 		onModelChange: (model: Model<any>) => void;
-		onSend: (input: string) => Promise<boolean> | boolean;
+		onSend: (input: ComposerSubmit) => Promise<boolean> | boolean;
 		onEditQueuedMessage?: (promptId: string) => Promise<string | null> | string | null;
 		onDeleteQueuedMessage?: (promptId: string) => void;
 		onSteerQueuedMessage?: (promptId: string) => void;
 		onReorderQueuedMessage?: (promptId: string, beforePromptId: string | null) => void;
 		onThinkingChange: (level: ThinkingLevel) => void;
 		listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
-		pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
+		pickWorkspaceAttachments: () => Promise<ComposerAttachment[]>;
+		importComposerAttachments: (files: File[]) => Promise<ComposerAttachment[]>;
 	};
 
 	const BASE_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
@@ -86,6 +93,7 @@
 		onThinkingChange,
 		listWorkspacePaths,
 		pickWorkspaceAttachments,
+		importComposerAttachments,
 	}: Props = $props();
 
 	let draft = $state("");
@@ -101,7 +109,8 @@
 	let workspacePathsLoaded = $state(false);
 	let mentionLoading = $state(false);
 	let mentionError = $state<string | null>(null);
-	let selectedMentions = $state<ComposerMentionLink[]>([]);
+	let attachments = $state<ComposerAttachment[]>([]);
+	let isDragActive = $state(false);
 	let activeMentionIndex = $state(0);
 	let caretPosition = $state(0);
 	let dismissedMentionQueryKey = $state<string | null>(null);
@@ -124,17 +133,17 @@
 	const activeMentionIsSelected = $derived(
 		Boolean(
 			mentionQuery &&
-				selectedMentions.some(
-					(mention) =>
-						mention.workspaceRelativePath === mentionQuery.query &&
-						draft.slice(mentionQuery.start, mentionQuery.end) === `@${mention.workspaceRelativePath}`,
-				),
+				draft.slice(mentionQuery.start, mentionQuery.end) === `@${mentionQuery.query}` &&
+				workspacePaths.some((entry) => entry.workspaceRelativePath === mentionQuery.query),
 		),
 	);
 	const mentionResults = $derived<MentionPickerResult[]>(
 		mentionQuery && workspacePathsLoaded ? searchMentionPaths(workspacePaths, mentionQuery.query, 10) : [],
 	);
-	const canSubmit = $derived(Boolean(draft.trim() || selectedMentions.length > 0));
+	const hasImageAttachments = $derived(attachments.some((attachment) => attachment.kind === "image"));
+	const modelSupportsImages = $derived(Boolean((currentModel as unknown as { input?: string[] } | null)?.input?.includes("image")));
+	const showImageModelWarning = $derived(Boolean(hasImageAttachments && currentModel && !modelSupportsImages));
+	const canSubmit = $derived(Boolean(draft.trim() || attachments.length > 0));
 	const contextBudgetTooltip = $derived(contextBudget ? "" : "Context unavailable");
 	const contextBudgetTooltipDetails = $derived(
 		contextBudget ? buildContextBudgetTooltipDetails(contextBudget) : [],
@@ -290,13 +299,6 @@
 		caretPosition = selection.caret;
 	}
 
-	async function removeMention(mention: ComposerMentionLink) {
-		draft = removeMentionFromDraft(draft, mention);
-		selectedMentions = selectedMentions.filter((item) => item.id !== mention.id);
-		await tick();
-		moveCaretToDraftEnd(draft);
-	}
-
 	async function applyPromptHistoryNavigation(direction: PromptHistoryDirection) {
 		const navigation = navigatePromptHistory(promptHistory, historyNavigation, draft, direction);
 		if (!navigation.changed) return;
@@ -309,24 +311,24 @@
 
 	async function submit() {
 		if (!canSubmit || isSubmitting) return;
-		const nextDraft = serializeComposerDraft(draft, selectedMentions);
+		const nextDraft = serializeComposerDraft(draft);
 		const nextVisibleDraft = draft;
-		const nextVisibleMentions = selectedMentions;
+		const nextAttachments = attachments;
 		draft = "";
-		selectedMentions = [];
+		attachments = [];
 		isSubmitting = true;
 
 		try {
-			const sent = await onSend(nextDraft);
+			const sent = await onSend({ text: nextDraft, attachments: nextAttachments });
 			if (sent) {
 				resetHistoryNavigation();
 			} else {
 				await restoreDraftBuffer(nextVisibleDraft);
-				selectedMentions = nextVisibleMentions;
+				attachments = nextAttachments;
 			}
 		} catch {
 			await restoreDraftBuffer(nextVisibleDraft);
-			selectedMentions = nextVisibleMentions;
+			attachments = nextAttachments;
 		} finally {
 			isSubmitting = false;
 		}
@@ -386,27 +388,78 @@
 
 	async function attachPickedWorkspaceFiles() {
 		try {
-			const entries = await pickWorkspaceAttachments();
-			if (entries.length === 0) {
+			const picked = await pickWorkspaceAttachments();
+			if (picked.length === 0) {
 				draftElement?.focus();
 				return;
 			}
 
-			const nextMentions = new Map(selectedMentions.map((mention) => [mention.id, mention]));
-			for (const entry of entries) {
-				nextMentions.set(`${entry.kind}:${entry.workspaceRelativePath}`, {
-					id: `${entry.kind}:${entry.workspaceRelativePath}`,
-					kind: entry.kind,
-					label: entry.workspaceRelativePath.split("/").filter(Boolean).at(-1) ?? entry.workspaceRelativePath,
-					workspaceRelativePath: entry.workspaceRelativePath,
-				});
-			}
-			selectedMentions = [...nextMentions.values()];
+			addAttachments(picked);
 			await tick();
 			draftElement?.focus();
 		} catch {
 			draftElement?.focus();
 		}
+	}
+
+	function addAttachments(nextAttachments: ComposerAttachment[]) {
+		const byId = new Map(attachments.map((attachment) => [attachment.id, attachment]));
+		for (const attachment of nextAttachments) {
+			byId.set(attachment.id, attachment);
+		}
+		attachments = [...byId.values()];
+	}
+
+	function removeAttachment(attachmentId: string) {
+		attachments = attachments.filter((attachment) => attachment.id !== attachmentId);
+		draftElement?.focus();
+	}
+
+	async function importFiles(files: File[]) {
+		const importable = files.filter((file) => file.size > 0 || file.type);
+		if (importable.length === 0) return;
+		addAttachments(await importComposerAttachments(importable));
+		await tick();
+		draftElement?.focus();
+	}
+
+	function clipboardFiles(event: ClipboardEvent): File[] {
+		const files = Array.from(event.clipboardData?.files ?? []);
+		if (files.length > 0) return files;
+		return Array.from(event.clipboardData?.items ?? [])
+			.filter((item) => item.kind === "file")
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => Boolean(file));
+	}
+
+	function handlePaste(event: ClipboardEvent) {
+		const files = clipboardFiles(event);
+		if (files.length === 0) return;
+		event.preventDefault();
+		void importFiles(files);
+	}
+
+	function handleDragOver(event: DragEvent) {
+		if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
+		event.preventDefault();
+		isDragActive = true;
+	}
+
+	function handleDragLeave(event: DragEvent) {
+		if (event.currentTarget !== event.target) return;
+		isDragActive = false;
+	}
+
+	function handleDrop(event: DragEvent) {
+		const files = Array.from(event.dataTransfer?.files ?? []);
+		if (files.length === 0) return;
+		event.preventDefault();
+		isDragActive = false;
+		void importFiles(files);
+	}
+
+	function attachmentLabel(attachment: ComposerAttachment): string {
+		return attachment.workspaceRelativePath ?? attachment.path;
 	}
 
 	async function loadModelOptions() {
@@ -436,7 +489,14 @@
 	}
 </script>
 
-<div class="composer-shell">
+<div
+	role="group"
+	aria-label="Message composer"
+	class={`composer-shell ${isDragActive ? "drag-active" : ""}`.trim()}
+	ondragover={handleDragOver}
+	ondragleave={handleDragLeave}
+	ondrop={handleDrop}
+>
 	<div class="composer-frame expanded">
 		{#if errorMessage}
 			<p class="composer-error">{errorMessage}</p>
@@ -484,23 +544,37 @@
 						onReorder={onReorderQueuedMessage}
 					/>
 				{/if}
-				{#if selectedMentions.length > 0}
+				{#if attachments.length > 0 || showImageModelWarning}
 					<section class="composer-context-row" aria-label="Attached file and context items">
+						{#if showImageModelWarning}
+							<div class="composer-attachment-warning" role="status">
+								<TriangleAlertIcon size={13} aria-hidden="true" />
+								<span>Current model is not listed as image-capable. Image attachments may be ignored or rejected.</span>
+							</div>
+						{/if}
 						<div class="mention-chip-row">
-							{#each selectedMentions as mention (mention.id)}
-								<Tooltip label={`Remove ${mention.workspaceRelativePath}`}>
+							{#each attachments as attachment (attachment.id)}
+								<Tooltip label={`Remove ${attachmentLabel(attachment)}`}>
 									<button
 										class="mention-chip"
 										type="button"
-										aria-label={`Remove attached context ${mention.workspaceRelativePath}`}
-										onclick={() => void removeMention(mention)}
+										aria-label={`Remove attachment ${attachmentLabel(attachment)}`}
+										onclick={() => removeAttachment(attachment.id)}
 									>
-										{#if mention.kind === "folder"}
+										{#if attachment.kind === "image" && attachment.dataBase64 && attachment.mimeType}
+											<img
+												class="attachment-thumb"
+												src={`data:${attachment.mimeType};base64,${attachment.dataBase64}`}
+												alt=""
+											/>
+										{:else if attachment.kind === "folder"}
 											<FolderIcon size={12} aria-hidden="true" />
+										{:else if attachment.kind === "image"}
+											<ImageIcon size={12} aria-hidden="true" />
 										{:else}
 											<FileIcon size={12} aria-hidden="true" />
 										{/if}
-										<span>{mention.workspaceRelativePath}</span>
+										<span>{attachmentLabel(attachment)}</span>
 										<XIcon size={11} aria-hidden="true" />
 									</button>
 								</Tooltip>
@@ -516,6 +590,7 @@
 					placeholder="Ask svvy to inspect the repo, make a change, or run Project CI."
 					onkeydown={handleKeydown}
 					oninput={handleDraftInput}
+					onpaste={handlePaste}
 					onkeyup={(event) => syncCaretFromTextarea(event.currentTarget)}
 					onclick={(event) => syncCaretFromTextarea(event.currentTarget)}
 					onselect={(event) => syncCaretFromTextarea(event.currentTarget)}
@@ -653,6 +728,14 @@
 		font-weight: 600;
 	}
 
+	.attachment-thumb {
+		width: 1.15rem;
+		height: 1.15rem;
+		border-radius: var(--ui-radius-xs);
+		object-fit: cover;
+		background: var(--ui-code);
+	}
+
 	.mention-chip:hover,
 	.mention-chip:focus-visible {
 		outline: none;
@@ -695,6 +778,22 @@
 		border-color: color-mix(in oklab, var(--ui-border-strong) 82%, var(--ui-accent));
 		background: color-mix(in oklab, var(--ui-surface) 86%, var(--ui-surface-subtle));
 		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-accent) 14%, transparent);
+	}
+
+	.drag-active .composer-input-wrap {
+		border-color: color-mix(in oklab, var(--ui-accent) 72%, var(--ui-border-strong));
+		background: color-mix(in oklab, var(--ui-accent-soft) 28%, var(--ui-surface));
+		box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ui-accent) 22%, transparent);
+	}
+
+	.composer-attachment-warning {
+		display: flex;
+		align-items: center;
+		gap: 0.32rem;
+		margin-bottom: 0.34rem;
+		color: var(--ui-warning);
+		font-size: var(--text-xs);
+		font-weight: 600;
 	}
 
 	:global(.composer-shell .ui-textarea) {

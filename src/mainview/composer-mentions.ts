@@ -2,13 +2,6 @@ import type { ComposerMentionKind, WorkspacePathIndexEntry } from "../shared/wor
 
 export type { ComposerMentionKind, WorkspacePathIndexEntry };
 
-export interface ComposerMentionLink {
-  id: string;
-  kind: ComposerMentionKind;
-  label: string;
-  workspaceRelativePath: string;
-}
-
 export interface MentionQuery {
   start: number;
   end: number;
@@ -79,28 +72,8 @@ export function selectMentionPath(
   return { draft, caret };
 }
 
-export function removeMentionFromDraft(value: string, mention: ComposerMentionLink): string {
-  const mentionText = `@${mention.workspaceRelativePath}`;
-  const index = value.indexOf(mentionText);
-  if (index < 0) return value;
-  const before = value.slice(0, index).replace(/[ \t]$/, "");
-  const after = value.slice(index + mentionText.length).replace(/^[ \t]/, "");
-  if (!before || !after || before.endsWith("\n") || after.startsWith("\n")) {
-    return `${before}${after}`;
-  }
-  return `${before} ${after}`;
-}
-
-export function serializeComposerDraft(
-  value: string,
-  mentions: readonly ComposerMentionLink[] = [],
-): string {
-  const draft = value.trim();
-  const serializedMentions = mentions
-    .map((mention) => `@${mention.workspaceRelativePath}`)
-    .filter((mentionText) => !draft.includes(mentionText));
-  if (serializedMentions.length === 0) return draft;
-  return [draft, serializedMentions.join(" ")].filter(Boolean).join(" ");
+export function serializeComposerDraft(value: string): string {
+  return value.trim();
 }
 
 export interface TranscriptMentionSegment {

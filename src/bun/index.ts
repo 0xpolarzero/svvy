@@ -6,14 +6,24 @@ import {
   defineElectrobunRPC,
 } from "electrobun/bun";
 import { getModel, getModels, getProviders } from "@mariozechner/pi-ai";
+import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve, sep } from "node:path";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import type {
   AppLogUpdateMessage,
   AuthStateResponse,
   ChatRPCSchema,
+  ComposerAttachment,
   ComposerMentionKind,
+  ImportComposerAttachmentInput,
   ProviderAuthInfo,
   SendPromptRequest,
   SendPromptResponse,
@@ -401,6 +411,109 @@ function getWorkspacePathKind(absolutePath: string): ComposerMentionKind | "miss
   }
 }
 
+function sanitizeAttachmentName(name: string): string {
+  const sanitized = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return sanitized || "attachment";
+}
+
+function imageMimeTypeFromPath(path: string): string | null {
+  const extension = extname(path).toLowerCase();
+  if (extension === ".png") return "image/png";
+  if (extension === ".jpg" || extension === ".jpeg") return "image/jpeg";
+  if (extension === ".gif") return "image/gif";
+  if (extension === ".webp") return "image/webp";
+  return null;
+}
+
+function importedAttachmentPath(
+  cwd: string,
+  name: string,
+): { absolutePath: string; workspaceRelativePath: string } {
+  const attachmentId = randomUUID();
+  const relativePath = join(
+    ".svvy",
+    "attachments",
+    "user-input",
+    `${attachmentId}-${sanitizeAttachmentName(name)}`,
+  );
+  const absolutePath = resolve(cwd, relativePath);
+  mkdirSync(join(cwd, ".svvy", "attachments", "user-input"), { recursive: true });
+  return { absolutePath, workspaceRelativePath: relativePath.split(sep).join("/") };
+}
+
+function createComposerAttachmentFromPath(
+  cwd: string,
+  selectedPath: string,
+): ComposerAttachment | null {
+  const absolutePath = resolve(selectedPath);
+  const kind = getWorkspacePathKind(absolutePath);
+  if (kind === "missing") return null;
+
+  const workspaceRelativePath = relative(cwd, absolutePath);
+  const isWorkspacePath =
+    workspaceRelativePath !== "" &&
+    !workspaceRelativePath.startsWith("..") &&
+    !workspaceRelativePath.includes(`..${sep}`) &&
+    resolve(cwd, workspaceRelativePath) === absolutePath;
+  const normalizedPath = (isWorkspacePath ? workspaceRelativePath : absolutePath)
+    .split(sep)
+    .join("/");
+  const stats = statSync(absolutePath);
+  const mimeType = kind === "file" ? imageMimeTypeFromPath(absolutePath) : null;
+
+  if (kind === "file" && !isWorkspacePath) {
+    const imported = importedAttachmentPath(cwd, basename(absolutePath));
+    copyFileSync(absolutePath, imported.absolutePath);
+    const importedMimeType = mimeType ?? imageMimeTypeFromPath(imported.absolutePath);
+    return {
+      id: `attachment:${imported.workspaceRelativePath}`,
+      kind: importedMimeType?.startsWith("image/") ? "image" : "file",
+      name: basename(absolutePath),
+      path: imported.workspaceRelativePath,
+      workspaceRelativePath: imported.workspaceRelativePath,
+      mimeType: importedMimeType ?? undefined,
+      sizeBytes: stats.size,
+      dataBase64: importedMimeType?.startsWith("image/")
+        ? readFileSync(imported.absolutePath).toString("base64")
+        : undefined,
+    };
+  }
+
+  return {
+    id: `${kind}:${normalizedPath}`,
+    kind: mimeType?.startsWith("image/") ? "image" : kind,
+    name: basename(absolutePath),
+    path: normalizedPath,
+    workspaceRelativePath: isWorkspacePath ? workspaceRelativePath.split(sep).join("/") : undefined,
+    mimeType: mimeType ?? undefined,
+    sizeBytes: kind === "file" ? stats.size : undefined,
+    dataBase64: mimeType?.startsWith("image/")
+      ? readFileSync(absolutePath).toString("base64")
+      : undefined,
+  };
+}
+
+function createImportedComposerAttachment(
+  cwd: string,
+  input: ImportComposerAttachmentInput,
+): ComposerAttachment {
+  const name = sanitizeAttachmentName(input.name || "attachment");
+  const imported = importedAttachmentPath(cwd, name);
+  const bytes = Buffer.from(input.dataBase64, "base64");
+  writeFileSync(imported.absolutePath, bytes);
+  const mimeType = input.mimeType || imageMimeTypeFromPath(name) || "application/octet-stream";
+  return {
+    id: `attachment:${imported.workspaceRelativePath}`,
+    kind: mimeType.startsWith("image/") ? "image" : "file",
+    name,
+    path: imported.workspaceRelativePath,
+    workspaceRelativePath: imported.workspaceRelativePath,
+    mimeType,
+    sizeBytes: bytes.byteLength,
+    dataBase64: mimeType.startsWith("image/") ? input.dataBase64 : undefined,
+  };
+}
+
 function openPathInPreferredEditor(
   runtime: WorkspaceRuntime,
   path: string,
@@ -778,34 +891,33 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           canChooseDirectory: true,
           allowsMultipleSelection: true,
         });
-        const entries = [];
+        const attachments = [];
         const skippedPaths = [];
 
         for (const selectedPath of selectedPaths) {
           if (!selectedPath) continue;
-          const absolutePath = resolve(selectedPath);
-          const workspaceRelativePath = relative(cwd, absolutePath);
-          const kind = getWorkspacePathKind(absolutePath);
-          if (kind === "missing") {
+          const attachment = createComposerAttachmentFromPath(cwd, selectedPath);
+          if (!attachment) {
             skippedPaths.push(selectedPath);
             continue;
           }
-
-          const isWorkspacePath =
-            workspaceRelativePath !== "" &&
-            !workspaceRelativePath.startsWith("..") &&
-            !workspaceRelativePath.includes(`..${sep}`) &&
-            resolve(cwd, workspaceRelativePath) === absolutePath;
-
-          entries.push({
-            kind,
-            workspaceRelativePath: (isWorkspacePath ? workspaceRelativePath : absolutePath)
-              .split(sep)
-              .join("/"),
-          });
+          attachments.push(attachment);
         }
 
-        return { entries, skippedPaths };
+        return { attachments, skippedPaths };
+      },
+      importComposerAttachments: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const attachments = [];
+        const skippedPaths = [];
+        for (const attachment of input.attachments) {
+          try {
+            attachments.push(createImportedComposerAttachment(runtime.cwd, attachment));
+          } catch {
+            skippedPaths.push(attachment.name);
+          }
+        }
+        return { attachments, skippedPaths };
       },
       openWorkspacePath: (input) => {
         const runtime = getWorkspaceRuntime(input);

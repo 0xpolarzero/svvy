@@ -8,6 +8,7 @@ import {
   getProviders,
   type AssistantMessage,
   type AssistantMessageEvent,
+  type ImageContent,
   type Message,
 } from "@mariozechner/pi-ai";
 import {
@@ -1066,7 +1067,12 @@ export class WorkspaceSessionCatalog {
       return this.sendPrompt(options);
     }
 
-    await session.session.steer(text);
+    const images = getLatestUserImages(options.messages);
+    if (images.length > 0) {
+      await session.session.steer(text, images);
+    } else {
+      await session.session.steer(text);
+    }
     await this.emitSurfaceSync({
       session,
       reason: "surface.updated",
@@ -1143,7 +1149,17 @@ export class WorkspaceSessionCatalog {
         };
       }
 
-      await session.session.steer(text);
+      let images: ImageContent[] = [];
+      try {
+        images = getLatestUserImages([JSON.parse(queued.messageJson) as Message]);
+      } catch {
+        images = [];
+      }
+      if (images.length > 0) {
+        await session.session.steer(text, images);
+      } else {
+        await session.session.steer(text);
+      }
       const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
       return { ok: true, target: structuredClone(input.target), snapshot };
     } catch (error) {
@@ -2545,6 +2561,7 @@ export class WorkspaceSessionCatalog {
       : null;
     const onEvent = options.onEvent ?? (() => {});
     const promptStartMessageCount = session.session.agent.state.messages.length;
+    const displayUserMessage = getLatestUserMessage(options.messages);
     let queuedMessageDelivered = false;
     const markSteeringMessageDelivered = (message: Message): boolean => {
       const text = flattenUserMessageContent(message.content).trim();
@@ -2611,6 +2628,10 @@ export class WorkspaceSessionCatalog {
       publishPromptEvent({ type: "start", partial: streamState.partial });
       const unsubscribe = session.session.subscribe((event) => {
         if (event.type === "message_end" && event.message.role === "user") {
+          if (displayUserMessage?.role === "user") {
+            Object.assign(event.message, structuredClone(displayUserMessage));
+          }
+          replaceLatestCommittedUserMessage(session, promptStartMessageCount, displayUserMessage);
           const deliveredSteering = markSteeringMessageDelivered(event.message as Message);
           if (clearPendingIfUserMessageCommitted()) {
             void this.emitSurfaceSync({
@@ -2661,7 +2682,12 @@ export class WorkspaceSessionCatalog {
           throw new Error("No user message to send.");
         }
 
-        await session.session.prompt(promptText, { expandPromptTemplates: false });
+        const promptImages = getLatestUserImages(options.messages);
+        await session.session.prompt(promptText, {
+          expandPromptTemplates: false,
+          images: promptImages.length > 0 ? promptImages : undefined,
+        });
+        replaceLatestCommittedUserMessage(session, promptStartMessageCount, displayUserMessage);
         finishOpenVisibleBlocks(streamState, publishPromptEvent);
 
         const emittedMessage =
@@ -3483,6 +3509,31 @@ function getLatestUserPromptText(messages: readonly Message[]): string | null {
   }
 
   return null;
+}
+
+function getLatestUserImages(messages: readonly Message[]): ImageContent[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user" || typeof message.content === "string") {
+      continue;
+    }
+    return message.content.filter((block): block is ImageContent => block.type === "image");
+  }
+  return [];
+}
+
+function replaceLatestCommittedUserMessage(
+  session: ManagedSession,
+  promptStartMessageCount: number,
+  displayUserMessage: Message | null,
+): void {
+  if (!displayUserMessage || displayUserMessage.role !== "user") return;
+  const messages = session.session.agent.state.messages;
+  for (let index = messages.length - 1; index >= promptStartMessageCount; index -= 1) {
+    if (messages[index]?.role !== "user") continue;
+    messages[index] = structuredClone(displayUserMessage) as AgentMessage;
+    return;
+  }
 }
 
 function isTerminalThreadStatus(

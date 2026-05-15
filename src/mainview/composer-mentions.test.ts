@@ -2,7 +2,6 @@ import { describe, expect, it } from "bun:test";
 import {
   getActiveMentionQuery,
   parseTranscriptMentionLinks,
-  removeMentionFromDraft,
   searchMentionPaths,
   selectMentionPath,
   serializeComposerDraft,
@@ -71,15 +70,10 @@ describe("composer mention serialization", () => {
     expect(serializeComposerDraft(selection.draft)).toBe("Please inspect @docs/progress.md.");
   });
 
-  it("removes a chip without disrupting normal multiline editing", () => {
-    const next = removeMentionFromDraft("Read @docs/progress.md\nThen update notes", {
-      id: "file:docs/progress.md",
-      kind: "file",
-      label: "progress.md",
-      workspaceRelativePath: "docs/progress.md",
-    });
-
-    expect(next).toBe("Read\nThen update notes");
+  it("does not append chip-only attachments into the draft text", () => {
+    expect(serializeComposerDraft("Please inspect @docs/progress.md")).toBe(
+      "Please inspect @docs/progress.md",
+    );
   });
 });
 
@@ -121,22 +115,9 @@ describe("composer mentions stay agent-neutral", () => {
     expect(JSON.stringify({ role: "user", content: text })).not.toContain("folderExpansion");
   });
 
-  it("serializes chip-only attachments as ordinary mention text without duplicating visible mentions", () => {
-    const text = serializeComposerDraft("Please inspect @docs/progress.md", [
-      {
-        id: "file:docs/progress.md",
-        kind: "file",
-        label: "progress.md",
-        workspaceRelativePath: "docs/progress.md",
-      },
-      {
-        id: "file:src/mainview/ChatComposer.svelte",
-        kind: "file",
-        label: "ChatComposer.svelte",
-        workspaceRelativePath: "src/mainview/ChatComposer.svelte",
-      },
-    ]);
+  it("keeps chip-only attachments out of composer text serialization", () => {
+    const text = serializeComposerDraft("Please inspect @docs/progress.md");
 
-    expect(text).toBe("Please inspect @docs/progress.md @src/mainview/ChatComposer.svelte");
+    expect(text).toBe("Please inspect @docs/progress.md");
   });
 });

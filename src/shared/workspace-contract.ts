@@ -314,6 +314,97 @@ export interface WorkspacePathIndexEntry {
   workspaceRelativePath: string;
 }
 
+export type ComposerAttachmentKind = "file" | "folder" | "image";
+
+export interface ComposerAttachment {
+  id: string;
+  kind: ComposerAttachmentKind;
+  name: string;
+  path: string;
+  workspaceRelativePath?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  dataBase64?: string;
+}
+
+export const COMPOSER_ATTACHMENT_TEXT_SIGNATURE_PREFIX = "svvy:composer-attachments:v1:";
+
+export function composerAttachmentPromptText(attachments: readonly ComposerAttachment[]): string {
+  if (attachments.length === 0) return "";
+  const lines = attachments.map((attachment) => {
+    const path = attachment.workspaceRelativePath ?? attachment.path;
+    return `- ${attachment.kind} path: ${path} (name: ${attachment.name})`;
+  });
+  return `Attached files are available at these workspace-relative paths:\n${lines.join("\n")}`;
+}
+
+export function serializeComposerAttachmentTextSignature(
+  attachments: readonly ComposerAttachment[],
+): string {
+  return `${COMPOSER_ATTACHMENT_TEXT_SIGNATURE_PREFIX}${JSON.stringify(
+    attachments.map((attachment) => ({
+      id: attachment.id,
+      kind: attachment.kind,
+      name: attachment.name,
+      path: attachment.path,
+      workspaceRelativePath: attachment.workspaceRelativePath,
+      mimeType: attachment.mimeType,
+      sizeBytes: attachment.sizeBytes,
+    })),
+  )}`;
+}
+
+export function parseComposerAttachmentTextSignature(
+  textSignature: string | undefined,
+): ComposerAttachment[] {
+  if (!textSignature?.startsWith(COMPOSER_ATTACHMENT_TEXT_SIGNATURE_PREFIX)) {
+    return [];
+  }
+  try {
+    const value = JSON.parse(textSignature.slice(COMPOSER_ATTACHMENT_TEXT_SIGNATURE_PREFIX.length));
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((attachment): ComposerAttachment[] => {
+      if (
+        !attachment ||
+        typeof attachment !== "object" ||
+        typeof attachment.id !== "string" ||
+        typeof attachment.kind !== "string" ||
+        typeof attachment.name !== "string" ||
+        typeof attachment.path !== "string" ||
+        !["file", "folder", "image"].includes(attachment.kind)
+      ) {
+        return [];
+      }
+      return [
+        {
+          id: attachment.id,
+          kind: attachment.kind,
+          name: attachment.name,
+          path: attachment.path,
+          workspaceRelativePath:
+            typeof attachment.workspaceRelativePath === "string"
+              ? attachment.workspaceRelativePath
+              : undefined,
+          mimeType: typeof attachment.mimeType === "string" ? attachment.mimeType : undefined,
+          sizeBytes: typeof attachment.sizeBytes === "number" ? attachment.sizeBytes : undefined,
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export interface ImportComposerAttachmentInput {
+  name: string;
+  mimeType?: string;
+  dataBase64: string;
+}
+
+export interface ImportComposerAttachmentsRequest {
+  attachments: ImportComposerAttachmentInput[];
+}
+
 export interface OpenWorkspacePathRequest {
   workspaceRelativePath: string;
 }
@@ -324,7 +415,7 @@ export interface OpenWorkspacePathResponse {
 }
 
 export interface PickWorkspaceAttachmentResponse {
-  entries: WorkspacePathIndexEntry[];
+  attachments: ComposerAttachment[];
   skippedPaths: string[];
 }
 
@@ -1185,6 +1276,10 @@ export interface ChatRPCSchema {
       };
       pickWorkspaceAttachments: {
         params: WorkspaceScopedRequest;
+        response: PickWorkspaceAttachmentResponse;
+      };
+      importComposerAttachments: {
+        params: WorkspaceScoped<ImportComposerAttachmentsRequest>;
         response: PickWorkspaceAttachmentResponse;
       };
       openWorkspacePath: {

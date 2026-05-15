@@ -2,7 +2,10 @@
 	import { getModels, type AssistantMessage, type Model, type ToolResultMessage, type UserMessage } from "@mariozechner/pi-ai";
 	import CheckIcon from "@lucide/svelte/icons/check";
 	import CopyIcon from "@lucide/svelte/icons/copy";
+	import FileIcon from "@lucide/svelte/icons/file";
+	import FolderIcon from "@lucide/svelte/icons/folder";
 	import GitForkIcon from "@lucide/svelte/icons/git-fork";
+	import ImageIcon from "@lucide/svelte/icons/image";
 	import { createVirtualizer } from "@tanstack/svelte-virtual";
 	import { onDestroy, onMount, tick } from "svelte";
 	import { get } from "svelte/store";
@@ -28,7 +31,12 @@
 	import ToolCallCard from "./transcript-cards/ToolCallCard.svelte";
 	import WaitingCard from "./transcript-cards/WaitingCard.svelte";
 	import WorkflowCard, { type TranscriptWorkflow } from "./transcript-cards/WorkflowCard.svelte";
-	import type { PromptTarget, WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
+	import {
+		parseComposerAttachmentTextSignature,
+		type ComposerAttachment,
+		type PromptTarget,
+		type WorkspaceHandlerThreadSummary,
+	} from "../shared/workspace-contract";
 	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
 	import Tooltip from "./ui/Tooltip.svelte";
@@ -149,11 +157,47 @@
 		return 172;
 	}
 
-	function userLines(message: UserMessage): string[] {
+	function userTextLines(message: UserMessage): string[] {
 		if (typeof message.content === "string") return [message.content];
-		return message.content.map((block) =>
-			block.type === "text" ? block.text : `[${block.mimeType} image]`,
+		return message.content
+			.filter(
+				(block): block is { type: "text"; text: string; textSignature?: string } =>
+					block.type === "text" && parseComposerAttachmentTextSignature(block.textSignature).length === 0,
+			)
+			.map((block) => block.text);
+	}
+
+	function userImageBlocks(message: UserMessage) {
+		if (typeof message.content === "string") return [];
+		return message.content.filter((block) => block.type === "image");
+	}
+
+	function userAttachments(message: UserMessage): ComposerAttachment[] {
+		if (typeof message.content === "string") return [];
+		return message.content.flatMap((block) =>
+			block.type === "text" ? parseComposerAttachmentTextSignature(block.textSignature) : [],
 		);
+	}
+
+	function userImageAttachments(message: UserMessage): Array<{ attachment: ComposerAttachment; imageData: string | null }> {
+		const images = userImageBlocks(message);
+		return userAttachments(message)
+			.filter((attachment) => attachment.kind === "image")
+			.map((attachment, index) => {
+				const image = images[index];
+				return {
+					attachment,
+					imageData: image ? `data:${image.mimeType};base64,${image.data}` : null,
+				};
+			});
+	}
+
+	function userFileAttachments(message: UserMessage): ComposerAttachment[] {
+		return userAttachments(message).filter((attachment) => attachment.kind !== "image");
+	}
+
+	function userAttachmentCaption(attachment: ComposerAttachment): string {
+		return attachment.workspaceRelativePath ?? attachment.path;
 	}
 
 	function isHandlerObjectiveMessage(message: UserMessage): boolean {
@@ -632,7 +676,7 @@
 							<span>{isHandlerObjectiveMessage(message) ? "Objective" : "You"}</span>
 							<time>{formatTimestamp(message.timestamp)}</time>
 						</header>
-						{#each userLines(message) as line, lineIndex (`${message.timestamp}:line:${lineIndex}`)}
+						{#each userTextLines(message) as line, lineIndex (`${message.timestamp}:line:${lineIndex}`)}
 							<p class="message-text">
 								{#each userLineSegments(line) as segment, segmentIndex (`${message.timestamp}:line:${lineIndex}:segment:${segmentIndex}`)}
 									{#if segment.type === "mention"}
@@ -650,6 +694,48 @@
 								{/each}
 							</p>
 						{/each}
+						{#if userAttachments(message).length > 0}
+							<div class="user-attachments" aria-label="Attached files">
+								{#if userImageAttachments(message).length > 0}
+									<div class="user-image-gallery" aria-label="Attached images">
+										{#each userImageAttachments(message) as imageAttachment (`${message.timestamp}:image-attachment:${imageAttachment.attachment.id}`)}
+											<figure class="user-image-attachment">
+												{#if imageAttachment.imageData}
+													<img src={imageAttachment.imageData} alt={`User attached image ${imageAttachment.attachment.name}`} />
+												{:else}
+													<div class="user-attachment-icon large" aria-hidden="true">
+														<ImageIcon size={18} strokeWidth={1.8} />
+													</div>
+												{/if}
+												<figcaption>
+													<strong>{imageAttachment.attachment.name}</strong>
+													<span>{userAttachmentCaption(imageAttachment.attachment)}</span>
+												</figcaption>
+											</figure>
+										{/each}
+									</div>
+								{/if}
+								{#if userFileAttachments(message).length > 0}
+									<div class="user-file-list" aria-label="Attached files and folders">
+										{#each userFileAttachments(message) as attachment (`${message.timestamp}:file-attachment:${attachment.id}`)}
+											<div class="user-file-attachment">
+												<div class="user-attachment-icon" aria-hidden="true">
+													{#if attachment.kind === "folder"}
+														<FolderIcon size={16} strokeWidth={1.8} />
+													{:else}
+														<FileIcon size={16} strokeWidth={1.8} />
+													{/if}
+												</div>
+												<div class="user-file-attachment-copy">
+													<strong>{attachment.name}</strong>
+													<span>{userAttachmentCaption(attachment)}</span>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				</article>
 				{:else if row?.kind === "message" && row.message.role === "assistant"}
@@ -1019,6 +1105,108 @@
 
 	.message-text + .message-text {
 		margin-top: 0.72rem;
+	}
+
+	.user-attachments {
+		display: grid;
+		gap: 0.62rem;
+		margin-top: 0.72rem;
+		max-height: min(24rem, 52vh);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		padding-right: 0.2rem;
+		scrollbar-gutter: stable;
+	}
+
+	.user-image-gallery {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 0.58rem;
+	}
+
+	.user-image-attachment {
+		flex: 1 1 14rem;
+		display: grid;
+		gap: 0.38rem;
+		margin: 0;
+		max-width: 28rem;
+		min-width: 0;
+	}
+
+	.user-image-attachment img {
+		display: block;
+		width: 100%;
+		max-height: 16rem;
+		object-fit: contain;
+		border: 1px solid var(--ui-border-soft);
+		border-radius: var(--ui-radius-sm);
+		background: var(--ui-code);
+	}
+
+	.user-attachment-icon {
+		display: grid;
+		place-items: center;
+		width: 2rem;
+		height: 2rem;
+		border: 1px solid var(--ui-border-soft);
+		border-radius: var(--ui-radius-sm);
+		background: var(--ui-code);
+		color: var(--ui-text-secondary);
+	}
+
+	.user-attachment-icon.large {
+		width: 100%;
+		min-height: 7.5rem;
+	}
+
+	.user-image-attachment figcaption,
+	.user-file-attachment-copy {
+		display: grid;
+		gap: 0.12rem;
+		min-width: 0;
+	}
+
+	.user-image-attachment figcaption strong,
+	.user-image-attachment figcaption span,
+	.user-file-attachment-copy strong,
+	.user-file-attachment-copy span {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.user-image-attachment figcaption strong,
+	.user-file-attachment-copy strong {
+		color: var(--ui-text-secondary);
+		font-size: var(--text-xs);
+		font-weight: 600;
+	}
+
+	.user-image-attachment figcaption span,
+	.user-file-attachment-copy span {
+		color: var(--ui-text-tertiary);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+	}
+
+	.user-file-list {
+		display: grid;
+		gap: 0.34rem;
+		max-width: 30rem;
+	}
+
+	.user-file-attachment {
+		display: grid;
+		grid-template-columns: 2rem minmax(0, 1fr);
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		padding: 0.42rem 0.52rem;
+		border: 1px solid var(--ui-border-soft);
+		border-radius: var(--ui-radius-sm);
+		background: color-mix(in oklab, var(--ui-code) 72%, transparent);
 	}
 
 	.assistant-message-footer {

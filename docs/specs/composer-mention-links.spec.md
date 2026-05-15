@@ -45,7 +45,10 @@ The adopted `svvy` direction is:
 
 - `@` mentions are composer UI shortcuts for inserting workspace path links.
 - Mentions support files and folders.
-- Selected mentions render as removable chips while drafting. Chips are displayed in the composer chip row while the textarea remains normal editable text containing the selected `@path`.
+- Selecting an `@` result inserts normal editable `@path` text into the textarea. It does not create an attachment chip.
+- Paperclip picker selections, dropped files, and pasted files create removable attachment chips above the composer. They do not mutate textarea text.
+- Pasted, dropped, or picked files are stored as user attachments for composer and transcript rendering. File and folder attachments are passed to the agent as tagged attachment metadata containing their paths, without rendering that metadata as visible transcript prose.
+- Pasted, dropped, or picked images are also sent to pi as image content blocks. When model metadata does not list image input, the composer keeps the chip visible and warns that the provider may ignore or reject the image attachment.
 - Sent mentions render in the conversation as actionable workspace path links.
 - The agent-facing message remains ordinary user text containing the path.
 - Mentions do not inject file contents into the prompt.
@@ -193,7 +196,7 @@ Duplicate basenames must show enough parent path to distinguish targets.
 
 Selecting a result inserts a mention for the target path.
 
-The draft remains normal editable text from the user's perspective. Chips render in a row associated with the composer while the textual `@path` stays in the textarea.
+The draft remains normal editable text from the user's perspective. Inline mention selections stay in the textarea as `@path` text.
 
 This keeps the feature a path-link shortcut and avoids introducing a rich-text composer model.
 
@@ -201,14 +204,16 @@ This keeps the feature a path-link shortcut and avoids introducing a rich-text c
 
 ### Decision
 
-A composer mention chip should show:
+A composer attachment chip should show:
 
 - whether the target is a file or folder
 - the target basename
 - enough path context to disambiguate when needed
 - a remove control
 
-Removing a chip removes the associated mention target from composer state and removes or normalizes the corresponding path text in the draft.
+Attachment chips are created only by picker, drag/drop, or paste. They are submitted as structured attachments and must not be serialized back into textarea text.
+
+Removing a chip removes only that structured attachment from composer state. It never rewrites textarea mention text.
 
 ## Sending
 
@@ -244,7 +249,7 @@ The transcript link action is intentionally native path navigation, not an in-ap
 
 ### Decision
 
-The agent receives the user's message as ordinary text.
+The agent receives inline mentions as ordinary user text.
 
 If the user says:
 
@@ -265,9 +270,11 @@ This preserves a clean provenance model:
 
 The persisted sent message text is the durable record for composer mentions.
 
-Composer chip state is draft-only presentation state. It is not a prompt contract, not sent as context metadata, and not required to render a sent message.
+Composer attachment state is structured prompt input. File and folder attachment chips are persisted as tagged attachment metadata that the transcript renders as tiles and the agent receives as path-first, workspace-relative context for normal tool inspection. Image attachment chips are persisted the same way and also contribute image content blocks for vision-capable models.
 
-The transcript renderer recognizes `@workspace/path` text in user messages and renders matching paths as workspace links.
+Agent-facing attachment context must lead with the readable workspace-relative path, not the attachment display name. If an attachment was imported from outside the workspace, the context points only at the copied `.svvy/attachments/user-input/...` path and does not expose or suggest the original absolute source path.
+
+The transcript renderer recognizes `@workspace/path` text in user messages and renders matching paths as workspace links. It also recognizes tagged composer attachment metadata and renders it as file, folder, and image tiles instead of visible prompt prose.
 
 ## Path Resolution
 
@@ -331,9 +338,11 @@ Tests should cover:
 - duplicate basename disambiguation
 - keyboard selection
 - mouse selection
-- chip rendering
-- chip removal
-- send serialization into ordinary text
+- picker/drop/paste attachment chip rendering
+- attachment chip removal
+- mention send serialization into ordinary text without chip-only attachments
+- transcript attachment rendering for sent files, folders, and images without visible attachment-provenance prose
+- image attachment warning for models whose metadata does not list image input
 - transcript rendering as workspace links
 - transcript link click routes to a concrete workspace path action
 - missing transcript links are visibly unavailable and do not no-op as if they worked

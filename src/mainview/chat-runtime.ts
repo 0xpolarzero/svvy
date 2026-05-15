@@ -3,38 +3,43 @@ import {
   createAssistantMessageEventStream,
   getModel,
   type AssistantMessage,
+  type ImageContent,
   type Message,
+  type TextContent,
 } from "@mariozechner/pi-ai";
-import type {
-  AppWorkspaceUiRestoreState,
-  AppLogQuery,
-  AppLogReadModel,
-  AppLogSummary,
-  AppLogUpdateMessage,
-  ConversationSurfaceSnapshot,
-  CreateSessionRequest,
-  PromptTarget,
-  QueuedSurfaceMessage,
-  SendPromptRequest,
-  SurfaceSyncMessage,
-  WorkspaceBranchInfo,
-  WorkspaceCommandInspector,
-  WorkspacePathIndexEntry,
-  WorkspaceHandlerThreadInspector,
-  WorkspaceHandlerThreadSummary,
-  WorkspaceArtifactPreview,
-  WorkspaceProjectCiStatusPanel,
-  WorkspaceSavedWorkflowLibraryReadModel,
-  WorkspaceSessionNavigationReadModel,
-  WorkspaceSessionSummary,
-  WorkspaceSyncMessage,
-  WorkspaceWorkflowTaskAttemptInspector,
-  WorkspaceWorkflowInspectorMode,
-  WorkspaceWorkflowInspectorLiveUpdate,
-  WorkspaceWorkflowInspectorReadModel,
-  WorkspacePaneSurfaceTarget,
-  WorkspaceInfoResponse,
-  WorkspaceTabInfo,
+import {
+  composerAttachmentPromptText,
+  serializeComposerAttachmentTextSignature,
+  type AppWorkspaceUiRestoreState,
+  type AppLogQuery,
+  type AppLogReadModel,
+  type AppLogSummary,
+  type AppLogUpdateMessage,
+  type ConversationSurfaceSnapshot,
+  type ComposerAttachment,
+  type CreateSessionRequest,
+  type PromptTarget,
+  type QueuedSurfaceMessage,
+  type SendPromptRequest,
+  type SurfaceSyncMessage,
+  type WorkspaceBranchInfo,
+  type WorkspaceCommandInspector,
+  type WorkspacePathIndexEntry,
+  type WorkspaceHandlerThreadInspector,
+  type WorkspaceHandlerThreadSummary,
+  type WorkspaceArtifactPreview,
+  type WorkspaceProjectCiStatusPanel,
+  type WorkspaceSavedWorkflowLibraryReadModel,
+  type WorkspaceSessionNavigationReadModel,
+  type WorkspaceSessionSummary,
+  type WorkspaceSyncMessage,
+  type WorkspaceWorkflowTaskAttemptInspector,
+  type WorkspaceWorkflowInspectorMode,
+  type WorkspaceWorkflowInspectorLiveUpdate,
+  type WorkspaceWorkflowInspectorReadModel,
+  type WorkspacePaneSurfaceTarget,
+  type WorkspaceInfoResponse,
+  type WorkspaceTabInfo,
 } from "../shared/workspace-contract";
 import type {
   PromptLibraryActor,
@@ -113,10 +118,50 @@ const ZERO_USAGE: UsageStats = {
   },
 };
 
+function buildUserMessage(input: ComposerPromptSubmission): Message {
+  const text = input.text.trim();
+  const content: Array<TextContent | ImageContent> = [];
+  if (text) {
+    content.push({ type: "text", text });
+  }
+  const attachmentText = composerAttachmentPromptText(input.attachments);
+  if (attachmentText) {
+    content.push({
+      type: "text",
+      text: attachmentText,
+      textSignature: serializeComposerAttachmentTextSignature(input.attachments),
+    });
+  }
+  for (const attachment of input.attachments) {
+    if (attachment.kind !== "image" || !attachment.dataBase64 || !attachment.mimeType) continue;
+    content.push({ type: "image", data: attachment.dataBase64, mimeType: attachment.mimeType });
+  }
+  return {
+    role: "user",
+    content: content.length > 0 ? content : [{ type: "text", text: "" }],
+    timestamp: Date.now(),
+  };
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    binary += String.fromCharCode(bytes[index]!);
+  }
+  return btoa(binary);
+}
+
 type ChatRuntimeListener = () => void;
 type PromptStatus = ConversationSurfaceSnapshot["promptStatus"];
 
 export type QueuedPrompt = QueuedSurfaceMessage;
+
+export type ComposerPromptSubmission = {
+  text: string;
+  attachments: ComposerAttachment[];
+};
 
 export interface ChatPaneState {
   id: string;
@@ -139,7 +184,7 @@ export interface ChatSurfaceController {
   promptStatus: PromptStatus;
   queuedPrompts: QueuedPrompt[];
   ownerPaneIds: string[];
-  sendPrompt: (input: string) => Promise<void>;
+  sendPrompt: (input: ComposerPromptSubmission) => Promise<void>;
   editQueuedPrompt: (promptId: string) => Promise<string | null>;
   deleteQueuedPrompt: (promptId: string) => Promise<boolean>;
   reorderQueuedPrompt: (promptId: string, beforePromptId: string | null) => Promise<boolean>;
@@ -185,6 +230,7 @@ export interface ChatRuntimeRpcClient {
     writeClipboardText: typeof rpc.request.writeClipboardText;
     listWorkspacePaths: typeof rpc.request.listWorkspacePaths;
     pickWorkspaceAttachments: typeof rpc.request.pickWorkspaceAttachments;
+    importComposerAttachments: typeof rpc.request.importComposerAttachments;
     openWorkspacePath: typeof rpc.request.openWorkspacePath;
     getSavedWorkflowLibrary: typeof rpc.request.getSavedWorkflowLibrary;
     deleteSavedWorkflowLibraryItem: typeof rpc.request.deleteSavedWorkflowLibraryItem;
@@ -364,7 +410,8 @@ export interface ChatRuntime {
   listWorkspaceBranches: () => Promise<WorkspaceBranchInfo[]>;
   switchWorkspaceBranch: (branch: string) => Promise<void>;
   listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
-  pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
+  pickWorkspaceAttachments: () => Promise<ComposerAttachment[]>;
+  importComposerAttachments: (files: File[]) => Promise<ComposerAttachment[]>;
   openWorkspacePath: (workspaceRelativePath: string) => Promise<boolean>;
   getSavedWorkflowLibrary: () => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
   deleteSavedWorkflowLibraryItem: (path: string) => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
@@ -595,18 +642,21 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     }
   }
 
-  async sendPrompt(input: string): Promise<void> {
-    const text = input.trim();
-    if (!text) {
+  async sendPrompt(input: ComposerPromptSubmission): Promise<void> {
+    const submission = {
+      text: input.text.trim(),
+      attachments: input.attachments,
+    };
+    if (!submission.text && submission.attachments.length === 0) {
       return;
     }
 
     if (this.promptDispatchInFlight || this.promptStatus === "streaming") {
-      await this.enqueuePrompt(text);
+      await this.enqueuePrompt(submission);
       return;
     }
 
-    await this.dispatchPrompt(text);
+    await this.dispatchPrompt(submission);
   }
 
   async editQueuedPrompt(promptId: string): Promise<string | null> {
@@ -658,12 +708,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     return response.ok;
   }
 
-  private async enqueuePrompt(text: string): Promise<void> {
-    const userMessage: Message = {
-      role: "user",
-      content: [{ type: "text", text }],
-      timestamp: Date.now(),
-    };
+  private async enqueuePrompt(input: ComposerPromptSubmission): Promise<void> {
+    const userMessage = buildUserMessage(input);
     const provider = this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider;
     const model = this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model;
     const reasoningEffort =
@@ -686,12 +732,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     }
   }
 
-  private async dispatchPrompt(text: string): Promise<void> {
-    const userMessage: Message = {
-      role: "user",
-      content: [{ type: "text", text }],
-      timestamp: Date.now(),
-    };
+  private async dispatchPrompt(input: ComposerPromptSubmission): Promise<void> {
+    const userMessage = buildUserMessage(input);
     const provider = this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider;
     const model = this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model;
     const reasoningEffort =
@@ -1976,7 +2018,18 @@ export async function createChatRuntime(
       rpcClient.request.listWorkspacePaths(scoped(pathOptions ?? {})),
     pickWorkspaceAttachments: async () => {
       const result = await rpcClient.request.pickWorkspaceAttachments(scoped());
-      return result.entries;
+      return result.attachments;
+    },
+    importComposerAttachments: async (files) => {
+      const attachments = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name || "pasted-file",
+          mimeType: file.type || undefined,
+          dataBase64: await fileToBase64(file),
+        })),
+      );
+      const result = await rpcClient.request.importComposerAttachments(scoped({ attachments }));
+      return result.attachments;
     },
     openWorkspacePath: async (workspaceRelativePath) => {
       const result = await rpcClient.request.openWorkspacePath(scoped({ workspaceRelativePath }));

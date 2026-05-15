@@ -2,23 +2,24 @@ import { describe, expect, it, mock } from "bun:test";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { getModel, type AssistantMessage, type Message } from "@mariozechner/pi-ai";
 import type { ChatStorage, CustomProvider } from "./chat-storage";
-import type {
-  AppLogEntry,
-  AppLogSummary,
-  AppLogUpdateMessage,
-  ConversationSurfaceSnapshot,
-  PromptTarget,
-  SendPromptRequest,
-  SurfaceSyncMessage,
-  WorkspaceCommandInspector,
-  WorkspaceHandlerThreadInspector,
-  WorkspaceHandlerThreadSummary,
-  AppWorkspaceUiRestoreState,
-  WorkspaceProjectCiStatusPanel,
-  WorkspaceSessionSummary,
-  WorkspaceSyncMessage,
-  WorkspaceWorkflowTaskAttemptInspector,
-  WorkspaceTabInfo,
+import {
+  parseComposerAttachmentTextSignature,
+  type AppWorkspaceUiRestoreState,
+  type AppLogEntry,
+  type AppLogSummary,
+  type AppLogUpdateMessage,
+  type ConversationSurfaceSnapshot,
+  type PromptTarget,
+  type SendPromptRequest,
+  type SurfaceSyncMessage,
+  type WorkspaceCommandInspector,
+  type WorkspaceHandlerThreadInspector,
+  type WorkspaceHandlerThreadSummary,
+  type WorkspaceProjectCiStatusPanel,
+  type WorkspaceSessionSummary,
+  type WorkspaceSyncMessage,
+  type WorkspaceWorkflowTaskAttemptInspector,
+  type WorkspaceTabInfo,
 } from "../shared/workspace-contract";
 import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
@@ -967,9 +968,18 @@ function createFakeRpc(input: {
           { kind: "folder", workspaceRelativePath: "src/mainview/" },
         ],
         pickWorkspaceAttachments: async () => ({
-          entries: [{ kind: "file", workspaceRelativePath: "docs/progress.md" }],
+          attachments: [
+            {
+              id: "file:docs/progress.md",
+              kind: "file",
+              name: "progress.md",
+              path: "docs/progress.md",
+              workspaceRelativePath: "docs/progress.md",
+            },
+          ],
           skippedPaths: [],
         }),
+        importComposerAttachments: async () => ({ attachments: [], skippedPaths: [] }),
         openWorkspacePath: async ({ workspaceRelativePath }) => ({
           opened: workspaceRelativePath === "docs/progress.md",
           kind: workspaceRelativePath === "docs/progress.md" ? "file" : "missing",
@@ -1930,8 +1940,14 @@ describe("createChatRuntime", () => {
       throw new Error("Expected both surface controllers.");
     }
 
-    const orchestratorPrompt = orchestratorController.sendPrompt("Continue orchestrating");
-    const handlerPrompt = handlerController.sendPrompt("Continue handling");
+    const orchestratorPrompt = orchestratorController.sendPrompt({
+      text: "Continue orchestrating",
+      attachments: [],
+    });
+    const handlerPrompt = handlerController.sendPrompt({
+      text: "Continue handling",
+      attachments: [],
+    });
 
     await waitFor(
       () =>
@@ -1994,10 +2010,10 @@ describe("createChatRuntime", () => {
     const activeTurn = createDeferred<PromptHandlerResult>();
     harness.setPromptHandler(target.surfacePiSessionId, () => activeTurn.promise);
 
-    const firstPrompt = controller.sendPrompt("Run the first turn");
+    const firstPrompt = controller.sendPrompt({ text: "Run the first turn", attachments: [] });
     await waitFor(() => controller.promptStatus === "streaming");
 
-    await controller.sendPrompt("Follow up while streaming");
+    await controller.sendPrompt({ text: "Follow up while streaming", attachments: [] });
 
     expect(harness.promptRequests).toHaveLength(1);
     expect(controller.queuedPrompts.map((prompt) => prompt.text)).toEqual([
@@ -2022,6 +2038,86 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("sends composer image attachments as tagged attachment metadata plus image content", async () => {
+    const session = createSummary("session-1", "Vision", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [userMessage("Initial"), assistantMessage("Ready")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    await controller.sendPrompt({
+      text: "What changed?",
+      attachments: [
+        {
+          id: "file:docs/progress.md",
+          kind: "file",
+          name: "progress.md",
+          path: "docs/progress.md",
+          workspaceRelativePath: "docs/progress.md",
+          mimeType: "text/markdown",
+          sizeBytes: 1200,
+        },
+        {
+          id: "attachment:.svvy/attachments/user-input/proof.png",
+          kind: "image",
+          name: "proof.png",
+          path: ".svvy/attachments/user-input/proof.png",
+          workspaceRelativePath: ".svvy/attachments/user-input/proof.png",
+          mimeType: "image/png",
+          dataBase64: "aW1hZ2U=",
+        },
+      ],
+    });
+
+    const request = harness.promptRequests[0];
+    const user = request?.messages.findLast((message) => message.role === "user");
+    const attachmentMetadata =
+      Array.isArray(user?.content) && user.content[1]?.type === "text"
+        ? parseComposerAttachmentTextSignature(user.content[1].textSignature)
+        : [];
+    expect(user?.content).toEqual([
+      { type: "text", text: "What changed?" },
+      {
+        type: "text",
+        text: "Attached files are available at these workspace-relative paths:\n- file path: docs/progress.md (name: progress.md)\n- image path: .svvy/attachments/user-input/proof.png (name: proof.png)",
+        textSignature: expect.any(String),
+      },
+      { type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+    ]);
+    expect(attachmentMetadata).toEqual([
+      {
+        id: "file:docs/progress.md",
+        kind: "file",
+        name: "progress.md",
+        path: "docs/progress.md",
+        workspaceRelativePath: "docs/progress.md",
+        mimeType: "text/markdown",
+        sizeBytes: 1200,
+      },
+      {
+        id: "attachment:.svvy/attachments/user-input/proof.png",
+        kind: "image",
+        name: "proof.png",
+        path: ".svvy/attachments/user-input/proof.png",
+        workspaceRelativePath: ".svvy/attachments/user-input/proof.png",
+        mimeType: "image/png",
+        sizeBytes: undefined,
+      },
+    ]);
+
+    runtime.dispose();
+  });
+
   it("edits, deletes, promotes, and reorders queued prompts without touching the active prompt", async () => {
     const session = createSummary("session-1", "Parser", "Initial");
     const target = createOrchestratorTarget(session.id);
@@ -2042,11 +2138,11 @@ describe("createChatRuntime", () => {
     const activeTurn = createDeferred<PromptHandlerResult>();
     harness.setPromptHandler(target.surfacePiSessionId, () => activeTurn.promise);
 
-    const activePrompt = controller.sendPrompt("Active turn");
+    const activePrompt = controller.sendPrompt({ text: "Active turn", attachments: [] });
     await waitFor(() => controller.promptStatus === "streaming");
-    await controller.sendPrompt("First queued");
-    await controller.sendPrompt("Second queued");
-    await controller.sendPrompt("Third queued");
+    await controller.sendPrompt({ text: "First queued", attachments: [] });
+    await controller.sendPrompt({ text: "Second queued", attachments: [] });
+    await controller.sendPrompt({ text: "Third queued", attachments: [] });
 
     const [first, second, third] = controller.queuedPrompts;
     expect(first).toBeDefined();
@@ -2055,7 +2151,7 @@ describe("createChatRuntime", () => {
     if (!first || !second || !third) return;
     const editedText = await controller.editQueuedPrompt(second.id);
     expect(editedText).toBe("Second queued");
-    await controller.sendPrompt("Second queued, revised");
+    await controller.sendPrompt({ text: "Second queued, revised", attachments: [] });
     expect(await controller.reorderQueuedPrompt(third.id, first.id)).toBe(true);
     expect(await controller.deleteQueuedPrompt(first.id)).toBe(true);
     expect(await controller.steerQueuedPrompt(third.id)).toBe(true);
@@ -2093,7 +2189,7 @@ describe("createChatRuntime", () => {
       throw new Error("Expected an orchestrator controller.");
     }
 
-    await controller.sendPrompt("Greet me");
+    await controller.sendPrompt({ text: "Greet me", attachments: [] });
     await waitFor(() =>
       controller.agent.state.messages.some(
         (message) =>
@@ -2136,7 +2232,7 @@ describe("createChatRuntime", () => {
       throw new Error("Expected an orchestrator controller.");
     }
 
-    const prompt = controller.sendPrompt("Run in the background");
+    const prompt = controller.sendPrompt({ text: "Run in the background", attachments: [] });
     await waitFor(
       () => runtime.sessions.find((session) => session.id === "session-1")?.status === "running",
     );
@@ -2191,7 +2287,7 @@ describe("createChatRuntime", () => {
       throw new Error("Expected session 2 controller.");
     }
 
-    await controller.sendPrompt("Finish while unfocused");
+    await controller.sendPrompt({ text: "Finish while unfocused", attachments: [] });
     await waitFor(
       () => runtime.sessions.find((session) => session.id === "session-2")?.isUnread === true,
     );
@@ -2320,7 +2416,10 @@ describe("createChatRuntime", () => {
     expect(orchestratorController.agent.state.model.id).toBe("gpt-4o");
     expect(orchestratorController.agent.state.thinkingLevel).toBe("medium");
 
-    const handlerPrompt = handlerController.sendPrompt("Continue handling");
+    const handlerPrompt = handlerController.sendPrompt({
+      text: "Continue handling",
+      attachments: [],
+    });
     await waitFor(() => handlerController.promptStatus === "streaming");
     await handlerController.abort();
     await waitFor(() => harness.cancelRequests.length === 1);

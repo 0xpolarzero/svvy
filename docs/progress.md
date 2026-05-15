@@ -248,8 +248,10 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 
 - [x] Define the stored shape for composer file and folder mention links.
 - [x] Build a POC `@` autocomplete picker over indexed workspace files and folders.
-- [x] Render selected file and folder mentions as removable composer chips.
-- [x] Serialize mentions into the outgoing user message as normal workspace path links.
+- [x] Keep selected `@` mentions as normal inline composer text.
+- [x] Render picker, dropped, and pasted files as removable chip-only composer attachments without mutating textarea text.
+- [x] Store file, folder, and image attachments for composer and transcript rendering, pass attachment paths through tagged agent-facing metadata without visible transcript prose, send images to pi as image content blocks, and warn when model metadata does not list image input.
+- [x] Serialize inline mentions into the outgoing user message as normal workspace path links.
 - [x] Render sent mentions in the transcript as actionable workspace links that reveal files, open folders, and visibly mark missing paths.
 - [x] Keep mentions agent-neutral: no prompt injection, no eager file reads, no folder expansion, and no special context-target resolution.
 

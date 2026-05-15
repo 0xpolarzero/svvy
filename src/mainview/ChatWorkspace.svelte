@@ -72,6 +72,7 @@
     type ChatPaneLayoutState,
     type ChatPaneState,
     type ChatSurfaceController,
+    type ComposerPromptSubmission,
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
@@ -1078,13 +1079,13 @@
     }
   }
 
-  async function handleSend(input: string): Promise<boolean> {
+  async function handleSend(input: ComposerPromptSubmission): Promise<boolean> {
     return handleSendToPane(focusedPanelId, input);
   }
 
-  async function handleSendToPane(panelId: string, input: string): Promise<boolean> {
+  async function handleSendToPane(panelId: string, input: ComposerPromptSubmission): Promise<boolean> {
     const surface = runtime.getPaneController(panelId);
-    if (!input.trim() || !surface || surface.promptStatus === "streaming" || sendingPrompt) return false;
+    if ((!input.text.trim() && input.attachments.length === 0) || !surface || surface.promptStatus === "streaming" || sendingPrompt) return false;
 
     sendingPrompt = true;
     try {
@@ -1095,7 +1096,9 @@
         syncSurfaceState();
       }
 
-      await persistPromptHistoryEntry(input, surface.target);
+      if (input.text.trim()) {
+        await persistPromptHistoryEntry(input.text.trim(), surface.target);
+      }
 
       const hasProviderAccess = await runtime.requireProviderAccess(surface.agent.state.model.provider);
       if (!hasProviderAccess) return false;

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import ChatComposer from "./ChatComposer.svelte";
+	import ChatComposer from "./ChatComposer.svelte";
+	import type { ComposerSubmit } from "./ChatComposer.svelte";
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
   import AppLogsPane from "./AppLogsPane.svelte";
@@ -87,18 +88,20 @@
     syncSurfaceState();
   }
 
-  async function send(input: string): Promise<boolean> {
-    if (!controller || !input.trim()) return false;
-    await runtime.focusPane(panelId);
-    await runtime.storage.promptHistory.append({
-      text: input.trim(),
-      sentAt: Date.now(),
-      workspaceId: runtime.workspaceId,
-      sessionId: controller.target.workspaceSessionId,
-    });
-    await controller.sendPrompt(input);
-    return true;
-  }
+	async function send(input: ComposerSubmit): Promise<boolean> {
+		if (!controller || (!input.text.trim() && input.attachments.length === 0)) return false;
+		await runtime.focusPane(panelId);
+		if (input.text.trim()) {
+			await runtime.storage.promptHistory.append({
+				text: input.text.trim(),
+				sentAt: Date.now(),
+				workspaceId: runtime.workspaceId,
+				sessionId: controller.target.workspaceSessionId,
+			});
+		}
+		await controller.sendPrompt(input);
+		return true;
+	}
 
   async function listModelsForComposer() {
     if (!currentModel) return [];
@@ -195,6 +198,7 @@
       onThinkingChange={(level) => controller?.agent.setThinkingLevel(level)}
       listWorkspacePaths={(options) => runtime.listWorkspacePaths(options)}
       pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}
+      importComposerAttachments={(files) => runtime.importComposerAttachments(files)}
     />
   </section>
 {:else}
