@@ -623,7 +623,7 @@
     background: transparent;
     color: var(--ui-text);
     font: inherit;
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
     padding: 0 0.55rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -639,7 +639,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-weight: 580;
+    font-weight: 500;
     color: var(--ui-text-primary);
   }
 
@@ -651,8 +651,8 @@
     background: color-mix(in oklab, var(--ui-surface-subtle) 72%, transparent);
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     line-height: 1.15;
   }
 
@@ -783,8 +783,8 @@
     box-shadow:
       0 18px 36px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
       0 2px 8px color-mix(in oklab, var(--ui-shadow) 18%, transparent);
-    font-size: 0.68rem;
-    font-weight: 560;
+    font-size: var(--text-xs);
+    font-weight: 500;
     line-height: 1.25;
     text-align: center;
     white-space: nowrap;

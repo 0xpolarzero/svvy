@@ -778,12 +778,12 @@
   .logs-header p {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
   .logs-header h2 {
-    font-size: 0.92rem;
+    font-size: var(--text-lg);
   }
 
   .header-actions,
@@ -812,8 +812,8 @@
     padding: 0 0.2rem 0 0.32rem;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.56rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     letter-spacing: 0;
     text-transform: uppercase;
   }
@@ -829,7 +829,7 @@
     background: color-mix(in oklab, var(--ui-surface-subtle) 35%, transparent);
     color: var(--ui-text-secondary);
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1;
     cursor: pointer;
     white-space: nowrap;
@@ -863,7 +863,7 @@
     background: color-mix(in oklab, var(--ui-code) 78%, transparent);
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
     text-align: center;
   }
@@ -916,7 +916,7 @@
     background: var(--ui-surface);
     color: var(--ui-text-secondary);
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
 
   .logs-body {
@@ -949,7 +949,7 @@
     background: var(--ui-surface-raised);
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     text-align: center;
   }
 
@@ -1018,14 +1018,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
   }
 
   code,
   .row-meta,
   .related-chips {
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
   }
 
   code {
@@ -1108,7 +1108,7 @@
     grid-template-columns: 5.5rem minmax(0, 1fr);
     gap: 0.34rem 0.5rem;
     margin: 0;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   dt {
@@ -1130,7 +1130,7 @@
     background: var(--ui-code);
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
   }
 
@@ -1142,7 +1142,7 @@
   .logs-empty {
     padding: 0.75rem;
     color: var(--ui-text-tertiary);
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
   }
 
   .logs-message.error {
@@ -1161,7 +1161,7 @@
     background: var(--ui-surface-raised);
     color: var(--ui-accent);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     cursor: pointer;
     padding: 0.32rem 0.52rem;
   }
@@ -1176,7 +1176,7 @@
     align-items: center;
     gap: 0.42rem;
     color: var(--ui-text-secondary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     cursor: pointer;
   }
 

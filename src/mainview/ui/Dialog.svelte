@@ -189,8 +189,8 @@
 
 	.ui-dialog-copy h2 {
 		margin: 0;
-		font-size: 0.9rem;
-		font-weight: 660;
+		font-size: var(--text-lg);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
@@ -198,8 +198,8 @@
 	.ui-dialog-eyebrow {
 		margin: 0 0 0.18rem;
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
-		font-weight: 620;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: color-mix(in oklab, var(--ui-accent-strong) 86%, var(--ui-text-primary));
 	}
@@ -207,7 +207,7 @@
 	.ui-dialog-description {
 		margin: 0.2rem 0 0;
 		max-width: 40rem;
-		font-size: 0.74rem;
+		font-size: var(--text-sm);
 		line-height: 1.42;
 		color: var(--ui-text-secondary);
 	}
@@ -216,7 +216,7 @@
 		flex-shrink: 0;
 		inline-size: 1.55rem;
 		padding: 0;
-		font-size: 0.82rem;
+		font-size: var(--text-base);
 		line-height: 1;
 	}
 

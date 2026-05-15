@@ -27,7 +27,7 @@
 		padding: 0.1rem 0.36rem;
 		border-radius: var(--ui-radius-sm);
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
+		font-size: var(--text-xs);
 		font-weight: 600;
 		letter-spacing: 0;
 		white-space: nowrap;

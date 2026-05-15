@@ -134,8 +134,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   header span {
@@ -146,7 +146,7 @@
   small {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.54rem;
+    font-size: var(--text-xs);
     white-space: nowrap;
   }
 
@@ -177,7 +177,7 @@
   footer {
     gap: 0.3rem;
     color: var(--ui-text-tertiary);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
   }
 
   footer span {

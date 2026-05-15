@@ -291,7 +291,7 @@
     padding: 0.08rem 0.18rem 0.08rem 0.44rem;
     color: var(--ui-text-tertiary);
     font-family: var(--compact-control-font-family);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
     line-height: 1;
   }
@@ -299,7 +299,7 @@
   .compact-combobox-trigger.workspace-path {
     padding: 0 0.22rem 0 0.28rem;
     font-family: var(--compact-control-font-family);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
   }
 
@@ -387,7 +387,7 @@
     color: var(--ui-text-primary);
     font: inherit;
     font-family: var(--compact-control-font-family);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
     outline: none;
   }
@@ -420,7 +420,7 @@
     background: transparent;
     color: var(--ui-text-secondary);
     font: inherit;
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     font-weight: var(--compact-control-font-weight);
     text-align: left;
     cursor: pointer;
@@ -428,13 +428,13 @@
 
   .compact-combobox-option.branch-option {
     font-family: var(--compact-control-font-family);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
   }
 
   .compact-combobox-option.model-option {
     font-family: var(--compact-control-font-family);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
   }
 
@@ -468,7 +468,7 @@
   .compact-combobox-empty {
     padding: 0.48rem 0.56rem;
     color: var(--ui-text-tertiary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   @media (prefers-reduced-motion: reduce) {

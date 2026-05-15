@@ -271,8 +271,8 @@
 		box-shadow:
 			0 18px 36px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
 			0 2px 8px color-mix(in oklab, var(--ui-shadow) 18%, transparent);
-		font-size: 0.68rem;
-		font-weight: 560;
+		font-size: var(--text-xs);
+		font-weight: 500;
 		line-height: 1.25;
 		pointer-events: none;
 		animation: ui-tooltip-in 110ms cubic-bezier(0.19, 1, 0.22, 1);
@@ -326,8 +326,8 @@
 		gap: 0.12rem;
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
-		font-weight: 720;
+		font-size: var(--text-xs);
+		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
 		letter-spacing: 0;

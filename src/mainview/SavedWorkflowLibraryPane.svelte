@@ -301,15 +301,15 @@
     margin: 0;
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
   .library-header h2,
   .detail-header h3 {
     margin: 0.12rem 0 0;
-    font-size: 0.82rem;
-    font-weight: 660;
+    font-size: var(--text-base);
+    font-weight: 600;
     line-height: 1.2;
   }
 
@@ -338,7 +338,7 @@
     background: transparent;
     color: var(--ui-text-secondary);
     font: inherit;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -391,13 +391,13 @@
     padding: 0.38rem 0.4rem 0.2rem;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
   .library-group-header strong {
-    font-size: 0.64rem;
-    font-weight: 620;
+    font-size: var(--text-xs);
+    font-weight: 600;
   }
 
   .library-row {
@@ -431,7 +431,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
   }
 
   .row-meta,
@@ -441,7 +441,7 @@
   .asset-group,
   .diagnostic {
     color: var(--ui-text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
   }
 
@@ -451,7 +451,7 @@
     border: 1px solid color-mix(in oklab, var(--ui-border-soft) 86%, transparent);
     border-radius: var(--ui-radius-sm);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-secondary);
     background: color-mix(in oklab, var(--ui-surface-muted) 78%, transparent);
   }
@@ -464,7 +464,7 @@
 
   code {
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
@@ -536,7 +536,7 @@
     background: color-mix(in oklab, var(--ui-code) 92%, transparent);
     color: var(--ui-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.55;
     white-space: pre-wrap;
   }
@@ -561,7 +561,7 @@
     margin: 0;
     padding: 0.75rem;
     color: var(--ui-text-secondary);
-    font-size: 0.78rem;
+    font-size: var(--text-base);
   }
 
   @media (max-width: 860px) {

@@ -478,7 +478,7 @@
     margin: 0 0 0.18rem;
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
@@ -494,9 +494,9 @@
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
-    font-size: 0.92rem;
+    font-size: var(--text-lg);
     line-height: 1.22;
-    font-weight: 660;
+    font-weight: 600;
   }
 
   .workflow-inspector-title code {
@@ -505,7 +505,7 @@
     overflow: hidden;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -531,7 +531,7 @@
     white-space: nowrap;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
   }
 
   .workflow-meta-icon {
@@ -594,7 +594,7 @@
     background: transparent;
     color: var(--ui-text-primary);
     font: inherit;
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
   }
 
   .workflow-inspector-frame-strip {
@@ -614,7 +614,7 @@
     color: var(--ui-text-secondary);
     cursor: pointer;
     font-family: var(--font-mono);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
   }
 
   .workflow-inspector-frame-strip button {
@@ -722,7 +722,7 @@
   .workflow-descendant {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
@@ -732,8 +732,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--ui-text-primary);
-    font-size: 0.76rem;
-    font-weight: 610;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   .workflow-descendant {
@@ -787,7 +787,7 @@
     display: grid;
     gap: 0.36rem;
     color: var(--ui-text-primary);
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
     line-height: 1.55;
   }
 
@@ -812,7 +812,7 @@
     background: color-mix(in oklab, var(--ui-code) 94%, transparent);
     color: var(--ui-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     line-height: 1.55;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
@@ -837,7 +837,7 @@
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-surface-subtle) 72%, transparent);
     color: var(--ui-text-secondary);
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
   }
 
   .workflow-inspector-error {

@@ -20,7 +20,7 @@
 		border: 1px solid var(--ui-border-soft);
 		background: color-mix(in oklab, var(--ui-surface-raised) 74%, transparent);
 		color: var(--ui-text-primary);
-		font-size: 0.76rem;
+		font-size: var(--text-sm);
 		line-height: 1.4;
 		box-shadow: none;
 		transition:
@@ -51,6 +51,6 @@
 
 	.mono {
 		font-family: var(--font-mono);
-		font-size: 0.74rem;
+		font-size: var(--text-sm);
 	}
 </style>

@@ -98,7 +98,7 @@
     </button>
     <button
       type="button"
-      class="text-[12px] font-medium text-foreground flex-1 truncate text-left"
+      class="text-sm font-medium text-foreground flex-1 truncate text-left"
       onclick={() => (expanded = !expanded)}
       aria-expanded={expanded}
       aria-controls={bodyId}
@@ -106,7 +106,7 @@
       {thread.title}
     </button>
     <StatusBadge status={thread.status} size="xs" />
-    <span class="font-mono text-[10px] text-muted-foreground tabular-nums">
+    <span class="font-mono text-xs text-muted-foreground tabular-nums">
       {thread.elapsed}
     </span>
     <Tooltip label="Open handler thread">
@@ -137,7 +137,7 @@
       id={bodyId}
       transition:slide={{ duration: 150, easing: quintOut }}
     >
-      <p class="text-[11.5px] text-muted-foreground leading-relaxed">
+      <p class="text-sm text-muted-foreground leading-relaxed">
         {thread.objective}
       </p>
 
@@ -225,7 +225,7 @@
 
   .footer-item {
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
     display: flex;
     align-items: center;

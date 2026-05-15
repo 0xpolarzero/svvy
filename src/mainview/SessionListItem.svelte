@@ -313,8 +313,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.68rem;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    line-height: 1.25;
+    font-weight: var(--vscode-font-weight);
     letter-spacing: 0;
   }
 
@@ -326,7 +327,8 @@
     flex-shrink: 0;
     min-width: 0;
     font-family: var(--font-mono);
-    font-size: 0.54rem;
+    font-size: var(--text-xs);
+    line-height: 1.25;
     color: var(--ui-text-tertiary);
     transition:
       opacity 120ms cubic-bezier(0.19, 1, 0.22, 1),
@@ -374,16 +376,16 @@
     display: flex;
     align-items: baseline;
     gap: 0.28rem;
-    font-size: 0.64rem;
-    line-height: 1.22;
+    font-size: var(--text-xs);
+    line-height: 1.25;
     color: var(--ui-text-secondary);
   }
 
   .session-main-subtitle span:first-child {
     flex-shrink: 0;
     font-family: var(--font-mono);
-    font-size: 0.52rem;
-    letter-spacing: 0.02em;
+    font-size: var(--text-xs);
+    letter-spacing: 0;
     text-transform: uppercase;
   }
 

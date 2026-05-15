@@ -332,8 +332,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.7rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: var(--vscode-font-weight);
     line-height: 1;
   }
 
@@ -344,7 +344,7 @@
     flex: 0 0 auto;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     font-variant-numeric: tabular-nums;
   }
 

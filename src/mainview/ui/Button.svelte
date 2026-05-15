@@ -119,19 +119,19 @@
 	.size-sm {
 		min-height: 1.55rem;
 		padding: 0.14rem 0.5rem;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 	}
 
 	.size-xs {
 		min-height: 1.35rem;
 		padding: 0.1rem 0.38rem;
-		font-size: 0.62rem;
+		font-size: var(--text-xs);
 	}
 
 	.size-md {
 		min-height: 1.9rem;
 		padding: 0.24rem 0.68rem;
-		font-size: 0.74rem;
+		font-size: var(--text-sm);
 	}
 
 	.icon-only {

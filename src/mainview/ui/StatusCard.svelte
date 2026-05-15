@@ -49,16 +49,16 @@
 	.ui-status-eyebrow {
 		margin: 0 0 0.24rem;
 		font-family: var(--font-mono);
-		font-size: 0.6rem;
-		font-weight: 620;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: color-mix(in oklab, var(--ui-accent-strong) 86%, var(--ui-text-primary));
 	}
 
 	h2 {
 		margin: 0;
-		font-size: 1rem;
-		font-weight: 680;
+		font-size: var(--text-lg);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
@@ -66,7 +66,7 @@
 	p {
 		margin: 0.42rem 0 0;
 		max-width: 28rem;
-		font-size: 0.78rem;
+		font-size: var(--text-base);
 		line-height: 1.48;
 		color: var(--ui-text-secondary);
 	}

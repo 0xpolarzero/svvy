@@ -42,8 +42,8 @@
 		min-height: 1rem;
 		color: inherit;
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
-		font-weight: 720;
+		font-size: var(--text-xs);
+		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
 		letter-spacing: 0;

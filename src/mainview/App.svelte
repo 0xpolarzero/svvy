@@ -420,8 +420,8 @@
 		background: var(--ui-accent);
 		color: var(--ui-accent-contrast);
 		font: inherit;
-		font-size: 0.78rem;
-		font-weight: 650;
+		font-size: var(--text-base);
+		font-weight: 600;
 		cursor: pointer;
 	}
 

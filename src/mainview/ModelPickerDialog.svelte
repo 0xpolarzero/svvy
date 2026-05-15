@@ -287,7 +287,7 @@
 
 	.picker-summary {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-secondary);
 	}
@@ -313,15 +313,15 @@
 
 	.model-group-header h3 {
 		margin: 0;
-		font-size: 0.72rem;
-		font-weight: 620;
-		letter-spacing: 0.04em;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		letter-spacing: var(--tracking-wide);
 		text-transform: uppercase;
 		color: var(--ui-text-secondary);
 	}
 
 	.model-group-header span {
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-tertiary);
 	}
@@ -370,16 +370,16 @@
 	}
 
 	.model-title strong {
-		font-size: 0.9rem;
-		font-weight: 660;
-		letter-spacing: -0.015em;
+		font-size: var(--text-lg);
+		font-weight: 600;
+		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
 
 	.model-copy p,
 	.picker-status {
 		margin: 0.26rem 0 0;
-		font-size: 0.72rem;
+		font-size: var(--text-sm);
 		line-height: 1.5;
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
@@ -394,8 +394,8 @@
 		padding-left: 1.1rem;
 		padding-right: 0.2rem;
 		border-left: 1px solid color-mix(in oklab, var(--ui-border-soft) 72%, transparent);
-		font-size: 0.72rem;
-		font-weight: 540;
+		font-size: var(--text-sm);
+		font-weight: 500;
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;

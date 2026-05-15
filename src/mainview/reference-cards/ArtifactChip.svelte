@@ -76,8 +76,8 @@
     background: color-mix(in oklab, var(--artifact-soft) 82%, transparent);
     color: color-mix(in oklab, var(--artifact-color) 78%, var(--ui-text-primary));
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     line-height: 1;
     cursor: pointer;
     transition:

@@ -611,7 +611,7 @@
 		color: color-mix(in oklab, var(--ui-accent) 78%, var(--ui-text-primary));
 		font: inherit;
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: var(--text-xs);
 		cursor: pointer;
 	}
 
@@ -677,7 +677,7 @@
 		background: transparent;
 		box-shadow: none;
 		color: var(--ui-text-primary);
-		font-size: 0.81rem;
+		font-size: var(--text-base);
 		line-height: 1.45;
 		resize: none;
 	}
@@ -790,7 +790,7 @@
 		background: transparent;
 		color: var(--ui-text-tertiary);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: var(--text-xs);
 		line-height: 1;
 		white-space: nowrap;
 		overflow: hidden;
@@ -813,7 +813,7 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-size: 0.62rem;
+		font-size: var(--text-xs);
 		font-weight: 500;
 	}
 
@@ -905,13 +905,13 @@
 	}
 
 	.mention-option span {
-		font-size: 0.73rem;
-		font-weight: 650;
+		font-size: var(--text-sm);
+		font-weight: 600;
 	}
 
 	.mention-option small {
 		font-family: var(--font-mono);
-		font-size: 0.63rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 	}
 
@@ -925,7 +925,7 @@
 
 	.mention-empty {
 		padding: 0.55rem 0.6rem;
-		font-size: 0.72rem;
+		font-size: var(--text-sm);
 		color: var(--ui-text-secondary);
 	}
 
@@ -945,35 +945,8 @@
 		border-radius: 0;
 		background: color-mix(in oklab, var(--ui-danger-soft) 74%, transparent);
 		color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
-		font-size: 0.78rem;
+		font-size: var(--text-base);
 		line-height: 1.5;
-	}
-
-	.composer-streaming-row {
-		display: flex;
-		align-items: center;
-		gap: 0.45rem;
-		min-width: 0;
-		padding: 0.36rem 0.72rem;
-		color: var(--ui-text-tertiary);
-		font-family: var(--font-mono);
-		font-size: 0.6rem;
-	}
-
-	.composer-streaming-row {
-		color: var(--ui-text-secondary);
-	}
-
-	.streaming-dot {
-		width: 0.42rem;
-		height: 0.42rem;
-		border-radius: 999px;
-		background: var(--ui-accent);
-	}
-
-	.composer-streaming-row strong {
-		color: var(--ui-text-tertiary);
-		font-weight: 500;
 	}
 
 	@media (max-width: 760px) {
@@ -1020,7 +993,7 @@
 
 		:global(.composer-shell .ui-textarea) {
 			min-height: 4.2rem;
-			font-size: 0.78rem;
+			font-size: var(--text-base);
 		}
 
 		.composer-row-actions {

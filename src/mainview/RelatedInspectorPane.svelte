@@ -282,14 +282,14 @@
     margin: 0 0 0.14rem;
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
   header h3 {
     margin: 0;
-    font-size: 0.82rem;
-    font-weight: 660;
+    font-size: var(--text-base);
+    font-weight: 600;
     line-height: 1.25;
   }
 
@@ -302,7 +302,7 @@
     word-break: break-word;
     color: var(--ui-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     line-height: 1.56;
   }
 
@@ -336,7 +336,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--ui-text-primary);
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
     white-space: nowrap;
   }
 
@@ -347,7 +347,7 @@
     min-width: 0;
     overflow-wrap: anywhere;
     color: var(--ui-text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
   }
 
@@ -360,7 +360,7 @@
     border: 1px solid color-mix(in oklab, var(--ui-border-soft) 78%, transparent);
     border-radius: var(--ui-radius-sm);
     background: color-mix(in oklab, var(--ui-surface-subtle) 68%, transparent);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   .metadata-grid span {
@@ -386,7 +386,7 @@
     margin: 0;
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
@@ -395,7 +395,7 @@
     border: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
     border-radius: var(--ui-radius-sm);
     background: color-mix(in oklab, var(--ui-code) 92%, transparent);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
 
   .diff-viewer {
@@ -406,7 +406,7 @@
     border-radius: var(--ui-radius-sm);
     background: color-mix(in oklab, var(--ui-code) 92%, transparent);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.55;
   }
 
@@ -466,7 +466,7 @@
     margin: 0.62rem 0.78rem 0;
     padding: 0.58rem 0.64rem;
     border-radius: var(--ui-radius-sm);
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
 
@@ -495,7 +495,7 @@
     justify-content: space-between;
     gap: 0.8rem;
     min-width: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
 
   .task-agent-summary-row span {

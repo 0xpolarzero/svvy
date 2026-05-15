@@ -172,15 +172,15 @@
 
 	h2 {
 		margin: 0;
-		font-size: 0.82rem;
-		font-weight: 660;
+		font-size: var(--text-base);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
 
 	.artifact-count {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-secondary);
 	}
@@ -228,14 +228,14 @@
 	}
 
 	.tab strong {
-		font-size: 0.72rem;
-		font-weight: 640;
+		font-size: var(--text-sm);
+		font-weight: 600;
 		color: var(--ui-text-primary);
 		word-break: break-word;
 	}
 
 	.tab span {
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		line-height: 1.45;
 		color: var(--ui-text-secondary);
@@ -278,7 +278,7 @@
 		background: transparent;
 		color: var(--ui-text-secondary);
 		font: inherit;
-		font-size: 0.7rem;
+		font-size: var(--text-sm);
 		cursor: pointer;
 	}
 
@@ -299,8 +299,8 @@
 	}
 
 	.artifact-name {
-		font-size: 0.78rem;
-		font-weight: 660;
+		font-size: var(--text-base);
+		font-weight: 600;
 		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
@@ -308,13 +308,13 @@
 	.artifact-updated,
 	.artifact-logs p {
 		margin-top: 0.14rem;
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
 	}
 
 	.artifact-kind {
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		padding: 0.3rem 0.55rem;
 		border-radius: var(--ui-radius-sm);
@@ -346,7 +346,7 @@
 		padding: 0.78rem 0.82rem;
 		overflow: auto;
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
+		font-size: var(--text-sm);
 		line-height: 1.58;
 		color: var(--ui-text-primary);
 		white-space: pre-wrap;
@@ -356,7 +356,7 @@
 		min-height: 0;
 		overflow: auto;
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		line-height: 1.55;
 	}
 

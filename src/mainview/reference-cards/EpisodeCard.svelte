@@ -99,8 +99,8 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--ui-text-primary);
-    font-size: 0.74rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   header span {
@@ -112,7 +112,7 @@
     background: var(--ui-warning-soft);
     color: color-mix(in oklab, var(--ui-warning) 82%, var(--ui-text-primary));
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
   }
 
   header span.verified {
@@ -124,7 +124,7 @@
   p {
     margin: 0;
     color: var(--ui-text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.48;
   }
 
@@ -136,7 +136,7 @@
   footer {
     gap: 0.28rem;
     color: var(--ui-text-tertiary);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
   }
 
   footer small,

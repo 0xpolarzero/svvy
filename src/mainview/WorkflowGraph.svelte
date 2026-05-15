@@ -269,7 +269,7 @@
     overflow: hidden;
     color: var(--ui-text-primary);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.18;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -280,7 +280,7 @@
   .workflow-graph-type {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     line-height: 1;
     text-transform: uppercase;
   }

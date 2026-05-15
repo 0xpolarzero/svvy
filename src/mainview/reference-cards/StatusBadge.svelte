@@ -86,7 +86,7 @@
     background: color-mix(in oklab, var(--status-soft) 88%, transparent);
     color: color-mix(in oklab, var(--status-color) 78%, var(--ui-text-primary));
     font-family: var(--font-mono);
-    font-weight: 650;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
     white-space: nowrap;
@@ -96,19 +96,19 @@
   .size-xs {
     min-height: 1rem;
     padding: 0.08rem 0.28rem;
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
   }
 
   .size-sm {
     min-height: 1.18rem;
     padding: 0.12rem 0.38rem;
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
   }
 
   .size-md {
     min-height: 1.34rem;
     padding: 0.15rem 0.48rem;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   .reference-status-dot {

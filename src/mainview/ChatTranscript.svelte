@@ -887,14 +887,14 @@
 		padding-left: 0.62rem;
 		border-left: 1px solid var(--ui-border-soft);
 		color: var(--ui-text-tertiary);
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 	}
 
 	.reference-command-child strong {
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
-		font-size: 0.58rem;
-		font-weight: 650;
+		font-size: var(--text-xs);
+		font-weight: 600;
 	}
 
 	.message-bubble header {
@@ -907,22 +907,20 @@
 
 	.message-bubble header span {
 		font-family: var(--font-mono);
-		font-size: 0.56rem;
+		font-size: var(--text-xs);
 		font-weight: 600;
-		letter-spacing: 0.08em;
+		letter-spacing: var(--tracking-wide);
 		text-transform: uppercase;
 		color: var(--ui-text-tertiary);
 	}
 
-	.message-bubble header small,
 	time {
 		font-family: var(--font-mono);
-		font-size: 0.56rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 		font-variant-numeric: tabular-nums;
 	}
 
-	.message-meta,
 	.tool-result-actions {
 		display: flex;
 		align-items: center;
@@ -931,16 +929,15 @@
 		justify-content: flex-end;
 	}
 
-	.message-usage,
 	.tool-status {
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		color: var(--ui-text-secondary);
 	}
 
 	.tool-attempt {
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		color: var(--ui-text-secondary);
@@ -963,7 +960,7 @@
 		margin: 0;
 		white-space: pre-wrap;
 		word-break: break-word;
-		font-size: 0.81rem;
+		font-size: var(--text-base);
 		line-height: 1.58;
 		color: var(--ui-text-primary);
 	}
@@ -1030,9 +1027,9 @@
 	.thinking-block summary,
 	.result-details summary {
 		cursor: pointer;
-		font-size: 0.73rem;
-		font-weight: 620;
-		letter-spacing: 0.01em;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		letter-spacing: 0;
 		color: var(--ui-text-secondary);
 	}
 
@@ -1043,7 +1040,7 @@
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 		word-break: break-word;
-		font-size: 0.82rem;
+		font-size: var(--text-base);
 		line-height: 1.6;
 		color: var(--ui-text-secondary);
 	}
@@ -1070,7 +1067,7 @@
 		background: color-mix(in oklab, var(--ui-code) 90%, var(--ui-surface));
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
-		font-size: 0.75rem;
+		font-size: var(--text-sm);
 		line-height: 1.5;
 		color: var(--ui-text-primary);
 	}
@@ -1086,14 +1083,14 @@
 
 	.diagnostic-row span {
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
 	}
 
 	.diagnostic-row p,
 	.diagnostic-row small {
 		margin: 0;
-		font-size: 0.74rem;
+		font-size: var(--text-sm);
 		line-height: 1.45;
 		color: var(--ui-text-secondary);
 	}

@@ -48,7 +48,7 @@
 		border-radius: var(--ui-radius-sm);
 		background: color-mix(in oklab, var(--ui-surface-muted) 68%, transparent);
 		color: var(--ui-text-secondary);
-		font-size: 0.6rem;
+		font-size: var(--text-xs);
 		line-height: 1;
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
@@ -60,14 +60,14 @@
 
 	.ui-metadata-label {
 		color: var(--ui-text-tertiary);
-		font-weight: 560;
+		font-weight: 500;
 	}
 
 	.ui-metadata-value {
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		font-weight: 620;
+		font-weight: 600;
 	}
 
 	.tone-info {

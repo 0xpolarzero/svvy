@@ -27,7 +27,7 @@
 		border: 1px solid var(--ui-border-soft);
 		background: color-mix(in oklab, var(--ui-surface-raised) 74%, transparent);
 		color: var(--ui-text-primary);
-		font-size: 0.78rem;
+		font-size: var(--text-base);
 		line-height: 1.5;
 		box-shadow: none;
 		transition:

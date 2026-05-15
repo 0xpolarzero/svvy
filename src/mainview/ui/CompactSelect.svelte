@@ -160,7 +160,7 @@
     background: transparent;
     color: var(--ui-text-tertiary);
     font-family: var(--compact-control-font-family);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
     line-height: 1;
     cursor: pointer;
@@ -195,7 +195,7 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: inherit;
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
 
@@ -203,7 +203,7 @@
     min-height: 1.45rem;
     padding: 0 0.22rem 0 0.28rem;
     font-family: var(--compact-control-font-family);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
   }
 
@@ -298,7 +298,7 @@
 
   .compact-select-option.branch-option {
     font-family: var(--compact-control-font-family);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
   }
 
@@ -314,7 +314,7 @@
     background: transparent;
     color: var(--ui-text-secondary);
     font-family: var(--compact-control-font-family);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
     line-height: 1;
     text-align: left;

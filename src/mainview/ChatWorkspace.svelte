@@ -3406,7 +3406,7 @@
     gap: 0.5rem;
     min-height: var(--workspace-chrome-control-size);
     min-width: 0;
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
@@ -3423,7 +3423,7 @@
     width: 1.65rem;
     height: 1.45rem;
     padding: 0;
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     font-weight: 700;
   }
 
@@ -3467,7 +3467,7 @@
     white-space: nowrap;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     line-height: 1;
   }
 
@@ -3570,7 +3570,7 @@
   .new-session-watermark {
     margin: 0;
     color: color-mix(in oklab, var(--ui-text-tertiary) 22%, transparent);
-    font-size: 1.15rem;
+    font-size: var(--text-heading-sm);
     font-weight: 700;
     letter-spacing: 0;
   }
@@ -3589,13 +3589,13 @@
 
   .new-session-heading h2 {
     color: var(--ui-text-primary);
-    font-size: 0.86rem;
+    font-size: var(--text-base);
     font-weight: 700;
   }
 
   .new-session-heading p {
     color: var(--ui-text-tertiary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
 
   .new-session-controls,
@@ -3629,7 +3629,7 @@
   .new-session-mode-toggle > span {
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
   }
@@ -3649,8 +3649,8 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-tertiary);
-    font-size: 0.62rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     cursor: pointer;
   }
 
@@ -3676,7 +3676,7 @@
     min-width: 0;
     overflow: hidden;
     color: var(--ui-text-tertiary);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     line-height: 1.3;
     text-align: right;
     text-overflow: ellipsis;
@@ -3692,7 +3692,7 @@
     margin: 0;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
   }
 
@@ -3721,12 +3721,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   .new-session-recent small {
     color: var(--ui-text-tertiary);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
   }
 
   .project-ci-panel,
@@ -3777,9 +3777,9 @@
   .project-ci-eyebrow,
   .handler-thread-eyebrow,
   .structured-command-eyebrow {
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--ui-text-tertiary);
   }
@@ -3788,9 +3788,9 @@
   .handler-thread-header h3,
   .structured-command-header h3 {
     margin-top: 0.18rem;
-    font-size: 0.86rem;
-    font-weight: 680;
-    letter-spacing: -0.02em;
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: 0;
     color: var(--ui-text-primary);
   }
 
@@ -3804,7 +3804,7 @@
   .handler-thread-copy,
   .structured-command-copy {
     max-width: 28rem;
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--ui-text-secondary);
   }
@@ -3820,7 +3820,7 @@
   .project-ci-run-card p,
   .project-ci-check p {
     margin: 0;
-    font-size: 0.73rem;
+    font-size: var(--text-sm);
     line-height: 1.52;
     color: var(--ui-text-secondary);
   }
@@ -3858,8 +3858,8 @@
   .project-ci-entry strong,
   .project-ci-run-card strong,
   .project-ci-check-copy strong {
-    font-size: 0.76rem;
-    font-weight: 660;
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--ui-text-primary);
   }
 
@@ -3867,7 +3867,7 @@
   .project-ci-run-card span,
   .project-ci-check-copy span,
   .project-ci-check-meta {
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
@@ -3905,7 +3905,7 @@
   .project-ci-run-card code,
   .project-ci-check-meta code {
     font-family: var(--font-mono);
-    font-size: 0.67rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-secondary);
   }
 
@@ -4005,9 +4005,9 @@
   .thread-inspector-command-copy strong,
   .command-inspector-summary-copy strong,
   .command-inspector-child-copy strong {
-    font-size: 0.8rem;
-    font-weight: 660;
-    letter-spacing: -0.02em;
+    font-size: var(--text-base);
+    font-weight: 600;
+    letter-spacing: 0;
     color: var(--ui-text-primary);
   }
 
@@ -4022,7 +4022,7 @@
   .command-inspector-child-summary,
   .command-inspector-artifact-copy span {
     margin: 0;
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     color: var(--ui-text-secondary);
   }
@@ -4044,12 +4044,12 @@
     gap: 0.45rem;
     flex-wrap: wrap;
     justify-content: flex-end;
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
   .structured-command-status {
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
@@ -4152,7 +4152,7 @@
   .thread-inspector-metadata span,
   .thread-inspector-wait span {
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
@@ -4160,8 +4160,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--ui-text-primary);
-    font-size: 0.72rem;
-    font-weight: 560;
+    font-size: var(--text-sm);
+    font-weight: 500;
     white-space: nowrap;
   }
 
@@ -4169,7 +4169,7 @@
   .thread-inspector-section-header p,
   .thread-inspector-timeline-item span,
   .thread-inspector-timeline-top span {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--ui-text-secondary);
   }
 
@@ -4183,13 +4183,13 @@
   }
 
   .thread-inspector-section-header h3 {
-    font-size: 0.82rem;
-    font-weight: 660;
+    font-size: var(--text-base);
+    font-weight: 600;
     color: var(--ui-text-primary);
   }
 
   .thread-inspector-section-header > span {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--ui-text-tertiary);
   }
 
@@ -4198,18 +4198,18 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 0.56rem;
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--ui-text-secondary);
   }
 
   .structured-command-highlight-tool {
     font-family: var(--font-mono);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
   .structured-command-card-footer {
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
   }
 
@@ -4238,7 +4238,7 @@
   .command-inspector-error,
   .command-inspector-empty {
     margin: 0;
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
     line-height: 1.55;
     color: var(--ui-text-secondary);
   }
@@ -4259,7 +4259,7 @@
 
   .thread-inspector-wait strong {
     color: var(--ui-text-primary);
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
   }
 
   .command-inspector-error {
@@ -4294,7 +4294,7 @@
   .command-inspector-facts span,
   .command-inspector-artifacts span,
   .command-inspector-section-header p {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--ui-text-secondary);
   }
 
@@ -4305,7 +4305,7 @@
     border-radius: var(--ui-radius-sm);
     border: 1px solid color-mix(in oklab, var(--ui-border-soft) 84%, transparent);
     background: color-mix(in oklab, var(--ui-code) 92%, transparent);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     line-height: 1.56;
     color: var(--ui-text-primary);
     white-space: pre-wrap;
@@ -4327,13 +4327,13 @@
   }
 
   .command-inspector-section-header h3 {
-    font-size: 0.82rem;
-    font-weight: 660;
+    font-size: var(--text-base);
+    font-weight: 600;
     color: var(--ui-text-primary);
   }
 
   .command-inspector-section-header > span {
-    font-size: 0.7rem;
+    font-size: var(--text-sm);
     color: var(--ui-text-tertiary);
   }
 
@@ -4346,13 +4346,13 @@
   }
 
   .command-inspector-artifact-copy strong {
-    font-size: 0.74rem;
-    font-weight: 640;
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--ui-text-primary);
   }
 
   .command-inspector-artifact-copy code {
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     color: var(--ui-text-tertiary);
     white-space: pre-wrap;
     overflow-wrap: anywhere;

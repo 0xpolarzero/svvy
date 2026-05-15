@@ -267,8 +267,8 @@
 	}
 
 	.provider-name {
-		font-size: 0.78rem;
-		font-weight: 660;
+		font-size: var(--text-base);
+		font-weight: 600;
 		letter-spacing: 0;
 	}
 
@@ -276,7 +276,7 @@
 	.save-msg {
 		margin: 0;
 		min-width: 0;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 	}
 
@@ -285,7 +285,7 @@
 	}
 
 	.provider-status {
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		color: var(--ui-text-secondary);
@@ -311,8 +311,8 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-family: var(--font-mono);
-		font-size: 0.66rem;
-		font-weight: 520;
+		font-size: var(--text-xs);
+		font-weight: 500;
 		color: var(--ui-text-secondary);
 	}
 
@@ -333,7 +333,7 @@
 
 	.agent-meta-grid span,
 	.agent-field span {
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-tertiary);
 	}
 
@@ -359,7 +359,7 @@
 		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
 		color: var(--ui-text-primary);
 		font: inherit;
-		font-size: 0.72rem;
+		font-size: var(--text-sm);
 	}
 
 	.agent-prompt {
@@ -373,7 +373,7 @@
 		background: color-mix(in oklab, var(--ui-code) 92%, transparent);
 		color: var(--ui-text-primary);
 		font-family: var(--font-mono);
-		font-size: 0.7rem;
+		font-size: var(--text-sm);
 		line-height: 1.52;
 	}
 

@@ -70,8 +70,8 @@
 
   strong {
     color: color-mix(in oklab, var(--ui-danger) 84%, var(--ui-text-primary));
-    font-size: 0.74rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   header span {
@@ -82,7 +82,7 @@
     background: var(--ui-danger-soft);
     color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
   }
 
   .failed-body {
@@ -101,7 +101,7 @@
     background: color-mix(in oklab, var(--ui-danger-soft) 48%, var(--ui-code));
     color: color-mix(in oklab, var(--ui-danger) 80%, var(--ui-text-primary));
     font-family: var(--font-mono);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     line-height: 1.5;
     white-space: pre-wrap;
   }
@@ -122,7 +122,7 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-secondary);
-    font-size: 0.64rem;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
 

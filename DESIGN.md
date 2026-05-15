@@ -14,8 +14,10 @@ Dark mode is the primary reference state. Light mode must keep the same contrast
 
 ## Typography
 
-- Sans text uses Inter with system fallbacks. Use it for shell chrome, transcript prose, cards, settings forms, buttons, labels, and command entries.
-- Monospace text uses JetBrains Mono with standard mono fallbacks. Use it for paths, model labels, status badges, metadata chips, token counts, command names, snippets, logs, diff previews, and compact technical facts.
+- Sans text follows the Codex variable path, `var(--vscode-font-family, var(--font-sans-default))`, with `--font-sans-default` set to `-apple-system`, `BlinkMacSystemFont`, `"Segoe UI"`, and `sans-serif`; base text uses Codex's `430` weight. Use it for shell chrome, transcript prose, cards, settings forms, buttons, labels, and command entries.
+- Monospace text follows the Codex variable path, `var(--vscode-editor-font-family, var(--font-mono-default))`, with `--font-mono-default` set to `ui-monospace`, `"SFMono-Regular"`, `"SF Mono"`, `Menlo`, `Consolas`, `"Liberation Mono"`, and `monospace`. Use it for paths, model labels, status badges, metadata chips, token counts, command names, snippets, logs, diff previews, and compact technical facts.
+- Font weights follow the Codex scale: `430` for inherited base text, `500` for subtle labels and metadata, `600` for interactive emphasis and headings, and `700` only for rare strong emphasis such as counters, keyboard hints, and critical labels.
+- Font sizes follow the Codex compact scale: `--text-xs` is `11px`, `--text-sm` is `12px`, `--text-base` is `14px`, `--text-lg` is `16px`, and heading tokens start at `18px`.
 - Dense UI rows use 11-13 px equivalent sizing with tight line-height and no negative letter spacing.
 - Transcript prose may use a larger 14-15 px equivalent with relaxed line-height so long agent output remains readable.
 - Metadata and badges use tabular numerals where percentages, counts, or elapsed times can change.

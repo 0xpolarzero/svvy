@@ -81,7 +81,7 @@
     background: transparent;
     color: var(--ui-text-secondary);
     font-family: var(--compact-control-font-family);
-    font-size: 0.62rem;
+    font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
     line-height: 1;
     text-align: left;

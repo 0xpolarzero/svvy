@@ -1,6 +1,4 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
-@import "@fontsource/ibm-plex-mono";
 
 * {
   box-sizing: border-box;
@@ -9,14 +7,29 @@
 :root {
   color-scheme: light dark;
   font-family: var(--font-sans);
+  font-weight: var(--vscode-font-weight);
   font-kerning: normal;
   font-optical-sizing: auto;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", "Menlo", "Consolas", monospace;
+  --font-sans-default: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono-default: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  --vscode-font-family: var(--font-sans-default);
+  --vscode-font-weight: 430;
+  --vscode-editor-font-family: var(--font-mono-default);
+  --font-sans: var(--vscode-font-family, var(--font-sans-default));
+  --font-mono: var(--vscode-editor-font-family, var(--font-mono-default));
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-heading-sm: 18px;
+  --text-heading-md: 20px;
+  --text-heading-lg: 24px;
+  --tracking-wide: 0.025em;
 
   --space-3xs: 0.25rem;
   --space-2xs: 0.4375rem;
@@ -328,14 +341,14 @@ summary {
 .workflow-node-header p {
   margin: 0 0 2px;
   color: var(--ui-text-secondary);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-transform: uppercase;
 }
 
 .workflow-inspector-header h3,
 .workflow-node-header h4 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 
 .workflow-inspector-header-meta {
@@ -344,7 +357,7 @@ summary {
   gap: 8px;
   min-width: 0;
   color: var(--ui-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workflow-inspector-header-meta code {
@@ -403,7 +416,7 @@ summary {
   border-radius: 6px;
   background: transparent;
   color: var(--ui-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workflow-inspector-frame-strip button.active,
@@ -460,7 +473,7 @@ summary {
 .workflow-descendant,
 .workflow-node-meta {
   color: var(--ui-text-secondary);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workflow-tree-label {
@@ -498,7 +511,7 @@ summary {
   border-radius: 6px;
   background: var(--ui-surface-raised);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .workflow-inspector-empty,
@@ -565,8 +578,8 @@ summary {
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
-  --font-sans: "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  --font-sans: var(--vscode-font-family, var(--font-sans-default));
+  --font-mono: var(--vscode-editor-font-family, var(--font-mono-default));
 
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -808,7 +821,7 @@ summary {
 
 @layer utilities {
   .font-mono {
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-family: var(--font-mono);
   }
 
   .text-orange {

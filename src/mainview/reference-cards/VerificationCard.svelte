@@ -76,15 +76,15 @@
 
   strong {
     color: var(--ui-text-primary);
-    font-size: 0.74rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   header span,
   header small,
   .check-row small {
     font-family: var(--font-mono);
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
   }
 
   header span {
@@ -111,7 +111,7 @@
     align-items: center;
     gap: 0.45rem;
     color: var(--ui-text-secondary);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
   }
 
   .check-row.status-pass {
@@ -139,7 +139,7 @@
     margin: 0;
     padding: 0 0.72rem 0.62rem;
     color: var(--ui-text-secondary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
     line-height: 1.45;
   }
 
@@ -153,7 +153,7 @@
     border: 0;
     background: transparent;
     color: var(--ui-text-tertiary);
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
     cursor: pointer;
   }
 

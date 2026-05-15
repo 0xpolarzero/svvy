@@ -74,20 +74,20 @@
         {/if}
       </div>
       <div class="flex flex-col gap-0.5 min-w-0">
-        <strong class="text-[12px] font-semibold text-foreground truncate">
+        <strong class="text-sm font-semibold text-foreground truncate">
           {toolCall.params?.command || `Ran ${toolCall.name}`}
         </strong>
         {#if toolCall.params?.filename}
-          <span class="text-[10px] font-mono text-muted-foreground truncate">{toolCall.params.filename}</span>
+          <span class="text-xs font-mono text-muted-foreground truncate">{toolCall.params.filename}</span>
         {:else}
-          <span class="text-[10px] font-mono text-muted-foreground truncate">{toolCall.name}</span>
+          <span class="text-xs font-mono text-muted-foreground truncate">{toolCall.name}</span>
         {/if}
       </div>
     </div>
 
     <div class="flex items-center gap-2 flex-shrink-0">
       {#if attemptLabel}
-        <span class="text-[9px] font-mono text-muted-foreground/60 uppercase tracking-tight">{attemptLabel}</span>
+        <span class="text-xs font-mono text-muted-foreground/60 uppercase tracking-normal">{attemptLabel}</span>
       {/if}
       <StatusBadge status={toolCall.status} size="xs" />
       {#if toolCall.params?.filename}
@@ -121,15 +121,15 @@
     >
       {#if toolCall.body}
         <div class="space-y-1.5">
-          <span class="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">Input</span>
-          <pre class="m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-[11.5px] leading-relaxed text-foreground whitespace-pre-wrap break-words">{toolCall.body}</pre>
+          <span class="text-xs font-bold uppercase tracking-wide text-muted-foreground/70">Input</span>
+          <pre class="m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">{toolCall.body}</pre>
         </div>
       {/if}
 
       {#if toolCall.result}
         <div class="space-y-1.5">
-          <span class="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/70">{toolCall.isError ? "Error Output" : "Output"}</span>
-          <pre class={`m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-[11.5px] leading-relaxed whitespace-pre-wrap break-words ${toolCall.isError ? "text-destructive" : "text-foreground"}`}>{toolCall.result}</pre>
+          <span class="text-xs font-bold uppercase tracking-wide text-muted-foreground/70">{toolCall.isError ? "Error Output" : "Output"}</span>
+          <pre class={`m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-sm leading-relaxed whitespace-pre-wrap break-words ${toolCall.isError ? "text-destructive" : "text-foreground"}`}>{toolCall.result}</pre>
         </div>
       {/if}
     </div>

@@ -714,7 +714,7 @@
 	.settings-search-summary,
 	.save-msg {
 		margin: 0;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-secondary);
 	}
@@ -739,12 +739,12 @@
 	}
 
 	.settings-nav-item span:first-child {
-		font-size: 0.76rem;
-		font-weight: 620;
+		font-size: var(--text-sm);
+		font-weight: 600;
 	}
 
 	.settings-nav-item span:last-child {
-		font-size: 0.66rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-tertiary);
 	}
@@ -788,7 +788,7 @@
 	.error,
 	.provider-empty {
 		margin: 0;
-		font-size: 0.84rem;
+		font-size: var(--text-base);
 		color: var(--ui-text-secondary);
 	}
 
@@ -817,16 +817,16 @@
 	.settings-group-heading h3 {
 		margin: 0;
 		font-family: var(--font-mono);
-		font-size: 0.68rem;
-		font-weight: 680;
+		font-size: var(--text-xs);
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.02em;
+		letter-spacing: 0;
 		color: var(--ui-text-secondary);
 	}
 
 	.settings-group-heading span {
 		font-family: var(--font-mono);
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-tertiary);
 	}
 
@@ -895,8 +895,8 @@
 	}
 
 	.provider-name {
-		font-size: 0.78rem;
-		font-weight: 660;
+		font-size: var(--text-base);
+		font-weight: 600;
 		letter-spacing: 0;
 	}
 
@@ -907,7 +907,7 @@
 	}
 
 	.provider-status {
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		font-variant-numeric: tabular-nums;
 		color: var(--ui-text-secondary);
@@ -954,7 +954,7 @@
 	.provider-meta {
 		margin: 0;
 		display: contents;
-		font-size: 0.72rem;
+		font-size: var(--text-sm);
 		line-height: 1.35;
 		color: var(--ui-text-secondary);
 	}
@@ -1009,13 +1009,13 @@
 	}
 
 	.appearance-option span {
-		font-size: 0.75rem;
-		font-weight: 650;
+		font-size: var(--text-sm);
+		font-weight: 600;
 		color: var(--ui-text-primary);
 	}
 
 	.appearance-option small {
-		font-size: 0.64rem;
+		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 	}
 
@@ -1032,7 +1032,7 @@
 	}
 
 	.settings-field span {
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-secondary);
 	}
@@ -1047,7 +1047,7 @@
 		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
 		color: var(--ui-text-primary);
 		font: inherit;
-		font-size: 0.72rem;
+		font-size: var(--text-sm);
 	}
 
 	.settings-field select:disabled,
@@ -1086,7 +1086,7 @@
 
 	.provider-actions :global(.row-action.ui-button) {
 		box-shadow: none;
-		font-weight: 560;
+		font-weight: 500;
 	}
 
 	.provider-actions :global(.action-success.ui-button) {
@@ -1123,12 +1123,12 @@
 
 	.settings-section-note p {
 		margin: 0;
-		font-size: 0.7rem;
+		font-size: var(--text-sm);
 		line-height: 1.38;
 	}
 
 	:global(.key-input-row .ui-input) {
-		font-size: 0.76rem;
+		font-size: var(--text-sm);
 		width: min(260px, 70vw);
 	}
 

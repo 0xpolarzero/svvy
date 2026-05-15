@@ -79,18 +79,18 @@
   <Icon class="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" strokeWidth={2.1} />
 
   <div class="flex-1 min-w-0 flex items-center gap-1.5">
-    <span class="text-[11px] font-medium text-foreground truncate">{agent.headline}</span>
-    <span class="text-[9px] font-mono text-muted-foreground/60 uppercase tracking-wider flex-shrink-0">{config.label}</span>
+    <span class="text-xs font-medium text-foreground truncate">{agent.headline}</span>
+    <span class="text-xs font-mono text-muted-foreground/60 uppercase tracking-wide flex-shrink-0">{config.label}</span>
   </div>
 
   <div class="flex items-center gap-1.5 flex-shrink-0">
     <StatusBadge status={agent.status} dotOnly size="xs" />
     {#if tokenLabel}
-      <span class="text-[9px] font-mono text-muted-foreground/60">{tokenLabel}</span>
+      <span class="text-xs font-mono text-muted-foreground/60">{tokenLabel}</span>
     {/if}
     <ModelBadge model={agent.model} size="xs" />
     {#if expandable}
-      <span class="text-[9px] font-mono text-muted-foreground/40" aria-hidden="true">-&gt;</span>
+      <span class="text-xs font-mono text-muted-foreground/40" aria-hidden="true">-&gt;</span>
     {/if}
   </div>
 </button>

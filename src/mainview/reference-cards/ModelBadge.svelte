@@ -48,7 +48,7 @@
     border-radius: var(--ui-radius-sm);
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-weight: 650;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
     line-height: 1;
     user-select: none;
@@ -56,11 +56,11 @@
 
   .size-xs {
     padding: 0.04rem 0.28rem;
-    font-size: 0.54rem;
+    font-size: var(--text-xs);
   }
 
   .size-sm {
     padding: 0.08rem 0.36rem;
-    font-size: 0.6rem;
+    font-size: var(--text-xs);
   }
 </style>

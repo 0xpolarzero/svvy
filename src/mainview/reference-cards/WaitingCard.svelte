@@ -73,8 +73,8 @@
   }
 
   strong {
-    font-size: 0.74rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   .waiting-body {
@@ -86,13 +86,13 @@
   p {
     margin: 0;
     color: var(--ui-text-primary);
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
 
   .context {
     color: var(--ui-text-secondary);
-    font-size: 0.66rem;
+    font-size: var(--text-xs);
   }
 
   .reply-row {
@@ -109,7 +109,7 @@
     background: var(--ui-surface-subtle);
     color: var(--ui-text-primary);
     font: inherit;
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   button {
@@ -120,8 +120,8 @@
     border-radius: var(--ui-radius-sm);
     background: var(--ui-accent);
     color: var(--ui-accent-ink);
-    font-size: 0.66rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     cursor: pointer;
   }
 

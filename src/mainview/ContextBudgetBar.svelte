@@ -96,7 +96,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--font-mono);
-    font-size: 0.63rem;
+    font-size: var(--text-xs);
     line-height: 1;
   }
 
@@ -129,7 +129,20 @@
   }
 
   .context-budget-compact-label {
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
+  }
+
+  .context-budget-inline {
+    display: grid;
+    grid-template-columns: minmax(4.6rem, 1fr) auto;
+    align-items: center;
+    gap: 0.42rem;
+    width: min(10.5rem, 100%);
+  }
+
+  .context-budget-inline .context-budget-track {
+    height: 0.26rem;
+    background: color-mix(in oklab, var(--context-budget-soft) 48%, var(--ui-border-soft));
   }
 
   @container (max-width: 34rem) {

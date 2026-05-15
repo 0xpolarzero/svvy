@@ -303,7 +303,7 @@
     background: transparent;
     color: inherit;
     font: inherit;
-    font-size: 0.8rem;
+    font-size: var(--text-base);
     outline: none;
   }
 
@@ -322,8 +322,8 @@
     padding: 0.38rem 0.44rem 0.16rem;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.61rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     letter-spacing: 0;
     text-transform: uppercase;
   }
@@ -391,8 +391,8 @@
   .command-palette-item-copy strong {
     min-width: 0;
     color: var(--ui-text-primary);
-    font-size: 0.76rem;
-    font-weight: 650;
+    font-size: var(--text-sm);
+    font-weight: 600;
   }
 
   .command-palette-badges {
@@ -414,8 +414,8 @@
     background: var(--ui-surface-subtle);
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     letter-spacing: 0;
     line-height: 1;
     text-overflow: ellipsis;
@@ -443,7 +443,7 @@
 
   .command-palette-item-copy span {
     color: var(--ui-text-tertiary);
-    font-size: 0.68rem;
+    font-size: var(--text-xs);
   }
 
   .disabled-copy {
@@ -458,7 +458,7 @@
     background: var(--ui-code);
     color: var(--ui-text-secondary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
     text-align: center;
   }
 
@@ -468,7 +468,7 @@
     padding: 1.05rem 0.9rem;
     color: var(--ui-text-secondary);
     text-align: center;
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
   }
 
   .command-palette-empty strong {
@@ -481,7 +481,7 @@
     border-top: 1px solid color-mix(in oklab, var(--ui-danger) 28%, transparent);
     background: var(--ui-danger-soft);
     color: var(--ui-danger);
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
   }
 
   .command-palette-footer {
@@ -494,7 +494,7 @@
     background: color-mix(in oklab, var(--ui-panel) 88%, transparent);
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.61rem;
+    font-size: var(--text-xs);
   }
 
   @media (max-width: 640px) {

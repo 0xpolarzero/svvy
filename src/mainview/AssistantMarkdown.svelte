@@ -350,7 +350,7 @@
 					lineColor: cssVariable("--ui-text-tertiary"),
 					secondaryColor: cssVariable("--ui-surface-subtle"),
 					tertiaryColor: cssVariable("--ui-bg"),
-					fontFamily: "Inter, system-ui, sans-serif",
+					fontFamily: "var(--font-sans)",
 				},
 			});
 
@@ -391,7 +391,7 @@
 		overflow-wrap: anywhere;
 		word-break: break-word;
 		white-space: normal;
-		font-size: 0.81rem;
+		font-size: var(--text-base);
 		line-height: 1.58;
 		color: var(--ui-text-primary);
 	}
@@ -430,19 +430,19 @@
 	.assistant-markdown :global(h5),
 	.assistant-markdown :global(h6) {
 		margin: 0.95rem 0 0.45rem;
-		font-size: 0.92rem;
+		font-size: var(--text-lg);
 		line-height: 1.35;
-		font-weight: 680;
+		font-weight: 600;
 		letter-spacing: 0;
 		color: var(--ui-text-primary);
 	}
 
 	.assistant-markdown :global(h1) {
-		font-size: 1.05rem;
+		font-size: var(--text-heading-sm);
 	}
 
 	.assistant-markdown :global(h2) {
-		font-size: 0.98rem;
+		font-size: var(--text-lg);
 	}
 
 	.assistant-markdown :global(ul),
@@ -489,7 +489,7 @@
 
 	.assistant-markdown :global(dt) {
 		margin-top: 0.48rem;
-		font-weight: 680;
+		font-weight: 600;
 		color: var(--ui-text-primary);
 	}
 
@@ -595,7 +595,7 @@
 		background: color-mix(in oklab, var(--ui-surface-muted) 38%, transparent);
 		color: var(--ui-text-tertiary);
 		font-family: var(--font-mono);
-		font-size: 0.62rem;
+		font-size: var(--text-xs);
 		line-height: 1;
 	}
 
@@ -680,7 +680,7 @@
 		background: transparent;
 		color: var(--ui-text-primary);
 		font-family: var(--font-mono);
-		font-size: 0.74rem;
+		font-size: var(--text-sm);
 		line-height: 1.5;
 		white-space: pre;
 	}
@@ -701,7 +701,7 @@
 		padding-top: 0.62rem;
 		border-top: 1px solid color-mix(in oklab, var(--ui-border-soft) 84%, transparent);
 		color: var(--ui-text-secondary);
-		font-size: 0.76rem;
+		font-size: var(--text-sm);
 	}
 
 	.assistant-markdown :global(.footnotes ol) {
@@ -727,7 +727,7 @@
 		margin-top: 0.72rem;
 		overflow-x: auto;
 		border-collapse: collapse;
-		font-size: 0.76rem;
+		font-size: var(--text-sm);
 	}
 
 	.assistant-markdown :global(th),
@@ -740,7 +740,7 @@
 
 	.assistant-markdown :global(th) {
 		background: color-mix(in oklab, var(--ui-surface-muted) 64%, transparent);
-		font-weight: 650;
+		font-weight: 600;
 	}
 
 	.assistant-markdown :global(hr) {

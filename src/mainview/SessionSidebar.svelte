@@ -683,7 +683,7 @@
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-danger-soft) 86%, transparent);
     color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
-    font-size: 0.74rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
   }
 
@@ -713,8 +713,8 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-secondary);
-    font-size: 0.76rem;
-    font-weight: 500;
+    font-size: var(--text-sm);
+    font-weight: 460;
     line-height: 1.25;
     text-align: left;
     cursor: pointer;
@@ -768,8 +768,8 @@
     white-space: nowrap;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.52rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     line-height: 1.2;
     opacity: 0;
     transform: translateX(0.12rem);
@@ -792,7 +792,6 @@
   .new-session-row {
     grid-template-columns: minmax(0, 1fr);
     padding: 0;
-    color: var(--ui-text-primary);
   }
 
   .sidebar-action-main {
@@ -848,7 +847,7 @@
 
   .new-session-child {
     color: var(--ui-text-secondary);
-    font-size: 0.72rem;
+    font-size: var(--text-sm);
   }
 
   .new-session-child .sidebar-action-icon {
@@ -993,8 +992,8 @@
     min-width: 0;
     overflow: hidden;
     color: inherit;
-    font-size: 0.62rem;
-    font-weight: 560;
+    font-size: var(--text-xs);
+    font-weight: 500;
     line-height: 1.22;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1002,8 +1001,8 @@
 
   .workflow-row .sidebar-child-title {
     font-family: var(--font-mono);
-    font-size: 0.56rem;
-    font-weight: 520;
+    font-size: var(--text-xs);
+    font-weight: 500;
   }
 
   .sidebar-child-subtitle {
@@ -1013,15 +1012,15 @@
     gap: 0.28rem;
     min-width: 0;
     overflow: hidden;
-    font-size: 0.58rem;
+    font-size: var(--text-xs);
     line-height: 1.25;
     color: var(--ui-text-tertiary);
   }
 
   .sidebar-child-subtitle span:first-child {
     font-family: var(--font-mono);
-    font-size: 0.49rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     text-transform: lowercase;
     white-space: nowrap;
   }
@@ -1050,8 +1049,8 @@
     overflow: hidden;
     color: var(--ui-text-tertiary);
     font-family: var(--font-mono);
-    font-size: 0.58rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1094,9 +1093,9 @@
   .sidebar-section-label {
     margin: 0.38rem 0 0.12rem;
     padding-inline: 0.72rem;
-    font-size: 0.56rem;
+    font-size: var(--text-xs);
     font-family: var(--font-mono);
-    letter-spacing: 0.08em;
+    letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
     color: var(--ui-text-tertiary);
   }
@@ -1113,8 +1112,8 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-tertiary);
-    font-size: 0.6rem;
-    font-weight: 650;
+    font-size: var(--text-xs);
+    font-weight: 600;
     text-align: left;
     cursor: pointer;
   }
@@ -1136,7 +1135,7 @@
   }
 
   .reference-nav-row {
-    font-size: 0.76rem;
+    font-size: var(--text-sm);
     font-weight: 500;
   }
 
@@ -1162,8 +1161,8 @@
     padding: 0 0.18rem;
     border-radius: var(--ui-radius-xs);
     font-family: var(--font-mono);
-    font-size: 0.52rem;
-    font-weight: 750;
+    font-size: var(--text-xs);
+    font-weight: 700;
     line-height: 1;
   }
 

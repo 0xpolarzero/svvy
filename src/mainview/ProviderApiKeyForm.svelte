@@ -81,7 +81,7 @@
 
 	.save-msg {
 		margin: 0.24rem 0 0;
-		font-size: 0.68rem;
+		font-size: var(--text-xs);
 		font-family: var(--font-mono);
 		color: var(--ui-text-secondary);
 	}
