@@ -8,7 +8,7 @@
 	import { get } from "svelte/store";
 	import { parseArtifactsParams } from "./artifacts";
 	import { formatCost, formatTimestamp } from "./chat-format";
-	import { buildContextBudgetFromUsage, formatContextBudgetTooltip, type ContextBudget } from "./context-budget";
+	import { buildContextBudgetFromUsage, type ContextBudget } from "./context-budget";
 	import { parseTranscriptMentionLinks } from "./composer-mentions";
 	import type { ConversationProjection, ProjectedToolCall } from "./conversation-projection";
 	import {
@@ -193,10 +193,6 @@
 
 	function assistantMessageContextBudget(message: AssistantMessage): ContextBudget | null {
 		return buildContextBudgetFromUsage(message.usage, knownModelContextWindow(message));
-	}
-
-	function assistantMessageContextTooltip(message: AssistantMessage, budget: ContextBudget): string {
-		return `Message context: ${formatContextBudgetTooltip(budget)} (${budget.percent}%)`;
 	}
 
 	function assistantMessageContextTooltipDetails(message: AssistantMessage, budget: ContextBudget) {
@@ -742,7 +738,7 @@
 									budget={messageBudget}
 									variant="inline"
 									label="Message context"
-									tooltipLabel={assistantMessageContextTooltip(message, messageBudget)}
+									tooltipLabel=""
 									tooltipDetails={assistantMessageContextTooltipDetails(message, messageBudget)}
 								/>
 							{/if}

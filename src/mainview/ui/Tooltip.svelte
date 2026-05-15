@@ -52,7 +52,7 @@
 	}
 
 	function renderTooltipElement() {
-		if (!open || disabled || !label) return;
+		if (!open || disabled || (!label && details.length === 0)) return;
 		if (!tooltipElement) {
 			tooltipElement = document.createElement("div");
 			tooltipElement.role = "tooltip";
@@ -160,7 +160,7 @@
 	}
 
 	function scheduleOpen() {
-		if (disabled || !label) return;
+		if (disabled || (!label && details.length === 0)) return;
 		if (timer || open) return;
 		clearOpenTimer();
 		timer = setTimeout(() => {

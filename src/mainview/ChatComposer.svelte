@@ -8,7 +8,7 @@
 	import { onMount, tick } from "svelte";
 	import { supportsXhigh, type Model } from "@mariozechner/pi-ai";
 	import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-	import { formatContextBudgetTooltip, type ContextBudget } from "../shared/context-budget";
+	import type { ContextBudget } from "../shared/context-budget";
 	import {
 		createPromptHistoryNavigationState,
 		navigatePromptHistory,
@@ -135,11 +135,7 @@
 		mentionQuery && workspacePathsLoaded ? searchMentionPaths(workspacePaths, mentionQuery.query, 10) : [],
 	);
 	const canSubmit = $derived(Boolean(draft.trim() || selectedMentions.length > 0));
-	const contextBudgetTooltip = $derived(
-		contextBudget
-			? `Current context: ${formatContextBudgetTooltip(contextBudget)} (${contextBudget.percent}%)`
-			: "Context unavailable",
-	);
+	const contextBudgetTooltip = $derived(contextBudget ? "" : "Context unavailable");
 	const contextBudgetTooltipDetails = $derived(
 		contextBudget ? buildContextBudgetTooltipDetails(contextBudget) : [],
 	);
