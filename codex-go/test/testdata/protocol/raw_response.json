@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "isIncomplete": false,
+    "items": [
+      {
+        "label": "Println",
+        "kind": 3,
+        "detail": "func(a ...interface{}) (n int, err error)",
+        "documentation": "Println formats using the default formats for its operands and writes to standard output.",
+        "insertText": "Println"
+      },
+      {
+        "label": "Printf",
+        "kind": 3,
+        "detail": "func(format string, a ...interface{}) (n int, err error)",
+        "documentation": "Printf formats according to a format specifier and writes to standard output.",
+        "insertText": "Printf"
+      }
+    ]
+  }
+}

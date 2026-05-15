@@ -1,0 +1,5 @@
+{
+  "model": "claude-sonnet-4-5-20250929",
+  "api_base": "https://api.anthropic.com",
+  "max_tokens": 4096
+}

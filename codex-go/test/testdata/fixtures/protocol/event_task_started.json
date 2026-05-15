@@ -1,0 +1,4 @@
+{
+  "type": "task_started",
+  "model_context_window": 200000
+}

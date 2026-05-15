@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didOpen",
+  "params": {
+    "textDocument": {
+      "uri": "file:///tmp/test.go",
+      "languageId": "go",
+      "version": 1,
+      "text": "package main\n\nfunc main() {\n\tprintln(\"Hello, World!\")\n}\n"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "op": "initialize",
+  "session": "test-session-123",
+  "capabilities": {
+    "streaming": true,
+    "multimodal": true,
+    "context_size": 200000
+  },
+  "metadata": {
+    "client_name": "codex-go",
+    "client_version": "0.1.0",
+    "platform": "darwin"
+  }
+}

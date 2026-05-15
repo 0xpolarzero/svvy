@@ -1,0 +1,10 @@
+{
+  "type": "exec_command_end",
+  "call_id": "call-123",
+  "stdout": "file1.txt\nfile2.txt\n",
+  "stderr": "",
+  "aggregated_output": "file1.txt\nfile2.txt\n",
+  "exit_code": 0,
+  "duration": "1.5s",
+  "formatted_output": "file1.txt\nfile2.txt\n"
+}

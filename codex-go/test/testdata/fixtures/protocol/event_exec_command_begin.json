@@ -1,0 +1,7 @@
+{
+  "type": "exec_command_begin",
+  "call_id": "call-123",
+  "command": ["ls", "-la"],
+  "cwd": "/Users/test/project",
+  "parsed_cmd": []
+}

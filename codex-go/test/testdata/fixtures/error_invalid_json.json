@@ -1,0 +1,10 @@
+{
+  "error": "invalid_request",
+  "message": "Invalid JSON in request body",
+  "code": 400,
+  "details": {
+    "line": 5,
+    "column": 12,
+    "expected": "comma or closing brace"
+  }
+}

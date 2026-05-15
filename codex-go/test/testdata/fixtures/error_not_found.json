@@ -1,0 +1,9 @@
+{
+  "error": "not_found",
+  "message": "Resource not found",
+  "code": 404,
+  "resource": {
+    "type": "session",
+    "id": "non-existent-session-999"
+  }
+}

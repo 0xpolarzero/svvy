@@ -1,0 +1,66 @@
+# Full example configuration for Codex
+# This file demonstrates all available configuration options
+
+# AI Model Configuration
+model = "gpt-5-codex"
+review_model = "gpt-5-codex"
+model_provider = "openai-responses"
+model_context_window = 200000
+model_max_output_tokens = 8192
+model_auto_compact_token_limit = 180000
+
+# Approval and Security
+approval_policy = "auto"  # Options: "auto", "always", "never"
+
+# Display Settings
+hide_agent_reasoning = false
+show_raw_agent_reasoning = false
+disable_paste_burst = false
+
+# API Configuration
+chatgpt_base_url = "https://chatgpt.com"
+forced_chatgpt_workspace_id = ""
+
+# Project Documentation
+project_doc_max_bytes = 32768  # 32 KiB
+project_doc_fallback_filenames = ["AGENTS.md", "README.md"]
+
+# MCP Server Configuration
+# Filesystem access server
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+enabled = true
+startup_timeout_sec = 30.0
+tool_timeout_sec = 60.0
+# Optional: explicitly enable/disable specific tools
+# enabled_tools = ["read_file", "write_file"]
+# disabled_tools = ["delete_file"]
+
+[mcp_servers.filesystem.env]
+NODE_ENV = "production"
+
+# Git operations server
+[mcp_servers.git]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-git"]
+enabled = true
+
+# HTTP-based MCP server example
+[mcp_servers.external_api]
+url = "https://api.example.com/mcp"
+bearer_token_env_var = "EXTERNAL_API_TOKEN"
+enabled = true
+startup_timeout_sec = 15.0
+
+[mcp_servers.external_api.http_headers]
+X-Custom-Header = "custom-value"
+
+[mcp_servers.external_api.env_http_headers]
+Authorization = "AUTH_TOKEN_ENV_VAR"
+
+# Disabled server example
+[mcp_servers.disabled_server]
+command = "echo"
+args = ["disabled"]
+enabled = false
