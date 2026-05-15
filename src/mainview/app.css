@@ -7,7 +7,7 @@
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light dark;
   font-family: var(--font-sans);
   font-kerning: normal;
   font-optical-sizing: auto;
@@ -37,26 +37,33 @@
   --ui-z-overlay: 40;
   --ui-z-dialog: 1000;
 
-  --ui-bg: oklch(14.5% 0.006 55);
-  --ui-bg-elevated: oklch(18% 0.006 55);
-  --ui-shell: oklch(16.5% 0.006 55 / 0.94);
-  --ui-shell-edge: oklch(25% 0.008 55 / 0.86);
-  --ui-surface: oklch(20.5% 0.006 55 / 0.96);
-  --ui-surface-subtle: oklch(24.5% 0.007 55 / 0.96);
-  --ui-surface-muted: oklch(28.5% 0.007 55 / 0.98);
-  --ui-surface-raised: oklch(22.5% 0.006 55 / 0.98);
-  --ui-surface-strong: oklch(90% 0.012 75 / 0.96);
-  --ui-panel: oklch(22.5% 0.006 55 / 0.93);
-  --ui-panel-strong: oklch(27% 0.007 55 / 0.96);
-  --ui-code: oklch(18.5% 0.006 55 / 0.98);
+  --ui-bg: oklch(98.2% 0.003 75);
+  --ui-bg-elevated: oklch(99% 0.002 75);
+  --ui-shell: oklch(97.2% 0.003 75 / 0.98);
+  --ui-shell-edge: oklch(83% 0.006 75 / 0.74);
+  --ui-chrome: var(--ui-shell);
+  --ui-surface: oklch(99% 0.002 75 / 0.97);
+  --ui-surface-subtle: oklch(96% 0.004 75 / 0.98);
+  --ui-surface-muted: oklch(93.2% 0.005 75 / 0.98);
+  --ui-surface-raised: oklch(98% 0.003 75 / 0.99);
+  --ui-surface-strong: oklch(20% 0.008 55 / 0.96);
+  --ui-panel: oklch(98.3% 0.003 75 / 0.97);
+  --ui-panel-strong: oklch(95.6% 0.005 75 / 0.98);
+  --ui-code: oklch(96.4% 0.004 75 / 0.98);
+  --ui-hover-bg: oklch(96.2% 0.004 75 / 0.98);
+  --ui-pressed-bg: oklch(96.1% 0.004 75 / 0.98);
+  --ui-selected-bg: oklch(95.6% 0.004 75 / 0.99);
+  --ui-selected-border: oklch(81% 0.006 75 / 0.88);
 
-  --ui-text-primary: oklch(89% 0.012 75);
-  --ui-text-secondary: oklch(73% 0.01 75);
-  --ui-text-tertiary: oklch(57% 0.008 75);
-  --ui-text-inverse: oklch(20% 0.008 55);
+  --ui-text-primary: oklch(22% 0.009 65);
+  --ui-text-secondary: oklch(42% 0.008 65);
+  --ui-text-tertiary: oklch(58% 0.007 65);
+  --ui-text-inverse: oklch(96% 0.006 75);
+  --ui-text: var(--ui-text-primary);
+  --ui-text-muted: var(--ui-text-secondary);
 
-  --ui-border-soft: oklch(32% 0.007 55 / 0.74);
-  --ui-border-strong: oklch(42% 0.008 55 / 0.86);
+  --ui-border-soft: oklch(84% 0.007 75 / 0.86);
+  --ui-border-strong: oklch(72% 0.008 75 / 0.92);
   --ui-border-accent: hsl(24 95% 53% / 0.46);
 
   --ui-accent: hsl(24 95% 53%);
@@ -83,26 +90,39 @@
   --ui-status-waiting-soft: var(--ui-info-soft);
   --ui-status-danger: var(--ui-danger);
   --ui-status-danger-soft: var(--ui-danger-soft);
-  --ui-status-idle: oklch(57% 0.008 75);
-  --ui-status-idle-soft: oklch(57% 0.008 75 / 0.1);
+  --ui-status-idle: oklch(58% 0.007 65);
+  --ui-status-idle-soft: oklch(58% 0.007 65 / 0.1);
 
-  --ui-shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.2), 0 1px 2px hsl(0 0% 0% / 0.12);
+  --ui-shadow-color: hsl(35 12% 14% / 0.16);
+  --ui-shadow: var(--ui-shadow-color);
+  --ui-shadow-soft: 0 1px 3px hsl(35 12% 14% / 0.1), 0 1px 2px hsl(35 12% 14% / 0.06);
   --ui-shadow-strong:
     0 0 0 1px color-mix(in oklab, var(--ui-shell-edge) 64%, transparent),
-    0 32px 80px -36px hsl(0 0% 0% / 0.72), 0 12px 28px -16px hsl(0 0% 0% / 0.56);
+    0 32px 80px -36px hsl(35 12% 14% / 0.24), 0 12px 28px -16px hsl(35 12% 14% / 0.18);
   --ui-focus-ring:
-    0 0 0 1px color-mix(in oklab, var(--ui-accent) 72%, white 28%),
+    0 0 0 1px color-mix(in oklab, var(--ui-accent) 72%, oklch(98% 0.003 75) 28%),
     0 0 0 4px color-mix(in oklab, var(--ui-accent) 16%, transparent);
 
   --ui-backdrop: var(--ui-bg);
+  --ui-overlay: hsl(35 12% 14% / 0.36);
+  --ui-tooltip-bg: oklch(98% 0.003 75);
+  --ui-tooltip-border: oklch(74% 0.008 75 / 0.95);
+  --ui-keycap-shadow: inset 0 -1px 0 hsl(35 12% 14% / 0.14);
+  --ui-diff-add-bg: hsl(142 55% 42% / 0.12);
+  --ui-diff-add-border: hsl(142 55% 42% / 0.34);
+  --ui-diff-add-text: oklch(31% 0.065 150);
+  --ui-diff-remove-bg: hsl(0 74% 54% / 0.1);
+  --ui-diff-remove-border: hsl(0 74% 54% / 0.3);
+  --ui-diff-remove-text: oklch(38% 0.11 25);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.theme-light) {
     --ui-bg: oklch(14.5% 0.006 55);
     --ui-bg-elevated: oklch(18% 0.006 55);
     --ui-shell: oklch(16.5% 0.006 55 / 0.94);
     --ui-shell-edge: oklch(25% 0.008 55 / 0.86);
+    --ui-chrome: var(--ui-shell);
     --ui-surface: oklch(20.5% 0.006 55 / 0.96);
     --ui-surface-subtle: oklch(24.5% 0.007 55 / 0.96);
     --ui-surface-muted: oklch(28.5% 0.007 55 / 0.98);
@@ -111,11 +131,17 @@
     --ui-panel: oklch(22.5% 0.006 55 / 0.93);
     --ui-panel-strong: oklch(27% 0.007 55 / 0.96);
     --ui-code: oklch(18.5% 0.006 55 / 0.98);
+    --ui-hover-bg: color-mix(in oklab, var(--ui-surface-muted) 72%, transparent);
+    --ui-pressed-bg: color-mix(in oklab, var(--ui-surface-muted) 86%, transparent);
+    --ui-selected-bg: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
+    --ui-selected-border: color-mix(in oklab, var(--ui-border-strong) 76%, transparent);
 
     --ui-text-primary: oklch(89% 0.012 75);
     --ui-text-secondary: oklch(73% 0.01 75);
     --ui-text-tertiary: oklch(57% 0.008 75);
     --ui-text-inverse: oklch(20% 0.008 55);
+    --ui-text: var(--ui-text-primary);
+    --ui-text-muted: var(--ui-text-secondary);
 
     --ui-border-soft: oklch(32% 0.007 55 / 0.74);
     --ui-border-strong: oklch(42% 0.008 55 / 0.86);
@@ -133,12 +159,24 @@
     --ui-status-idle: oklch(57% 0.008 75);
     --ui-status-idle-soft: oklch(57% 0.008 75 / 0.1);
 
+    --ui-shadow-color: hsl(0 0% 0% / 0.56);
+    --ui-shadow: var(--ui-shadow-color);
     --ui-shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.4), 0 1px 2px hsl(0 0% 0% / 0.24);
     --ui-shadow-strong:
       0 0 0 1px color-mix(in oklab, var(--ui-shell-edge) 64%, transparent),
       0 32px 80px -36px hsl(0 0% 0% / 0.72), 0 12px 28px -16px hsl(0 0% 0% / 0.56);
 
     --ui-backdrop: var(--ui-bg);
+    --ui-overlay: hsl(0 0% 0% / 0.58);
+    --ui-tooltip-bg: oklch(18% 0.006 55);
+    --ui-tooltip-border: oklch(34% 0.008 55 / 0.86);
+    --ui-keycap-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.05);
+    --ui-diff-add-bg: hsl(142 71% 45% / 0.12);
+    --ui-diff-add-border: hsl(142 71% 45% / 0.28);
+    --ui-diff-add-text: oklch(82% 0.1 150);
+    --ui-diff-remove-bg: hsl(0 84% 60% / 0.12);
+    --ui-diff-remove-border: hsl(0 84% 60% / 0.28);
+    --ui-diff-remove-text: oklch(78% 0.11 25);
   }
 }
 
@@ -527,8 +565,8 @@ summary {
   --color-sidebar-accent-border: var(--sidebar-accent-border);
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -538,11 +576,11 @@ summary {
 
 /* LIGHT MODE (default) */
 :root {
-  --button-outline: rgba(0,0,0,.10);
-  --badge-outline: rgba(0,0,0,.05);
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
   --opaque-button-border-intensity: -8;
-  --elevate-1: rgba(0,0,0,.03);
-  --elevate-2: rgba(0,0,0,.06);
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.06);
 
   --background: 0 0% 97%;
   --foreground: 220 22% 12%;
@@ -581,37 +619,111 @@ summary {
   --radius: 4px;
 
   --sidebar-primary-border: hsl(var(--sidebar-primary));
-  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-primary-border: hsl(
+    from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --sidebar-accent-border: hsl(var(--sidebar-accent));
-  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --sidebar-accent-border: hsl(
+    from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --primary-border: hsl(var(--primary));
-  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --primary-border: hsl(
+    from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --secondary-border: hsl(var(--secondary));
-  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border: hsl(
+    from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --muted-border: hsl(var(--muted));
-  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border: hsl(
+    from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --accent-border: hsl(var(--accent));
-  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border: hsl(
+    from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
   --destructive-border: hsl(var(--destructive));
-  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --destructive-border: hsl(
+    from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
 
-  --shadow-2xs: 0 1px 2px rgba(0,0,0,.04);
-  --shadow-xs: 0 1px 3px rgba(0,0,0,.06);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow: 0 2px 6px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.1), 0 2px 4px rgba(0,0,0,.06);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,.12), 0 4px 8px rgba(0,0,0,.06);
-  --shadow-xl: 0 16px 40px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.08);
-  --shadow-2xl: 0 24px 64px rgba(0,0,0,.16);
+  --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.14), 0 8px 16px rgba(0, 0, 0, 0.08);
+  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.16);
 }
 
 /* DARK MODE */
 .dark {
-  --button-outline: rgba(255,255,255,.10);
-  --badge-outline: rgba(255,255,255,.05);
+  color-scheme: dark;
+  --ui-bg: oklch(14.5% 0.006 55);
+  --ui-bg-elevated: oklch(18% 0.006 55);
+  --ui-shell: oklch(16.5% 0.006 55 / 0.94);
+  --ui-shell-edge: oklch(25% 0.008 55 / 0.86);
+  --ui-chrome: var(--ui-shell);
+  --ui-surface: oklch(20.5% 0.006 55 / 0.96);
+  --ui-surface-subtle: oklch(24.5% 0.007 55 / 0.96);
+  --ui-surface-muted: oklch(28.5% 0.007 55 / 0.98);
+  --ui-surface-raised: oklch(22.5% 0.006 55 / 0.98);
+  --ui-surface-strong: oklch(90% 0.012 75 / 0.96);
+  --ui-panel: oklch(22.5% 0.006 55 / 0.93);
+  --ui-panel-strong: oklch(27% 0.007 55 / 0.96);
+  --ui-code: oklch(18.5% 0.006 55 / 0.98);
+  --ui-hover-bg: color-mix(in oklab, var(--ui-surface-muted) 72%, transparent);
+  --ui-pressed-bg: color-mix(in oklab, var(--ui-surface-muted) 86%, transparent);
+  --ui-selected-bg: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
+  --ui-selected-border: color-mix(in oklab, var(--ui-border-strong) 76%, transparent);
+
+  --ui-text-primary: oklch(89% 0.012 75);
+  --ui-text-secondary: oklch(73% 0.01 75);
+  --ui-text-tertiary: oklch(57% 0.008 75);
+  --ui-text-inverse: oklch(20% 0.008 55);
+  --ui-text: var(--ui-text-primary);
+  --ui-text-muted: var(--ui-text-secondary);
+
+  --ui-border-soft: oklch(32% 0.007 55 / 0.74);
+  --ui-border-strong: oklch(42% 0.008 55 / 0.86);
+  --ui-border-accent: hsl(24 95% 53% / 0.46);
+
+  --ui-accent: hsl(24 95% 53%);
+  --ui-accent-strong: hsl(24 92% 58%);
+  --ui-accent-soft: hsl(24 95% 53% / 0.1);
+  --ui-accent-ink: hsl(0 0% 100%);
+
+  --ui-success-soft: hsl(142 71% 45% / 0.1);
+  --ui-warning-soft: hsl(38 92% 50% / 0.1);
+  --ui-danger-soft: hsl(0 84% 60% / 0.1);
+  --ui-info-soft: hsl(217 91% 60% / 0.1);
+  --ui-status-idle: oklch(57% 0.008 75);
+  --ui-status-idle-soft: oklch(57% 0.008 75 / 0.1);
+
+  --ui-shadow-color: hsl(0 0% 0% / 0.56);
+  --ui-shadow: var(--ui-shadow-color);
+  --ui-shadow-soft: 0 1px 3px hsl(0 0% 0% / 0.4), 0 1px 2px hsl(0 0% 0% / 0.24);
+  --ui-shadow-strong:
+    0 0 0 1px color-mix(in oklab, var(--ui-shell-edge) 64%, transparent),
+    0 32px 80px -36px hsl(0 0% 0% / 0.72), 0 12px 28px -16px hsl(0 0% 0% / 0.56);
+  --ui-backdrop: var(--ui-bg);
+  --ui-overlay: hsl(0 0% 0% / 0.58);
+  --ui-tooltip-bg: oklch(18% 0.006 55);
+  --ui-tooltip-border: oklch(34% 0.008 55 / 0.86);
+  --ui-keycap-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.05);
+  --ui-diff-add-bg: hsl(142 71% 45% / 0.12);
+  --ui-diff-add-border: hsl(142 71% 45% / 0.28);
+  --ui-diff-add-text: oklch(82% 0.1 150);
+  --ui-diff-remove-bg: hsl(0 84% 60% / 0.12);
+  --ui-diff-remove-border: hsl(0 84% 60% / 0.28);
+  --ui-diff-remove-text: oklch(78% 0.11 25);
+
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
   --opaque-button-border-intensity: 9;
-  --elevate-1: rgba(255,255,255,.04);
-  --elevate-2: rgba(255,255,255,.08);
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.08);
 
   --background: 45 6% 6%;
   --foreground: 45 9% 90%;
@@ -648,14 +760,14 @@ summary {
   --chart-4: 280 65% 60%;
   --chart-5: 350 89% 60%;
 
-  --shadow-2xs: 0 1px 2px rgba(0,0,0,.3);
-  --shadow-xs: 0 1px 3px rgba(0,0,0,.4);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
-  --shadow: 0 2px 6px rgba(0,0,0,.5), 0 1px 2px rgba(0,0,0,.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.4);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,.7), 0 4px 8px rgba(0,0,0,.4);
-  --shadow-xl: 0 16px 40px rgba(0,0,0,.8), 0 8px 16px rgba(0,0,0,.5);
-  --shadow-2xl: 0 24px 64px rgba(0,0,0,.9);
+  --shadow-2xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.7), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 16px 40px rgba(0, 0, 0, 0.8), 0 8px 16px rgba(0, 0, 0, 0.5);
+  --shadow-2xl: 0 24px 64px rgba(0, 0, 0, 0.9);
 }
 
 @layer base {
@@ -696,7 +808,7 @@ summary {
 
 @layer utilities {
   .font-mono {
-    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
   }
 
   .text-orange {
@@ -716,19 +828,31 @@ summary {
   }
 
   @keyframes pulse-dot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.5; transform: scale(0.85); }
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.5;
+      transform: scale(0.85);
+    }
   }
 
   .stream-cursor::after {
-    content: '▋';
+    content: "▋";
     animation: blink 1s step-start infinite;
     color: hsl(24 95% 53%);
   }
 
   @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
   }
 
   .scrollbar-thin {
@@ -747,13 +871,13 @@ summary {
   }
 
   .diff-add {
-    background-color: rgba(34, 197, 94, 0.12);
-    color: rgb(74 222 128);
+    background-color: var(--ui-diff-add-bg);
+    color: var(--ui-diff-add-text);
   }
 
   .diff-remove {
-    background-color: rgba(239, 68, 68, 0.12);
-    color: rgb(252 165 165);
+    background-color: var(--ui-diff-remove-bg);
+    color: var(--ui-diff-remove-text);
   }
 
   .diff-context {
@@ -764,8 +888,10 @@ summary {
     color: rgb(96, 165, 250);
   }
 
-  .no-default-hover-elevate {}
-  .no-default-active-elevate {}
+  .no-default-hover-elevate {
+  }
+  .no-default-active-elevate {
+  }
 
   .toggle-elevate::before,
   .toggle-elevate-2::before {

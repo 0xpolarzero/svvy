@@ -140,7 +140,7 @@
 		align-items: center;
 		justify-content: center;
 		padding: clamp(0.75rem, 2vw, 1.5rem);
-		background: color-mix(in oklab, var(--ui-bg) 24%, hsl(220 18% 6% / 0.68));
+		background: color-mix(in oklab, var(--ui-bg) 24%, var(--ui-overlay));
 	}
 
 	.ui-dialog-backdrop {

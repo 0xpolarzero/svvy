@@ -238,7 +238,7 @@
   }
 
   .session-main:hover:not(:disabled) {
-    background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+    background: var(--ui-hover-bg);
   }
 
   .session-main:focus-visible {
@@ -252,8 +252,8 @@
   }
 
   .active .session-main {
-    border-color: transparent;
-    background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+    border-color: var(--ui-selected-border);
+    background: var(--ui-selected-bg);
   }
 
   .active .session-main::before {
@@ -262,7 +262,7 @@
 
   .open-in-pane:not(.active) .session-main {
     border-color: color-mix(in oklab, var(--ui-border-soft) 62%, transparent);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
+    background: color-mix(in oklab, var(--ui-hover-bg) 48%, transparent);
   }
 
   .open-in-pane:not(.active) .session-main::before {

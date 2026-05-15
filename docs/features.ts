@@ -21,7 +21,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Provider Auth And Settings",
     status: "shipped",
     summary:
-      "Manages provider keys, OAuth-backed access, and app-level preferences such as the user's preferred external editor through TanStack Form-backed desktop settings surfaces with local validation, dirty state, reset/cancel behavior, and backend-authoritative persistence.",
+      "Manages provider keys, OAuth-backed access, web provider selection, and a General settings surface for app appearance (`system`, `light`, or `dark`) and the user's preferred external editor with backend-authoritative persistence.",
     sourceSpecs: ["docs/prd.md"],
   },
   {

@@ -61,7 +61,7 @@
 		border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
 		border-radius: var(--ui-radius-xs);
 		background: color-mix(in oklab, currentColor 10%, transparent);
-		box-shadow: inset 0 -1px 0 color-mix(in oklab, black 18%, transparent);
+		box-shadow: var(--ui-keycap-shadow);
 	}
 
 	.ui-kbd :global(.ui-kbd-icon) {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import {
   DEFAULT_AGENT_SETTINGS_STATE,
   type AgentSettingsState,
+  type AppAppearance,
   type AppPreferences,
   type PreferredExternalEditor,
   type WebProviderId,
@@ -214,10 +215,15 @@ function requireNonEmpty(value: string, label: string): string {
 
 function normalizeAppPreferences(input: AppPreferences): AppPreferences {
   return {
+    appAppearance: normalizeAppAppearance(input.appAppearance),
     preferredExternalEditor: normalizePreferredExternalEditor(input.preferredExternalEditor),
     customExternalEditorCommand: input.customExternalEditorCommand.trim(),
     webProvider: normalizeWebProvider(input.webProvider),
   };
+}
+
+function normalizeAppAppearance(input: string | null | undefined): AppAppearance {
+  return input === "light" || input === "dark" || input === "system" ? input : "system";
 }
 
 function normalizePreferredExternalEditor(input: string): PreferredExternalEditor {

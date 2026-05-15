@@ -659,7 +659,7 @@
   .new-session-row:focus-within,
   .new-session-menu-shell.menu-open .new-session-row {
     outline: none;
-    background: color-mix(in oklab, var(--ui-surface-subtle) 68%, transparent);
+    background: var(--ui-hover-bg);
     color: var(--ui-text-primary);
   }
 

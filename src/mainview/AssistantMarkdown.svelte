@@ -19,12 +19,13 @@
 
 	let highlightedCode = $state<Record<string, string>>({});
 	let containerElement = $state<HTMLDivElement | null>(null);
+	let activeColorTheme = $state<"light" | "dark">("dark");
 	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
 	let mermaidRenderCounter = 0;
 
 	let markdown: MarkdownIt;
 	let codeToHighlightedHtmlPromise:
-		| Promise<(code: string, lang: HighlightLanguage) => Promise<string>>
+		| Promise<(code: string, lang: HighlightLanguage, theme: "light" | "dark") => Promise<string>>
 		| undefined;
 
 	const supportedHighlightLanguages = [
@@ -58,8 +59,16 @@
 			.replaceAll("'", "&#39;");
 	}
 
-	function codeKey(text: string, lang: string | undefined) {
-		return `${lang ?? "text"}\u0000${text}`;
+	function codeKey(text: string, lang: string | undefined, theme: "light" | "dark") {
+		return `${theme}\u0000${lang ?? "text"}\u0000${text}`;
+	}
+
+	function readColorTheme(): "light" | "dark" {
+		return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+	}
+
+	function cssVariable(name: string) {
+		return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 	}
 
 	function normalizeLanguage(lang: string | undefined) {
@@ -198,14 +207,15 @@
 				},
 				themes: {
 					"github-dark": () => import("shiki/themes/github-dark"),
+					"github-light": () => import("shiki/themes/github-light"),
 				},
 				engine: () => createJavaScriptRegexEngine(),
 			});
 			const { codeToHtml } = createSingletonShorthands(createHighlighter);
-			return (code: string, lang: HighlightLanguage) =>
+			return (code: string, lang: HighlightLanguage, theme: "light" | "dark") =>
 				codeToHtml(code, {
 					lang,
-					theme: "github-dark",
+					theme: theme === "dark" ? "github-dark" : "github-light",
 				});
 		})();
 		return codeToHighlightedHtmlPromise;
@@ -219,7 +229,7 @@
 		highlight(text, lang) {
 			const normalizedLanguage = normalizeLanguage(lang);
 			if (normalizedLanguage === "mermaid") return renderMermaidFrame(text);
-			const highlighted = highlightedCode[codeKey(text, normalizedLanguage)];
+			const highlighted = highlightedCode[codeKey(text, normalizedLanguage, activeColorTheme)];
 			if (highlighted) return renderCodeFrame(text, normalizedLanguage, highlighted);
 			return renderCodeFrame(
 				text,
@@ -238,7 +248,26 @@
 		.use(taskLists, { enabled: false });
 
 	$effect(() => {
+		activeColorTheme = readColorTheme();
+		const root = document.documentElement;
+		const media = window.matchMedia("(prefers-color-scheme: dark)");
+		const observer = new MutationObserver(() => {
+			activeColorTheme = readColorTheme();
+		});
+		const syncFromSystem = () => {
+			activeColorTheme = readColorTheme();
+		};
+		observer.observe(root, { attributes: true, attributeFilter: ["class", "data-theme"] });
+		media.addEventListener("change", syncFromSystem);
+		return () => {
+			observer.disconnect();
+			media.removeEventListener("change", syncFromSystem);
+		};
+	});
+
+	$effect(() => {
 		const tokens = markdown.parse(content, {});
+		const theme = activeColorTheme;
 		const codeBlocks: Array<{ text: string; lang?: string }> = [];
 
 		function collectCodeBlocks(items: Token[]) {
@@ -262,8 +291,8 @@
 				const normalizedLanguage = normalizeLanguage(block.lang);
 				if (normalizedLanguage === "mermaid") continue;
 				const lang = toHighlightLanguage(normalizedLanguage);
-				const key = codeKey(block.text, normalizedLanguage);
-				nextHighlighted[key] = await codeToHighlightedHtml(block.text, lang);
+				const key = codeKey(block.text, normalizedLanguage, theme);
+				nextHighlighted[key] = await codeToHighlightedHtml(block.text, lang, theme);
 			}
 
 			if (!cancelled) highlightedCode = nextHighlighted;
@@ -298,6 +327,7 @@
 	$effect(() => {
 		const root = containerElement;
 		const html = renderedHtml;
+		const theme = activeColorTheme;
 		if (!root || !html) return;
 
 		let cancelled = false;
@@ -310,23 +340,23 @@
 			mermaid.initialize({
 				startOnLoad: false,
 				securityLevel: "strict",
-				theme: "dark",
+				theme: theme === "dark" ? "dark" : "base",
 				themeVariables: {
 					background: "transparent",
-					mainBkg: "#1b1e24",
-					primaryColor: "#1b1e24",
-					primaryTextColor: "#d8dee9",
-					primaryBorderColor: "#667085",
-					lineColor: "#9aa4b2",
-					secondaryColor: "#252a32",
-					tertiaryColor: "#12151a",
+					mainBkg: cssVariable("--ui-surface"),
+					primaryColor: cssVariable("--ui-surface"),
+					primaryTextColor: cssVariable("--ui-text-primary"),
+					primaryBorderColor: cssVariable("--ui-border-strong"),
+					lineColor: cssVariable("--ui-text-tertiary"),
+					secondaryColor: cssVariable("--ui-surface-subtle"),
+					tertiaryColor: cssVariable("--ui-bg"),
 					fontFamily: "Inter, system-ui, sans-serif",
 				},
 			});
 
 			for (const [index, block] of blocks.entries()) {
 				const sourceAttribute = block.dataset.mermaidSource;
-				if (!sourceAttribute || block.dataset.rendered === "true") continue;
+				if (!sourceAttribute) continue;
 				const source = decodeURIComponent(sourceAttribute);
 				try {
 					const id = `assistant-mermaid-${++mermaidRenderCounter}-${index}`;

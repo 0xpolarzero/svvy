@@ -4,6 +4,7 @@ export type ReasoningEffort = ThinkingLevel;
 export type SessionMode = "orchestrator" | "dumb";
 export type SessionAgentKey = "defaultSession" | "dumbOrchestrator" | "namer";
 export type WorkflowAgentKey = "explorer" | "implementer" | "reviewer";
+export type AppAppearance = "system" | "light" | "dark";
 export type PreferredExternalEditor = "system" | "code" | "cursor" | "zed" | "sublime" | "custom";
 export type WebProviderId = "tinyfish" | "firecrawl";
 export type WorkflowAgentToolName =
@@ -60,6 +61,7 @@ export interface AgentSettingsState {
 }
 
 export interface AppPreferences {
+  appAppearance: AppAppearance;
   preferredExternalEditor: PreferredExternalEditor;
   customExternalEditorCommand: string;
   webProvider: WebProviderId | null;
@@ -210,6 +212,7 @@ export const DEFAULT_AGENT_SETTINGS_STATE = {
   sessionAgents: DEFAULT_SESSION_AGENT_SETTINGS,
   workflowAgents: DEFAULT_WORKFLOW_AGENT_SETTINGS,
   appPreferences: {
+    appAppearance: "system",
     preferredExternalEditor: "system",
     customExternalEditorCommand: "",
     webProvider: null,

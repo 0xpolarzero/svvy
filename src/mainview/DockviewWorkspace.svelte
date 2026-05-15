@@ -776,13 +776,13 @@
     min-width: 8.5rem;
     max-width: min(18rem, calc(100vw - 1.25rem));
     padding: 0.34rem 0.46rem;
-    border: 1px solid color-mix(in oklab, var(--ui-border-strong) 72%, transparent);
+    border: 1px solid var(--ui-tooltip-border);
     border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-surface-raised) 96%, black 4%);
+    background: var(--ui-tooltip-bg);
     color: var(--ui-text-primary);
     box-shadow:
-      0 18px 36px color-mix(in oklab, black 28%, transparent),
-      0 2px 8px color-mix(in oklab, black 18%, transparent);
+      0 18px 36px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
+      0 2px 8px color-mix(in oklab, var(--ui-shadow) 18%, transparent);
     font-size: 0.68rem;
     font-weight: 560;
     line-height: 1.25;

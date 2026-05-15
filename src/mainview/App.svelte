@@ -6,6 +6,7 @@
 	import { createChatStorage, type ChatStorage } from "./chat-storage";
 	import { rpc } from "./rpc";
 	import Settings from "./Settings.svelte";
+	import { applyAppAppearance } from "./theme";
 	import StatusCard from "./ui/StatusCard.svelte";
 	import WorkspaceTabStrip, {
 		type WorkspaceTabStripItem,
@@ -16,6 +17,7 @@
 		type WorkspaceTabCounts,
 	} from "./workspace-tabs";
 	import type { WorkspaceInfoResponse, WorkspaceTabInfo } from "../shared/workspace-contract";
+	import type { AppAppearance } from "../shared/agent-settings";
 
 	type OpenWorkspaceTab = {
 		workspace: WorkspaceTabInfo;
@@ -33,6 +35,7 @@
 	let openingWorkspace = $state(false);
 	let showSettings = $state(false);
 	let disposed = false;
+	let disposeAppearanceSync: (() => void) | null = null;
 	const activeTab = $derived(
 		tabs.find((tab) => tab.workspace.workspaceId === activeWorkspaceId) ?? null,
 	);
@@ -85,6 +88,21 @@
 		}, 0);
 	}
 
+	function setAppAppearance(appearance: AppAppearance) {
+		disposeAppearanceSync?.();
+		disposeAppearanceSync = applyAppAppearance(appearance);
+	}
+
+	async function refreshAppAppearance() {
+		try {
+			const settings = await rpc.request.getAgentSettings();
+			setAppAppearance(settings.appPreferences.appAppearance);
+		} catch (error) {
+			console.error("Failed to load app appearance:", error);
+			setAppAppearance("system");
+		}
+	}
+
 	async function createWorkspaceTab(workspace: WorkspaceInfoResponse | WorkspaceTabInfo): Promise<OpenWorkspaceTab> {
 		const workspaceTab = toWorkspaceTabInfo(workspace);
 		const runtime = await createChatRuntime(
@@ -119,6 +137,7 @@
 		}
 		try {
 			await rpc.request.setActiveWorkspace({ workspaceId });
+			await refreshAppAppearance();
 		} catch (error) {
 			console.error("Failed to set active workspace:", error);
 		}
@@ -244,11 +263,13 @@
 	}
 
 	onMount(() => {
-		document.documentElement.classList.add("dark");
+		setAppAppearance("system");
 		void restoreWorkspaceTabs();
 
 		return () => {
 			disposed = true;
+			disposeAppearanceSync?.();
+			disposeAppearanceSync = null;
 			for (const tab of tabs) {
 				tab.unsubscribe();
 				tab.runtime.dispose();
@@ -323,7 +344,11 @@
 </HotkeysProvider>
 
 {#if showSettings}
-	<Settings onClose={() => (showSettings = false)} onProviderAuthChanged={handleProviderAuthChanged} />
+	<Settings
+		onClose={() => (showSettings = false)}
+		onProviderAuthChanged={handleProviderAuthChanged}
+		onAppAppearanceChanged={setAppAppearance}
+	/>
 {/if}
 
 <style>

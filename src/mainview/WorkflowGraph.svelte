@@ -247,7 +247,7 @@
   .workflow-graph-node.selected {
     box-shadow:
       0 0 0 1px color-mix(in oklab, var(--ui-border-accent) 44%, transparent),
-      0 10px 24px hsl(0 0% 0% / 0.22);
+      0 10px 24px color-mix(in oklab, var(--ui-shadow) 22%, transparent);
   }
 
   .workflow-graph-icon {

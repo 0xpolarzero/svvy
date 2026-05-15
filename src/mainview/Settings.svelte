@@ -11,16 +11,17 @@
 	import type { ProviderAuthInfo } from "../shared/workspace-contract";
 	import type {
 		AgentSettingsState,
+		AppAppearance,
+		AppPreferences,
+		PreferredExternalEditor,
 		SessionAgentKey,
 		SessionAgentSettings,
 		WorkflowAgentKey,
 		WorkflowAgentSettings,
-		AppPreferences,
 		WebProviderId,
 	} from "../shared/agent-settings";
 	import { rpc } from "./rpc";
 	import AgentSettingsForm from "./AgentSettingsForm.svelte";
-	import AppPreferencesForm from "./AppPreferencesForm.svelte";
 	import ProviderApiKeyForm from "./ProviderApiKeyForm.svelte";
 	import Button from "./ui/Button.svelte";
 	import Dialog from "./ui/Dialog.svelte";
@@ -29,9 +30,10 @@
 	type Props = {
 		onClose: () => void;
 		onProviderAuthChanged?: (providerId: string) => void | Promise<void>;
+		onAppAppearanceChanged?: (appearance: AppAppearance) => void;
 	};
 
-	type SettingsSection = "providers" | "web" | "agents" | "workflow-agents" | "preferences";
+	type SettingsSection = "general" | "providers" | "web" | "agents" | "workflow-agents";
 	type ModelOption = {
 		key: string;
 		provider: string;
@@ -43,10 +45,23 @@
 		{ id: "tinyfish", label: "TinyFish", summary: "TinyFish Search and Fetch with a stored TinyFish API key." },
 		{ id: "firecrawl", label: "Firecrawl", summary: "Firecrawl Search and Scrape with a stored Firecrawl API key." },
 	];
+	const APPEARANCE_OPTIONS: Array<{ value: AppAppearance; label: string; summary: string }> = [
+		{ value: "system", label: "System", summary: "Follow macOS" },
+		{ value: "light", label: "Light", summary: "Always light" },
+		{ value: "dark", label: "Dark", summary: "Always dark" },
+	];
+	const EXTERNAL_EDITOR_OPTIONS: Array<{ value: PreferredExternalEditor; label: string }> = [
+		{ value: "system", label: "System default" },
+		{ value: "code", label: "Visual Studio Code" },
+		{ value: "cursor", label: "Cursor" },
+		{ value: "zed", label: "Zed" },
+		{ value: "sublime", label: "Sublime Text" },
+		{ value: "custom", label: "Custom command" },
+	];
 
-	let { onClose, onProviderAuthChanged }: Props = $props();
+	let { onClose, onProviderAuthChanged, onAppAppearanceChanged }: Props = $props();
 
-	let activeSection = $state<SettingsSection>("providers");
+	let activeSection = $state<SettingsSection>("general");
 	let providers = $state<ProviderAuthInfo[]>([]);
 	let agentSettings = $state<AgentSettingsState | null>(null);
 	let loading = $state(true);
@@ -224,8 +239,9 @@
 	async function saveAppPreferences(preferences: AppPreferences) {
 		try {
 			preferencesSaveMessage = "Saving";
-		agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
-		preferencesSaveMessage = "Saved";
+			agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
+			onAppAppearanceChanged?.(agentSettings.appPreferences.appAppearance);
+			preferencesSaveMessage = "Saved";
 			setTimeout(() => {
 				if (preferencesSaveMessage === "Saved") {
 					preferencesSaveMessage = "";
@@ -236,9 +252,28 @@
 		}
 	}
 
-	async function saveAppPreferencesForm(preferences: AppPreferences) {
-		agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
-		return agentSettings.appPreferences;
+	async function setAppAppearance(appearance: AppAppearance) {
+		if (!agentSettings || agentSettings.appPreferences.appAppearance === appearance) return;
+		await saveAppPreferences({
+			...agentSettings.appPreferences,
+			appAppearance: appearance,
+		});
+	}
+
+	async function setPreferredExternalEditor(preferredExternalEditor: PreferredExternalEditor) {
+		if (!agentSettings || agentSettings.appPreferences.preferredExternalEditor === preferredExternalEditor) return;
+		await saveAppPreferences({
+			...agentSettings.appPreferences,
+			preferredExternalEditor,
+		});
+	}
+
+	async function setCustomExternalEditorCommand(customExternalEditorCommand: string) {
+		if (!agentSettings || agentSettings.appPreferences.customExternalEditorCommand === customExternalEditorCommand) return;
+		await saveAppPreferences({
+			...agentSettings.appPreferences,
+			customExternalEditorCommand,
+		});
 	}
 
 	async function seedWorkflowAgents() {
@@ -298,7 +333,7 @@
 <Dialog
 	title="Settings"
 	eyebrow="Workbench"
-	description="Credentials stay local. Environment variables override saved keys."
+	description="App preferences and credentials stay local. Environment variables override saved keys."
 	width="lg"
 	class="settings-dialog"
 	onClose={onClose}
@@ -306,6 +341,15 @@
 	<div class="settings-shell">
 		<aside class="settings-nav" aria-label="Settings sections">
 			<p class="settings-nav-label">Sections</p>
+			<button
+				class={`settings-nav-item ${activeSection === "general" ? "active" : ""}`.trim()}
+				type="button"
+				aria-current={activeSection === "general" ? "page" : undefined}
+				onclick={() => (activeSection = "general")}
+			>
+				<span>General</span>
+				<span>{agentSettings?.appPreferences.appAppearance ?? "system"}</span>
+			</button>
 			<button
 				class={`settings-nav-item ${activeSection === "providers" ? "active" : ""}`.trim()}
 				type="button"
@@ -342,18 +386,80 @@
 				<span>Workflow Agents</span>
 				<span>3</span>
 			</button>
-			<button
-				class={`settings-nav-item ${activeSection === "preferences" ? "active" : ""}`.trim()}
-				type="button"
-				aria-current={activeSection === "preferences" ? "page" : undefined}
-				onclick={() => (activeSection = "preferences")}
-			>
-				<span>Preferences</span>
-				<span>Editor</span>
-			</button>
 		</aside>
 
 		<section class="settings-pane">
+			{#if activeSection === "general"}
+				{#if loading || !agentSettings}
+					<p class="loading">Loading settings...</p>
+				{:else}
+					<div class="settings-row-stack">
+						<article class="provider-row general-row">
+							<div class="provider-main general-main">
+								<div class="provider-heading">
+									<span class="provider-name">Appearance</span>
+									<span class="provider-status tone-info">{agentSettings.appPreferences.appAppearance}</span>
+									{#if preferencesSaveMessage}
+										<span class="provider-status">{preferencesSaveMessage}</span>
+									{/if}
+								</div>
+								<p class="provider-meta general-meta">Choose the app color theme.</p>
+							</div>
+							<div class="appearance-options" role="radiogroup" aria-label="Appearance">
+								{#each APPEARANCE_OPTIONS as option (option.value)}
+									<label class={`appearance-option ${agentSettings.appPreferences.appAppearance === option.value ? "selected" : ""}`.trim()}>
+										<input
+											type="radio"
+											name="appAppearance"
+											value={option.value}
+											checked={agentSettings.appPreferences.appAppearance === option.value}
+											disabled={preferencesSaveMessage === "Saving"}
+											onchange={() => void setAppAppearance(option.value)}
+										/>
+										<span>{option.label}</span>
+										<small>{option.summary}</small>
+									</label>
+								{/each}
+							</div>
+						</article>
+						<article class="provider-row general-row">
+							<div class="provider-main general-main">
+								<div class="provider-heading">
+									<span class="provider-name">External Editor</span>
+									<span class="provider-status tone-info">{agentSettings.appPreferences.preferredExternalEditor}</span>
+									{#if preferencesSaveMessage}
+										<span class="provider-status">{preferencesSaveMessage}</span>
+									{/if}
+								</div>
+								<p class="provider-meta general-meta">Choose which editor opens workspace files from product surfaces.</p>
+							</div>
+							<div class="editor-grid">
+								<label class="settings-field">
+									<span>Editor</span>
+									<select
+										value={agentSettings.appPreferences.preferredExternalEditor}
+										disabled={preferencesSaveMessage === "Saving"}
+										onchange={(event) => void setPreferredExternalEditor(event.currentTarget.value as PreferredExternalEditor)}
+									>
+										{#each EXTERNAL_EDITOR_OPTIONS as option (option.value)}
+											<option value={option.value}>{option.label}</option>
+										{/each}
+									</select>
+								</label>
+								<label class="settings-field">
+									<span>Custom command</span>
+									<input
+										value={agentSettings.appPreferences.customExternalEditorCommand}
+										placeholder="editor-command --reuse-window"
+										disabled={agentSettings.appPreferences.preferredExternalEditor !== "custom" || preferencesSaveMessage === "Saving"}
+										onchange={(event) => void setCustomExternalEditorCommand(event.currentTarget.value)}
+									/>
+								</label>
+							</div>
+						</article>
+					</div>
+				{/if}
+			{/if}
 			{#if activeSection === "providers"}
 				<div class="settings-search">
 					<Input bind:value={searchQuery} placeholder="Search providers, auth types, or access state" />
@@ -569,16 +675,6 @@
 					{/each}
 				</div>
 			{/if}
-			{#if activeSection === "preferences" && agentSettings}
-				<div class="settings-section-note">
-					<InfoIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-					<p>Used when opening saved and artifact-local workflow files.</p>
-				</div>
-				<AppPreferencesForm
-					preferences={agentSettings.appPreferences}
-					onSave={saveAppPreferencesForm}
-				/>
-			{/if}
 		</section>
 	</div>
 </Dialog>
@@ -773,6 +869,18 @@
 		min-width: 0;
 	}
 
+	.general-row {
+		grid-template-columns: minmax(0, 1fr);
+		align-items: start;
+		gap: 0.7rem;
+	}
+
+	.general-main {
+		grid-template-columns: minmax(0, 1fr);
+		align-items: start;
+		gap: 0.2rem;
+	}
+
 	.agent-list {
 		display: grid;
 		gap: 0.62rem;
@@ -849,6 +957,104 @@
 		font-size: 0.72rem;
 		line-height: 1.35;
 		color: var(--ui-text-secondary);
+	}
+
+	.provider-meta.general-meta {
+		display: block;
+	}
+
+	.appearance-options {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 0.45rem;
+	}
+
+	.appearance-option {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		gap: 0.06rem 0.42rem;
+		align-items: center;
+		min-width: 0;
+		padding: 0.5rem 0.58rem;
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
+		border-radius: var(--ui-radius-sm);
+		background: color-mix(in oklab, var(--ui-surface-subtle) 68%, transparent);
+		cursor: pointer;
+		transition:
+			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+			background-color 150ms cubic-bezier(0.19, 1, 0.22, 1);
+	}
+
+	.appearance-option:hover {
+		border-color: color-mix(in oklab, var(--ui-border-strong) 82%, transparent);
+		background: var(--ui-hover-bg);
+	}
+
+	.appearance-option.selected {
+		border-color: var(--ui-selected-border);
+		background: var(--ui-selected-bg);
+	}
+
+	.appearance-option input {
+		grid-row: 1 / span 2;
+		accent-color: var(--ui-accent);
+	}
+
+	.appearance-option span,
+	.appearance-option small {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.appearance-option span {
+		font-size: 0.75rem;
+		font-weight: 650;
+		color: var(--ui-text-primary);
+	}
+
+	.appearance-option small {
+		font-size: 0.64rem;
+		color: var(--ui-text-secondary);
+	}
+
+	.editor-grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(12rem, 1fr);
+		gap: 0.54rem;
+	}
+
+	.settings-field {
+		display: grid;
+		gap: 0.28rem;
+		min-width: 0;
+	}
+
+	.settings-field span {
+		font-size: 0.68rem;
+		font-family: var(--font-mono);
+		color: var(--ui-text-secondary);
+	}
+
+	.settings-field select,
+	.settings-field input {
+		width: 100%;
+		min-width: 0;
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 88%, transparent);
+		border-radius: var(--ui-radius-sm);
+		padding: 0.38rem 0.48rem;
+		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+		color: var(--ui-text-primary);
+		font: inherit;
+		font-size: 0.72rem;
+	}
+
+	.settings-field select:disabled,
+	.settings-field input:disabled {
+		color: var(--ui-text-tertiary);
+		cursor: not-allowed;
+		opacity: 0.72;
 	}
 
 	.provider-meta span {
@@ -960,6 +1166,10 @@
 		}
 
 		.agent-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.editor-grid {
 			grid-template-columns: 1fr;
 		}
 

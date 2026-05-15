@@ -262,7 +262,7 @@
     overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 34%, transparent);
+    background: color-mix(in oklab, var(--ui-hover-bg) 42%, transparent);
     color: var(--ui-text-secondary);
     -webkit-user-drag: none;
     transition:
@@ -279,8 +279,13 @@
 
   .workspace-tab.active {
     border-color: transparent;
-    background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
+    background: var(--ui-selected-bg);
     color: var(--ui-text-primary);
+  }
+
+  .workspace-tab:hover:not(.active),
+  .workspace-tab:focus-within:not(.active) {
+    background: var(--ui-hover-bg);
   }
 
   .workspace-tab-main,
@@ -387,7 +392,7 @@
 
   .workspace-tab-close:hover,
   .workspace-tab-close:focus-visible {
-    background: color-mix(in oklab, var(--ui-surface-subtle) 76%, transparent);
+    background: var(--ui-hover-bg);
     color: var(--ui-text-primary);
   }
 
@@ -397,9 +402,9 @@
     width: 1.68rem;
     height: 1.68rem;
     flex: 0 0 auto;
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 78%, transparent);
+    border: 1px solid transparent;
     border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-panel) 58%, transparent);
+    background: color-mix(in oklab, var(--ui-hover-bg) 34%, transparent);
     color: var(--ui-text-tertiary);
     flex: 0 0 auto;
     transition:
@@ -411,8 +416,8 @@
 
   .workspace-tab-add:hover,
   .workspace-tab-add:focus-visible {
-    border-color: var(--ui-border-strong);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 74%, transparent);
+    border-color: transparent;
+    background: var(--ui-hover-bg);
     color: var(--ui-text-primary);
   }
 

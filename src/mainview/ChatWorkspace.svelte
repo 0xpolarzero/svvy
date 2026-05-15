@@ -3162,7 +3162,7 @@
     height: 100%;
     min-height: 0;
     margin-inline: 0;
-    background: var(--ui-bg);
+    background: var(--ui-chrome);
   }
 
   .workspace-titlebar {
@@ -3320,7 +3320,7 @@
     height: 100%;
     min-height: 0;
     padding: 0;
-    background: var(--ui-shell);
+    background: var(--ui-chrome);
   }
 
   .sidebar-resize-handle {
@@ -3369,8 +3369,8 @@
     height: var(--workspace-chrome-height);
     padding: 0 0.78rem;
     border-bottom: 0;
-    background: color-mix(in oklab, var(--ui-surface) 52%, transparent);
-    box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--ui-border-soft) 42%, transparent);
+    background: var(--ui-chrome);
+    box-shadow: none;
     pointer-events: none;
   }
 
@@ -4375,7 +4375,7 @@
     display: flex;
     justify-content: flex-end;
     padding: 0.8rem;
-    background: color-mix(in oklab, black 26%, transparent);
+    background: color-mix(in oklab, var(--ui-overlay) 42%, transparent);
     backdrop-filter: blur(8px);
   }
 

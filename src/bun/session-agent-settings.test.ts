@@ -74,16 +74,35 @@ describe("session agent settings", () => {
     });
 
     const updated = store.setAppPreferences({
+      appAppearance: "dark",
       preferredExternalEditor: "custom",
       customExternalEditorCommand: "code --reuse-window",
       webProvider: "tinyfish",
     });
 
     expect(updated.appPreferences).toEqual({
+      appAppearance: "dark",
       preferredExternalEditor: "custom",
       customExternalEditorCommand: "code --reuse-window",
       webProvider: "tinyfish",
     });
     expect(store.getState().appPreferences.preferredExternalEditor).toBe("custom");
+  });
+
+  it("defaults invalid appearance preferences to system", () => {
+    const root = mkdtempSync(join(tmpdir(), "svvy-appearance-settings-"));
+    const store = createSessionAgentSettingsStore({
+      cwd: root,
+      agentDir: join(root, ".agent"),
+    });
+
+    const updated = store.setAppPreferences({
+      appAppearance: "invalid" as never,
+      preferredExternalEditor: "system",
+      customExternalEditorCommand: "",
+      webProvider: null,
+    });
+
+    expect(updated.appPreferences.appAppearance).toBe("system");
   });
 });
