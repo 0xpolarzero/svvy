@@ -112,7 +112,6 @@
       onContextMenu?.(event);
     }}
     onkeydown={handleKeydown}
-    title={renameLocked ? session.title : `${session.title} · double-click to rename`}
   >
     <div class="session-main-top">
       <strong>{session.title}</strong>
@@ -144,7 +143,7 @@
 
     {#if contextBudget}
       <div class="session-context-budget" aria-hidden="true">
-        <ContextBudgetBar budget={contextBudget} variant="compact" label="Context" />
+        <ContextBudgetBar budget={contextBudget} variant="compact" label="Context" showTooltip={false} />
       </div>
     {/if}
   </button>

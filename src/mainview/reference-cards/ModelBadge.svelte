@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Tooltip from "../ui/Tooltip.svelte";
+
   type Props = {
     model: string;
     size?: "xs" | "sm";
@@ -25,13 +27,14 @@
   const label = $derived(modelShorthands[model] ?? model);
 </script>
 
-<span
-  class={`reference-model-badge size-${size} ${className}`.trim()}
-  title={model}
-  data-testid={`model-badge-${model}`}
->
-  {label}
-</span>
+<Tooltip label={model}>
+  <span
+    class={`reference-model-badge size-${size} ${className}`.trim()}
+    data-testid={`model-badge-${model}`}
+  >
+    {label}
+  </span>
+</Tooltip>
 
 <style>
   .reference-model-badge {

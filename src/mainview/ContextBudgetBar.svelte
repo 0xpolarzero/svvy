@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatContextBudgetTooltip, type ContextBudget } from "../shared/context-budget";
+  import Tooltip from "./ui/Tooltip.svelte";
 
   type Variant = "full" | "compact";
 
@@ -7,37 +8,39 @@
     budget: ContextBudget | null;
     variant?: Variant;
     label?: string;
+    showTooltip?: boolean;
   };
 
-  let { budget, variant = "full", label = "Context" }: Props = $props();
+  let { budget, variant = "full", label = "Context", showTooltip = true }: Props = $props();
 
   const detailText = $derived(budget ? formatContextBudgetTooltip(budget) : "Context unavailable");
 </script>
 
 {#if budget}
-  <div
-    class={`context-budget context-budget-${variant} tone-${budget.tone}`.trim()}
-    role="meter"
-    aria-label={`${label} budget`}
-    aria-valuemin="0"
-    aria-valuemax="100"
-    aria-valuenow={budget.percent}
-    title={detailText}
-    data-testid={`context-budget-${variant}`}
-  >
-    <div class="context-budget-track" aria-hidden="true">
-      <span style={`width: ${budget.percent}%`}></span>
-    </div>
-    {#if variant === "full"}
-      <div class="context-budget-copy">
-        <span>{label}</span>
-        <strong>{budget.label}</strong>
-        <small>{budget.detail}</small>
+  <Tooltip label={detailText} disabled={!showTooltip} delayMs={250} block>
+    <div
+      class={`context-budget context-budget-${variant} tone-${budget.tone}`.trim()}
+      role="meter"
+      aria-label={`${label} budget`}
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow={budget.percent}
+      data-testid={`context-budget-${variant}`}
+    >
+      <div class="context-budget-track" aria-hidden="true">
+        <span style={`width: ${budget.percent}%`}></span>
       </div>
-    {:else}
-      <span class="context-budget-compact-label">{budget.percent}%</span>
-    {/if}
-  </div>
+      {#if variant === "full"}
+        <div class="context-budget-copy">
+          <span>{label}</span>
+          <strong>{budget.label}</strong>
+          <small>{budget.detail}</small>
+        </div>
+      {:else}
+        <span class="context-budget-compact-label">{budget.percent}%</span>
+      {/if}
+    </div>
+  </Tooltip>
 {/if}
 
 <style>

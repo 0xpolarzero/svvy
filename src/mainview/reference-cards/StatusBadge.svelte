@@ -28,6 +28,8 @@
 </script>
 
 <script lang="ts">
+  import Tooltip from "../ui/Tooltip.svelte";
+
   type Props = {
     status?: ReferenceStatus;
     size?: StatusBadgeSize;
@@ -50,12 +52,13 @@
 </script>
 
 {#if dotOnly}
-  <span
-    class={`reference-status-dot size-${size} ${className}`.trim()}
-    data-status={status}
-    data-testid={`status-dot-${status}`}
-    title={displayLabel}
-  ></span>
+  <Tooltip label={displayLabel}>
+    <span
+      class={`reference-status-dot size-${size} ${className}`.trim()}
+      data-status={status}
+      data-testid={`status-dot-${status}`}
+    ></span>
+  </Tooltip>
 {:else}
   <span
     class={`reference-status-badge size-${size} ${className}`.trim()}

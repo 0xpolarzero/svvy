@@ -18,6 +18,7 @@
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
   import ImageIcon from "@lucide/svelte/icons/image";
+  import Tooltip from "../ui/Tooltip.svelte";
 
   type Props = {
     name: string;
@@ -47,16 +48,17 @@
   }
 </script>
 
-<button
-  type="button"
-  class={`reference-artifact-chip tone-${type} ${className}`.trim()}
-  onclick={handleClick}
-  data-testid={`artifact-chip-${name}`}
-  title={`${config.label}: ${name}`}
->
-  <config.icon size={11} strokeWidth={2} />
-  <span>{name}</span>
-</button>
+<Tooltip label={`${config.label}: ${name}`}>
+  <button
+    type="button"
+    class={`reference-artifact-chip tone-${type} ${className}`.trim()}
+    onclick={handleClick}
+    data-testid={`artifact-chip-${name}`}
+  >
+    <config.icon size={11} strokeWidth={2} />
+    <span>{name}</span>
+  </button>
+</Tooltip>
 
 <style>
   .reference-artifact-chip {

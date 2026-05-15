@@ -4,6 +4,7 @@
   import { onDestroy } from "svelte";
   import { flip } from "svelte/animate";
   import type { WorkspaceTabInfo } from "../shared/workspace-contract";
+  import Tooltip from "./ui/Tooltip.svelte";
   import {
     formatWorkspaceTabAriaLabel,
     getVisibleWorkspaceTabCounts,
@@ -193,34 +194,38 @@
           <span class="workspace-tab-label">{tab.workspace.workspaceLabel}</span>
           <span class="workspace-tab-counts" aria-label="Workspace status counts">
             {#each getVisibleWorkspaceTabCounts(tab.counts) as count}
-              <span class={`workspace-tab-count kind-${count.kind}`.trim()} title={`${count.value} ${count.label}`}>
-                {count.value}
-              </span>
+              <Tooltip label={`${count.value} ${count.label}`}>
+                <span class={`workspace-tab-count kind-${count.kind}`.trim()}>
+                  {count.value}
+                </span>
+              </Tooltip>
             {/each}
           </span>
         </button>
-        <button
-          class="workspace-tab-close electrobun-webkit-app-region-no-drag"
-          type="button"
-          aria-label={`Close ${tab.workspace.workspaceLabel}`}
-          title={`Close ${tab.workspace.workspaceLabel}`}
-          onclick={() => onCloseWorkspace(tab.workspace.workspaceId)}
-        >
-          <XIcon size={12} strokeWidth={2} aria-hidden="true" />
-        </button>
+        <Tooltip class="electrobun-webkit-app-region-no-drag" label={`Close ${tab.workspace.workspaceLabel}`}>
+          <button
+            class="workspace-tab-close electrobun-webkit-app-region-no-drag"
+            type="button"
+            aria-label={`Close ${tab.workspace.workspaceLabel}`}
+            onclick={() => onCloseWorkspace(tab.workspace.workspaceId)}
+          >
+            <XIcon size={12} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </Tooltip>
       </div>
     {/each}
   </div>
-  <button
-    class="workspace-tab-add electrobun-webkit-app-region-no-drag"
-    type="button"
-    aria-label="Open workspace"
-    title="Open workspace"
-    disabled={openingWorkspace}
-    onclick={onOpenWorkspace}
-  >
-    <PlusIcon size={14} strokeWidth={2} aria-hidden="true" />
-  </button>
+  <Tooltip class="electrobun-webkit-app-region-no-drag" label="Open workspace">
+    <button
+      class="workspace-tab-add electrobun-webkit-app-region-no-drag"
+      type="button"
+      aria-label="Open workspace"
+      disabled={openingWorkspace}
+      onclick={onOpenWorkspace}
+    >
+      <PlusIcon size={14} strokeWidth={2} aria-hidden="true" />
+    </button>
+  </Tooltip>
 </div>
 
 <style>

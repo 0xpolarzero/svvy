@@ -511,7 +511,7 @@
 						/>
 						<Tooltip label={contextBudgetTooltip} disabled={!contextBudget} delayMs={250}>
 							<div class="compact-budget">
-								<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
+								<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" showTooltip={false} />
 							</div>
 						</Tooltip>
 					</div>

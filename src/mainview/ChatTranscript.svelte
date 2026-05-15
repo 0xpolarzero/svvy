@@ -597,13 +597,14 @@
 							<p class="message-text">
 								{#each userLineSegments(line) as segment, segmentIndex (`${message.timestamp}:line:${lineIndex}:segment:${segmentIndex}`)}
 									{#if segment.type === "mention"}
-										<a
-											class={`workspace-mention-link ${segment.missing ? "missing" : ""}`.trim()}
-											href={`workspace://${segment.path}`}
-											title={segment.missing ? `Missing workspace path: ${segment.path}` : `Workspace path: ${segment.path}`}
-											aria-disabled={segment.missing}
-											onclick={(event) => handleWorkspaceMentionClick(event, segment.path ?? "", segment.missing)}
-										>{segment.text}</a>
+										<Tooltip label={segment.missing ? `Missing workspace path: ${segment.path}` : `Workspace path: ${segment.path}`}>
+											<a
+												class={`workspace-mention-link ${segment.missing ? "missing" : ""}`.trim()}
+												href={`workspace://${segment.path}`}
+												aria-disabled={segment.missing}
+												onclick={(event) => handleWorkspaceMentionClick(event, segment.path ?? "", segment.missing)}
+											>{segment.text}</a>
+										</Tooltip>
 									{:else}
 										{segment.text}
 									{/if}

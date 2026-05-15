@@ -14,6 +14,7 @@
   import type { ChatRuntime } from "./chat-runtime";
   import Badge from "./ui/Badge.svelte";
   import Button from "./ui/Button.svelte";
+  import Tooltip from "./ui/Tooltip.svelte";
   import WorkflowGraph from "./WorkflowGraph.svelte";
 
   type Props = {
@@ -325,14 +326,15 @@
           </label>
           <div class="workflow-inspector-frame-strip" aria-label="Workflow frames">
             {#each inspector.frames.slice(0, 18) as frame (frame.frameNo)}
-              <button
-                type="button"
-                class:active={inspector.mode.kind === "historical" && inspector.mode.frameNo === frame.frameNo}
-                onclick={() => { mode = { kind: "historical", frameNo: frame.frameNo }; void loadInspector(); }}
-                title={frame.label}
-              >
-                {frame.frameNo}
-              </button>
+              <Tooltip label={frame.label}>
+                <button
+                  type="button"
+                  class:active={inspector.mode.kind === "historical" && inspector.mode.frameNo === frame.frameNo}
+                  onclick={() => { mode = { kind: "historical", frameNo: frame.frameNo }; void loadInspector(); }}
+                >
+                  {frame.frameNo}
+                </button>
+              </Tooltip>
             {/each}
           </div>
         </div>
