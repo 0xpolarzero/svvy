@@ -1281,9 +1281,10 @@
   .session-section-resize::before {
     content: "";
     position: absolute;
-    inset: 0.14rem 0.72rem;
+    inset: 0.15rem 0.94rem;
     border-radius: 999px;
-    background: color-mix(in oklab, var(--ui-border-soft) 74%, transparent);
+    background: color-mix(in oklab, var(--ui-border-soft) 56%, transparent);
+    opacity: 0.62;
     transition:
       background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
       opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
@@ -1292,7 +1293,8 @@
   .session-section-resize:hover::before,
   .session-section-resize:focus-visible::before,
   .session-section-resize.dragging::before {
-    background: color-mix(in oklab, var(--ui-accent) 68%, transparent);
+    background: color-mix(in oklab, var(--ui-accent) 62%, transparent);
+    opacity: 0.96;
   }
 
   .session-section-resize:focus-visible {
