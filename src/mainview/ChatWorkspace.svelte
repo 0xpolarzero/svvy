@@ -985,6 +985,10 @@
     await runSessionMutation(() => runtime.markSessionUnread(session.id));
   }
 
+  async function handleMarkSessionRead(session: WorkspaceSessionSummary) {
+    await runSessionMutation(() => runtime.markSessionRead(session.id));
+  }
+
   async function handleToggleArchivedGroup(collapsed: boolean) {
     await runSessionMutation(() => runtime.setArchivedGroupCollapsed(collapsed));
   }
@@ -2277,6 +2281,7 @@
             onArchiveSession={handleArchiveSession}
             onUnarchiveSession={handleUnarchiveSession}
             onMarkSessionUnread={handleMarkSessionUnread}
+            onMarkSessionRead={handleMarkSessionRead}
             onToggleArchivedGroup={handleToggleArchivedGroup}
             onOpenSearch={() => openPalette("search")}
             onOpenCommandPalette={() => openPalette("commands")}

@@ -917,6 +917,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return result;
       },
+      markSessionRead: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { sessionId } = input;
+        const result = await runtime.catalog.markSessionRead(sessionId);
+        recordBridgeEvent("session.marked-read", { sessionId });
+        runtime.appLog.info("session", "Workspace session marked read.", {
+          workspaceSessionId: sessionId,
+        });
+        return result;
+      },
       recordFocusedSession: async (input) => {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId, surfacePiSessionId } = input;

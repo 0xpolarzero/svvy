@@ -1141,6 +1141,10 @@ export interface ChatRPCSchema {
         params: WorkspaceScoped<{ sessionId: string }>;
         response: WorkspaceMutationResponse;
       };
+      markSessionRead: {
+        params: WorkspaceScoped<{ sessionId: string }>;
+        response: WorkspaceMutationResponse;
+      };
       recordFocusedSession: {
         params: WorkspaceScoped<{ sessionId: string | null; surfacePiSessionId?: string | null }>;
         response: WorkspaceMutationResponse;

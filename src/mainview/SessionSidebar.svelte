@@ -60,6 +60,7 @@
     onArchiveSession: (session: WorkspaceSessionSummary) => void;
     onUnarchiveSession: (session: WorkspaceSessionSummary) => void;
     onMarkSessionUnread: (session: WorkspaceSessionSummary) => void;
+    onMarkSessionRead: (session: WorkspaceSessionSummary) => void;
     onToggleArchivedGroup: (collapsed: boolean) => void;
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
@@ -91,6 +92,7 @@
     onArchiveSession,
     onUnarchiveSession,
     onMarkSessionUnread,
+    onMarkSessionRead,
     onToggleArchivedGroup,
     onOpenSearch,
     onOpenCommandPalette,
@@ -488,15 +490,18 @@
       style={`left: ${sessionContextMenu.x}px; top: ${sessionContextMenu.y}px;`}
       oncontextmenu={(event) => event.preventDefault()}
     >
-      {#if !menuSession.isUnread}
-        <button
-          type="button"
-          role="menuitem"
-          onclick={() => runSessionContextAction(() => onMarkSessionUnread(menuSession))}
-        >
-          Mark as Unread
-        </button>
-      {/if}
+      <button
+        type="button"
+        role="menuitem"
+        onclick={() =>
+          runSessionContextAction(() =>
+            menuSession.isUnread
+              ? onMarkSessionRead(menuSession)
+              : onMarkSessionUnread(menuSession),
+          )}
+      >
+        {menuSession.isUnread ? "Mark as Read" : "Mark as Unread"}
+      </button>
       <button
         type="button"
         role="menuitem"

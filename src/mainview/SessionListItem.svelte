@@ -323,8 +323,8 @@
       visibility 120ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
-  .session-item:not(.unread):hover .session-main-top-meta,
-  .session-item:not(.unread):focus-within .session-main-top-meta {
+  .session-item:hover .session-main-top-meta,
+  .session-item:focus-within .session-main-top-meta {
     opacity: 0;
     visibility: hidden;
   }

@@ -636,6 +636,13 @@ export class WorkspaceSessionCatalog {
     return { ok: true };
   }
 
+  async markSessionRead(sessionId: string): Promise<WorkspaceMutationResponse> {
+    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    this.structuredSessionStore.markSessionRead({ sessionId });
+    await this.emitWorkspaceSync("workspace.updated");
+    return { ok: true };
+  }
+
   async recordFocusedSession(input: {
     sessionId: string | null;
     surfacePiSessionId?: string | null;

@@ -173,6 +173,7 @@ export interface ChatRuntimeRpcClient {
     archiveSession: typeof rpc.request.archiveSession;
     unarchiveSession: typeof rpc.request.unarchiveSession;
     markSessionUnread: typeof rpc.request.markSessionUnread;
+    markSessionRead: typeof rpc.request.markSessionRead;
     recordFocusedSession: typeof rpc.request.recordFocusedSession;
     setArchivedGroupCollapsed: typeof rpc.request.setArchivedGroupCollapsed;
     sendPrompt: typeof rpc.request.sendPrompt;
@@ -294,6 +295,7 @@ export interface ChatRuntime {
   archiveSession: (sessionId: string) => Promise<void>;
   unarchiveSession: (sessionId: string) => Promise<void>;
   markSessionUnread: (sessionId: string) => Promise<void>;
+  markSessionRead: (sessionId: string) => Promise<void>;
   setArchivedGroupCollapsed: (collapsed: boolean) => Promise<void>;
   setPaneInspectorSelection: (
     panelId: string,
@@ -1699,6 +1701,12 @@ export async function createChatRuntime(
     },
     markSessionUnread: async (sessionId) => {
       await rpcClient.request.markSessionUnread(scoped({ sessionId }));
+      lastRecordedFocusedSessionId = undefined;
+      lastRecordedFocusedSurfacePiSessionId = undefined;
+      await refreshSessions();
+    },
+    markSessionRead: async (sessionId) => {
+      await rpcClient.request.markSessionRead(scoped({ sessionId }));
       lastRecordedFocusedSessionId = undefined;
       lastRecordedFocusedSurfacePiSessionId = undefined;
       await refreshSessions();

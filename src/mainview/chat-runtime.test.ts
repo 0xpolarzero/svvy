@@ -1179,6 +1179,15 @@ function createFakeRpc(input: {
           });
           return { ok: true };
         },
+        markSessionRead: async ({ sessionId }) => {
+          updateSummary(sessionId, (summary) => {
+            summary.isUnread = false;
+            summary.unreadAt = null;
+            summary.unreadReason = null;
+            summary.lastReadAt = "2026-04-10T10:11:00.000Z";
+          });
+          return { ok: true };
+        },
         recordFocusedSession: async ({ sessionId, surfacePiSessionId }) => {
           focusedSurfacePiSessionId = sessionId ? (surfacePiSessionId ?? null) : null;
           if (sessionId) {
@@ -2181,6 +2190,10 @@ describe("createChatRuntime", () => {
     expect(runtime.sessions.find((session) => session.id === "session-2")?.unreadReason).toBe(
       "manual",
     );
+
+    await runtime.markSessionRead("session-2");
+    expect(runtime.sessions.find((session) => session.id === "session-2")?.isUnread).toBe(false);
+    expect(runtime.sessions.find((session) => session.id === "session-2")?.unreadReason).toBeNull();
 
     runtime.dispose();
   });
