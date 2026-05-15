@@ -8,6 +8,17 @@ import {
 
 const workspace = { workspaceLabel: "svvy" };
 
+type WorkspaceTabFixture = {
+  workspace: {
+    workspaceId: string;
+    cwd: string;
+    workspaceLabel: string;
+  };
+};
+
+const ids = (items: readonly WorkspaceTabFixture[]): string[] =>
+  items.map((tab) => tab.workspace.workspaceId);
+
 describe("workspace tab counts", () => {
   it("hides zero counts", () => {
     const counts: WorkspaceTabCounts = {
@@ -42,13 +53,11 @@ describe("workspace tab counts", () => {
 });
 
 describe("workspace tab reorder", () => {
-  const tabs = [
+  const tabs: WorkspaceTabFixture[] = [
     { workspace: { workspaceId: "workspace-a", cwd: "/same", workspaceLabel: "same" } },
     { workspace: { workspaceId: "workspace-b", cwd: "/same", workspaceLabel: "same" } },
     { workspace: { workspaceId: "workspace-c", cwd: "/other", workspaceLabel: "other" } },
   ];
-
-  const ids = (items: typeof tabs): string[] => items.map((tab) => tab.workspace.workspaceId);
 
   it("moves a later tab before an earlier tab", () => {
     expect(ids(reorderWorkspaceTabs(tabs, "workspace-c", "workspace-a"))).toEqual([

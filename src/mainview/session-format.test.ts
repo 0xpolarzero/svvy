@@ -136,9 +136,7 @@ describe("shouldShowSessionUpdatedAt", () => {
   it("hides the sidebar timestamp until a session has transcript activity", () => {
     expect(shouldShowSessionUpdatedAt(session({ id: "empty", title: "New Session" }))).toBe(false);
     expect(
-      shouldShowSessionUpdatedAt(
-        session({ id: "active", title: "Parser", messageCount: 1 }),
-      ),
+      shouldShowSessionUpdatedAt(session({ id: "active", title: "Parser", messageCount: 1 })),
     ).toBe(true);
   });
 });
@@ -196,7 +194,9 @@ describe("getSessionSidebarSubtitle", () => {
     });
 
     expect(
-      getSessionSidebarSubtitle(session({ id: "session-running", title: "Running", status: "running" })),
+      getSessionSidebarSubtitle(
+        session({ id: "session-running", title: "Running", status: "running" }),
+      ),
     ).toBeNull();
   });
 });

@@ -314,7 +314,7 @@
     const bySeq = new Map<number, AppLogEntry>();
     for (const entry of current) bySeq.set(entry.seq, entry);
     for (const entry of incoming) bySeq.set(entry.seq, entry);
-    return [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+    return [...bySeq.values()].toSorted((a, b) => a.seq - b.seq);
   }
 
   async function loadOlderLogs() {
@@ -363,7 +363,7 @@
           return;
         } catch (clipboardError) {
           throw new Error("Native and browser clipboard writes failed.", {
-            cause: { rpcError, clipboardError },
+            cause: clipboardError,
           });
         }
       }

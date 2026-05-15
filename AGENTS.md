@@ -2,6 +2,8 @@
 
 - Read `docs/prd.md` before doing any work.
 - Read `docs/features.ts` before doing any work that affects product scope, feature behavior, or test planning.
+- Use `bun run check` as the normal local preflight before handing off changes; it runs typecheck, unit tests, lint check, format check, and production build.
+- `bun run test:unit` runs the Bun unit suite. `bun run test` intentionally runs both `test:unit` and `test:e2e`.
 - When running e2e tests, use the OrbStack machine lane via `bun run test:e2e`; keep e2e runs off the active desktop session and do not reintroduce a local visible-default or Docker-based path.
 - Do not hack around failing e2e tests with retries, broad waits, selector churn, best-effort fallbacks, or test-only behavior. When an e2e path fails and the app can be driven directly, reproduce the same conditions in a running app with `electrobun-browser-tools`, use CuaDriver as a companion for real-app inspection or interaction when useful, inspect the page/state/events methodically, identify the product or contract issue, and make the targeted product fix. Change e2e tests only when that inspection proves the test assertion no longer matches the intended product behavior.
 - This repo exists to turn pi coding agent into a Slate-like orchestrated coding agent and pi-owned interactive shell.

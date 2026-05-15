@@ -738,7 +738,7 @@ function createFakeRpc(input: {
     appLogEntries = [
       ...appLogEntries,
       ...payload.entries.filter((entry) => !known.has(entry.id)),
-    ].sort((left, right) => left.seq - right.seq);
+    ].toSorted((left, right) => left.seq - right.seq);
     for (const listener of appLogUpdateListeners) {
       listener(structuredClone(payload));
     }

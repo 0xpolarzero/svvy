@@ -11,6 +11,7 @@
     type SerializedDockview,
     type TabPartInitParameters,
   } from "dockview-core";
+  // oxlint-disable-next-line import/no-unassigned-import
   import "dockview-core/dist/styles/dockview.css";
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
   import type { ChatRuntime } from "./chat-runtime";
@@ -311,15 +312,15 @@
     return '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.75" y="2.75" width="10.5" height="10.5" rx="1.6" /><path d="M8 2.75v10.5" /><path d="M10.75 8.1h-2.5M9.5 6.85l1.25 1.25L9.5 9.35" /></svg>';
   }
 
+  function removeAllDockviewTooltips(): void {
+    for (const existingTooltip of document.querySelectorAll(".imperative-action-tooltip")) {
+      existingTooltip.remove();
+    }
+  }
+
   function attachDelayedTooltip(button: HTMLButtonElement, label: string): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let tooltip: HTMLDivElement | null = null;
-
-    const removeAllDockviewTooltips = () => {
-      for (const existingTooltip of document.querySelectorAll(".imperative-action-tooltip")) {
-        existingTooltip.remove();
-      }
-    };
 
     const handlePointerOverOutside = (event: PointerEvent) => {
       const target = event.target;
@@ -519,15 +520,14 @@
   }
 
   $effect(() => {
-    panels;
-    focusedPanelId;
     syncDockviewPanels();
     refreshSurfaceTabs();
   });
 
   $effect(() => {
-    layoutEpoch;
-    scheduleDockviewLayout();
+    if (layoutEpoch >= 0) {
+      scheduleDockviewLayout();
+    }
   });
 
   onMount(() => {

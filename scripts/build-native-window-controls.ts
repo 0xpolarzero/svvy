@@ -16,15 +16,7 @@ mkdirSync(dirname(outputPath), { recursive: true });
 
 const result = spawnSync(
   "clang",
-  [
-    "-dynamiclib",
-    "-fobjc-arc",
-    "-framework",
-    "AppKit",
-    "-o",
-    outputPath,
-    sourcePath,
-  ],
+  ["-dynamiclib", "-fobjc-arc", "-framework", "AppKit", "-o", outputPath, sourcePath],
   {
     cwd: projectRoot,
     stdio: "inherit",

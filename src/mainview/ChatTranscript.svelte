@@ -226,7 +226,7 @@
 					return;
 				} catch (clipboardError) {
 					throw new Error("Native and browser clipboard writes failed.", {
-						cause: { rpcError, clipboardError },
+						cause: clipboardError,
 					});
 				}
 			}

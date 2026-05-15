@@ -137,8 +137,6 @@ describe("composer mentions stay agent-neutral", () => {
       },
     ]);
 
-    expect(text).toBe(
-      "Please inspect @docs/progress.md @src/mainview/ChatComposer.svelte",
-    );
+    expect(text).toBe("Please inspect @docs/progress.md @src/mainview/ChatComposer.svelte");
   });
 });

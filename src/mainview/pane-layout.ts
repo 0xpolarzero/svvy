@@ -222,19 +222,19 @@ export function normalizePaneLayout(
       binding,
       localState: {
         ...createDefaultPaneLocalState(),
-        ...(next.localState ?? {}),
+        ...next.localState,
         inspectorSelection: next.localState?.inspectorSelection ?? null,
         scroll: next.localState?.scroll ?? null,
       },
       chrome: {
         ...createPanelChrome(binding),
-        ...(next.chrome ?? {}),
+        ...next.chrome,
       },
       placement: normalizePlacement(next.placement),
       restore: {
         unavailableReason: null,
         lastKnownLocationLabel: null,
-        ...(next.restore ?? {}),
+        ...next.restore,
       },
     };
   });

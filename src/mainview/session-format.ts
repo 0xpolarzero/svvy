@@ -79,7 +79,9 @@ export function formatCompactRelativeSessionTime(value: string | number | Date):
   return formatCompactRelativeUnit(diffDays, "day");
 }
 
-export function shouldShowSessionUpdatedAt(summary: Pick<WorkspaceSessionSummary, "messageCount">): boolean {
+export function shouldShowSessionUpdatedAt(
+  summary: Pick<WorkspaceSessionSummary, "messageCount">,
+): boolean {
   return summary.messageCount > 0;
 }
 
@@ -114,7 +116,9 @@ export function formatSessionStatusLabel(summary: WorkspaceSessionSummary): stri
   }
 }
 
-export function getSessionSidebarSubtitle(summary: WorkspaceSessionSummary): SessionSidebarSubtitle | null {
+export function getSessionSidebarSubtitle(
+  summary: WorkspaceSessionSummary,
+): SessionSidebarSubtitle | null {
   if (summary.status === "waiting" && summary.wait?.reason.trim()) {
     return {
       badge: "waiting",

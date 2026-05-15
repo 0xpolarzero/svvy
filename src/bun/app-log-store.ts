@@ -283,7 +283,7 @@ class SqliteAppLogStore implements AppLogStore {
     const rows = this.db
       .query(`SELECT * FROM app_log ${where} ORDER BY seq DESC LIMIT ?`)
       .all(...params, limit) as AppLogRow[];
-    return rows.reverse().map(rowToEntry);
+    return rows.toReversed().map(rowToEntry);
   }
 
   private readSeenSeq(): number {
@@ -304,7 +304,7 @@ class SqliteAppLogStore implements AppLogStore {
     const rows = this.db
       .query(`SELECT * FROM app_log ORDER BY seq DESC LIMIT ?`)
       .all(this.memoryLimit) as AppLogRow[];
-    return rows.reverse().map(rowToEntry);
+    return rows.toReversed().map(rowToEntry);
   }
 
   private enforceRetention(): void {

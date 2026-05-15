@@ -1739,13 +1739,13 @@ export async function createChatRuntime(
       await bindPaneToSnapshot(panelId, response.snapshot);
       await refreshSessions();
     },
-    forkSession: async (sessionId, title, openTarget, options) => {
+    forkSession: async (sessionId, title, openTarget, forkOptions) => {
       const nextPaneId = resolveOpenTarget(openTarget);
       const snapshot = await rpcClient.request.forkSession(
         scoped({
           sessionId,
           title,
-          messageTimestamp: options?.messageTimestamp,
+          messageTimestamp: forkOptions?.messageTimestamp,
         }),
       );
       await bindPaneToSnapshot(nextPaneId, snapshot);

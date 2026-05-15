@@ -55,9 +55,18 @@ describe("WorkspaceRuntimeRegistry", () => {
     sessionManager.appendMessage({
       role: "assistant",
       timestamp: Date.now(),
+      api: "openai-responses",
       content: [{ type: "text", text: "Remembered." }],
       provider: "openai",
       model: "gpt-4o",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
       stopReason: "stop",
     });
     const registry = createRegistry(cwd, agentDir);
@@ -73,9 +82,7 @@ describe("WorkspaceRuntimeRegistry", () => {
     expect(firstListed.sessions.map((session) => session.id)).toContain(
       sessionManager.getSessionId(),
     );
-    expect(listed.sessions.map((session) => session.id)).toContain(
-      sessionManager.getSessionId(),
-    );
+    expect(listed.sessions.map((session) => session.id)).toContain(sessionManager.getSessionId());
   });
 });
 

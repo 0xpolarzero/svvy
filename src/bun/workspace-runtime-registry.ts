@@ -156,13 +156,7 @@ export class WorkspaceRuntimeRegistry {
     const appLog = createAppLogger({
       store: appLogStore,
       forwardBridgeLog: (level, message, source, details, error) => {
-        this.options.forwardBridgeLog?.(
-          level,
-          message,
-          source,
-          { ...(details ?? {}), workspaceId },
-          error,
-        );
+        this.options.forwardBridgeLog?.(level, message, source, { ...details, workspaceId }, error);
       },
     });
     const unsubscribeAppLog = appLog.subscribe((entries, summary) => {

@@ -1,9 +1,4 @@
-export type ShortcutScope =
-  | "global"
-  | "workspace-shell"
-  | "focused-pane"
-  | "dialog"
-  | "input";
+export type ShortcutScope = "global" | "workspace-shell" | "focused-pane" | "dialog" | "input";
 
 export type ShortcutInputPolicy = "suppress-while-typing" | "allow-while-typing";
 
@@ -158,5 +153,9 @@ export function shouldShortcutIgnoreInputs(id: ShortcutActionId): boolean {
 }
 
 export function isAppMenuAction(value: unknown): value is AppMenuAction {
-  return typeof value === "string" && value in SHORTCUTS && !!SHORTCUTS[value as ShortcutActionId].accelerator;
+  return (
+    typeof value === "string" &&
+    value in SHORTCUTS &&
+    !!SHORTCUTS[value as ShortcutActionId].accelerator
+  );
 }

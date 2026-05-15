@@ -62,7 +62,13 @@ export function createAppLogger(options: CreateAppLoggerOptions): AppLogger {
         workflowTaskAttemptId: details?.workflowTaskAttemptId,
         commandId: details?.commandId,
       });
-      options.forwardBridgeLog?.(level, entry.message, source, entryBridgeDetails(entry), entry.error);
+      options.forwardBridgeLog?.(
+        level,
+        entry.message,
+        source,
+        entryBridgeDetails(entry),
+        entry.error,
+      );
       return entry;
     } catch (logError) {
       console.error("Failed to append app log:", logError);
@@ -85,7 +91,7 @@ export function createAppLogger(options: CreateAppLoggerOptions): AppLogger {
 
 function entryBridgeDetails(entry: AppLogEntry): Record<string, unknown> | undefined {
   const details = {
-    ...(entry.details ?? {}),
+    ...entry.details,
     ...(entry.workspaceSessionId ? { workspaceSessionId: entry.workspaceSessionId } : {}),
     ...(entry.surfacePiSessionId ? { surfacePiSessionId: entry.surfacePiSessionId } : {}),
     ...(entry.threadId ? { threadId: entry.threadId } : {}),

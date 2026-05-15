@@ -103,9 +103,9 @@ describe("structured session state write API", () => {
     expect(
       snapshot.events.filter((event) => event.kind === "session.navigation.updated"),
     ).toHaveLength(3);
-    expect(
-      snapshot.events.filter((event) => event.kind === "session.unread.updated"),
-    ).toHaveLength(2);
+    expect(snapshot.events.filter((event) => event.kind === "session.unread.updated")).toHaveLength(
+      2,
+    );
 
     expect(store.setArchivedGroupCollapsed({ collapsed: false })).toEqual({
       archivedGroupCollapsed: false,

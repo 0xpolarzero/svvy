@@ -19,15 +19,24 @@ const nodeModulesDest = join(appCodeDir, "node_modules");
 const projectRoot = join(import.meta.dir, "..");
 const nodeModulesSource = join(projectRoot, "node_modules");
 const src = (rel: string) => join(projectRoot, "node_modules", rel);
-const nativeWindowControlsLibrary = join(projectRoot, "build", "native", "libSvvyWindowControls.dylib");
+const nativeWindowControlsLibrary = join(
+  projectRoot,
+  "build",
+  "native",
+  "libSvvyWindowControls.dylib",
+);
 
 function ensureNativeWindowControlsLibrary(): void {
   if (process.platform !== "darwin") return;
 
-  const result = spawnSync(process.execPath, [join(projectRoot, "scripts", "build-native-window-controls.ts")], {
-    cwd: projectRoot,
-    stdio: "inherit",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [join(projectRoot, "scripts", "build-native-window-controls.ts")],
+    {
+      cwd: projectRoot,
+      stdio: "inherit",
+    },
+  );
 
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
@@ -39,7 +48,9 @@ function copyNativeWindowControlsLibrary(): void {
 
   ensureNativeWindowControlsLibrary();
   if (!existsSync(nativeWindowControlsLibrary)) {
-    console.error(`postbuild: missing native window-controls library at ${nativeWindowControlsLibrary}`);
+    console.error(
+      `postbuild: missing native window-controls library at ${nativeWindowControlsLibrary}`,
+    );
     process.exit(1);
   }
 

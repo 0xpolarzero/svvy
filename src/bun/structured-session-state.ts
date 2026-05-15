@@ -1009,6 +1009,19 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   }
 
   private restoreInterruptedQueuedMessages(): void {
+    const interruptedCount = (
+      this.db
+        .query(
+          `SELECT COUNT(*) AS count
+           FROM surface_message_queue
+           WHERE status IN ('steering', 'dispatching')`,
+        )
+        .get() as { count: number }
+    ).count;
+    if (interruptedCount === 0) {
+      return;
+    }
+
     const timestamp = this.now();
     this.db
       .query(

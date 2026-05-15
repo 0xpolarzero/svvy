@@ -23,7 +23,9 @@ describe("app logger", () => {
       },
     );
 
-    expect(JSON.stringify(forwarded[0])).not.toContain("abcdefghijklmnopqrstuvwxyzABCDEF1234567890");
+    expect(JSON.stringify(forwarded[0])).not.toContain(
+      "abcdefghijklmnopqrstuvwxyzABCDEF1234567890",
+    );
     expect(forwarded[0]).toMatchObject({
       message: "Authorization=[REDACTED] [REDACTED]",
       details: {

@@ -1794,7 +1794,7 @@ export class WorkspaceSessionCatalog {
     const steeringRows = this.structuredSessionStore
       .listQueuedSurfaceMessages({ surfacePiSessionId: target.surfacePiSessionId })
       .filter((message) => message.status === "steering");
-    for (const text of texts.reverse()) {
+    for (const text of texts.toReversed()) {
       const existingSteeringIndex = steeringRows.findIndex(
         (message) => this.getQueuedMessageText(message.messageJson) === text,
       );
@@ -1818,7 +1818,7 @@ export class WorkspaceSessionCatalog {
         position: "front",
       });
     }
-    for (const existingSteering of steeringRows.reverse()) {
+    for (const existingSteering of steeringRows.toReversed()) {
       this.structuredSessionStore.markSurfaceMessageQueued({
         id: existingSteering.id,
         position: "front",
@@ -2047,7 +2047,9 @@ export class WorkspaceSessionCatalog {
     }
     setTimeout(() => {
       void this.runThreadTitleGenerationJob(thread.id).catch((error) => {
-        console.error("Failed to generate handler thread title:", error);
+        if (!this.closed) {
+          console.error("Failed to generate handler thread title:", error);
+        }
       });
     }, 0);
     return this.structuredSessionStore.getThreadDetail(thread.id).thread;

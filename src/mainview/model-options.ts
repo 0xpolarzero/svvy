@@ -75,7 +75,9 @@ export async function listModelComboboxOptions(
       if (leftIsCurrent && !rightIsCurrent) return -1;
       if (!leftIsCurrent && rightIsCurrent) return 1;
       const providerComparison = left.provider.localeCompare(right.provider);
-      return providerComparison === 0 ? left.model.name.localeCompare(right.model.name) : providerComparison;
+      return providerComparison === 0
+        ? left.model.name.localeCompare(right.model.name)
+        : providerComparison;
     })
     .map((entry) => ({
       value: getModelComboboxValue(entry.model),

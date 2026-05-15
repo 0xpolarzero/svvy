@@ -32,7 +32,9 @@ function loadNativeWindowControls(): WindowControlsLibrary | null {
 
   const libraryPath = resolveNativeWindowControlsPath();
   if (!libraryPath) {
-    console.warn("Native window-controls library was not found; using default macOS traffic-light placement.");
+    console.warn(
+      "Native window-controls library was not found; using default macOS traffic-light placement.",
+    );
     nativeWindowControls = null;
     return nativeWindowControls;
   }
@@ -55,7 +57,11 @@ export function positionNativeTrafficLights(
   }
 
   try {
-    loadNativeWindowControls()?.symbols.svvyPositionTrafficLights(windowPointer, options.leading, options.top);
+    loadNativeWindowControls()?.symbols.svvyPositionTrafficLights(
+      windowPointer,
+      options.leading,
+      options.top,
+    );
   } catch (error) {
     console.warn("Unable to position native macOS traffic lights:", error);
   }

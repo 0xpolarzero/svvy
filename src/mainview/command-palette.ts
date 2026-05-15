@@ -546,7 +546,10 @@ export function getCommandActionPlacementHints(
     case "start-orchestrator-turn":
       return [
         { shortcut: getShortcutReadable("commandPalette.submit"), label: "New pane" },
-        { shortcut: getShortcutReadable("commandPalette.submitFocusedPane"), label: "Focused pane" },
+        {
+          shortcut: getShortcutReadable("commandPalette.submitFocusedPane"),
+          label: "Focused pane",
+        },
       ];
     default:
       return [];

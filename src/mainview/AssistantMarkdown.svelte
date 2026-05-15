@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from "svelte";
 	import { katex } from "@mdit/plugin-katex";
+	// oxlint-disable-next-line import/no-unassigned-import
 	import "katex/dist/katex.min.css";
 	import MarkdownIt from "markdown-it";
 	import type Token from "markdown-it/lib/token.mjs";
@@ -104,7 +105,7 @@
 					return;
 				} catch (clipboardError) {
 					throw new Error("Native and browser clipboard writes failed.", {
-						cause: { rpcError, clipboardError },
+						cause: clipboardError,
 					});
 				}
 			}
