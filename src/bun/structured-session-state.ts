@@ -3,6 +3,15 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
 
+const DEFAULT_SIDEBAR_SECTION_SIZES = {
+  pinned: 150,
+  active: 260,
+  archived: 190,
+} as const;
+
+const MIN_SIDEBAR_SECTION_SIZE_PX = 64;
+const MAX_SIDEBAR_SECTION_SIZE_PX = 1000;
+
 export type StructuredSessionStatus = "idle" | "running" | "waiting" | "error";
 export type StructuredTurnStatus = "running" | "waiting" | "completed" | "failed";
 export type StructuredTurnDecision =
@@ -408,7 +417,12 @@ export interface StructuredSessionSnapshot {
 }
 
 export interface StructuredWorkspaceSidebarState {
+  pinnedGroupCollapsed: boolean;
+  pinnedGroupSizePx: number;
+  activeGroupCollapsed: boolean;
+  activeGroupSizePx: number;
   archivedGroupCollapsed: boolean;
+  archivedGroupSizePx: number;
   updatedAt: string;
 }
 
@@ -491,6 +505,11 @@ export interface StructuredSessionStateStore {
   markSessionRead(input: { sessionId: string }): void;
   getWorkspaceSidebarState(): StructuredWorkspaceSidebarState;
   setArchivedGroupCollapsed(input: { collapsed: boolean }): StructuredWorkspaceSidebarState;
+  setSessionNavigationSectionState(input: {
+    section: "pinned" | "active" | "archived";
+    collapsed?: boolean;
+    sizePx?: number;
+  }): StructuredWorkspaceSidebarState;
   recordLifecycleEvent(input: {
     sessionId: string;
     kind: string;
@@ -715,7 +734,12 @@ type SessionRow = {
 
 type WorkspaceSidebarStateRow = {
   id: number;
+  pinned_group_collapsed: number;
+  pinned_group_size_px: number;
+  active_group_collapsed: number;
+  active_group_size_px: number;
   archived_group_collapsed: number;
+  archived_group_size_px: number;
   updated_at: string;
 };
 
@@ -1863,7 +1887,12 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     const row = this.getWorkspaceSidebarStateRow();
     if (!row) {
       return {
+        pinnedGroupCollapsed: false,
+        pinnedGroupSizePx: DEFAULT_SIDEBAR_SECTION_SIZES.pinned,
+        activeGroupCollapsed: false,
+        activeGroupSizePx: DEFAULT_SIDEBAR_SECTION_SIZES.active,
         archivedGroupCollapsed: true,
+        archivedGroupSizePx: DEFAULT_SIDEBAR_SECTION_SIZES.archived,
         updatedAt: new Date(0).toISOString(),
       };
     }
@@ -1872,19 +1901,67 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   }
 
   setArchivedGroupCollapsed(input: { collapsed: boolean }): StructuredWorkspaceSidebarState {
+    return this.setSessionNavigationSectionState({
+      section: "archived",
+      collapsed: input.collapsed,
+    });
+  }
+
+  setSessionNavigationSectionState(input: {
+    section: "pinned" | "active" | "archived";
+    collapsed?: boolean;
+    sizePx?: number;
+  }): StructuredWorkspaceSidebarState {
     const timestamp = this.now();
+    const current = this.getWorkspaceSidebarState();
+    const next = {
+      pinnedGroupCollapsed: current.pinnedGroupCollapsed,
+      pinnedGroupSizePx: current.pinnedGroupSizePx,
+      activeGroupCollapsed: current.activeGroupCollapsed,
+      activeGroupSizePx: current.activeGroupSizePx,
+      archivedGroupCollapsed: current.archivedGroupCollapsed,
+      archivedGroupSizePx: current.archivedGroupSizePx,
+    };
+    const collapsed =
+      typeof input.collapsed === "boolean"
+        ? input.collapsed
+        : getSidebarSectionCollapsed(next, input.section);
+    const sizePx =
+      typeof input.sizePx === "number"
+        ? clampSidebarSectionSize(input.sizePx)
+        : getSidebarSectionSize(next, input.section);
+    setSidebarSectionState(next, input.section, { collapsed, sizePx });
+
     this.db
       .query(
         `INSERT INTO workspace_sidebar_state (
            id,
+           pinned_group_collapsed,
+           pinned_group_size_px,
+           active_group_collapsed,
+           active_group_size_px,
            archived_group_collapsed,
+           archived_group_size_px,
            updated_at
-         ) VALUES (1, ?, ?)
+         ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
+           pinned_group_collapsed = excluded.pinned_group_collapsed,
+           pinned_group_size_px = excluded.pinned_group_size_px,
+           active_group_collapsed = excluded.active_group_collapsed,
+           active_group_size_px = excluded.active_group_size_px,
            archived_group_collapsed = excluded.archived_group_collapsed,
+           archived_group_size_px = excluded.archived_group_size_px,
            updated_at = excluded.updated_at`,
       )
-      .run(input.collapsed ? 1 : 0, timestamp);
+      .run(
+        next.pinnedGroupCollapsed ? 1 : 0,
+        next.pinnedGroupSizePx,
+        next.activeGroupCollapsed ? 1 : 0,
+        next.activeGroupSizePx,
+        next.archivedGroupCollapsed ? 1 : 0,
+        next.archivedGroupSizePx,
+        timestamp,
+      );
 
     return this.getWorkspaceSidebarState();
   }
@@ -3719,7 +3796,12 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
 
   private mapWorkspaceSidebarState(row: WorkspaceSidebarStateRow): StructuredWorkspaceSidebarState {
     return {
+      pinnedGroupCollapsed: Boolean(row.pinned_group_collapsed),
+      pinnedGroupSizePx: clampSidebarSectionSize(row.pinned_group_size_px),
+      activeGroupCollapsed: Boolean(row.active_group_collapsed),
+      activeGroupSizePx: clampSidebarSectionSize(row.active_group_size_px),
       archivedGroupCollapsed: Boolean(row.archived_group_collapsed),
+      archivedGroupSizePx: clampSidebarSectionSize(row.archived_group_size_px),
       updatedAt: row.updated_at,
     };
   }
@@ -4047,7 +4129,12 @@ function initializeSchema(db: Database): void {
 
     CREATE TABLE IF NOT EXISTS workspace_sidebar_state (
       id INTEGER PRIMARY KEY CHECK (id = 1),
-      archived_group_collapsed INTEGER NOT NULL,
+      pinned_group_collapsed INTEGER NOT NULL DEFAULT 0,
+      pinned_group_size_px INTEGER NOT NULL DEFAULT 150,
+      active_group_collapsed INTEGER NOT NULL DEFAULT 0,
+      active_group_size_px INTEGER NOT NULL DEFAULT 260,
+      archived_group_collapsed INTEGER NOT NULL DEFAULT 1,
+      archived_group_size_px INTEGER NOT NULL DEFAULT 190,
       updated_at TEXT NOT NULL
     );
 
@@ -4292,6 +4379,36 @@ function initializeSchema(db: Database): void {
   ensureColumn(db, "session", "title_generation_error", "TEXT");
   ensureColumn(db, "session", "title_auto_frozen", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "session", "title_manual_override", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(
+    db,
+    "workspace_sidebar_state",
+    "pinned_group_collapsed",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  ensureColumn(
+    db,
+    "workspace_sidebar_state",
+    "pinned_group_size_px",
+    "INTEGER NOT NULL DEFAULT 150",
+  );
+  ensureColumn(
+    db,
+    "workspace_sidebar_state",
+    "active_group_collapsed",
+    "INTEGER NOT NULL DEFAULT 0",
+  );
+  ensureColumn(
+    db,
+    "workspace_sidebar_state",
+    "active_group_size_px",
+    "INTEGER NOT NULL DEFAULT 260",
+  );
+  ensureColumn(
+    db,
+    "workspace_sidebar_state",
+    "archived_group_size_px",
+    "INTEGER NOT NULL DEFAULT 190",
+  );
   ensureColumn(db, "thread", "session_agent_json", "TEXT");
   ensureColumn(db, "surface_message_queue", "position", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "surface_message_queue", "cancelled_at", "TEXT");
@@ -4312,6 +4429,53 @@ function ensureColumn(
     return;
   }
   db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+function clampSidebarSectionSize(sizePx: number): number {
+  if (!Number.isFinite(sizePx)) return MIN_SIDEBAR_SECTION_SIZE_PX;
+  return Math.max(
+    MIN_SIDEBAR_SECTION_SIZE_PX,
+    Math.min(Math.round(sizePx), MAX_SIDEBAR_SECTION_SIZE_PX),
+  );
+}
+
+type SidebarSectionId = "pinned" | "active" | "archived";
+
+function getSidebarSectionCollapsed(
+  state: Omit<StructuredWorkspaceSidebarState, "updatedAt">,
+  section: SidebarSectionId,
+): boolean {
+  if (section === "pinned") return state.pinnedGroupCollapsed;
+  if (section === "active") return state.activeGroupCollapsed;
+  return state.archivedGroupCollapsed;
+}
+
+function getSidebarSectionSize(
+  state: Omit<StructuredWorkspaceSidebarState, "updatedAt">,
+  section: SidebarSectionId,
+): number {
+  if (section === "pinned") return state.pinnedGroupSizePx;
+  if (section === "active") return state.activeGroupSizePx;
+  return state.archivedGroupSizePx;
+}
+
+function setSidebarSectionState(
+  state: Omit<StructuredWorkspaceSidebarState, "updatedAt">,
+  section: SidebarSectionId,
+  next: { collapsed: boolean; sizePx: number },
+): void {
+  if (section === "pinned") {
+    state.pinnedGroupCollapsed = next.collapsed;
+    state.pinnedGroupSizePx = next.sizePx;
+    return;
+  }
+  if (section === "active") {
+    state.activeGroupCollapsed = next.collapsed;
+    state.activeGroupSizePx = next.sizePx;
+    return;
+  }
+  state.archivedGroupCollapsed = next.collapsed;
+  state.archivedGroupSizePx = next.sizePx;
 }
 
 function createId(prefix: string): string {

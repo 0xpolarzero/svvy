@@ -99,7 +99,12 @@ describe("structured session state SQLite persistence", () => {
     expect(snapshot.session.lastReadAt).toBeNull();
     expect(snapshot.pi.title).toBe("Navigation session");
     expect(second.store.getWorkspaceSidebarState()).toEqual({
+      pinnedGroupCollapsed: false,
+      pinnedGroupSizePx: 150,
+      activeGroupCollapsed: false,
+      activeGroupSizePx: 260,
       archivedGroupCollapsed: false,
+      archivedGroupSizePx: 190,
       updatedAt: "2026-04-18T12:00:03.000Z",
     });
   });

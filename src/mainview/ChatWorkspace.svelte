@@ -155,6 +155,11 @@
   let sessionNavigation = $state<WorkspaceSessionNavigationReadModel>({
     pinnedSessions: [],
     activeSessions: [],
+    sections: {
+      pinned: { collapsed: false, sizePx: 150 },
+      active: { collapsed: false, sizePx: 260 },
+      archived: { collapsed: true, sizePx: 190 },
+    },
     archived: {
       collapsed: true,
       sessions: [],
@@ -995,6 +1000,25 @@
 
   async function handleToggleArchivedGroup(collapsed: boolean) {
     await runSessionMutation(() => runtime.setArchivedGroupCollapsed(collapsed));
+  }
+
+  async function handleUpdateSessionNavigationSectionState(
+    section: "pinned" | "active" | "archived",
+    state: { collapsed?: boolean; sizePx?: number },
+  ) {
+    if (typeof state.sizePx === "number" && typeof state.collapsed !== "boolean") {
+      sidebarError = undefined;
+      try {
+        await runtime.setSessionNavigationSectionState(section, state);
+        syncRuntimeState();
+      } catch (error) {
+        sidebarError = error instanceof Error ? error.message : "Session update failed.";
+        throw error;
+      }
+      return;
+    }
+
+    await runSessionMutation(() => runtime.setSessionNavigationSectionState(section, state));
   }
 
   async function persistPromptHistoryEntry(input: string, target: PromptTarget | null = currentSurface) {
@@ -2160,6 +2184,7 @@
             onMarkSessionUnread={handleMarkSessionUnread}
             onMarkSessionRead={handleMarkSessionRead}
             onToggleArchivedGroup={handleToggleArchivedGroup}
+            onUpdateSessionNavigationSectionState={handleUpdateSessionNavigationSectionState}
             onOpenSearch={() => openPalette("search")}
             onOpenCommandPalette={() => openPalette("commands")}
             onOpenAppLogs={openAppLogs}

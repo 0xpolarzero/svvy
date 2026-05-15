@@ -890,9 +890,17 @@ export interface WorkspaceSessionSummary {
   };
 }
 
+export type WorkspaceSessionNavigationSectionId = "pinned" | "active" | "archived";
+
+export interface WorkspaceSessionNavigationSectionState {
+  collapsed: boolean;
+  sizePx: number;
+}
+
 export interface WorkspaceSessionNavigationReadModel {
   pinnedSessions: WorkspaceSessionSummary[];
   activeSessions: WorkspaceSessionSummary[];
+  sections: Record<WorkspaceSessionNavigationSectionId, WorkspaceSessionNavigationSectionState>;
   archived: {
     collapsed: boolean;
     sessions: WorkspaceSessionSummary[];
@@ -1209,6 +1217,14 @@ export interface ChatRPCSchema {
       };
       setArchivedGroupCollapsed: {
         params: WorkspaceScoped<{ collapsed: boolean }>;
+        response: WorkspaceMutationResponse;
+      };
+      setSessionNavigationSectionState: {
+        params: WorkspaceScoped<{
+          section: WorkspaceSessionNavigationSectionId;
+          collapsed?: boolean;
+          sizePx?: number;
+        }>;
         response: WorkspaceMutationResponse;
       };
       sendPrompt: {

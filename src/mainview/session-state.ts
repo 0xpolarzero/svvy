@@ -1,5 +1,6 @@
 import type {
   WorkspaceSessionNavigationReadModel,
+  WorkspaceSessionNavigationSectionState,
   WorkspaceSessionSummary,
 } from "../shared/workspace-contract";
 
@@ -22,6 +23,12 @@ export function buildWorkspaceSessionNavigation(
   sessions: WorkspaceSessionSummary[],
   collapsed = true,
 ): WorkspaceSessionNavigationReadModel {
+  const sections: WorkspaceSessionNavigationReadModel["sections"] = {
+    pinned: { collapsed: false, sizePx: DEFAULT_SESSION_SECTION_SIZES.pinned },
+    active: { collapsed: false, sizePx: DEFAULT_SESSION_SECTION_SIZES.active },
+    archived: { collapsed, sizePx: DEFAULT_SESSION_SECTION_SIZES.archived },
+  };
+
   return {
     pinnedSessions: sessions
       .filter((session) => session.isPinned && !session.isArchived)
@@ -29,6 +36,7 @@ export function buildWorkspaceSessionNavigation(
     activeSessions: sessions
       .filter((session) => !session.isPinned && !session.isArchived)
       .toSorted((left, right) => descendingTimestamp(left.updatedAt, right.updatedAt)),
+    sections,
     archived: {
       collapsed,
       sessions: sessions
@@ -46,4 +54,19 @@ export function flattenWorkspaceSessionNavigation(
     ...navigation.activeSessions,
     ...navigation.archived.sessions,
   ];
+}
+
+export const DEFAULT_SESSION_SECTION_SIZES = {
+  pinned: 150,
+  active: 260,
+  archived: 190,
+} satisfies Record<string, number>;
+
+export function getDefaultSessionNavigationSectionState(
+  section: keyof typeof DEFAULT_SESSION_SECTION_SIZES,
+): WorkspaceSessionNavigationSectionState {
+  return {
+    collapsed: section === "archived",
+    sizePx: DEFAULT_SESSION_SECTION_SIZES[section],
+  };
 }

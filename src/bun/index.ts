@@ -1022,6 +1022,17 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         recordBridgeEvent("session.archived-group.toggled", { collapsed });
         return result;
       },
+      setSessionNavigationSectionState: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { section, collapsed, sizePx } = input;
+        const result = await runtime.catalog.setSessionNavigationSectionState({
+          section,
+          collapsed,
+          sizePx,
+        });
+        recordBridgeEvent("session.navigation-section.updated", { section, collapsed, sizePx });
+        return result;
+      },
       sendPrompt: async (payload): Promise<SendPromptResponse> => {
         const runtime = getWorkspaceRuntime(payload);
         const resolved = resolveSendDefaults(runtime, payload);

@@ -87,6 +87,11 @@ describe("buildWorkspaceSessionNavigation", () => {
 
     expect(navigation.pinnedSessions.map((item) => item.id)).toEqual(["pinned-new", "pinned-old"]);
     expect(navigation.activeSessions.map((item) => item.id)).toEqual(["active-new", "active-old"]);
+    expect(navigation.sections).toEqual({
+      pinned: { collapsed: false, sizePx: 150 },
+      active: { collapsed: false, sizePx: 260 },
+      archived: { collapsed: false, sizePx: 190 },
+    });
     expect(navigation.archived.collapsed).toBe(false);
     expect(navigation.archived.sessions.map((item) => item.id)).toEqual([
       "archived-new",

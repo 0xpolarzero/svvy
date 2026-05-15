@@ -66,7 +66,12 @@ describe("structured session state write API", () => {
     seedSession(store, "session-navigation");
 
     expect(store.getWorkspaceSidebarState()).toEqual({
+      pinnedGroupCollapsed: false,
+      pinnedGroupSizePx: 150,
+      activeGroupCollapsed: false,
+      activeGroupSizePx: 260,
       archivedGroupCollapsed: true,
+      archivedGroupSizePx: 190,
       updatedAt: "1970-01-01T00:00:00.000Z",
     });
 
@@ -108,7 +113,12 @@ describe("structured session state write API", () => {
     );
 
     expect(store.setArchivedGroupCollapsed({ collapsed: false })).toEqual({
+      pinnedGroupCollapsed: false,
+      pinnedGroupSizePx: 150,
+      activeGroupCollapsed: false,
+      activeGroupSizePx: 260,
       archivedGroupCollapsed: false,
+      archivedGroupSizePx: 190,
       updatedAt: "2026-04-18T09:00:05.000Z",
     });
   });

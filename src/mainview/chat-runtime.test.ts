@@ -1235,6 +1235,12 @@ function createFakeRpc(input: {
           archivedGroupCollapsed = collapsed;
           return { ok: true };
         },
+        setSessionNavigationSectionState: async ({ section, collapsed }) => {
+          if (section === "archived" && typeof collapsed === "boolean") {
+            archivedGroupCollapsed = collapsed;
+          }
+          return { ok: true };
+        },
         sendPrompt: async (request) => {
           const record = getSurfaceRecord(request.target.surfacePiSessionId);
           const pendingUserMessage =

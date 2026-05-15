@@ -556,9 +556,10 @@ Session navigation metadata is part of durable workspace state.
 
 The adopted navigation model is deliberately small:
 
-- pinned active sessions appear at the top of the session list
-- archived sessions move into one Archived group
-- the Archived group is the only folder-like grouping and is collapsed by default
+- pinned sessions, regular Sessions, and archived sessions appear as three fixed sidebar groups between the session actions and Logs, Workflows, and Context
+- each group is collapsible, independently scrollable, vertically resizable, and persists its collapsed state and size per workspace
+- archived sessions move into one Archived group, and Archived is collapsed by default
+- the Archived group is the only archive-style grouping
 - arbitrary user-created session folders are not part of the product model
 - archiving hides a session from the active list without deleting pi session data, structured state, artifacts, threads, workflow runs, or episodes
 - sessions track durable unread state when an assistant turn finishes outside the currently focused pane surface, show that state as a small dot in place of the session timestamp in the sidebar, and clear it when a pane for that session receives focus
@@ -955,13 +956,13 @@ The session sidebar is workspace navigation, not a general folder manager.
 
 It should show:
 
-- pinned active sessions first
-- remaining active sessions by recency
+- pinned sessions first
+- remaining sessions by recency under Sessions
 - one Archived group for archived sessions
 - handler thread rows nested under the session that owns them
 - workflow run rows nested under the handler thread that owns them
 
-The Archived group is collapsed by default, and its collapsed state is persisted per workspace.
+Pinned, Sessions, and Archived use the same accordion header treatment. Each group owns a scrollable, vertically resizable space. The Archived group is collapsed by default, and group collapsed state and sizes are persisted per workspace.
 
 Archiving is reversible and non-destructive. It must not delete durable session, thread, workflow-run, episode, artifact, or transcript data.
 

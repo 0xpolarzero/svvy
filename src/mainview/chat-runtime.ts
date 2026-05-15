@@ -187,6 +187,7 @@ export interface ChatRuntimeRpcClient {
     markSessionRead: typeof rpc.request.markSessionRead;
     recordFocusedSession: typeof rpc.request.recordFocusedSession;
     setArchivedGroupCollapsed: typeof rpc.request.setArchivedGroupCollapsed;
+    setSessionNavigationSectionState: typeof rpc.request.setSessionNavigationSectionState;
     sendPrompt: typeof rpc.request.sendPrompt;
     deleteQueuedSurfaceMessage: typeof rpc.request.deleteQueuedSurfaceMessage;
     editQueuedSurfaceMessage: typeof rpc.request.editQueuedSurfaceMessage;
@@ -312,6 +313,10 @@ export interface ChatRuntime {
   markSessionUnread: (sessionId: string) => Promise<void>;
   markSessionRead: (sessionId: string) => Promise<void>;
   setArchivedGroupCollapsed: (collapsed: boolean) => Promise<void>;
+  setSessionNavigationSectionState: (
+    section: "pinned" | "active" | "archived",
+    state: { collapsed?: boolean; sizePx?: number },
+  ) => Promise<void>;
   setPaneInspectorSelection: (
     panelId: string,
     selection: WorkspaceInspectorSelection | null,
@@ -1823,6 +1828,10 @@ export async function createChatRuntime(
     },
     setArchivedGroupCollapsed: async (collapsed) => {
       await rpcClient.request.setArchivedGroupCollapsed(scoped({ collapsed }));
+      await refreshSessions();
+    },
+    setSessionNavigationSectionState: async (section, state) => {
+      await rpcClient.request.setSessionNavigationSectionState(scoped({ section, ...state }));
       await refreshSessions();
     },
     setPaneInspectorSelection: (panelId, selection) => {

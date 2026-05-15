@@ -14,6 +14,7 @@
     AppLogSummary,
     WorkspaceBranchInfo,
     WorkspaceSessionNavigationReadModel,
+    WorkspaceSessionNavigationSectionId,
     WorkspaceSessionSummary,
     WorkspaceSidebarHandlerThreadRow,
     WorkspaceSidebarRowSubtitle,
@@ -65,6 +66,10 @@
     onMarkSessionUnread: (session: WorkspaceSessionSummary) => void;
     onMarkSessionRead: (session: WorkspaceSessionSummary) => void;
     onToggleArchivedGroup: (collapsed: boolean) => void;
+    onUpdateSessionNavigationSectionState: (
+      section: WorkspaceSessionNavigationSectionId,
+      state: { collapsed?: boolean; sizePx?: number },
+    ) => void | Promise<void>;
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
     onOpenWorkflowLibrary?: () => void;
@@ -100,6 +105,7 @@
     onMarkSessionUnread,
     onMarkSessionRead,
     onToggleArchivedGroup,
+    onUpdateSessionNavigationSectionState,
     onOpenSearch,
     onOpenCommandPalette,
     onOpenWorkflowLibrary,
@@ -137,6 +143,17 @@
   let sessionContextMenuElement = $state<ContextMenu | null>(null);
   let relativeTimeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   let relativeTimeInterval: ReturnType<typeof window.setInterval> | null = null;
+  let resizingSessionSections = $state<{
+    from: WorkspaceSessionNavigationSectionId;
+    to: WorkspaceSessionNavigationSectionId;
+    startY: number;
+    fromStartSize: number;
+    toStartSize: number;
+    sizes: Record<WorkspaceSessionNavigationSectionId, number>;
+  } | null>(null);
+  let committedResizePreview = $state<Partial<Record<WorkspaceSessionNavigationSectionId, number>>>(
+    {},
+  );
   const newSessionDisplayShortcut = getShortcutCompact("session.new");
   const dumbSessionDisplayShortcut = getShortcutCompact("session.dumb");
   const quickOpenDisplayShortcut = getShortcutCompact("quickOpen.open");
@@ -188,6 +205,45 @@
       return;
     }
     sessionContextMenu = null;
+  }
+
+  function handleWindowPointerMove(event: PointerEvent) {
+    if (!resizingSessionSections) return;
+    const delta = event.clientY - resizingSessionSections.startY;
+    const maxGrow = resizingSessionSections.toStartSize - MIN_SESSION_SECTION_SIZE_PX;
+    const maxShrink = resizingSessionSections.fromStartSize - MIN_SESSION_SECTION_SIZE_PX;
+    const clampedDelta = Math.max(-maxShrink, Math.min(delta, maxGrow));
+    resizingSessionSections = {
+      ...resizingSessionSections,
+      sizes: {
+        ...resizingSessionSections.sizes,
+        [resizingSessionSections.from]: Math.round(
+          resizingSessionSections.fromStartSize + clampedDelta,
+        ),
+        [resizingSessionSections.to]: Math.round(
+          resizingSessionSections.toStartSize - clampedDelta,
+        ),
+      },
+    };
+  }
+
+  async function handleWindowPointerUp() {
+    if (!resizingSessionSections) return;
+    const nextSizes = resizingSessionSections.sizes;
+    const from = resizingSessionSections.from;
+    const to = resizingSessionSections.to;
+    resizingSessionSections = null;
+    committedResizePreview = {
+      ...committedResizePreview,
+      [from]: nextSizes[from],
+      [to]: nextSizes[to],
+    };
+    try {
+      await onUpdateSessionNavigationSectionState(from, { sizePx: nextSizes[from] });
+      await onUpdateSessionNavigationSectionState(to, { sizePx: nextSizes[to] });
+    } finally {
+      committedResizePreview = {};
+    }
   }
 
   async function loadBranchOptions() {
@@ -335,9 +391,102 @@
   function getPrimaryPaneLocation(paneLocations: SidebarPaneLocation[]): SidebarPaneLocation | null {
     return paneLocations.find((location) => location.focused) ?? paneLocations[0] ?? null;
   }
+
+  const MIN_SESSION_SECTION_SIZE_PX = 64;
+  const DEFAULT_SESSION_SECTION_SIZES = {
+    pinned: 150,
+    active: 260,
+    archived: 190,
+  } satisfies Record<WorkspaceSessionNavigationSectionId, number>;
+
+  const sessionSections = $derived.by(() => [
+    {
+      id: "pinned" as const,
+      label: "Pinned",
+      ariaLabel: "Pinned sessions",
+      sessions: navigation.pinnedSessions,
+    },
+    {
+      id: "active" as const,
+      label: "Sessions",
+      ariaLabel: "Sessions",
+      sessions: navigation.activeSessions,
+    },
+    {
+      id: "archived" as const,
+      label: "Archived",
+      ariaLabel: "Archived sessions",
+      sessions: navigation.archived.sessions,
+    },
+  ]);
+
+  function getSessionSectionState(section: WorkspaceSessionNavigationSectionId) {
+    const state = navigation.sections?.[section];
+    if (state) return state;
+    return {
+      collapsed: section === "archived" ? navigation.archived.collapsed : false,
+      sizePx: DEFAULT_SESSION_SECTION_SIZES[section],
+    };
+  }
+
+  function isSessionSectionCollapsed(section: WorkspaceSessionNavigationSectionId): boolean {
+    return getSessionSectionState(section).collapsed;
+  }
+
+  function getSessionSectionSize(section: WorkspaceSessionNavigationSectionId): number {
+    return (
+      resizingSessionSections?.sizes[section] ??
+      committedResizePreview[section] ??
+      getSessionSectionState(section).sizePx ??
+      DEFAULT_SESSION_SECTION_SIZES[section]
+    );
+  }
+
+  function getNextResizableSessionSection(
+    section: WorkspaceSessionNavigationSectionId,
+  ): WorkspaceSessionNavigationSectionId | null {
+    const currentIndex = sessionSections.findIndex((candidate) => candidate.id === section);
+    return (
+      sessionSections
+        .slice(currentIndex + 1)
+        .find((candidate) => !isSessionSectionCollapsed(candidate.id))?.id ?? null
+    );
+  }
+
+  function startSessionSectionResize(section: WorkspaceSessionNavigationSectionId, event: PointerEvent) {
+    const nextSection = getNextResizableSessionSection(section);
+    if (!nextSection) return;
+    event.preventDefault();
+    resizingSessionSections = {
+      from: section,
+      to: nextSection,
+      startY: event.clientY,
+      fromStartSize: getSessionSectionSize(section),
+      toStartSize: getSessionSectionSize(nextSection),
+      sizes: {
+        pinned: getSessionSectionSize("pinned"),
+        active: getSessionSectionSize("active"),
+        archived: getSessionSectionSize("archived"),
+      },
+    };
+  }
+
+  function toggleSessionSection(section: WorkspaceSessionNavigationSectionId) {
+    const collapsed = !isSessionSectionCollapsed(section);
+    if (section === "archived") {
+      onToggleArchivedGroup(collapsed);
+      return;
+    }
+    onUpdateSessionNavigationSectionState(section, { collapsed });
+  }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onpointerdown={handleWindowPointerDown} />
+<svelte:window
+  onkeydown={handleWindowKeydown}
+  onpointerdown={handleWindowPointerDown}
+  onpointermove={handleWindowPointerMove}
+  onpointerup={handleWindowPointerUp}
+/>
 
 <div class="session-sidebar">
   <div class="sidebar-window-row electrobun-webkit-app-region-drag" aria-hidden="true"></div>
@@ -445,7 +594,6 @@
             type="button"
             class={`sidebar-child-row handler-row status-${thread.status} ${session.id === activeSessionId && thread.threadId === activeThreadId ? "active" : ""} ${threadPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(threadPaneLocations)} ${threadWorking ? "working" : ""}`.trim()}
             onclick={() => onOpenHandlerThread?.(session.id, thread)}
-            disabled={busy}
           >
             <span class="sidebar-child-content">
               <span class="sidebar-child-title">{thread.title}</span>
@@ -471,7 +619,6 @@
                   type="button"
                   class={`sidebar-child-row workflow-row status-${workflow.status} ${workflowPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(workflowPaneLocations)} ${workflowWorking ? "working" : ""}`.trim()}
                   onclick={() => onOpenWorkflowRun?.(session.id, workflow)}
-                  disabled={busy}
                 >
                   <span class="sidebar-child-content">
                     <span class="sidebar-child-title">{workflow.workflowName}</span>
@@ -492,76 +639,37 @@
   {/snippet}
 
   <div class="sidebar-sections">
-    <div class="sidebar-list">
-      {#if navigation.pinnedSessions.length > 0}
-        <section class="sidebar-section" aria-label="Pinned sessions">
-          <p class="sidebar-section-label">Pinned</p>
-          {#each navigation.pinnedSessions as session (session.id)}
-            <SessionListItem
-              active={session.id === activeOrchestratorSessionId}
-              disabled={busy && session.id !== activeSessionId}
-              paneLocations={paneLocationsBySessionId[session.id] ?? []}
-              {relativeTimeNow}
-              {session}
-              onOpen={(event) => onOpenSession(session.id, event)}
-              onRename={() => onRenameSession(session)}
-              onPin={() => onPinSession(session)}
-              onUnpin={() => onUnpinSession(session)}
-              onArchive={() => onArchiveSession(session)}
-              onUnarchive={() => onUnarchiveSession(session)}
-              onContextMenu={(event) => openSessionContextMenu(session, event)}
-            />
-            {@render sessionChildren(session)}
-          {/each}
-        </section>
-      {/if}
-
-      {#if navigation.activeSessions.length > 0}
-        <section class="sidebar-section" aria-label="Active sessions">
-          <p class="sidebar-section-label">Active</p>
-          {#each navigation.activeSessions as session (session.id)}
-            <SessionListItem
-              active={session.id === activeOrchestratorSessionId}
-              disabled={busy && session.id !== activeSessionId}
-              paneLocations={paneLocationsBySessionId[session.id] ?? []}
-              {relativeTimeNow}
-              {session}
-              onOpen={(event) => onOpenSession(session.id, event)}
-              onRename={() => onRenameSession(session)}
-              onPin={() => onPinSession(session)}
-              onUnpin={() => onUnpinSession(session)}
-              onArchive={() => onArchiveSession(session)}
-              onUnarchive={() => onUnarchiveSession(session)}
-              onContextMenu={(event) => openSessionContextMenu(session, event)}
-            />
-            {@render sessionChildren(session)}
-          {/each}
-        </section>
-      {/if}
-
-      {#if navigation.archived.sessions.length > 0}
-        <section class="sidebar-section archived-section" aria-label="Archived sessions">
+    <div class={`sidebar-list ${resizingSessionSections ? "resizing" : ""}`.trim()}>
+      {#each sessionSections as section (section.id)}
+        {@const collapsed = isSessionSectionCollapsed(section.id)}
+        {@const nextResizableSection = getNextResizableSessionSection(section.id)}
+        <section
+          class={`sidebar-section session-accordion-section ${collapsed ? "collapsed" : ""}`.trim()}
+          aria-label={section.ariaLabel}
+          style={`--session-section-size: ${getSessionSectionSize(section.id)}px;`}
+        >
           <button
-            class="archived-toggle"
+            class="session-section-toggle"
             type="button"
-            aria-expanded={!navigation.archived.collapsed}
-            onclick={() => onToggleArchivedGroup(!navigation.archived.collapsed)}
+            aria-expanded={!collapsed}
+            onclick={() => toggleSessionSection(section.id)}
           >
-            {#if navigation.archived.collapsed}
+            {#if collapsed}
               <ChevronRightIcon aria-hidden="true" size={14} strokeWidth={1.9} />
             {:else}
               <ChevronDownIcon aria-hidden="true" size={14} strokeWidth={1.9} />
             {/if}
-            <span>Archived</span>
-            <span>{navigation.archived.sessions.length}</span>
+            <span>{section.label}</span>
+            <span>{section.sessions.length}</span>
           </button>
 
-          {#if !navigation.archived.collapsed}
-            {#each navigation.archived.sessions as session (session.id)}
-              <SessionListItem
-                active={session.id === activeOrchestratorSessionId}
-                disabled={busy && session.id !== activeSessionId}
-                paneLocations={paneLocationsBySessionId[session.id] ?? []}
+          {#if !collapsed}
+            <div class="session-section-body">
+              {#each section.sessions as session (session.id)}
+                <SessionListItem
+                  active={session.id === activeOrchestratorSessionId}
+                  disabled={false}
+                  paneLocations={paneLocationsBySessionId[session.id] ?? []}
                 {relativeTimeNow}
                 {session}
                 onOpen={(event) => onOpenSession(session.id, event)}
@@ -570,14 +678,23 @@
                 onUnpin={() => onUnpinSession(session)}
                 onArchive={() => onArchiveSession(session)}
                 onUnarchive={() => onUnarchiveSession(session)}
-                onContextMenu={(event) => openSessionContextMenu(session, event)}
-              />
-              {@render sessionChildren(session)}
-            {/each}
+                  onContextMenu={(event) => openSessionContextMenu(session, event)}
+                />
+                {@render sessionChildren(session)}
+              {/each}
+            </div>
           {/if}
         </section>
-      {/if}
-
+        {#if !collapsed && nextResizableSection}
+          <button
+            class="session-section-resize"
+            class:dragging={resizingSessionSections?.from === section.id}
+            type="button"
+            aria-label={`Resize ${section.label} sessions section`}
+            onpointerdown={(event) => startSessionSectionResize(section.id, event)}
+          ></button>
+        {/if}
+      {/each}
     </div>
   </div>
 
@@ -858,20 +975,43 @@
     flex: 1;
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: auto;
     padding: 0.16rem 0.24rem 0.62rem;
   }
 
   .sidebar-list {
-    display: grid;
-    gap: 0.42rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    height: 100%;
     min-width: 0;
+    min-height: 0;
   }
 
   .sidebar-section {
-    display: grid;
-    gap: 0.12rem;
     min-width: 0;
+  }
+
+  .session-accordion-section {
+    display: flex;
+    flex: 1 1 var(--session-section-size, 12rem);
+    flex-direction: column;
+    min-height: 2rem;
+    overflow: hidden;
+  }
+
+  .session-accordion-section.collapsed {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .session-section-body {
+    display: grid;
+    align-content: start;
+    gap: 0.12rem;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: 0.2rem;
   }
 
   .sidebar-child-list,
@@ -1091,17 +1231,7 @@
     }
   }
 
-  .sidebar-section-label {
-    margin: 0.38rem 0 0.12rem;
-    padding-inline: 0.72rem;
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--ui-text-tertiary);
-  }
-
-  .archived-toggle {
+  .session-section-toggle {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
@@ -1117,14 +1247,55 @@
     font-weight: 600;
     text-align: left;
     cursor: pointer;
+    flex: 0 0 auto;
   }
 
-  .archived-toggle:hover {
+  .session-section-toggle:hover {
     background: color-mix(in oklab, var(--ui-surface-subtle) 78%, transparent);
     color: var(--ui-text-secondary);
   }
 
-  .archived-toggle:focus-visible {
+  .session-section-toggle:focus-visible {
+    outline: none;
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .session-section-toggle span:last-child {
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .session-section-resize {
+    position: relative;
+    flex: 0 0 0.34rem;
+    min-height: 0.34rem;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: row-resize;
+  }
+
+  .session-section-resize::before {
+    content: "";
+    position: absolute;
+    inset: 0.14rem 0.72rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--ui-border-soft) 74%, transparent);
+    transition:
+      background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .session-section-resize:hover::before,
+  .session-section-resize:focus-visible::before,
+  .session-section-resize.dragging::before {
+    background: color-mix(in oklab, var(--ui-accent) 68%, transparent);
+  }
+
+  .session-section-resize:focus-visible {
     outline: none;
     box-shadow: var(--ui-focus-ring);
   }
@@ -1217,7 +1388,8 @@
   @media (prefers-reduced-motion: reduce) {
     .sidebar-action-row,
     .sidebar-action-shortcut,
-    .new-session-accordion {
+    .new-session-accordion,
+    .session-section-resize::before {
       transition: none;
       animation: none;
     }

@@ -342,6 +342,20 @@ export class WorkspaceSessionCatalog {
       activeSessions: summaries
         .filter((summary) => !summary.isPinned && !summary.isArchived)
         .toSorted((left, right) => byTimestampDesc(left.updatedAt, right.updatedAt)),
+      sections: {
+        pinned: {
+          collapsed: sidebarState.pinnedGroupCollapsed,
+          sizePx: sidebarState.pinnedGroupSizePx,
+        },
+        active: {
+          collapsed: sidebarState.activeGroupCollapsed,
+          sizePx: sidebarState.activeGroupSizePx,
+        },
+        archived: {
+          collapsed: sidebarState.archivedGroupCollapsed,
+          sizePx: sidebarState.archivedGroupSizePx,
+        },
+      },
       archived: {
         collapsed: sidebarState.archivedGroupCollapsed,
         sessions: summaries
@@ -672,6 +686,16 @@ export class WorkspaceSessionCatalog {
     collapsed: boolean;
   }): Promise<WorkspaceMutationResponse> {
     this.structuredSessionStore.setArchivedGroupCollapsed(input);
+    await this.emitWorkspaceSync("workspace.updated");
+    return { ok: true };
+  }
+
+  async setSessionNavigationSectionState(input: {
+    section: "pinned" | "active" | "archived";
+    collapsed?: boolean;
+    sizePx?: number;
+  }): Promise<WorkspaceMutationResponse> {
+    this.structuredSessionStore.setSessionNavigationSectionState(input);
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
