@@ -58,14 +58,20 @@
 			tooltipElement.role = "tooltip";
 			document.body.append(tooltipElement);
 		}
-		tooltipElement.className = `ui-tooltip side-${side}`.trim();
+		tooltipElement.className = `ui-tooltip side-${side} ${details.length > 0 ? "has-details" : ""}`.trim();
 		tooltipElement.replaceChildren();
 		if (details.length > 0) {
+			if (label) {
+				const titleElement = document.createElement("span");
+				titleElement.className = "ui-tooltip-title";
+				titleElement.textContent = label;
+				tooltipElement.append(titleElement);
+			}
 			const listElement = document.createElement("span");
 			listElement.className = "ui-tooltip-details";
 			for (const detail of details) {
 				const rowElement = document.createElement("span");
-				rowElement.className = "ui-tooltip-detail";
+				rowElement.className = `ui-tooltip-detail ${detail.shortcut || detail.icon ? "has-leading" : ""}`.trim();
 				if (detail.shortcut) {
 					const shortcutElement = document.createElement("kbd");
 					shortcutElement.className = "ui-kbd ui-tooltip-shortcut";
@@ -130,6 +136,7 @@
 		const rect = anchor.getBoundingClientRect();
 		const gap = 8;
 		const margin = 10;
+		const arrowMargin = 8;
 		const tooltipRect = tooltipElement?.getBoundingClientRect();
 		const tooltipWidth = tooltipRect?.width ?? 0;
 		const tooltipHeight = tooltipRect?.height ?? 0;
@@ -156,10 +163,31 @@
 		if (tooltipElement) {
 			tooltipElement.style.left = `${left}px`;
 			tooltipElement.style.top = `${top}px`;
+			const tooltipLeft =
+				side === "left" ? left - tooltipWidth : side === "right" ? left : left - tooltipWidth / 2;
+			const tooltipTop =
+				side === "top" ? top - tooltipHeight : side === "bottom" ? top : top - tooltipHeight / 2;
+			const anchorCenterX = rect.left + rect.width / 2;
+			const anchorCenterY = rect.top + rect.height / 2;
+			if (side === "top" || side === "bottom") {
+				const arrowLeft = Math.max(
+					arrowMargin,
+					Math.min(tooltipWidth - arrowMargin, anchorCenterX - tooltipLeft),
+				);
+				tooltipElement.style.setProperty("--ui-tooltip-arrow-left", `${arrowLeft}px`);
+				tooltipElement.style.removeProperty("--ui-tooltip-arrow-top");
+			} else {
+				const arrowTop = Math.max(
+					arrowMargin,
+					Math.min(tooltipHeight - arrowMargin, anchorCenterY - tooltipTop),
+				);
+				tooltipElement.style.setProperty("--ui-tooltip-arrow-top", `${arrowTop}px`);
+				tooltipElement.style.removeProperty("--ui-tooltip-arrow-left");
+			}
 		}
 	}
 
-	function scheduleOpen() {
+	function scheduleOpen(delayOverrideMs = delayMs) {
 		if (disabled || (!label && details.length === 0)) return;
 		if (timer || open) return;
 		clearOpenTimer();
@@ -168,7 +196,7 @@
 			renderTooltipElement();
 			updatePosition();
 			requestAnimationFrame(updatePosition);
-		}, delayMs);
+		}, delayOverrideMs);
 	}
 
 	function handlePointerOut(event: PointerEvent) {
@@ -237,11 +265,11 @@
 	{...rest}
 	bind:this={anchor}
 	class={`ui-tooltip-anchor ${block ? "is-block" : ""} ${className}`.trim()}
-	onpointerenter={scheduleOpen}
-	onpointerover={scheduleOpen}
+	onpointerenter={() => scheduleOpen()}
+	onpointerover={() => scheduleOpen()}
 	onpointerleave={close}
 	onpointerout={handlePointerOut}
-	onfocusin={scheduleOpen}
+	onfocusin={() => scheduleOpen(Math.min(delayMs, 180))}
 	onfocusout={close}
 	onclick={close}
 	onkeydown={handleKeydown}
@@ -267,38 +295,102 @@
 		z-index: var(--ui-z-dialog);
 		display: inline-flex;
 		align-items: flex-start;
-		gap: 0.44rem;
+		gap: 0.5rem;
 		width: max-content;
 		max-width: min(18rem, calc(100vw - 1.25rem));
-		padding: 0.34rem 0.46rem;
+		padding: 0.375rem 0.5rem;
 		border: 1px solid var(--ui-tooltip-border);
 		border-radius: var(--ui-radius-sm);
 		background: var(--ui-tooltip-bg);
 		color: var(--ui-text-primary);
 		box-shadow:
-			0 18px 36px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
-			0 2px 8px color-mix(in oklab, var(--ui-shadow) 18%, transparent);
+			0 10px 24px -14px color-mix(in oklab, var(--ui-shadow) 68%, transparent),
+			0 2px 8px -4px color-mix(in oklab, var(--ui-shadow) 42%, transparent);
 		font-size: var(--text-xs);
 		font-weight: 500;
-		line-height: 1.25;
+		line-height: 1.35;
 		pointer-events: none;
-		animation: ui-tooltip-in 110ms cubic-bezier(0.19, 1, 0.22, 1);
+		--ui-tooltip-enter-x: 0;
+		--ui-tooltip-enter-y: 0.125rem;
+		animation: ui-tooltip-in 120ms cubic-bezier(0.19, 1, 0.22, 1);
+	}
+
+	:global(.ui-tooltip::before) {
+		position: absolute;
+		width: 0.375rem;
+		height: 0.375rem;
+		border: 0 solid var(--ui-tooltip-border);
+		background: var(--ui-tooltip-bg);
+		content: "";
+		pointer-events: none;
+	}
+
+	:global(.ui-tooltip.has-details) {
+		display: grid;
+		align-items: stretch;
+		gap: 0.375rem;
 	}
 
 	:global(.ui-tooltip.side-top) {
 		transform: translate(-50%, -100%);
 	}
 
+	:global(.ui-tooltip.side-top::before) {
+		bottom: -0.25rem;
+		left: var(--ui-tooltip-arrow-left, 50%);
+		border-right-width: 1px;
+		border-bottom-width: 1px;
+		transform: translateX(-50%) rotate(45deg);
+	}
+
 	:global(.ui-tooltip.side-bottom) {
+		--ui-tooltip-enter-y: -0.125rem;
 		transform: translate(-50%, 0);
 	}
 
+	:global(.ui-tooltip.side-bottom::before) {
+		top: -0.25rem;
+		left: var(--ui-tooltip-arrow-left, 50%);
+		border-top-width: 1px;
+		border-left-width: 1px;
+		transform: translateX(-50%) rotate(45deg);
+	}
+
 	:global(.ui-tooltip.side-left) {
+		--ui-tooltip-enter-x: 0.125rem;
+		--ui-tooltip-enter-y: 0;
 		transform: translate(-100%, -50%);
 	}
 
+	:global(.ui-tooltip.side-left::before) {
+		top: var(--ui-tooltip-arrow-top, 50%);
+		right: -0.25rem;
+		border-top-width: 1px;
+		border-right-width: 1px;
+		transform: translateY(-50%) rotate(45deg);
+	}
+
 	:global(.ui-tooltip.side-right) {
+		--ui-tooltip-enter-x: -0.125rem;
+		--ui-tooltip-enter-y: 0;
 		transform: translate(0, -50%);
+	}
+
+	:global(.ui-tooltip.side-right::before) {
+		top: var(--ui-tooltip-arrow-top, 50%);
+		left: -0.25rem;
+		border-bottom-width: 1px;
+		border-left-width: 1px;
+		transform: translateY(-50%) rotate(45deg);
+	}
+
+	:global(.ui-tooltip-title) {
+		display: block;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		color: var(--ui-text-primary);
+		font-weight: 600;
 	}
 
 	:global(.ui-tooltip-label) {
@@ -308,8 +400,9 @@
 
 	:global(.ui-tooltip-details) {
 		display: grid;
-		gap: 0.22rem;
+		gap: 0.25rem;
 		min-width: 12rem;
+		margin-top: 0.125rem;
 	}
 
 	:global(.ui-tooltip-detail) {
@@ -318,6 +411,10 @@
 		align-items: center;
 		gap: 0.36rem;
 		min-width: 0;
+	}
+
+	:global(.ui-tooltip-detail.has-leading) {
+		grid-template-columns: auto minmax(0, 1fr) auto;
 	}
 
 	:global(.ui-tooltip-value) {
@@ -343,7 +440,7 @@
 		gap: 0.12rem;
 		color: var(--ui-text-secondary);
 		font-family: var(--font-mono);
-		font-size: var(--text-xs);
+		font-size: 0.625rem;
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
 		line-height: 1;
@@ -355,9 +452,9 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 1rem;
-		min-height: 1rem;
-		padding: 0.08rem 0.24rem;
+		min-width: 0.96rem;
+		min-height: 0.96rem;
+		padding: 0.06rem 0.22rem;
 		color: var(--ui-keycap-text);
 		border: 1px solid var(--ui-keycap-border);
 		border-radius: var(--ui-radius-xs);
@@ -374,11 +471,11 @@
 	@keyframes ui-tooltip-in {
 		from {
 			opacity: 0;
-			filter: blur(2px);
+			translate: var(--ui-tooltip-enter-x) var(--ui-tooltip-enter-y);
 		}
 		to {
 			opacity: 1;
-			filter: blur(0);
+			translate: 0 0;
 		}
 	}
 

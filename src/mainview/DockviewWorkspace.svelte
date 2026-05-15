@@ -393,28 +393,33 @@
       const tooltipRect = tooltip.getBoundingClientRect();
       const preferredLeft = rect.left + rect.width / 2 - tooltipRect.width / 2;
       const maxLeft = window.innerWidth - margin - tooltipRect.width;
+      let actualLeft = Math.max(margin, preferredLeft);
       if (maxLeft < margin) {
         tooltip.style.left = `${margin}px`;
         tooltip.style.right = `${margin}px`;
+        actualLeft = margin;
       } else if (preferredLeft > maxLeft) {
-        tooltip.style.left = "";
+        tooltip.style.left = `${maxLeft}px`;
         tooltip.style.right = `${margin}px`;
+        actualLeft = maxLeft;
       } else {
-        tooltip.style.left = `${Math.max(margin, preferredLeft)}px`;
+        tooltip.style.left = `${actualLeft}px`;
         tooltip.style.right = "";
       }
+      const arrowLeft = Math.max(8, Math.min(tooltipRect.width - 8, rect.left + rect.width / 2 - actualLeft));
+      tooltip.style.setProperty("--ui-tooltip-arrow-left", `${arrowLeft}px`);
       tooltip.style.top = `${Math.max(margin, Math.min(window.innerHeight - margin - tooltipRect.height, rect.bottom + gap))}px`;
       tooltip.style.visibility = "visible";
     };
 
-    const schedule = () => {
+    const schedule = (delayMs = TOOLTIP_DELAY_MS) => {
       remove();
       document.addEventListener("pointerover", handlePointerOverOutside, true);
-      timer = setTimeout(show, TOOLTIP_DELAY_MS);
+      timer = setTimeout(show, delayMs);
     };
 
-    button.addEventListener("pointerenter", schedule);
-    button.addEventListener("focus", schedule);
+    button.addEventListener("pointerenter", () => schedule());
+    button.addEventListener("focus", () => schedule(180));
     button.addEventListener("pointerleave", remove);
     button.addEventListener("blur", remove);
     button.addEventListener("click", remove);
@@ -826,31 +831,46 @@
     width: max-content;
     min-width: 8.5rem;
     max-width: min(18rem, calc(100vw - 1.25rem));
-    padding: 0.34rem 0.46rem;
+    padding: 0.375rem 0.5rem;
     border: 1px solid var(--ui-tooltip-border);
     border-radius: var(--ui-radius-sm);
     background: var(--ui-tooltip-bg);
     color: var(--ui-text-primary);
     box-shadow:
-      0 18px 36px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
-      0 2px 8px color-mix(in oklab, var(--ui-shadow) 18%, transparent);
+      0 10px 24px -14px color-mix(in oklab, var(--ui-shadow) 68%, transparent),
+      0 2px 8px -4px color-mix(in oklab, var(--ui-shadow) 42%, transparent);
     font-size: var(--text-xs);
     font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.35;
     text-align: center;
     white-space: nowrap;
     pointer-events: none;
-    animation: dockview-tooltip-in 110ms cubic-bezier(0.19, 1, 0.22, 1);
+    animation: dockview-tooltip-in 120ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  :global(.imperative-action-tooltip::before) {
+    position: absolute;
+    top: -0.25rem;
+    left: var(--ui-tooltip-arrow-left, 50%);
+    width: 0.375rem;
+    height: 0.375rem;
+    border: 0 solid var(--ui-tooltip-border);
+    border-top-width: 1px;
+    border-left-width: 1px;
+    background: var(--ui-tooltip-bg);
+    content: "";
+    pointer-events: none;
+    transform: translateX(-50%) rotate(45deg);
   }
 
   @keyframes dockview-tooltip-in {
     from {
       opacity: 0;
-      filter: blur(2px);
+      translate: 0 -0.125rem;
     }
     to {
       opacity: 1;
-      filter: blur(0);
+      translate: 0 0;
     }
   }
 </style>
