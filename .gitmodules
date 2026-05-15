@@ -7,3 +7,6 @@
 [submodule "docs/references/smithers-gui"]
 	path = docs/references/smithers-gui
 	url = https://github.com/smithersai/gui.git
+[submodule "docs/references/codex"]
+	path = docs/references/codex
+	url = https://github.com/openai/codex.git
