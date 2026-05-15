@@ -1,0 +1,12 @@
+{
+  "op": "send_message",
+  "session": "test-session-123",
+  "content": {
+    "type": "text",
+    "text": "Hello, how can I help you today?"
+  },
+  "metadata": {
+    "timestamp": "2025-10-25T12:00:00Z",
+    "message_id": "msg-001"
+  }
+}

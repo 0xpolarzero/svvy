@@ -1,0 +1,9 @@
+{
+  "event": "stream_start",
+  "session": "test-session-123",
+  "data": {
+    "message_id": "msg-003",
+    "role": "assistant",
+    "timestamp": "2025-10-25T12:00:06Z"
+  }
+}

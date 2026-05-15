@@ -1,0 +1,34 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "processId": 12345,
+    "clientInfo": {
+      "name": "codex-go",
+      "version": "0.1.0"
+    },
+    "capabilities": {
+      "workspace": {
+        "fileOperations": {
+          "dynamicRegistration": true,
+          "didCreate": true,
+          "didRename": true,
+          "didDelete": true
+        }
+      },
+      "textDocument": {
+        "synchronization": {
+          "dynamicRegistration": true,
+          "willSave": true,
+          "willSaveWaitUntil": true,
+          "didSave": true
+        }
+      }
+    },
+    "initializationOptions": {
+      "model": "claude-sonnet-4-5-20250929",
+      "apiKey": "test-api-key"
+    }
+  }
+}

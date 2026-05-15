@@ -1,0 +1,34 @@
+{
+  "session_id": "test-session-123",
+  "messages": [
+    {
+      "id": "msg-001",
+      "role": "user",
+      "content": "Hello!",
+      "timestamp": "2025-10-25T12:00:00Z"
+    },
+    {
+      "id": "msg-002",
+      "role": "assistant",
+      "content": "Hello! How can I help you today?",
+      "timestamp": "2025-10-25T12:00:01Z"
+    },
+    {
+      "id": "msg-003",
+      "role": "user",
+      "content": "Can you write a fibonacci function?",
+      "timestamp": "2025-10-25T12:00:05Z"
+    },
+    {
+      "id": "msg-004",
+      "role": "assistant",
+      "content": "Sure! Here's a fibonacci function in Go:\n\n```go\nfunc fibonacci(n int) int {\n    if n <= 1 {\n        return n\n    }\n    return fibonacci(n-1) + fibonacci(n-2)\n}\n```",
+      "timestamp": "2025-10-25T12:00:06Z"
+    }
+  ],
+  "metadata": {
+    "created_at": "2025-10-25T12:00:00Z",
+    "updated_at": "2025-10-25T12:00:06Z",
+    "message_count": 4
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "event": "stream_chunk",
+  "session": "test-session-123",
+  "data": {
+    "message_id": "msg-003",
+    "content_delta": "Here's a hello world function:\n\n```go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n    fmt.Println(\"Hello, World!\")\n}\n```",
+    "timestamp": "2025-10-25T12:00:07Z"
+  }
+}

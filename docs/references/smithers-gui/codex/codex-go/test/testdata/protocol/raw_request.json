@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "textDocument/completion",
+  "params": {
+    "textDocument": {
+      "uri": "file:///tmp/test.go"
+    },
+    "position": {
+      "line": 3,
+      "character": 10
+    },
+    "context": {
+      "triggerKind": 1
+    }
+  }
+}

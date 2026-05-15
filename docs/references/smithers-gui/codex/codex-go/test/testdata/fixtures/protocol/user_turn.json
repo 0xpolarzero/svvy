@@ -1,0 +1,22 @@
+{
+  "type": "user_turn",
+  "items": [
+    {
+      "type": "text",
+      "text": "Hello, please help me with this task"
+    }
+  ],
+  "cwd": "/Users/test/project",
+  "approval_policy": "on-request",
+  "sandbox_policy": {
+    "mode": "workspace-write",
+    "writable_roots": [],
+    "network_access": false,
+    "exclude_tmpdir_env_var": false,
+    "exclude_slash_tmp": false
+  },
+  "model": "claude-3-5-sonnet-20241022",
+  "effort": "medium",
+  "summary": "auto",
+  "final_output_json_schema": null
+}

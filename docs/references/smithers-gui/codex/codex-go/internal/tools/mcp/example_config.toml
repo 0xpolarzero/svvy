@@ -1,0 +1,232 @@
+# Example MCP Server Configuration for Codex Go
+# Place this in ~/.codex/config.toml
+
+# Filesystem MCP Server (stdio transport)
+# Provides file operations via MCP
+[mcp_servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+enabled = true
+startup_timeout_sec = 10.0
+tool_timeout_sec = 30.0
+
+# Optional: Only enable specific tools
+# enabled_tools = ["read_file", "write_file", "list_directory"]
+
+# Optional: Disable dangerous tools
+# disabled_tools = ["delete_file"]
+
+# Optional: Environment variables for the server
+[mcp_servers.filesystem.env]
+NODE_ENV = "production"
+
+# Optional: Pass through environment variables from parent process
+env_vars = ["HOME", "USER", "PATH"]
+
+# Optional: Working directory for the server process
+# cwd = "/tmp"
+
+# ===================================================================
+
+# GitHub MCP Server (stdio transport)
+# Provides GitHub API operations
+[mcp_servers.github]
+command = "mcp-server-github"
+args = []
+enabled = true
+startup_timeout_sec = 15.0
+tool_timeout_sec = 60.0
+
+# GitHub token from environment
+env_vars = ["GITHUB_TOKEN"]
+
+# Only enable safe read operations
+enabled_tools = [
+    "get_repository",
+    "list_issues",
+    "get_issue",
+    "search_code",
+    "get_file_contents"
+]
+
+# ===================================================================
+
+# Weather API MCP Server (HTTP transport)
+# Provides weather information via HTTP endpoint
+[mcp_servers.weather]
+url = "https://weather-mcp.example.com/rpc"
+enabled = true
+startup_timeout_sec = 5.0
+tool_timeout_sec = 30.0
+
+# Bearer token from environment variable
+bearer_token_env_var = "WEATHER_API_KEY"
+
+# Custom HTTP headers
+[mcp_servers.weather.http_headers]
+X-API-Version = "v1"
+X-Client = "codex-go"
+
+# ===================================================================
+
+# Database Query MCP Server (HTTP transport with auth)
+# Provides read-only database queries
+[mcp_servers.database]
+url = "https://db-mcp.internal.company.com/rpc"
+enabled = true
+startup_timeout_sec = 10.0
+tool_timeout_sec = 120.0  # Long timeout for complex queries
+
+# Authentication via environment variable
+bearer_token_env_var = "DB_MCP_TOKEN"
+
+# Only allow read operations
+enabled_tools = ["query", "describe_table", "list_tables"]
+
+# Additional headers from environment
+[mcp_servers.database.env_http_headers]
+X-Tenant-ID = "TENANT_ID"
+X-User-ID = "USER_ID"
+
+# ===================================================================
+
+# Kubernetes MCP Server (stdio transport)
+# Provides kubectl operations
+[mcp_servers.kubernetes]
+command = "mcp-server-kubectl"
+args = ["--context", "production"]
+enabled = false  # Disabled by default for safety
+
+startup_timeout_sec = 10.0
+tool_timeout_sec = 60.0
+
+# Pass through kubectl config
+env_vars = ["KUBECONFIG", "KUBE_NAMESPACE"]
+
+# Only enable read operations
+enabled_tools = [
+    "get_pods",
+    "get_deployments",
+    "get_services",
+    "describe_pod",
+    "get_logs"
+]
+
+# Disable dangerous operations
+disabled_tools = [
+    "delete_pod",
+    "delete_deployment",
+    "apply",
+    "exec"
+]
+
+# ===================================================================
+
+# Docker MCP Server (stdio transport)
+# Provides Docker operations
+[mcp_servers.docker]
+command = "mcp-server-docker"
+args = []
+enabled = false  # Disabled by default
+
+startup_timeout_sec = 10.0
+tool_timeout_sec = 120.0
+
+# Only enable safe operations
+enabled_tools = [
+    "list_containers",
+    "list_images",
+    "inspect_container",
+    "container_logs"
+]
+
+# ===================================================================
+
+# Slack MCP Server (HTTP transport)
+# Provides Slack API integration
+[mcp_servers.slack]
+url = "https://slack-mcp.example.com/rpc"
+enabled = true
+startup_timeout_sec = 5.0
+tool_timeout_sec = 30.0
+
+bearer_token_env_var = "SLACK_MCP_TOKEN"
+
+# Enable messaging and search
+enabled_tools = [
+    "send_message",
+    "search_messages",
+    "list_channels",
+    "get_channel_history"
+]
+
+# ===================================================================
+
+# Custom Internal Tool Server (stdio transport)
+# Your company's custom MCP server
+[mcp_servers.internal_tools]
+command = "/usr/local/bin/company-mcp-server"
+args = ["--config", "/etc/mcp/config.json"]
+enabled = true
+startup_timeout_sec = 15.0
+tool_timeout_sec = 60.0
+
+[mcp_servers.internal_tools.env]
+ENV = "production"
+LOG_LEVEL = "info"
+
+env_vars = ["COMPANY_API_KEY", "COMPANY_TENANT"]
+
+# ===================================================================
+
+# Experimental Server (disabled)
+# New server being tested
+[mcp_servers.experimental]
+command = "experimental-mcp-server"
+args = ["--experimental"]
+enabled = false  # Keep disabled until stable
+
+startup_timeout_sec = 20.0
+tool_timeout_sec = 300.0
+
+# ===================================================================
+
+# Configuration Tips:
+#
+# 1. Security:
+#    - Only enable trusted MCP servers
+#    - Use enabled_tools to whitelist safe operations
+#    - Use disabled_tools to blacklist dangerous operations
+#    - Store secrets in environment variables, not config files
+#
+# 2. Timeouts:
+#    - startup_timeout_sec: Time for server to initialize
+#    - tool_timeout_sec: Maximum time for individual tool calls
+#    - Increase for slow networks or complex operations
+#
+# 3. Transport Selection:
+#    - Use stdio for local servers (faster, more secure)
+#    - Use HTTP for remote servers (scalable, load balanced)
+#    - HTTP supports authentication and custom headers
+#
+# 4. Environment Variables:
+#    - env: Static values (logged, visible in config)
+#    - env_vars: Pass through from parent (not logged)
+#    - bearer_token_env_var: For HTTP authentication
+#    - env_http_headers: Dynamic HTTP headers from env
+#
+# 5. Tool Filtering:
+#    - enabled_tools: Explicit whitelist (recommended)
+#    - disabled_tools: Explicit blacklist
+#    - Use one or the other, not both
+#    - Empty arrays mean "allow all"
+#
+# 6. Debugging:
+#    - Set enabled = false to temporarily disable a server
+#    - Check logs for connection and initialization errors
+#    - Use CODEX_LOG_LEVEL=debug for verbose output
+#
+# 7. Tool Names:
+#    - MCP tools are prefixed: mcp__<server>__<tool>
+#    - Example: mcp__filesystem__read_file
+#    - This prevents conflicts between servers

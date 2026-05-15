@@ -1,0 +1,69 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Go vet tool
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced static analysis
+    - unused        # Check for unused code
+    - gofmt         # Enforce gofmt style
+    - goimports     # Check imports formatting
+    - misspell      # Check for misspelled words
+    # Disabled for initial development - can be enabled later
+    # - revive        # Drop-in golint replacement
+    # - gocritic      # Opinionated checks
+    # - gosec         # Security checks
+    # - unconvert     # Remove unnecessary conversions
+    # - unparam       # Find unused function parameters
+    # - bodyclose     # Check for unclosed HTTP response bodies
+    # - contextcheck  # Check context usage
+    # - errname       # Check error naming conventions
+    # - errorlint     # Error wrapping checks
+    # - nilerr        # Check returning nil even if error != nil
+
+linters-settings:
+  errcheck:
+    check-blank: true
+    check-type-assertions: true
+
+  govet:
+    enable-all: true
+    disable:
+      - shadow      # Too strict for now
+      - fieldalignment  # Performance optimization can come later
+
+  staticcheck:
+    checks: ["all"]
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Exclude some lints from test files
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+        - govet
+
+    # Exclude test helpers
+    - path: test/
+      linters:
+        - errcheck
+        - gosec
+        - govet
+
+    # Allow ignoring errors in defer and cleanup
+    - source: "defer "
+      linters:
+        - errcheck
+    - source: "t\\.Cleanup"
+      linters:
+        - errcheck
