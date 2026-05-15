@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildPromptLibraryGeneratedEntries,
   buildSystemPrompt,
+  createDefaultPromptLibraryState,
   DEFAULT_SYSTEM_PROMPT,
   HANDLER_SYSTEM_PROMPT,
   WORKFLOW_TASK_SYSTEM_PROMPT,
@@ -144,6 +146,38 @@ describe("default system prompt", () => {
     expect(handlerPrompt).toContain("Loaded optional prompt context: Project CI.");
     expect(handlerPrompt).toContain('productKind = "project-ci"');
     expect(handlerPrompt).toContain("resultSchema");
+  });
+
+  it("projects generated prompt library entries with concrete content and editor sources", () => {
+    const state = createDefaultPromptLibraryState();
+    const handlerEntries = buildPromptLibraryGeneratedEntries("handler", state, {
+      loadedContextKeys: ["ci"],
+    });
+
+    expect(handlerEntries.map((entry) => entry.id)).toEqual([
+      "web-context",
+      "workflow-authoring-contract",
+      "handler-workflow-authoring-appendix",
+      "loaded-optional-context",
+      "execute-typescript",
+    ]);
+    expect(handlerEntries.every((entry) => entry.content.trim().length > 0)).toBe(true);
+    expect(handlerEntries.find((entry) => entry.id === "web-context")?.sourcePath).toBe(
+      "src/bun/web-runtime/prompt-context.ts",
+    );
+    expect(
+      handlerEntries.find((entry) => entry.id === "workflow-authoring-contract")?.content,
+    ).toContain(WORKFLOW_AUTHORING_CONTRACT_DECLARATION.trim());
+    expect(
+      handlerEntries.find((entry) => entry.id === "loaded-optional-context")?.content,
+    ).toContain("Loaded optional prompt context: Project CI.");
+
+    expect(buildPromptLibraryGeneratedEntries("handler", state).map((entry) => entry.id)).toEqual([
+      "web-context",
+      "workflow-authoring-contract",
+      "handler-workflow-authoring-appendix",
+      "execute-typescript",
+    ]);
   });
 
   it("gives workflow task agents a direct-tool product surface plus code mode", () => {

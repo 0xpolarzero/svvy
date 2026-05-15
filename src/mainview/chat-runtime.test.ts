@@ -21,6 +21,7 @@ import type {
 } from "../shared/workspace-contract";
 import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
+import type { PromptLibraryState } from "../shared/prompt-library";
 import { buildWorkspaceSessionNavigation } from "./session-state";
 
 mock.module("electrobun/view", () => {
@@ -766,6 +767,34 @@ function createFakeRpc(input: {
     });
   };
 
+  let promptLibraryState: PromptLibraryState = {
+    version: 1,
+    revision: 1,
+    updatedAt: new Date(0).toISOString(),
+    instructionBlocks: {},
+    contextPacks: {},
+    actorRecipes: {
+      orchestrator: {
+        actor: "orchestrator",
+        instructionBlockIds: [],
+        contextPackIds: [],
+        generatedSectionIds: ["execute-typescript"],
+      },
+      handler: {
+        actor: "handler",
+        instructionBlockIds: [],
+        contextPackIds: [],
+        generatedSectionIds: ["execute-typescript"],
+      },
+      "workflow-task": {
+        actor: "workflow-task",
+        instructionBlockIds: [],
+        contextPackIds: [],
+        generatedSectionIds: ["execute-typescript"],
+      },
+    },
+  };
+
   const harness: FakeRpcHarness = {
     client: {
       request: {
@@ -832,6 +861,21 @@ function createFakeRpc(input: {
             webProvider: null,
           },
         }),
+        getPromptLibrary: async () => structuredClone(promptLibraryState),
+        getPromptLibraryDefaults: async () => structuredClone(promptLibraryState),
+        updatePromptLibrary: async ({ state }) => {
+          promptLibraryState = structuredClone(state);
+          return structuredClone(promptLibraryState);
+        },
+        resetPromptLibrary: async () => {
+          promptLibraryState = {
+            ...promptLibraryState,
+            revision: promptLibraryState.revision + 1,
+            updatedAt: new Date().toISOString(),
+          };
+          return structuredClone(promptLibraryState);
+        },
+        getOpenWorkspaces: async () => [structuredClone(TEST_WORKSPACE_INFO)],
         updateSessionAgentDefault: async ({ key, settings }) => {
           return {
             ...(await harness.client.request.getAgentSettings()),
@@ -949,10 +993,15 @@ function createFakeRpc(input: {
           customExternalEditorCommand: "",
           updatedAt: new Date(0).toISOString(),
         }),
-        openWorkflowSourceInEditor: async ({ path }) => ({
+        openWorkspaceSourceInEditor: async ({ path }) => ({
           opened: true,
           editor: "system",
           path,
+        }),
+        getPromptLibraryGeneratedEntries: async () => ({
+          orchestrator: [],
+          handler: [],
+          "workflow-task": [],
         }),
         listSessions: async () => {
           requestCounts.listSessions += 1;
@@ -2915,6 +2964,27 @@ describe("createChatRuntime", () => {
     await runtime.markAppLogsSeen(1);
     expect(harness.appLogSeenRequests).toEqual([1]);
     expect(runtime.appLogSummary.unread.total).toBe(0);
+
+    runtime.dispose();
+  });
+
+  it("opens the context library as a static renderer pane without backend surface activation", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Prompt Work", "done")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("done")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const openedBefore = harness.openedTargets.length;
+
+    await runtime.openSurface({ surface: "prompt-library" }, "primary");
+
+    expect(runtime.getPane("primary")?.target).toEqual({ surface: "prompt-library" });
+    expect(harness.openedTargets).toHaveLength(openedBefore);
 
     runtime.dispose();
   });

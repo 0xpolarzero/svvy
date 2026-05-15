@@ -9,7 +9,7 @@
   - define the core artifact projection shown on thread and workflow-run surfaces
   - define where compact Project CI state appears in the workspace shell
   - define the UI state that should and should not restore after restart
-  - keep saved workflow library browsing out of this section because it is owned by the dedicated saved workflow library surface
+  - keep Workflows library browsing out of this section because it is owned by the dedicated Workflows library surface
 
 ## Purpose
 
@@ -28,14 +28,14 @@ This section does not implement:
 
 - arbitrary session folders
 - nested session folders
-- saved workflow library browsing
+- Workflows library browsing
 - source editor, syntax highlighting, typecheck, or diagnostics surfaces
 - full workflow graph inspection
 - Dockview layout creation, panel placement editing, or expanded pane-layout workflows beyond the restore rules listed here
 - composer draft recovery
 - transient UI recovery
 
-Saved workflow library browsing belongs to the dedicated saved workflow library surface.
+Workflows library browsing belongs to the dedicated Workflows library surface.
 
 ## Session Navigation
 
@@ -396,7 +396,7 @@ The app does restore durable prompt-lock projection from opened surface snapshot
 - `docs/specs/pane-layout.spec.md` defines the expanded Dockview layout, panel placement, duplicate-panel behavior, and detailed restart restore rules for Section 10.
 - `docs/specs/structured-session-state.spec.md` defines canonical session, thread, workflow-run, command, CI, artifact, and wait records.
 - `docs/specs/project-ci.spec.md` defines Project CI record creation and result semantics.
-- `docs/specs/workflow-library.spec.md` defines workflow library storage, but saved workflow library browsing is intentionally deferred from this Section 8 scope.
+- `docs/specs/workflow-library.spec.md` defines workflow library storage, but Workflows library browsing is intentionally deferred from this Section 8 scope.
 
 ## Product Outcomes
 

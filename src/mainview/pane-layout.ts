@@ -25,6 +25,7 @@ export type DockviewPanelChromeKind =
   | "artifact"
   | "project-ci"
   | "saved-workflow-library"
+  | "prompt-library"
   | "app-logs"
   | "command"
   | "workflow-task-attempt"
@@ -152,6 +153,8 @@ export function createPanelChrome(
       return chrome("Workflow Inspector", binding.workflowRunId, "workflow-inspector", true);
     case "saved-workflow-library":
       return chrome("Workflows", ".svvy/workflows", "saved-workflow-library", true);
+    case "prompt-library":
+      return chrome("Context", "instructions", "prompt-library", true);
     case "app-logs":
       return chrome("Logs", "workspace", "app-logs", true);
     case "command":

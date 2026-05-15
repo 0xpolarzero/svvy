@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -453,6 +453,23 @@ function hasAssistantReply(messages: readonly AgentMessage[], text: string): boo
 }
 
 describe("WorkspaceSessionCatalog", () => {
+  it("writes generated context library entries into workspace-owned files", () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    const entries = catalog.getPromptLibraryGeneratedEntries();
+    const webContext = entries.orchestrator.find((entry) => entry.id === "web-context");
+
+    expect(webContext?.sourcePath).toBe(
+      ".svvy/generated/context-library/orchestrator/web-context.md",
+    );
+    expect(webContext?.source).toBe(".svvy/generated/context-library/orchestrator/web-context.md");
+    expect(existsSync(join(cwd, webContext!.sourcePath))).toBe(true);
+    expect(readFileSync(join(cwd, webContext!.sourcePath), "utf8")).toContain(
+      "Loaded always-on prompt context: provider-backed web tools.",
+    );
+  });
+
   it("normalizes generated session title casing and punctuation without deleting suffixes", () => {
     expect(normalizeGeneratedTitle('"OAuth Login Session."')).toBe("OAuth login session");
     expect(normalizeGeneratedTitle("Project CI Thread")).toBe("Project CI thread");

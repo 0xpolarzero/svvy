@@ -10,7 +10,7 @@
   - define the command/action registry model
   - define the shortcut registry and TanStack Hotkeys dispatch boundary
   - define prefix-driven command search, matching, and execution routing semantics
-  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, saved workflow library browsing, Dockview panels, settings, agent settings, and future product actions
+  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, Workflows library browsing, Context library browsing, Dockview panels, settings, agent settings, and future product actions
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The palette is the shell-level action and search surface for `svvy`.
 
 It gives users a VS Code-like way to discover and execute product actions without turning those actions into a second runtime. There is one shared palette shell, one input, and one result interaction model. Command behavior is selected by the input prefix: `>` means command mode. `Cmd+Shift+P` opens the shared palette with `>` already inserted, while `Cmd+P` opens the same shared palette with an empty input for file quick-open search mode, which is intentionally a placeholder until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist.
 
-The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, saved workflow library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
+The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, Workflows library browsing, Context library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
 
 ## Source Boundaries
 
@@ -63,7 +63,7 @@ With that prefix present, the palette discovers and executes product actions, in
 - run or configure Project CI through normal orchestrator or handler-thread routing
 - open handler thread surfaces
 - open workflow inspector-related surfaces
-- open the read-only saved workflow library surface
+- open the read-only Workflows library surface
 - Dockview panel and layout actions once Dockview layout exists
 - settings and agent-setting actions when those features exist
 - future product actions as they are added
@@ -141,7 +141,7 @@ Scopes include:
 - `dialog`
 - `input`
 
-The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, and sidebar toggle, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
+The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Workflows, and `Cmd+Shift+3` for Context, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
 
 TanStack Hotkeys owns renderer keyboard subscription, chord matching, scoped attachment, conflict handling, and input suppression. It does not own product semantics. Hotkey callbacks dispatch product actions through the shortcut registry and command/action registry rather than executing unrelated product behavior directly.
 
@@ -270,6 +270,7 @@ Future product actions:
 
 - `Cmd+Shift+P` opens the shared palette with `>` prefilled.
 - `Cmd+P` opens the shared palette with an empty input for file quick-open search mode.
+- `Cmd+Shift+1`, `Cmd+Shift+2`, and `Cmd+Shift+3` open Logs, Workflows, and Context in sidebar order while preserving plain `Cmd+1/2/3` for future pane or tab switching.
 - The leading `>` is the only command-mode switch; adding or removing it changes live behavior in the same UI.
 - File quick-open is a placeholder until file-oriented surfaces exist.
 - The palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.

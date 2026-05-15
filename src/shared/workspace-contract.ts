@@ -11,6 +11,12 @@ import type {
   WorkflowAgentKey,
   WorkflowAgentSettings,
 } from "./agent-settings";
+import type {
+  PromptLibraryActor,
+  PromptLibraryGeneratedEntry,
+  PromptLibraryState,
+  UpdatePromptLibraryRequest,
+} from "./prompt-library";
 import type { AppMenuAction } from "./shortcut-registry";
 
 export type AuthKeyType = "apikey" | "oauth" | "env" | "none";
@@ -115,6 +121,11 @@ export interface SavedWorkflowLibraryPaneTarget {
   surface: "saved-workflow-library";
 }
 
+export interface PromptLibraryPaneTarget {
+  workspaceSessionId?: string;
+  surface: "prompt-library";
+}
+
 export interface AppLogsPaneTarget {
   workspaceSessionId?: string;
   surface: "app-logs";
@@ -134,6 +145,7 @@ export type WorkspacePaneSurfaceTarget =
   | PromptTarget
   | WorkflowInspectorPaneTarget
   | SavedWorkflowLibraryPaneTarget
+  | PromptLibraryPaneTarget
   | AppLogsPaneTarget
   | StaticInspectorPaneTarget;
 
@@ -530,11 +542,11 @@ export interface DeleteSavedWorkflowLibraryItemRequest {
   path: string;
 }
 
-export interface OpenWorkflowSourceInEditorRequest {
+export interface OpenWorkspaceSourceInEditorRequest {
   path: string;
 }
 
-export interface OpenWorkflowSourceInEditorResponse {
+export interface OpenWorkspaceSourceInEditorResponse {
   opened: boolean;
   editor: string;
   path: string;
@@ -934,6 +946,12 @@ export interface ConversationSurfaceSnapshot {
   sessionAgentKey: SessionAgentKey;
   systemPrompt: string;
   resolvedSystemPrompt: string;
+  promptBinding?: {
+    currentRevision: number;
+    boundSystemPrompt: string;
+    currentSystemPrompt: string;
+    stale: boolean;
+  };
   promptStatus: "idle" | "streaming";
 }
 
@@ -1008,6 +1026,26 @@ export interface ChatRPCSchema {
       getAgentSettings: {
         params: undefined;
         response: AgentSettingsState;
+      };
+      getPromptLibrary: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibraryState;
+      };
+      getPromptLibraryDefaults: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibraryState;
+      };
+      updatePromptLibrary: {
+        params: WorkspaceScoped<UpdatePromptLibraryRequest>;
+        response: PromptLibraryState;
+      };
+      resetPromptLibrary: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibraryState;
+      };
+      getPromptLibraryGeneratedEntries: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>;
       };
       updateSessionAgentDefault: {
         params: UpdateSessionAgentDefaultRequest;
@@ -1093,9 +1131,9 @@ export interface ChatRPCSchema {
         params: WorkspaceScoped<DeleteSavedWorkflowLibraryItemRequest>;
         response: WorkspaceSavedWorkflowLibraryReadModel;
       };
-      openWorkflowSourceInEditor: {
-        params: WorkspaceScoped<OpenWorkflowSourceInEditorRequest>;
-        response: OpenWorkflowSourceInEditorResponse;
+      openWorkspaceSourceInEditor: {
+        params: WorkspaceScoped<OpenWorkspaceSourceInEditorRequest>;
+        response: OpenWorkspaceSourceInEditorResponse;
       };
       listSessions: {
         params: WorkspaceScopedRequest;

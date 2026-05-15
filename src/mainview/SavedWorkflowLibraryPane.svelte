@@ -77,8 +77,10 @@
     if (!item.sourcePath) return;
     actionMessage = null;
     try {
-      await runtime.openWorkflowSourceInEditor(item.sourcePath);
-      actionMessage = `Opened ${item.sourcePath}`;
+      const opened = await runtime.openWorkspaceSourceInEditor(item.sourcePath);
+      actionMessage = opened
+        ? `Opened ${item.sourcePath}`
+        : `Could not open ${item.sourcePath}. Check the configured external editor.`;
     } catch (err) {
       actionMessage = err instanceof Error ? err.message : "Unable to open source.";
     }
@@ -118,7 +120,7 @@
 <section class="saved-workflow-library" aria-label="Saved workflow library">
   <header class="library-header">
     <div>
-      <p>Workflow Library</p>
+      <p>Workflows</p>
       <h2>{readModel?.rootPath ?? ".svvy/workflows"}</h2>
     </div>
     <Button size="sm" onclick={loadLibrary}>

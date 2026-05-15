@@ -28,7 +28,6 @@ import {
 } from "../shared/shortcut-registry";
 import {
   DEFAULT_AGENT_SETTINGS,
-  DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
   type AgentDefaults,
   type SessionMode,
 } from "../shared/agent-settings";
@@ -40,7 +39,7 @@ import {
   setApiKey as storeApiKey,
 } from "./auth-store";
 import { refreshIfNeeded, startOAuthLogin, supportsOAuth } from "./oauth-login";
-import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from "./default-system-prompt";
+import { DEFAULT_SYSTEM_PROMPT } from "./default-system-prompt";
 import { type SessionDefaults } from "./session-catalog";
 import {
   deleteSavedWorkflowLibraryPath,
@@ -268,21 +267,11 @@ function getSessionDefaults(
   return {
     model: defaults.model,
     provider: defaults.provider,
-    systemPrompt: buildRuntimeSystemPrompt(agentSettings),
+    systemPrompt: runtime.catalog.buildOrchestratorSystemPrompt(agentSettings),
     thinkingLevel: defaults.reasoningEffort,
     sessionMode: mode,
     sessionAgentKey: mode === "dumb" ? "dumbOrchestrator" : "defaultSession",
   };
-}
-
-function buildRuntimeSystemPrompt(settings: { systemPrompt: string }): string {
-  const suffix = settings.systemPrompt.trim();
-  if (!suffix || suffix === DEFAULT_ORCHESTRATOR_SESSION_PROMPT) {
-    return buildSystemPrompt("orchestrator");
-  }
-  return suffix
-    ? `${buildSystemPrompt("orchestrator")}\n\n## Session Agent\n${suffix}`
-    : DEFAULT_SYSTEM_PROMPT;
 }
 
 function createAuthState(provider: string): AuthStateResponse {
@@ -414,19 +403,54 @@ function openPathInPreferredEditor(
     return { opened: Utils.openPath(path), editor };
   }
 
-  const configuredCommand = editor === "custom" ? preferences.customExternalEditorCommand : editor;
-  const [command, ...baseArgs] = configuredCommand.split(/\s+/).filter(Boolean);
-  if (!command) {
-    throw new Error("Configure a custom external editor command before opening source files.");
+  const appNameByEditor = {
+    code: "Visual Studio Code",
+    cursor: "Cursor",
+    zed: "Zed",
+    sublime: "Sublime Text",
+  } satisfies Record<Exclude<typeof editor, "system" | "custom">, string>;
+  if (editor !== "custom") {
+    try {
+      const child = spawn("/usr/bin/open", ["-a", appNameByEditor[editor], path], {
+        cwd: runtime.cwd,
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+      return { opened: true, editor };
+    } catch (error) {
+      runtime.appLog.warning("external-editor", "External editor app launch failed.", {
+        editor,
+        path,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return { opened: false, editor };
+    }
   }
 
-  const child = spawn(command, [...baseArgs, path], {
-    cwd: runtime.cwd,
-    detached: true,
-    stdio: "ignore",
-  });
-  child.unref();
-  return { opened: true, editor };
+  const configuredCommand = preferences.customExternalEditorCommand;
+  const [command, ...baseArgs] = configuredCommand.split(/\s+/).filter(Boolean);
+  if (!command) {
+    runtime.appLog.warning("external-editor", "Custom external editor command is empty.", { path });
+    return { opened: false, editor };
+  }
+
+  try {
+    const child = spawn(command, [...baseArgs, path], {
+      cwd: runtime.cwd,
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return { opened: true, editor };
+  } catch (error) {
+    runtime.appLog.warning("external-editor", "Custom external editor command failed.", {
+      command,
+      path,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return { opened: false, editor };
+  }
 }
 
 function listProviderAuthSummaries(): ProviderAuthInfo[] {
@@ -555,6 +579,33 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       getAgentSettings: async () => {
         return workspaceRuntimeRegistry.getActiveRuntime().agentSettingsStore.getState();
+      },
+      getPromptLibrary: async () => {
+        return workspaceRuntimeRegistry.getActiveRuntime().catalog.getPromptLibraryState();
+      },
+      getPromptLibraryDefaults: async () => {
+        return workspaceRuntimeRegistry.getActiveRuntime().catalog.getDefaultPromptLibraryState();
+      },
+      updatePromptLibrary: async ({ state }) => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        const next = runtime.catalog.updatePromptLibraryState(state);
+        runtime.appLog.info("settings", "Prompt library updated.", {
+          revision: next.revision,
+        });
+        return next;
+      },
+      resetPromptLibrary: async () => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        const next = runtime.catalog.resetPromptLibraryState();
+        runtime.appLog.info("settings", "Prompt library reset.", {
+          revision: next.revision,
+        });
+        return next;
+      },
+      getPromptLibraryGeneratedEntries: async () => {
+        return workspaceRuntimeRegistry
+          .getActiveRuntime()
+          .catalog.getPromptLibraryGeneratedEntries();
       },
       updateSessionAgentDefault: async ({ key, settings }) => {
         const runtime = workspaceRuntimeRegistry.getActiveRuntime();
@@ -738,18 +789,18 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           throw error;
         }
       },
-      openWorkflowSourceInEditor: (input) => {
+      openWorkspaceSourceInEditor: (input) => {
         const runtime = getWorkspaceRuntime(input);
         const { path } = input;
         const absolutePath = resolveSafeWorkspacePath(runtime, path);
         if (!absolutePath || getWorkspacePathKind(absolutePath) === "missing") {
-          runtime.appLog.warning("external-editor", "Workflow source file does not exist.", {
+          runtime.appLog.warning("external-editor", "Workspace source file does not exist.", {
             path,
           });
-          throw new Error(`Workflow source file does not exist: ${path}`);
+          throw new Error(`Workspace source file does not exist: ${path}`);
         }
         const result = openPathInPreferredEditor(runtime, absolutePath);
-        runtime.appLog.info("external-editor", "Workflow source opened in external editor.", {
+        runtime.appLog.info("external-editor", "Workspace source opened in external editor.", {
           path,
           editor: result.editor,
           opened: result.opened,
@@ -1440,6 +1491,10 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
       appMenuItem("quickOpen.open"),
       { type: "separator" },
       appMenuItem("sidebar.toggle"),
+      { type: "separator" },
+      appMenuItem("surface.logs.open"),
+      appMenuItem("surface.workflows.open"),
+      appMenuItem("surface.context.open"),
     ],
   },
   {

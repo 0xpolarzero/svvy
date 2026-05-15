@@ -135,7 +135,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 
 - [x] Build a POC prompt context registry with `ci` as the first key. Commit(s): `2a5dbbe`
 - [x] Add the handler-only `request_context({ keys })` tool and persist loaded context keys on handler threads. Commit(s): `2a5dbbe`
-- [x] Extend `thread.start` so the orchestrator can preload optional prompt context with `context: ["ci"]`. Commit(s): `2a5dbbe`
+- [x] Extend `thread.start` so the orchestrator can preload requestable context with `context: ["ci"]`. Commit(s): `2a5dbbe`
 - [x] Make Project CI configuration happen organically through normal handler-thread work, with `context: ["ci"]` preloaded for first-turn CI authoring or requested later through `request_context({ keys: ["ci"] })`, instead of a setup launcher or CI-specific runtime. Commit(s): `2a5dbbe`
 - [x] Define the conventional Project CI saved-workflow layout under `.svvy/workflows/{definitions,prompts,components,entries}/ci/`, without implying a shipped or auto-created default CI entry. Commit(s): `2a5dbbe`
 - [x] Extend runnable workflow entry discovery with optional `productKind` and `resultSchema` metadata. Commit(s): `2a5dbbe`
@@ -217,7 +217,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 ## 11. Session Agents And Workflow Agents
 
 - [x] Define the stored shape for session agent settings used by orchestrator, dumb orchestrator, and handler surfaces. Commit(s): `8e19462`
-- [x] Keep session agent settings separate from optional prompt context so Project CI uses normal handler-thread execution plus `context: ["ci"]`. Commit(s): `2a5dbbe`
+- [x] Keep session agent settings separate from requestable context packs so Project CI uses normal handler-thread execution plus `context: ["ci"]`. Commit(s): `2a5dbbe`
 - [x] Seed initial app-wide default values for the default session agent and dumb orchestrator session agent. Commit(s): `8e19462`
 - [x] Build a POC settings model for editing app-wide session agent defaults. Commit(s): `8e19462`
 - [x] Persist app-wide session agent defaults. Commit(s): `8e19462`
@@ -263,12 +263,22 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [ ] Project queued messages near the owning surface composer, including count, order, remove, restore-to-composer, delivery failure, and duplicated-panel consistency.
 - [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
 
-## 14. Layered Workflow Knowledge
+## 14. Context Library And Context Packs
+
+Current product decisions for this section are specified in `docs/specs/prompt-library.spec.md` and `docs/specs/prompt-contexts.spec.md`.
 
 - [x] Define always-loaded cx and Smithers prompt context plus optional handler-only `ci` prompt context. Commit(s): `673837a`
 - [x] Load actor-specific Smithers prompt context so orchestrators route workflow work, handlers supervise workflows, and workflow task agents keep the Smithers task boundary. Commit(s): `673837a`
-- [x] Define optional prompt context as the on-demand product-knowledge layer for specialized handler work. Commit(s): `2a5dbbe`
-- [x] Render loaded optional prompt context keys in thread metadata so users can see when optional context such as `ci` is active. Commit(s): `2a5dbbe`
+- [x] Define requestable prompt context as the on-demand product-knowledge layer for specialized handler work. Commit(s): `2a5dbbe`
+- [x] Render loaded requested context keys in thread metadata so users can see when context such as `ci` is active. Commit(s): `2a5dbbe`
+- [x] Store app-wide Context Library instruction blocks, context packs, actor recipe settings, generated prompt-part references, revision counters, and app-global/workspace-scoped activation metadata. Commit(s): pending
+- [x] Add a `Context` sidebar surface below `Logs` and `Workflows`, with `Instructions`, `Context Packs`, and `Actors` sections that manage reusable prompt material rather than exposing one raw system-prompt textarea. Commit(s): pending
+- [x] Seed editable shipped instruction blocks for common, orchestrator, handler, and workflow task guidance, with actor filters, enable state, delete, app-global scope, and reset behavior that recreates deleted defaults. Commit(s): pending
+- [x] Seed editable shipped context packs for code navigation, Smithers routing, Smithers supervision, workflow task boundary, and Project CI, with default-loaded actor switches, enable state, delete, app-global scope, and reset behavior. Commit(s): pending
+- [x] Render actor aggregate recipes for orchestrator, handler, and workflow task-agent prompts, linking instruction and context-pack rows back to their editable blocks and showing generated rows as scrollable code previews with editor links to generated runtime sources. Commit(s): pending
+- [ ] Store immutable prompt revision snapshots and durable surface bindings with resolved prompt hashes so historical sessions, handler threads, and workflow task-agent attempts remain inspectable after app restart.
+- [ ] Add stale-prompt diff and action controls for existing orchestrator and handler-thread surfaces, including grouped semantic diff, raw text diff, update-for-next-turn, and keep-current actions.
+- [ ] Route `thread.start({ context })` and handler-side `request_context({ keys })` through requestable Context Library context packs while preserving durable loaded context keys on handler threads.
 
 ## 15. Dedicated Workflow Inspector
 
@@ -309,18 +319,19 @@ Current product decisions for this section are specified in `docs/specs/context-
 - [x] Render bottom-edge context indicators on open unfocused orchestrator and handler-thread panes. Landed in `8d3e362`.
 - [x] Render context bars on focused handler-thread panes and workflow task-agent attempt summaries. Landed in `8d3e362`.
 
-## 18. Saved Workflow Library Surface
+## 18. Workflows Library Surface
 
 This UI should land first as a read-only workflow-library browser with an external-editor handoff. Full in-app source editing, syntax highlighting, inline diagnostics, and file-tree integration remain later editor-surface work.
 
 - [x] Render a save shortcut in relevant thread or workflow surfaces that sends a predefined save request prompt to the handler. Commit(s): `0b2d1ff`
 - [x] Persist the user's preferred external editor in settings and use it for open-in-editor actions from source-backed product surfaces. Commit(s): `ab00e2c`
-- [x] Define the read-only saved workflow library surface with external-editor handoff instead of requiring in-app editor primitives. Commit(s): `ab00e2c`
+- [x] Define the read-only Workflows library surface with external-editor handoff instead of requiring in-app editor primitives. Commit(s): `ab00e2c`
 - [x] Define the workspace read model for saved workflow assets and artifact workflows. Commit(s): `ab00e2c`
-- [x] Render a saved workflow library surface with separate definitions, prompts, components, entries, and artifact workflow groupings. Commit(s): `ab00e2c`
-- [x] Show saved asset title, summary, kind, path, source preview, validation status, and diagnostics in the saved workflow library surface. Commit(s): `ab00e2c`
+- [x] Render a Workflows library surface with separate definitions, prompts, components, entries, and artifact workflow groupings. Commit(s): `ab00e2c`
+- [x] Show saved asset title, summary, kind, path, source preview, validation status, and diagnostics in the Workflows library surface. Commit(s): `ab00e2c`
 - [x] Add open-in-editor actions for saved workflow source files and artifact workflow source files. Commit(s): `ab00e2c`
 - [x] Allow deleting a saved workflow definition, prompt, component, or entry from the library without deleting historical artifact workflows that previously used it. Commit(s): `ab00e2c`
+- [x] Rename the sidebar label from `Saved Workflows` to `Workflows` while preserving the existing saved workflow and artifact workflow library behavior. Commit(s): pending
 
 ## 19. App Logs Surface
 
@@ -330,7 +341,7 @@ Current product decisions for this section are specified in `docs/specs/app-logs
 - [x] Expose app log read, summary, mark-seen, and live-update contracts through the Bun bridge and renderer runtime without polling. Commit(s): `dab04ac`.
 - [x] Route product observability through one app logger that also preserves Electrobun browser-tools bridge telemetry where useful. Commit(s): `dab04ac`.
 - [x] Emit targeted app logs for app lifecycle, provider auth, RPC failures, sessions, title generation, surfaces, prompts, handler threads, Smithers workflow supervision, saved workflow validation, direct tools, `execute_typescript`, artifacts, Project CI projection, external editor handoff, and renderer bridge issues. Commit(s): `dab04ac`.
-- [x] Add a `Logs` sidebar button directly above `Saved workflows` with compact unread counts by info, warning, and error category. Commit(s): `dab04ac`.
+- [x] Add a `Logs` sidebar button directly above the workflow library entry with compact unread counts by info, warning, and error category. Commit(s): `dab04ac`.
 - [x] Render a dense app logs pane with level filters, source filtering, search, mark-all-read, live tail behavior, expandable details, stack traces, and links to related sessions, threads, workflow runs, commands, workflow task attempts, and artifacts where available. Commit(s): `dab04ac`.
 - [ ] Render the app logs row list with TanStack Virtual, preserving variable-height expanded rows, stable row identity, scroll anchors, older-page loading, Live/Frozen tail behavior, and the `New logs` affordance across filtering, search, expansion, and live updates.
 - [x] Add store, RPC, renderer, sidebar, pane, redaction, and representative integration tests for app logs. Commit(s): `dab04ac`.

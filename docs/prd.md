@@ -87,12 +87,14 @@ Everything the agent does is still driven through turns, tools, runtime handlers
 
 Before any target surface runs a turn through pi:
 
-- `svvy` must load that surface's resolved instructions through pi's real `systemPrompt` channel
+- `svvy` must compose that surface's actor prompt from the current Context Library revision and load the resulting instructions through pi's real `systemPrompt` channel
 - the submitted prompt body is the real new user message for that surface; `svvy` does not repair or advance a surface by flattening prior messages into role-labelled transcript prose
 - committed conversation history stays in pi's session history, while runtime, thread, handoff, and workflow state stays in structured state and targeted tools
-- the UI should project the active system prompt as expandable surface metadata rather than as inline transcript prose
+- the UI should project the active system prompt as expandable surface metadata rather than as inline transcript prose, and should warn when a surface is bound to an older prompt revision than current settings
 - each surface must receive only the generated tool declarations and SDK blocks that are callable from that surface
 - each surface may receive compact knowledge about what another surface can do, but it must not receive that other surface's full callable API block just for awareness
+
+The Context Library is the user-facing source of reusable prompt material. It contains editable instruction blocks, editable context packs, actor recipes, generated prompt-part references, and app-global or workspace-scoped activation rules. New sessions, handler threads, and workflow task agents bind to the latest Context Library revision. Existing surfaces keep their bound revision until the user explicitly updates them for a later turn.
 
 The actor-specific capability split is:
 
@@ -283,7 +285,7 @@ Structured diagnostics must be produced, and invalid snippets must not run.
 
 ### 7. Native Control Tools Stay Small And Explicit
 
-Some actions are not ordinary generic work because they change product-level control flow or optional prompt context.
+Some actions are not ordinary generic work because they change product-level control flow or requested context-pack state.
 
 Those actions stay as `svvy`-native control tools:
 
@@ -319,7 +321,7 @@ thread.start({
 });
 ```
 
-That starts a normal handler thread with the default handler runtime shape and the requested optional prompt context loaded before its first turn.
+That starts a normal handler thread with the default handler runtime shape and the requested context pack loaded before its first turn.
 
 There is no `thread.start_ci`, no `ci.start`, and no CI-specific orchestrator.
 
@@ -659,13 +661,13 @@ Each handler thread should have:
 - an objective
 - its own direct conversation history
 - durable lifecycle status
-- loaded optional prompt context keys, when optional product context has been preloaded or requested
+- loaded context-pack keys, when specialized product context has been preloaded or requested
 - zero or more workflow runs
 - zero or more handoff episodes
 
-Optional prompt context keys describe product knowledge loaded into a handler prompt on demand, such as `ci`.
+Context-pack keys describe reusable product knowledge loaded into actor prompts by default or requested on demand, such as `Project CI`.
 
-The current handler objective, wait state, loaded optional context keys, active workflow run ids, and latest handoff metadata are exposed to the handler through `thread.current`. The orchestrator and handlers inspect delegated thread rows through `thread.list`, and exact durable handoff episode bodies through `thread.handoffs`. These read tools do not include transcripts, workflow summaries, or Smithers internals; handlers use active workflow run ids with `smithers.*` tools when workflow details matter.
+The current handler objective, wait state, loaded context-pack keys, active workflow run ids, and latest handoff metadata are exposed to the handler through `thread.current`. The orchestrator and handlers inspect delegated thread rows through `thread.list`, and exact durable handoff episode bodies through `thread.handoffs`. These read tools do not include transcripts, workflow summaries, or Smithers internals; handlers use active workflow run ids with `smithers.*` tools when workflow details matter.
 
 Session agent settings describe the model, reasoning level, prompt selection, and callable surface used by pi-backed product agents. The `defaultSession` and `dumbOrchestrator` agents back interactive orchestrator surfaces. The `namer` agent is the same product-agent family as the orchestrator, not a Smithers workflow agent, but it runs as a one-shot non-interactive title-generation surface whose settings prompt is the only title-generation instruction.
 
@@ -675,11 +677,29 @@ The app owns three app-wide session-agent defaults:
 - `dumbOrchestrator` for dumb sessions created as the lightweight alternative under New Session
 - `namer` for one-shot top-level session and handler-thread title generation, seeded to `openai-codex`/`gpt-5.4-mini` with low reasoning effort
 
-Session records persist their mode, the app-wide defaults that were active at creation time, and the default orchestrator prompt selection. A dumb session is still a normal pi-backed orchestrator surface with the normal svvy callable surface and durable state; it starts from the `dumbOrchestrator` agent default and dumb orchestrator system prompt.
+Session records persist their mode, the app-wide defaults that were active at creation time, and the Context Library revision used by the orchestrator surface. A dumb session is still a normal pi-backed orchestrator surface with the normal svvy callable surface and durable state; it starts from the `dumbOrchestrator` agent default and dumb orchestrator prompt recipe.
 
-Handler threads may persist a per-thread session-agent override when `thread.start` declares a specific provider, model, reasoning level, or handler prompt suffix for the delegated objective. Optional prompt context remains separate product knowledge and does not carry model, reasoning, or prompt-selection settings.
+Handler threads may persist a per-thread session-agent override when `thread.start` declares a specific provider, model, reasoning level, or handler prompt suffix for the delegated objective. Context packs remain separate product knowledge and do not carry model, reasoning, or prompt-selection settings.
 
-The settings surface edits app-wide session-agent defaults, including `namer`, conventional workflow-agent settings, provider credentials, web provider preferences, and a General settings section for app appearance (`system`, `light`, or `dark` with `system` as the default) plus the user's preferred external editor for opening workspace source files from read-only product surfaces. Complex settings and configuration editors use TanStack Form for renderer form state where they need validation, dirty state, field-level errors, submit pending state, reset/cancel behavior, and async save errors, while Bun-side settings validation and normalization remain authoritative. Agent setting changes save directly from the setting control rather than through a separate save button. Agent model selection is a constrained picker over models from currently connected providers, and reasoning selection is constrained to the levels supported by the selected model, matching the interactive session controls rather than accepting freeform provider, model, or reasoning text. Workflow-agent settings synchronize to `.svvy/workflows/components/agents.ts`, which remains an ordinary saved workflow component that exports `explorer`, `implementer`, and `reviewer`.
+The settings surface edits app-wide session-agent defaults, including `namer`, conventional workflow-agent settings, provider credentials, web provider preferences, and a General settings section for app appearance (`system`, `light`, or `dark` with `system` as the default) plus the user's preferred external editor for opening workspace source files from read-only product surfaces. Prompt text blocks and context packs are edited in the dedicated Context pane rather than buried in general settings. Complex settings and configuration editors use TanStack Form for renderer form state where they need validation, dirty state, field-level errors, submit pending state, reset/cancel behavior, and async save errors, while Bun-side settings validation and normalization remain authoritative. Agent setting changes save directly from the setting control rather than through a separate save button. Agent model selection is a constrained picker over models from currently connected providers, and reasoning selection is constrained to the levels supported by the selected model, matching the interactive session controls rather than accepting freeform provider, model, or reasoning text. Workflow-agent settings synchronize to `.svvy/workflows/components/agents.ts`, which remains an ordinary saved workflow component that exports `explorer`, `implementer`, and `reviewer`.
+
+### Context Library
+
+The Context Library is the app-owned prompt configuration surface for orchestrator, handler-thread, and workflow task-agent prompts.
+
+It owns:
+
+- editable instruction blocks with names, bodies, row-level enabled checkboxes, actor inclusion through checkbox chips, debounced text autosave, immediate control persistence, reset behavior, disabled-detail warnings, custom-block delete controls, and app-global or workspace-scoped activation controls below actor inclusion, where workspace scope uses a disabled-when-global multi-select combobox over previously opened workspace `cwd` keys
+- editable context packs with names, bodies, row-level enabled checkboxes, default-loaded actors through checkbox chips, requestable actor metadata, debounced text autosave, immediate control persistence, reset behavior, disabled-detail warnings, custom-pack delete controls, and app-global or workspace-scoped activation controls below actor inclusion, where workspace scope uses the same retained-selection workspace combobox
+- actor recipes that aggregate active instructions, default-loaded context packs, and generated prompt parts for each actor
+- prompt revisions that snapshot meaningful prompt-library autosaves
+- prompt bindings and resolved prompt hashes for sessions, handler threads, and workflow task-agent attempts
+
+The Context pane appears in the sidebar below `Logs` and `Workflows`. It has `Instructions`, `Context Packs`, and `Actors` sections. The first two sections are the authoring surfaces; `Actors` is the aggregate view that shows what each actor receives, links instruction and context-pack rows back to editable blocks, and renders generated prompt parts as scrollable code previews with editor links to generated context files under `.svvy/generated/context-library/...`.
+
+All shipped prompt blocks are editable but not deletable. A shipped block that still matches its shipped snapshot is marked `builtin`; once its text or state differs, it is marked `edited`. These badges are compact, muted metadata rather than prominent status labels. Reset actions are scoped to the selected block, require confirmation, and restore that one block's shipped content, enabled state, scope, and actor settings without removing other records. The Context pane does not expose global reset-all controls for instructions or context packs. User-created custom blocks are deletable.
+
+New top-level sessions, handler threads, and workflow task agents always use the latest Context Library revision. Existing surfaces keep their bound revision and show a compact warning when the current Context Library or generated prompt output differs. The warning offers `View changes`, `Update for next turn`, and `Keep current`.
 
 Top-level session titles are generated through an explicit durable title-generation flow. When the first real user turn starts in a top-level session, the app records a pending title-generation job and runs the configured `namer` agent concurrently with the orchestrator turn. The orchestrator must not wait for the namer, and the namer must not wait for the orchestrator response. The namer settings prompt is the title-generation instruction; the one-shot user prompt sent to that agent contains only the first user message context to title, not another naming instruction or extracted keyword list. While that job is pending or running, manual session rename is blocked for that session so the generated title and a user rename cannot race. The generated title is persisted once, auto-title generation stops after that first successful generation, and a manual rename permanently freezes future auto-titling for the session. Handler-thread titles are generated by the same configured `namer` agent from the orchestrator-supplied `thread.start` objective; the orchestrator does not receive or supply a separate handler title field. Workflow runs do not have a separate title concept and use workflow identity or entry metadata for labels.
 
@@ -733,7 +753,7 @@ Writes under `.svvy/workflows/` automatically surface saved-workflow validation 
 The UI should expose:
 
 - a save shortcut that sends a predefined save request prompt to the handler thread
-- a read-only saved workflow library surface where the user can inspect saved definitions, prompts, components, entries, and artifact workflow groups without requiring an in-app source editor
+- a read-only Workflows surface where the user can inspect saved definitions, prompts, components, entries, and artifact workflow groups without requiring an in-app source editor
 - an open-in-editor action that opens selected workflow source files in the user's configured external editor
 - delete actions for saved definitions, prompts, components, and entries, while preserving historical artifact workflows that previously referenced them
 - later in-app source editing, syntax highlighting, and inline diagnostics only after dedicated editor primitives exist
@@ -852,7 +872,7 @@ Every user request that can start immediately goes through one orchestrator-cont
 
 1. load current workspace, session, thread, workflow-run, episode, artifact, Project CI, and wait context
 2. identify the target surface of the message
-3. resolve that surface's active system prompt and load it into pi's true `systemPrompt` channel before sending the new user message
+3. compose that surface's actor prompt from its bound Context Library revision, generated prompt parts, and surface-specific prompt binding, then load it into pi's true `systemPrompt` channel before sending the new user message
 4. open a new turn for that surface
 5. let that surface choose and persist its top-level turn decision, then decide its next tool call or direct response
 6. execute tools through the correct runtime handler
@@ -879,7 +899,7 @@ When the target surface is the main orchestrator:
 4. if delegated:
    - call `thread.start`
    - hand off the delegated objective to a handler thread
-   - include optional prompt context keys such as `context: ["ci"]` only when the objective needs that product context from the first handler turn
+   - include requestable context-pack keys such as `context: ["ci"]` only when the objective needs that product context from the first handler turn
 5. when a handler thread explicitly hands control back, open an orchestrator turn that reconciles the latest handoff from durable state: thread durable state plus the latest handoff episode
 
 ### Handler Thread Loop
@@ -982,7 +1002,7 @@ When implemented, the command palette UI should use `cmdk-sv` from `https://www.
 
 The command palette is a prefix-driven shell/action surface within the shared palette. It is not an alternate execution engine, standalone shell, custom terminal loop, readline loop, alternate TUI stack, or parallel workflow abstraction. Palette actions route into the existing product model: sessions, panes, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, durable state, settings, and agent settings.
 
-Shell action controls that expose command-palette, quick-open, session creation, sidebar, or pane actions use the product shortcut registry for user feedback and dispatch metadata. The registry owns stable shortcut action ids, labels, platform chords, compact and readable display strings, scope, input-typing policy, availability, and command routing metadata. TanStack Hotkeys is the renderer binding primitive that subscribes scoped shortcuts and applies the registry input policy; it is not the source of product command semantics. App launcher and shell command chords such as `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, and sidebar toggle remain available while workspace text inputs such as the composer are focused. Explicit labeled sidebar actions reveal compact in-button shortcuts immediately on hover or focus without also showing explanatory tooltips. Icon-only or ambiguous controls may show explanatory action tooltips after 500 ms and include the readable shortcut when one exists. Native browser `title` tooltips are not the product feedback layer for these controls. Command palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
+Shell action controls that expose command-palette, quick-open, session creation, sidebar, or pane actions use the product shortcut registry for user feedback and dispatch metadata. The registry owns stable shortcut action ids, labels, platform chords, compact and readable display strings, scope, input-typing policy, availability, and command routing metadata. TanStack Hotkeys is the renderer binding primitive that subscribes scoped shortcuts and applies the registry input policy; it is not the source of product command semantics. App launcher and shell command chords such as `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Workflows, and `Cmd+Shift+3` for Context remain available while workspace text inputs such as the composer are focused. Explicit labeled sidebar actions reveal compact in-button shortcuts immediately on hover or focus without also showing explanatory tooltips. Icon-only or ambiguous controls may show explanatory action tooltips after 500 ms and include the readable shortcut when one exists. Native browser `title` tooltips are not the product feedback layer for these controls. Command palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
 
 When the shared palette is in command mode and the text after `>` does not match an existing command or action, pressing Enter creates a new session and uses the text after `>` as the initial prompt. That prompt enters the normal orchestrator turn model; it does not bypass system prompt loading, prompt history, structured turn state, or live surface runtime ownership. Text entered without the leading `>` remains quick-open search text and must not create prompt sessions while file quick-open is still a placeholder.
 
@@ -995,7 +1015,7 @@ The default command-palette behavior is defined before choosing a Dockview targe
 - the main orchestrator surface can be opened in a Dockview panel
 - a handler thread surface can be opened in a Dockview panel
 - a workflow inspector surface can be opened in a Dockview panel
-- artifact, Project CI, saved workflow library, and related inspector surfaces can be opened in Dockview panels, tab groups, edge groups, floating groups, or popout groups when valid
+- artifact, Project CI, Workflows, Context, and related inspector surfaces can be opened in Dockview panels, tab groups, edge groups, floating groups, or popout groups when valid
 
 The main orchestrator surface and a handler thread surface should use the same core interactive UI model:
 

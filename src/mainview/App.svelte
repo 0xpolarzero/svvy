@@ -34,6 +34,7 @@
 	let restoring = $state(true);
 	let openingWorkspace = $state(false);
 	let showSettings = $state(false);
+	let knownWorkspaces = $state<WorkspaceTabInfo[]>([]);
 	let disposed = false;
 	let disposeAppearanceSync: (() => void) | null = null;
 	const activeTab = $derived(
@@ -69,12 +70,35 @@
 		};
 	}
 
+	function workspaceHistoryKey(workspace: WorkspaceTabInfo): string {
+		return workspace.cwd.trim() || workspace.workspaceId;
+	}
+
+	function mergeKnownWorkspaces(
+		existing: readonly WorkspaceTabInfo[],
+		incoming: readonly WorkspaceTabInfo[],
+	): WorkspaceTabInfo[] {
+		const byKey = new Map<string, WorkspaceTabInfo>();
+		for (const workspace of existing) {
+			byKey.set(workspaceHistoryKey(workspace), workspace);
+		}
+		for (const workspace of incoming) {
+			byKey.set(workspaceHistoryKey(workspace), workspace);
+		}
+		return [...byKey.values()].toSorted((left, right) =>
+			left.workspaceLabel.localeCompare(right.workspaceLabel),
+		);
+	}
+
 	function persistWorkspaceTabs() {
+		const openTabs = tabs.map((tab) => tab.workspace);
+		knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, openTabs);
 		void storage.appWorkspaceTabs
 			.set({
-				version: 2,
+				version: 3,
 				activeWorkspaceId,
-				tabs: tabs.map((tab) => tab.workspace),
+				tabs: openTabs,
+				knownWorkspaces,
 			})
 			.catch((error) => console.error("Failed to persist workspace tabs:", error));
 	}
@@ -147,10 +171,13 @@
 	async function restoreWorkspaceTabs() {
 		try {
 			const restoreState = await storage.appWorkspaceTabs.get();
+			knownWorkspaces = restoreState?.knownWorkspaces ?? [];
 			const tabsToRestore = restoreState?.tabs.length
 				? restoreState.tabs
 				: await rpc.request.getOpenWorkspaces();
+			knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, tabsToRestore);
 			if (!tabsToRestore.length) {
+				persistWorkspaceTabs();
 				restoring = false;
 				return;
 			}
@@ -182,6 +209,10 @@
 			}
 
 			tabs = restoredTabs;
+			knownWorkspaces = mergeKnownWorkspaces(
+				knownWorkspaces,
+				restoredTabs.map((tab) => tab.workspace),
+			);
 			const savedActiveIndex = restoreState?.activeWorkspaceId
 				? tabsToRestore.findIndex((tab) => tab.workspaceId === restoreState.activeWorkspaceId)
 				: -1;
@@ -219,6 +250,7 @@
 				tab.runtime.dispose();
 				return;
 			}
+			knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, [tab.workspace]);
 			tabs = [...tabs, tab];
 			await setActiveWorkspace(tab.workspace.workspaceId);
 			bootstrapError = null;

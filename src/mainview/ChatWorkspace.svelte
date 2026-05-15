@@ -373,7 +373,10 @@
       return "Workflow Inspector";
     }
     if (binding?.surface === "saved-workflow-library") {
-      return "Saved Workflow Library";
+      return "Workflows";
+    }
+    if (binding?.surface === "prompt-library") {
+      return "Context";
     }
     if (binding?.surface === "app-logs") {
       return "Logs";
@@ -405,6 +408,9 @@
     if (binding?.surface === "saved-workflow-library") {
       return ".svvy/workflows";
     }
+    if (binding?.surface === "prompt-library") {
+      return "actors";
+    }
     if (binding?.surface === "app-logs") {
       return "workspace";
     }
@@ -421,6 +427,7 @@
   ): { label: string; value: string } {
     if (binding?.surface === "workflow-inspector") return { label: "surface", value: "workflow" };
     if (binding?.surface === "saved-workflow-library") return { label: "surface", value: "library" };
+    if (binding?.surface === "prompt-library") return { label: "surface", value: "context" };
     if (binding?.surface === "app-logs") return { label: "surface", value: "logs" };
     if (binding?.surface === "command") return { label: "surface", value: "command" };
     if (binding?.surface === "workflow-task-attempt") return { label: "surface", value: "task" };
@@ -566,6 +573,21 @@
         hotkey: getShortcutHotkey("sidebar.toggle"),
         callback: () => toggleSidebarVisibility(),
         options: () => workspaceShortcutOptions("sidebar.toggle"),
+      },
+      {
+        hotkey: getShortcutHotkey("surface.logs.open"),
+        callback: () => openAppLogs(),
+        options: () => workspaceShortcutOptions("surface.logs.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("surface.workflows.open"),
+        callback: () => openSavedWorkflowLibrary(),
+        options: () => workspaceShortcutOptions("surface.workflows.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("surface.context.open"),
+        callback: () => openPromptLibrary(),
+        options: () => workspaceShortcutOptions("surface.context.open"),
       },
     ],
     () => ({
@@ -821,6 +843,15 @@
         return;
       case "sidebar.toggle":
         toggleSidebarVisibility();
+        return;
+      case "surface.logs.open":
+        openAppLogs();
+        return;
+      case "surface.workflows.open":
+        openSavedWorkflowLibrary();
+        return;
+      case "surface.context.open":
+        openPromptLibrary();
         return;
     }
   }
@@ -1358,6 +1389,15 @@
       { kind: "split", panelId: focusedPanelId, direction: "right" },
     );
     void runtime.markAppLogsSeen(runtime.appLogSummary.latestSeq);
+  }
+
+  function openPromptLibrary(): void {
+    void runtime.openSurface(
+      {
+        surface: "prompt-library",
+      },
+      { kind: "split", panelId: focusedPanelId, direction: "right" },
+    );
   }
 
   function getWorkflowTaskAttemptStatusLabel(
@@ -2187,6 +2227,7 @@
             onOpenCommandPalette={() => openPalette("commands")}
             onOpenAppLogs={openAppLogs}
             onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
+            onOpenPromptLibrary={openPromptLibrary}
             onOpenSettings={onOpenSettings}
             onListWorkspaceBranches={runtime.listWorkspaceBranches}
             onSwitchWorkspaceBranch={handleSwitchWorkspaceBranch}

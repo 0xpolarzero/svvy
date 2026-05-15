@@ -3,6 +3,7 @@
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
   import AppLogsPane from "./AppLogsPane.svelte";
+  import PromptLibraryPane from "./PromptLibraryPane.svelte";
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
   import { projectConversation } from "./conversation-projection";
@@ -140,12 +141,19 @@
   <WorkflowInspectorPane {runtime} sessionId={pane.target.workspaceSessionId} workflowRunId={pane.target.workflowRunId} {panelId} />
 {:else if pane?.target?.surface === "app-logs"}
   <AppLogsPane {runtime} {panelId} />
+{:else if pane?.target?.surface === "prompt-library"}
+  <PromptLibraryPane {runtime} />
 {:else if pane?.target?.surface === "saved-workflow-library"}
   <SavedWorkflowLibraryPane {runtime} />
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}
   <RelatedInspectorPane {runtime} target={pane.target} />
 {:else if controller}
-  <section class="dockview-chat-panel" data-testid="workspace-pane">
+  <section class="dockview-chat-panel" class:has-prompt-banner={controller.promptBinding?.stale} data-testid="workspace-pane">
+    {#if controller.promptBinding?.stale}
+      <div class="prompt-stale-banner" role="status">
+        This session is using older instructions than the current Context settings.
+      </div>
+    {/if}
     <ChatTranscript
       {conversation}
       target={controller.target}
@@ -191,7 +199,7 @@
   </section>
 {:else}
   <section class="dockview-empty-panel" data-testid="workspace-pane">
-    <p>{pane?.target ? "Surface unavailable" : "Empty panel"}</p>
+    <p>Surface unavailable</p>
   </section>
 {/if}
 
@@ -202,6 +210,18 @@
     height: 100%;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .dockview-chat-panel.has-prompt-banner {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .prompt-stale-banner {
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--ui-warning-border, var(--ui-border-soft)) 84%, transparent);
+    background: color-mix(in oklab, var(--ui-warning-surface, var(--ui-surface-subtle)) 88%, transparent);
+    color: var(--ui-text-secondary);
+    font-size: var(--text-xs);
   }
 
   .dockview-empty-panel {

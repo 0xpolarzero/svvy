@@ -81,7 +81,7 @@ This section does not implement:
 - composer draft restoration
 - stale live stream restoration
 - workflow run internals, which belong to the workflow inspector surface
-- saved workflow library browsing behavior, file editing, syntax highlighting, or diagnostics surfaces
+- Workflows library browsing behavior, file editing, syntax highlighting, or diagnostics surfaces
 
 ## Core Model
 
@@ -626,7 +626,7 @@ Allowed edge-group surface classes:
 
 - artifact previews
 - Project CI summary
-- saved workflow library
+- Workflows library
 - related inspector views
 - non-primary workflow inspector auxiliaries
 

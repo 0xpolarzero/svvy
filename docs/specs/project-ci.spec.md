@@ -120,7 +120,7 @@ The orchestrator may:
 
 The orchestrator knows only a lightweight routing fact:
 
-- `ci` is an available optional prompt context key for Project CI authoring.
+- `ci` is an available requestable context-pack key for Project CI authoring.
 
 The orchestrator should not receive Smithers workflow tools directly.
 

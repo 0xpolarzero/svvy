@@ -116,7 +116,7 @@ Fetch schema rules:
 
 ## Prompt Context
 
-`web` is an always-loaded prompt context.
+`web` is a default-loaded Prompt Library context pack in the shipped library defaults.
 
 Eligible actors:
 
@@ -472,7 +472,7 @@ Networked provider tests should use fakes or recorded fixtures by default. Live 
 
 ## Invariants
 
-- The selected provider is a setting, not a per-thread optional prompt context.
+- The selected provider is a setting, not a per-thread requested context pack.
 - `web` is always-loaded context for every eligible actor when prompt construction runs.
 - No provider selected means no callable web tools and no `api.web`.
 - TinyFish and Firecrawl require API keys.

@@ -29,8 +29,8 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "True System Prompt Channel",
     status: "in-progress",
     summary:
-      "Loads svvy's orchestrator and handler-thread instructions through pi's real `systemPrompt` channel, sends new user input as real pi user messages without flattened transcript reconstruction or hidden durable state prose, slices generated capability declarations by actor so each surface sees only its own callable API, and renders the active system prompt as expandable surface metadata instead of inline transcript text.",
-    sourceSpecs: ["docs/prd.md"],
+      "Loads svvy's orchestrator, handler-thread, and workflow task-agent instructions through pi's real `systemPrompt` channel from the bound Context Library revision, sends new user input as real pi user messages without flattened transcript reconstruction or hidden durable state prose, slices generated capability declarations by actor so each surface sees only its own callable API, renders the active system prompt as expandable surface metadata instead of inline transcript text, and warns when an existing surface's prompt revision or resolved prompt hash differs from current settings.",
+    sourceSpecs: ["docs/prd.md", "docs/specs/prompt-library.spec.md"],
   },
   {
     id: "artifacts-panel",
@@ -76,13 +76,14 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     sourceSpecs: ["docs/prd.md", "docs/specs/structured-session-state.spec.md"],
   },
   {
-    id: "prompt-contexts",
-    name: "Prompt Context Packs",
+    id: "prompt-library",
+    name: "Context Library And Context Packs",
     status: "in-progress",
     summary:
-      "Keeps product prompt knowledge modular with always-loaded cx semantic-navigation context, actor-specific always-loaded Smithers context, settings-derived always-loaded web provider context, and optional handler-only `ci` context loaded through `thread.start({ context })` or `request_context({ keys })`, with loaded optional keys persisted on the handler thread for resume and no prompt-context loading through the `execute_typescript` `api.*` SDK.",
+      "Provides a dedicated Context pane below Logs and Workflows where reusable instruction blocks and context packs are editable with debounced text autosave, immediate control persistence for row-level enabled checkboxes, actor checkbox chips, and scope controls below actor inclusion, disabled-detail warnings, custom-block deletion, per-block resettable with confirmation, app-global by default, optionally scoped through a retained-selection multi-select combobox over previously opened workspace cwd keys, filterable by actor and state, and assembled through actor aggregate recipes for orchestrator, handler, and workflow task-agent prompts; renders generated prompt parts as actual scrollable code previews with editor links to generated context files under `.svvy/generated/context-library/...`; seeds the library with the current common, orchestrator, handler, workflow-task, cx, Smithers, web, and Project CI guidance as normal editable but non-deletable builtins whose muted badges change from `builtin` to `edited` when their content or state differs from the shipped snapshot; stores immutable prompt revisions on meaningful autosaves; binds new sessions, handler threads, and workflow task-agent attempts to the latest revision with resolved prompt hashes; and warns existing surfaces when their bound prompt differs from current settings, offering grouped diffs and update-for-next-turn.",
     sourceSpecs: [
       "docs/prd.md",
+      "docs/specs/prompt-library.spec.md",
       "docs/specs/prompt-contexts.spec.md",
       "docs/specs/web-tools.spec.md",
       "docs/specs/project-ci.spec.md",
@@ -127,10 +128,10 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
   },
   {
     id: "saved-workflow-library",
-    name: "Workspace Saved Workflow Library",
+    name: "Workspace Workflows Library",
     status: "shipped",
     summary:
-      "Stores reusable workflow source assets under `.svvy/workflows/definitions`, `prompts`, and `components`, stores launchable saved entries under `.svvy/workflows/entries`, exposes minimal asset index metadata from required JSDoc and MDX frontmatter, keeps conventional workflow agents such as `explorer`, `implementer`, and `reviewer` as ordinary component exports in `.svvy/workflows/components/agents.ts`, supports optional product metadata and result schemas on entries such as Project CI, lets handlers list asset paths through `workflow.list_assets` and read saved asset source through direct file tools, validates writes under `.svvy/workflows/...` automatically through structured tool output, and presents a read-only library surface with source previews, diagnostics, deletion controls, and open-in-editor handoff to the user's configured external editor.",
+      "Stores reusable workflow source assets under `.svvy/workflows/definitions`, `prompts`, and `components`, stores launchable saved entries under `.svvy/workflows/entries`, exposes minimal asset index metadata from required JSDoc and MDX frontmatter, keeps conventional workflow agents such as `explorer`, `implementer`, and `reviewer` as ordinary component exports in `.svvy/workflows/components/agents.ts`, supports optional product metadata and result schemas on entries such as Project CI, lets handlers list asset paths through `workflow.list_assets` and read saved asset source through direct file tools, validates writes under `.svvy/workflows/...` automatically through structured tool output, and presents a read-only Workflows surface with source previews, diagnostics, deletion controls, and open-in-editor handoff to the user's configured external editor.",
     sourceSpecs: ["docs/prd.md", "docs/specs/workflow-library.spec.md"],
   },
   {
@@ -185,7 +186,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Command Palette And Quick Open",
     status: "in-progress",
     summary:
-      "Defines a VS Code-like shared palette where `Cmd+Shift+P` opens the same input as `Cmd+P` with `>` prefilled, those launcher chords remain available while text inputs are focused and switch the focused palette between command and quick-open modes when it is already open, the leading `>` live-switches quick-open search into command/action mode, command mode discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, Dockview panel, settings, and agent-setting routing, a product shortcut registry backed by TanStack Hotkeys owns scoped renderer dispatch, input policy, and shared shortcut display, sidebar shell actions reveal compact shortcut hints instantly on hover or focus, icon-only or ambiguous action controls show faster delayed explanatory tooltips with consistent keycap chips, open-session results show visually distinct kind badges across orchestrator, handler-thread, and task-agent categories, `Cmd+P` remains a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty command-mode text creates a normal new session initial prompt without the `>` prefix or a parallel runtime, shell, terminal loop, or workflow abstraction.",
+      "Defines a VS Code-like shared palette where `Cmd+Shift+P` opens the same input as `Cmd+P` with `>` prefilled, those launcher chords remain available while text inputs are focused and switch the focused palette between command and quick-open modes when it is already open, the leading `>` live-switches quick-open search into command/action mode, command mode discovers and executes product actions through existing session, surface, orchestrator, handler-thread, workflow task-agent projection, Project CI, Smithers-native, Dockview panel, settings, and agent-setting routing, a product shortcut registry backed by TanStack Hotkeys owns scoped renderer dispatch, input policy, and shared shortcut display, sidebar shell actions reveal compact shortcut hints instantly on hover or focus, Logs, Workflows, and Context open from `Cmd+Shift+1/2/3` in sidebar order, icon-only or ambiguous action controls show faster delayed explanatory tooltips with consistent keycap chips, open-session results show visually distinct kind badges across orchestrator, handler-thread, and task-agent categories, `Cmd+P` remains a file quick-open placeholder until file surfaces exist, `cmdk-sv` is the intended Svelte UI primitive, and unmatched non-empty command-mode text creates a normal new session initial prompt without the `>` prefix or a parallel runtime, shell, terminal loop, or workflow abstraction.",
     sourceSpecs: ["docs/prd.md", "docs/specs/command-palette.spec.md"],
   },
   {

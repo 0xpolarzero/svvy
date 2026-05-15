@@ -185,6 +185,12 @@ describe("command palette shortcuts", () => {
     expect(getShortcutHotkey("quickOpen.open")).toBe("Mod+P");
     expect(getShortcutReadable("quickOpen.open")).toBe("Cmd+P");
     expect(getShortcut("quickOpen.open").inputPolicy).toBe("allow-while-typing");
+    expect(getShortcutHotkey("surface.logs.open")).toBe("Mod+Shift+1");
+    expect(getShortcutReadable("surface.workflows.open")).toBe("Cmd+Shift+2");
+    expect(getShortcut("surface.context.open")).toMatchObject({
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+    });
   });
 
   it("keeps app launcher and shell command chords active while text inputs are focused", () => {
@@ -193,6 +199,9 @@ describe("command palette shortcuts", () => {
     expect(shouldShortcutIgnoreInputs("session.new")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.dumb")).toBe(false);
     expect(shouldShortcutIgnoreInputs("sidebar.toggle")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("surface.logs.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("surface.workflows.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("surface.context.open")).toBe(false);
   });
 
   it("uses the VS Code-style command prefix to derive live palette mode", () => {

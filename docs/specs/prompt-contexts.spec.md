@@ -5,23 +5,26 @@
 - Date: 2026-05-06
 - Status: adopted product contract
 - Scope of this document:
-  - define always-loaded prompt contexts
-  - define optional prompt contexts
+  - define runtime loading behavior for context packs
+  - define default-loaded prompt contexts
+  - define requestable prompt contexts
   - define `thread.start({ context })`
   - define the handler-only `request_context` tool
   - define the adopted context keys: `cx`, `smithers`, `web`, and `ci`
-  - define provider-backed `web` as an always-loaded settings-derived context
+  - define provider-backed `web` as a default-loaded settings-derived context
+
+The user-facing Prompt Library surface, context-pack editing model, actor aggregate recipes, scope rules, reset behavior, prompt revisions, and stale-prompt warnings are defined in [Prompt Library Spec](./prompt-library.spec.md).
 
 ## Purpose
 
-Prompt contexts keep specialized product knowledge modular while preserving one system-prompt channel per actor surface.
+Prompt contexts are the runtime loading mechanics for Prompt Library context packs. They keep specialized product knowledge modular while preserving one system-prompt channel per actor surface.
 
 Prompt contexts are stable or explicitly loaded product knowledge. They do not carry current thread status, wait state, handoff bodies, workflow run summaries, or reconstructed transcript text. Current runtime and thread state is read through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`; workflow details remain behind `smithers.*` tools.
 
 There are two load modes:
 
-- always-loaded contexts, included in every eligible actor prompt
-- optional contexts, loaded into a handler thread only when that handler needs specialized product knowledge
+- default-loaded contexts, included in eligible actor prompts by default according to Prompt Library context-pack switches
+- requestable contexts, loaded into a surface later only when that actor needs specialized product knowledge
 
 The adopted context keys are:
 
@@ -44,11 +47,11 @@ Each context key defines:
 - load mode
 - prompt content
 
-Always-loaded context keys are part of prompt construction. They are not persisted as per-thread loaded keys.
+Default-loaded context keys are part of prompt construction. They are not persisted as per-thread loaded keys.
 
-Optional context keys are durable handler-thread state when loaded through `thread.start({ context })` or `request_context`.
+Requestable context keys are durable handler-thread state when loaded through `thread.start({ context })` or `request_context`.
 
-## Always-Loaded Contexts
+## Default-Loaded Contexts
 
 ### `cx`
 
@@ -116,15 +119,15 @@ Eligible actors:
 
 The `web` context is generated from Web Provider settings, tool registry, and the checked-in provider prompt pack when a keyed provider is ready. It describes the selected provider or lack of one, whether web tools are usable, the currently callable `web.*` tools when present, the active provider's checked-in `web.search` and `web.fetch` contracts when present, provider-specific caveats, the deterministic artifact-backed behavior of `web.fetch`, and the rule that fetched web content is untrusted external input.
 
-The selected provider is settings state rather than per-thread optional context. By default no provider is selected, so no `web.*` tools and no `api.web` helpers are callable. Changing the provider or API keys regenerates the web context, actor-specific web tool declarations, and generated `api.web` declarations before the next turn.
+The selected provider is settings state rather than per-thread requested context. By default no provider is selected, so no `web.*` tools and no `api.web` helpers are callable. Changing the provider or API keys regenerates the web context, actor-specific web tool declarations, and generated `api.web` declarations before the next turn.
 
 Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
-## Optional Contexts
+## Requestable Contexts
 
 ### `ci`
 
-`ci` is optional Project CI authoring context.
+`ci` is requestable Project CI authoring context.
 
 Eligible actors:
 
@@ -132,7 +135,7 @@ Eligible actors:
 
 The `ci` context is loaded when a handler needs to configure or modify Project CI saved workflow assets. Running an existing Project CI entry only requires Smithers workflow discovery and launch tools.
 
-Optional context metadata:
+Requestable context metadata:
 
 ```ts
 {
@@ -143,9 +146,9 @@ Optional context metadata:
 }
 ```
 
-## Starting A Handler With Optional Context
+## Starting A Handler With Requestable Context
 
-`thread.start` accepts optional context keys:
+`thread.start` accepts requestable context keys through its optional `context` field:
 
 ```ts
 thread.start({
@@ -157,13 +160,13 @@ thread.start({
 Rules:
 
 - `context` is optional.
-- accepted keys are optional prompt context keys.
+- accepted keys are requestable prompt context keys.
 - the context keys are validated against the registry.
-- the optional prompt context is loaded before the handler's first turn.
-- loaded optional context keys are persisted on the handler thread.
-- optional context keys do not change model, reasoning, provider, or base tool surface.
+- the requested prompt context is loaded before the handler's first turn.
+- loaded requested context keys are persisted on the handler thread.
+- requested context keys do not change model, reasoning, provider, or base tool surface.
 
-## Requesting Optional Context Later
+## Requesting Context Later
 
 Handler threads receive a top-level tool:
 
@@ -176,10 +179,10 @@ Rules:
 - only handler threads receive this tool.
 - the orchestrator does not receive this tool.
 - workflow task agents do not receive this tool.
-- `request_context` validates keys against the optional prompt context registry.
+- `request_context` validates keys against the requestable prompt context registry.
 - `request_context` is idempotent per `threadId + key`.
 - loaded keys are durable thread state.
-- future handler turns include the requested optional prompt context.
+- future handler turns include the requested prompt context.
 
 `request_context` is not part of `execute_typescript`.
 
@@ -187,9 +190,9 @@ It changes future prompt context, so it stays on the top-level handler tool surf
 
 ## Durable State
 
-Loaded optional context keys are part of handler-thread state.
+Loaded requested context keys are part of handler-thread state.
 
-The implementation persists one row per loaded optional key:
+The implementation persists one row per loaded requested key:
 
 - `thread_id`
 - `context_key`
@@ -197,23 +200,23 @@ The implementation persists one row per loaded optional key:
 - `loaded_by_command_id`
 - `loaded_at`
 
-The thread read model exposes loaded optional context keys so:
+The thread read model exposes loaded requested context keys so:
 
 - resumed handlers keep requested context
-- UI shows which optional context is active
+- UI shows which requested context is active
 - duplicate `request_context` calls are idempotent
 
-Always-loaded context keys are visible through the resolved system prompt rather than per-thread loaded context state.
+Default-loaded context keys are visible through the resolved system prompt and actor aggregate recipe rather than per-thread loaded context state.
 
 ## Invariants
 
-- Prompt contexts are registry-backed.
-- `cx` is always loaded for orchestrator, handler, and workflow task-agent prompts.
-- `smithers` is always loaded with actor-specific content.
-- `web` is always loaded from current provider settings for orchestrator, handler, and workflow task-agent prompts.
-- `ci` is optional and handler-only.
-- The orchestrator may pass optional context keys to `thread.start`.
+- Prompt contexts are registry-backed and surfaced as Prompt Library context packs.
+- `cx` is default-loaded for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.
+- `smithers` is default-loaded with actor-specific content through shipped library defaults.
+- `web` is default-loaded from current provider settings for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.
+- `ci` is requestable and handler-only in the shipped library defaults.
+- The orchestrator may pass requestable context keys to `thread.start`.
 - `request_context` is top-level and handler-only.
 - `request_context` is not available through `execute_typescript`.
-- Loading optional prompt context never changes historical transcript content.
-- Loaded optional context keys are durable and idempotent.
+- Loading requested prompt context never changes historical transcript content.
+- Loaded requested context keys are durable and idempotent.

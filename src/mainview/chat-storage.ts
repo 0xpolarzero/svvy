@@ -212,9 +212,10 @@ export class WorkspaceUiRestoreStore {
 }
 
 export interface AppWorkspaceTabsState {
-  version: 2;
+  version: 3;
   activeWorkspaceId: string | null;
   tabs: WorkspaceTabInfo[];
+  knownWorkspaces: WorkspaceTabInfo[];
 }
 
 export class AppWorkspaceTabsStore {
@@ -225,7 +226,12 @@ export class AppWorkspaceTabsStore {
       APP_WORKSPACE_TABS_STORE,
       APP_WORKSPACE_TABS_KEY,
     );
-    if (!state || state.version !== 2 || !Array.isArray(state.tabs)) {
+    if (
+      !state ||
+      state.version !== 3 ||
+      !Array.isArray(state.tabs) ||
+      !Array.isArray(state.knownWorkspaces)
+    ) {
       return null;
     }
     return state;

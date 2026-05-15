@@ -46,7 +46,7 @@ If this spec and the POC ever disagree, the POC should be reconciled to the spec
 - Keep Smithers as the canonical workflow execution substrate.
 - Add `svvy`-owned structured product state above those substrates.
 - Model turns, handler threads, workflow runs, workflow task attempts, commands, episodes, artifacts, Project CI, and waits explicitly.
-- Persist session-agent choices separately from optional prompt context: app-wide defaults for `defaultSession`, `dumbOrchestrator`, and `namer`, per-session mode and prompt selection, and optional per-thread model, reasoning, and prompt overrides are structured settings facts, not transcript text. TanStack Form is renderer form state for editing these facts; durable truth remains the structured settings records normalized by Bun-side settings code.
+- Persist session-agent choices separately from requested context-pack state: app-wide defaults for `defaultSession`, `dumbOrchestrator`, and `namer`, per-session mode and prompt selection, and optional per-thread model, reasoning, and prompt overrides are structured settings facts, not transcript text. TanStack Form is renderer form state for editing these facts; durable truth remains the structured settings records normalized by Bun-side settings code.
 - Model top-level session auto-title generation as explicit durable state driven by the first real user turn start, with pending/running/completed/failed title-generation status, manual-rename freeze state, and a rename lock while generation is pending or running. The configured `namer` session-agent prompt owns the title-generation instruction; the one-shot prompt body carries only the first user message context being titled, without a second naming instruction or extracted keyword list. The namer runs concurrently with the orchestrator's first turn: neither surface waits for the other to finish.
 - Persist one top-level per-turn decision for every surface, with orchestrator routing decisions and handler supervision decisions sharing one field.
 - Treat every tool call as a `CommandRecord`.
@@ -77,7 +77,7 @@ The product should model the durable things that actually affect routing, inspec
 
 That means:
 
-- keep first-class records for turns, threads, loaded optional prompt context keys, workflow runs, workflow task attempts, commands, episodes, Project CI runs, CI check results, artifacts, and lifecycle events
+- keep first-class records for turns, threads, loaded requested context-pack keys, workflow runs, workflow task attempts, commands, episodes, Project CI runs, CI check results, artifacts, and lifecycle events
 - keep file-backed artifact metadata and path indexes alongside those records
 - do not split every human-readable summary into a large bespoke schema
 - keep Smithers internals inside Smithers unless `svvy` truly needs a top-level summary of them
@@ -111,7 +111,7 @@ Smithers remains canonical for:
 - turns and handler-thread records
 - workflow-run records projected into the session model
 - workflow-task-attempt records projected into the session model
-- loaded optional prompt context keys
+- loaded requested context-pack keys
 - command records
 - episodes, including handler-thread handoff episodes
 - Project CI run and CI check result records
@@ -430,7 +430,7 @@ They exist because the product needs a durable answer to:
 - which delegated objectives exist
 - which pi-backed interactive surface owns each objective
 - whether the handler is actively working, a workflow is actively running, the objective is waiting, the thread is troubleshooting, or the current span is completed
-- which optional prompt context keys are loaded into that handler thread
+- which requested context-pack keys are loaded into that handler thread
 - which workflow run is currently active or most recent under that thread
 
 A thread is not itself a workflow run.
@@ -597,7 +597,7 @@ Use `turnDecision` this way:
 | `objective`          | Durable statement of what this thread owns, supplied by `thread.start`.                                                     |
 | `status`             | Captures handler-attention state for the delegated objective.                                                              |
 | `wait`               | Captures blocked-state details for the thread itself, including whether the wait is handler-owned or workflow-owned.       |
-| `loadedContextKeys`  | Records optional prompt context keys loaded into this handler thread, such as `ci`.                                        |
+| `loadedContextKeys`  | Records requested context-pack keys loaded into this handler thread, such as `ci`.                                        |
 | `worktree`           | Records the bound worktree when relevant.                                                                                  |
 | `startedAt`          | Orders thread creation.                                                                                                    |
 | `updatedAt`          | Enables recency-based selectors.                                                                                           |
@@ -1035,9 +1035,9 @@ Recommended implementation rules:
 Write responsibility is:
 
 - ordinary orchestrator-turn writes, including turn decisions, and root command writes belong to the `svvy` runtime
-- `thread.start` writes any preloaded optional prompt context keys before the handler's first turn runs, then dispatches that first handler turn without waiting for the user to manually send a message in the new thread
+- `thread.start` writes any preloaded requested context-pack keys before the handler's first turn runs, then dispatches that first handler turn without waiting for the user to manually send a message in the new thread
 - handler-thread turn writes, including turn decisions, and command writes belong to the `svvy` runtime over pi thread surfaces
-- `request_context` writes loaded optional prompt context keys for the current handler thread and is idempotent per `threadId + contextKey`
+- `request_context` writes loaded requested context-pack keys for the current handler thread and is idempotent per `threadId + contextKey`
 - workflow-run writes belong to the Smithers bridge
 - Project CI writes belong to the runtime or bridge path that handles terminal Smithers runs from entries declaring `productKind = "project-ci"` and validates their terminal output against the declared CI result schema
 - wait writes belong to the `svvy` runtime
@@ -1058,7 +1058,7 @@ The implementation must enforce these invariants:
 
 - every mutating or work-producing tool call creates exactly one command record; low-noise runtime-state read tools are projection reads rather than command-producing work
 - a handler thread owns exactly one backing `surfacePiSessionId`
-- loaded optional prompt context keys are durable thread state and survive resume
+- loaded requested context-pack keys are durable thread state and survive resume
 - `request_context` may only run from handler-thread surfaces
 - a thread may have many workflow runs over time
 - a handler thread may wait and resume many times

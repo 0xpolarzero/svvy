@@ -33,7 +33,14 @@ import type {
   WorkspaceWorkflowInspectorReadModel,
   WorkspacePaneSurfaceTarget,
   WorkspaceInfoResponse,
+  WorkspaceTabInfo,
 } from "../shared/workspace-contract";
+import type {
+  PromptLibraryActor,
+  PromptLibraryGeneratedEntry,
+  PromptLibraryState,
+  UpdatePromptLibraryRequest,
+} from "../shared/prompt-library";
 import {
   createChatStorage,
   type ChatStorage,
@@ -119,6 +126,7 @@ export interface ChatSurfaceController {
   agent: Agent;
   target: PromptTarget;
   resolvedSystemPrompt: string;
+  promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
@@ -144,11 +152,16 @@ export interface ChatRuntimeRpcClient {
   request: {
     getDefaults: typeof rpc.request.getDefaults;
     getAgentSettings: typeof rpc.request.getAgentSettings;
+    getPromptLibrary: typeof rpc.request.getPromptLibrary;
+    getPromptLibraryDefaults: typeof rpc.request.getPromptLibraryDefaults;
+    updatePromptLibrary: typeof rpc.request.updatePromptLibrary;
+    resetPromptLibrary: typeof rpc.request.resetPromptLibrary;
     updateSessionAgentDefault: typeof rpc.request.updateSessionAgentDefault;
     updateWorkflowAgent: typeof rpc.request.updateWorkflowAgent;
     updateAppPreferences: typeof rpc.request.updateAppPreferences;
     ensureWorkflowAgentsComponent: typeof rpc.request.ensureWorkflowAgentsComponent;
     getProviderAuthState: typeof rpc.request.getProviderAuthState;
+    getOpenWorkspaces: typeof rpc.request.getOpenWorkspaces;
     getWorkspaceInfo: typeof rpc.request.getWorkspaceInfo;
     listWorkspaceBranches: typeof rpc.request.listWorkspaceBranches;
     switchWorkspaceBranch: typeof rpc.request.switchWorkspaceBranch;
@@ -161,7 +174,8 @@ export interface ChatRuntimeRpcClient {
     openWorkspacePath: typeof rpc.request.openWorkspacePath;
     getSavedWorkflowLibrary: typeof rpc.request.getSavedWorkflowLibrary;
     deleteSavedWorkflowLibraryItem: typeof rpc.request.deleteSavedWorkflowLibraryItem;
-    openWorkflowSourceInEditor: typeof rpc.request.openWorkflowSourceInEditor;
+    openWorkspaceSourceInEditor: typeof rpc.request.openWorkspaceSourceInEditor;
+    getPromptLibraryGeneratedEntries: typeof rpc.request.getPromptLibraryGeneratedEntries;
     listSessions: typeof rpc.request.listSessions;
     getCommandInspector: typeof rpc.request.getCommandInspector;
     listHandlerThreads: typeof rpc.request.listHandlerThreads;
@@ -218,6 +232,7 @@ export interface ChatRuntime {
   storage: ChatStorage;
   workspaceId: string;
   workspaceLabel: string;
+  cwd: string;
   branch?: string;
   appLogSummary: AppLogSummary;
   sessions: WorkspaceSessionSummary[];
@@ -330,6 +345,7 @@ export interface ChatRuntime {
   syncProviderAuth: (providerId: string) => Promise<boolean>;
   requireProviderAccess: (providerId: string) => Promise<boolean>;
   listConfiguredProviders: () => Promise<string[]>;
+  listOpenWorkspaces: () => Promise<WorkspaceTabInfo[]>;
   listWorkspaceBranches: () => Promise<WorkspaceBranchInfo[]>;
   switchWorkspaceBranch: (branch: string) => Promise<void>;
   listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
@@ -337,7 +353,14 @@ export interface ChatRuntime {
   openWorkspacePath: (workspaceRelativePath: string) => Promise<boolean>;
   getSavedWorkflowLibrary: () => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
   deleteSavedWorkflowLibraryItem: (path: string) => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
-  openWorkflowSourceInEditor: (path: string) => Promise<boolean>;
+  openWorkspaceSourceInEditor: (path: string) => Promise<boolean>;
+  getPromptLibrary: () => Promise<PromptLibraryState>;
+  getPromptLibraryDefaults: () => Promise<PromptLibraryState>;
+  getPromptLibraryGeneratedEntries: () => Promise<
+    Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>
+  >;
+  updatePromptLibrary: (request: UpdatePromptLibraryRequest) => Promise<PromptLibraryState>;
+  resetPromptLibrary: () => Promise<PromptLibraryState>;
 }
 
 function createFailureMessage(
@@ -434,6 +457,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   agent: Agent;
   target: PromptTarget;
   resolvedSystemPrompt: string;
+  promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
@@ -453,6 +477,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   ) {
     this.target = normalizePromptTarget(snapshot.target);
     this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
+    this.promptBinding = snapshot.promptBinding;
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
@@ -739,6 +764,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       sessionAgentKey: this.sessionAgentKey,
       systemPrompt: this.agent.state.systemPrompt,
       resolvedSystemPrompt: this.resolvedSystemPrompt,
+      promptBinding: this.promptBinding,
       promptStatus: this.promptStatus,
     };
   }
@@ -1336,6 +1362,7 @@ export async function createChatRuntime(
       (paneState) =>
         !paneState.binding ||
         paneState.binding.surface === "app-logs" ||
+        paneState.binding.surface === "prompt-library" ||
         paneState.binding.surface === "saved-workflow-library" ||
         sessionIds.has(paneState.binding.workspaceSessionId),
     );
@@ -1346,6 +1373,7 @@ export async function createChatRuntime(
       if (
         !paneState.binding ||
         (paneState.binding.surface !== "app-logs" &&
+          paneState.binding.surface !== "prompt-library" &&
           paneState.binding.surface !== "saved-workflow-library" &&
           !sessionIds.has(paneState.binding.workspaceSessionId))
       ) {
@@ -1484,6 +1512,7 @@ export async function createChatRuntime(
     storage,
     workspaceId: workspaceInfo.workspaceId,
     workspaceLabel: workspaceInfo.workspaceLabel,
+    cwd: workspaceInfo.cwd,
     get branch() {
       return workspaceBranch;
     },
@@ -1705,6 +1734,7 @@ export async function createChatRuntime(
         target.surface === "artifact" ||
         target.surface === "project-ci-check" ||
         target.surface === "saved-workflow-library" ||
+        target.surface === "prompt-library" ||
         target.surface === "app-logs"
       ) {
         const nextPaneId = resolveOpenTarget({ ...target }, openTarget);
@@ -1898,6 +1928,7 @@ export async function createChatRuntime(
     syncProviderAuth,
     requireProviderAccess,
     listConfiguredProviders,
+    listOpenWorkspaces: () => rpcClient.request.getOpenWorkspaces(),
     listWorkspaceBranches: async () => {
       const result = await rpcClient.request.listWorkspaceBranches(scoped());
       return result.branches;
@@ -1923,10 +1954,16 @@ export async function createChatRuntime(
     getSavedWorkflowLibrary: () => rpcClient.request.getSavedWorkflowLibrary(scoped()),
     deleteSavedWorkflowLibraryItem: (path) =>
       rpcClient.request.deleteSavedWorkflowLibraryItem(scoped({ path })),
-    openWorkflowSourceInEditor: async (path) => {
-      const result = await rpcClient.request.openWorkflowSourceInEditor(scoped({ path }));
+    openWorkspaceSourceInEditor: async (path) => {
+      const result = await rpcClient.request.openWorkspaceSourceInEditor(scoped({ path }));
       return result.opened;
     },
+    getPromptLibrary: () => rpcClient.request.getPromptLibrary(scoped()),
+    getPromptLibraryDefaults: () => rpcClient.request.getPromptLibraryDefaults(scoped()),
+    getPromptLibraryGeneratedEntries: () =>
+      rpcClient.request.getPromptLibraryGeneratedEntries(scoped()),
+    updatePromptLibrary: (request) => rpcClient.request.updatePromptLibrary(scoped(request)),
+    resetPromptLibrary: () => rpcClient.request.resetPromptLibrary(scoped()),
   };
 
   return runtime;

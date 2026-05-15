@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CheckIcon from "@lucide/svelte/icons/check";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
@@ -13,7 +14,9 @@
   };
 
   type Props = {
-    value: string;
+    value?: string;
+    values?: string[];
+    multiple?: boolean;
     options: CompactComboboxOption[];
     ariaLabel: string;
     placeholder?: string;
@@ -25,11 +28,14 @@
     emptyLabel?: string;
     open?: boolean;
     onBeforeOpen?: () => void | Promise<void>;
-    onSelect: (value: string) => void | Promise<void>;
+    onSelect?: (value: string) => void | Promise<void>;
+    onMultiSelect?: (values: string[]) => void | Promise<void>;
   };
 
   let {
-    value,
+    value = "",
+    values = [],
+    multiple = false,
     options,
     ariaLabel,
     placeholder = "Search",
@@ -42,6 +48,7 @@
     open = $bindable(false),
     onBeforeOpen,
     onSelect,
+    onMultiSelect,
   }: Props = $props();
 
   let root = $state<HTMLDivElement | null>(null);
@@ -54,8 +61,20 @@
   let activeIndex = $state(0);
   let menuStyle = $state("");
   const listboxId = `compact-combobox-${Math.random().toString(36).slice(2)}`;
+  const selectedValueSet = $derived(new Set(values));
   const selectedOption = $derived(options.find((option) => option.value === value));
-  const triggerLabel = $derived(selectedOption?.triggerLabel ?? selectedOption?.label ?? value);
+  const selectedOptions = $derived(options.filter((option) => selectedValueSet.has(option.value)));
+  const triggerLabel = $derived.by(() => {
+    if (!multiple) {
+      return selectedOption?.triggerLabel ?? selectedOption?.label ?? value;
+    }
+    if (selectedOptions.length === 0) return placeholder;
+    if (selectedOptions.length === 1) {
+      const [option] = selectedOptions;
+      return option?.triggerLabel ?? option?.label ?? "";
+    }
+    return `${selectedOptions.length} selected`;
+  });
   const filteredOptions = $derived.by(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return options;
@@ -75,6 +94,7 @@
   $effect(() => {
     if (!open) return;
     void value;
+    void values.join("\0");
     void filteredOptions.length;
     positionMenu();
   });
@@ -114,14 +134,10 @@
   function positionMenu() {
     if (!triggerElement) return;
     const rect = triggerElement.getBoundingClientRect();
-    const containingBlock = root?.closest(".workspace-main, .workspace-sidebar, .dockview-surface-content");
-    const containingRect = containingBlock instanceof HTMLElement ? containingBlock.getBoundingClientRect() : null;
-    const originX = containingRect?.left ?? 0;
-    const originY = containingRect?.top ?? 0;
     const gap = 5;
     const menuHeight = menuElement?.getBoundingClientRect().height ?? (menuClass.includes("model-menu") ? 225 : 240);
-    const top = Math.max(8, rect.top - originY - menuHeight - gap);
-    const left = Math.max(8, Math.min(rect.left - originX, window.innerWidth - 232));
+    const top = Math.max(8, rect.top - menuHeight - gap);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 232));
     const minimumWidth = menuClass.includes("model-menu") ? 256 : 128;
     menuStyle = `left: ${left}px; top: ${top}px; min-width: ${Math.max(rect.width, minimumWidth)}px;`;
   }
@@ -133,12 +149,27 @@
   }
 
   async function selectOption(option: CompactComboboxOption) {
-    if (option.disabled || option.value === value) {
+    if (option.disabled) {
+      return;
+    }
+
+    if (multiple) {
+      const selectedValues = new Set(values);
+      if (selectedValues.has(option.value)) {
+        selectedValues.delete(option.value);
+      } else {
+        selectedValues.add(option.value);
+      }
+      await onMultiSelect?.([...selectedValues]);
+      return;
+    }
+
+    if (option.value === value) {
       open = false;
       return;
     }
 
-    await onSelect(option.value);
+    await onSelect?.(option.value);
     open = false;
   }
 
@@ -148,7 +179,10 @@
     try {
       await onBeforeOpen?.();
       query = "";
-      activeIndex = Math.max(0, options.findIndex((option) => option.value === value));
+      const selectedIndex = multiple
+        ? options.findIndex((option) => selectedValueSet.has(option.value))
+        : options.findIndex((option) => option.value === value);
+      activeIndex = Math.max(0, selectedIndex);
       positionMenu();
       open = true;
       await tick();
@@ -219,12 +253,19 @@
   </button>
   {#if open}
     <div bind:this={menuElement} class={`compact-combobox-menu ${menuClass}`.trim()} style={menuStyle}>
-      <div class="compact-combobox-options" bind:this={optionsElement} id={listboxId} role="listbox" aria-label={ariaLabel}>
+      <div
+        class="compact-combobox-options"
+        bind:this={optionsElement}
+        id={listboxId}
+        role="listbox"
+        aria-label={ariaLabel}
+        aria-multiselectable={multiple ? "true" : undefined}
+      >
         {#if filteredOptions.length === 0}
           <div class="compact-combobox-empty">{emptyLabel}</div>
         {:else}
           {#each filteredOptions as option, index (option.value)}
-            {@const selected = option.value === value}
+            {@const selected = multiple ? selectedValueSet.has(option.value) : option.value === value}
             {@const active = index === activeIndex}
             <button
               id={`${listboxId}-${index}`}
@@ -237,6 +278,13 @@
               onmouseenter={() => (activeIndex = index)}
               onclick={() => selectOption(option)}
             >
+              {#if multiple}
+                <span class={`compact-combobox-option-check ${selected ? "checked" : ""}`.trim()} aria-hidden="true">
+                  {#if selected}
+                    <CheckIcon size={11} strokeWidth={2.4} />
+                  {/if}
+                </span>
+              {/if}
               <span>{option.label}</span>
             </button>
           {/each}
@@ -330,6 +378,38 @@
     white-space: nowrap;
   }
 
+  .compact-combobox-trigger.scope-select {
+    width: fit-content;
+    max-width: min(100%, 18rem);
+    min-height: 1.42rem;
+    padding: 0.1rem 0.24rem 0.1rem 0.38rem;
+    border: 0;
+    border-radius: var(--ui-radius-sm);
+    background: color-mix(in oklab, var(--ui-surface-muted) 54%, transparent);
+    color: var(--ui-text-secondary);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .compact-combobox-trigger.scope-select:hover,
+  .compact-combobox-trigger.scope-select:focus-visible {
+    outline: none;
+    background: color-mix(in oklab, var(--ui-surface-muted) 72%, transparent);
+    color: var(--ui-text-primary);
+  }
+
+  .compact-combobox-trigger.scope-select:focus-visible {
+    box-shadow: var(--ui-focus-ring);
+  }
+
+  .compact-combobox-trigger.scope-select:disabled {
+    cursor: default;
+    opacity: 0.72;
+  }
+
   .compact-combobox-caret {
     display: inline-flex;
     align-items: center;
@@ -374,6 +454,11 @@
   .compact-combobox-menu.model-menu {
     min-width: 16rem;
     max-width: min(22rem, calc(100vw - 2rem));
+  }
+
+  .compact-combobox-menu.scope-menu {
+    min-width: 16rem;
+    max-width: min(25rem, calc(100vw - 2rem));
   }
 
   .compact-combobox-input {
@@ -436,6 +521,31 @@
     font-family: var(--compact-control-font-family);
     font-size: var(--text-xs);
     font-weight: var(--compact-control-font-weight);
+  }
+
+  .compact-combobox-option.scope-option {
+    justify-content: flex-start;
+    gap: 0.48rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+  }
+
+  .compact-combobox-option-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.82rem;
+    height: 0.82rem;
+    flex: 0 0 auto;
+    border-radius: var(--ui-radius-xs);
+    background: color-mix(in oklab, var(--ui-surface-muted) 70%, transparent);
+    color: var(--ui-text-secondary);
+  }
+
+  .compact-combobox-option-check.checked {
+    background: color-mix(in oklab, var(--ui-accent-soft) 34%, var(--ui-surface-muted));
+    color: var(--ui-text-primary);
   }
 
   .compact-combobox-option.active {

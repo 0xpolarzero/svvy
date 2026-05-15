@@ -7,6 +7,7 @@
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import FileTextIcon from "@lucide/svelte/icons/file-text";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import type { ContextBudget } from "../shared/context-budget";
   import { getShortcutCompact } from "../shared/shortcut-registry";
@@ -73,6 +74,7 @@
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
     onOpenWorkflowLibrary?: () => void;
+    onOpenPromptLibrary?: () => void;
     onOpenAppLogs?: () => void;
     onOpenSettings?: () => void;
     onListWorkspaceBranches?: () => Promise<WorkspaceBranchInfo[]>;
@@ -109,6 +111,7 @@
     onOpenSearch,
     onOpenCommandPalette,
     onOpenWorkflowLibrary,
+    onOpenPromptLibrary,
     onOpenAppLogs,
     onOpenSettings,
     onListWorkspaceBranches,
@@ -158,6 +161,9 @@
   const dumbSessionDisplayShortcut = getShortcutCompact("session.dumb");
   const quickOpenDisplayShortcut = getShortcutCompact("quickOpen.open");
   const commandPaletteDisplayShortcut = getShortcutCompact("commandPalette.open");
+  const appLogsDisplayShortcut = getShortcutCompact("surface.logs.open");
+  const workflowsDisplayShortcut = getShortcutCompact("surface.workflows.open");
+  const contextDisplayShortcut = getShortcutCompact("surface.context.open");
 
   $effect(() => {
     function updateRelativeTimeNow() {
@@ -711,32 +717,66 @@
     />
   {/if}
 
-  {#if onOpenWorkflowLibrary || onOpenAppLogs}
+  {#if onOpenWorkflowLibrary || onOpenPromptLibrary || onOpenAppLogs}
     <div class="sidebar-lower-nav">
       {#if onOpenAppLogs}
         <Tooltip label={appLogUnreadTitle} side="right" block>
           <button
-            class={`sidebar-action-row reference-nav-row logs-nav-row ${(appLogSummary?.unread.error ?? 0) > 0 ? "has-errors" : ""}`.trim()}
+            class={`sidebar-action-row reference-nav-row logs-nav-row ${(appLogSummary?.unread.error ?? 0) > 0 ? "has-errors" : ""} ${shortcutAction === "logs" ? "shortcut-open" : ""}`.trim()}
             type="button"
             aria-label={appLogUnreadTitle}
+            onmouseenter={() => showShortcut("logs")}
+            onmouseleave={() => hideShortcut("logs")}
+            onfocus={() => showShortcut("logs")}
+            onblur={() => hideShortcut("logs")}
             onclick={onOpenAppLogs}
           >
             <span class="sidebar-action-icon"><LogsIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Logs</span>
-            <span class="log-unread-badges" aria-hidden="true">
-              {#each appLogUnreadBadges as badge (badge.level)}
-                <small class={`log-badge ${badge.level}`}>{formatAppLogCount(badge.count)}</small>
-              {/each}
+            <span class="sidebar-shortcut-slot">
+              <span class="log-unread-badges" aria-hidden="true">
+                {#each appLogUnreadBadges as badge (badge.level)}
+                  <small class={`log-badge ${badge.level}`}>{formatAppLogCount(badge.count)}</small>
+                {/each}
+              </span>
+              <Kbd value={appLogsDisplayShortcut} class="sidebar-action-shortcut" />
             </span>
           </button>
         </Tooltip>
       {/if}
       {#if onOpenWorkflowLibrary}
-        <Tooltip label="Open saved workflow assets" side="right" block>
-          <button class="sidebar-action-row reference-nav-row" type="button" aria-label="Open saved workflows" onclick={onOpenWorkflowLibrary}>
+        <Tooltip label="Open workflow assets" side="right" block>
+          <button
+            class={`sidebar-action-row reference-nav-row ${shortcutAction === "workflows" ? "shortcut-open" : ""}`.trim()}
+            type="button"
+            aria-label="Open workflows"
+            onmouseenter={() => showShortcut("workflows")}
+            onmouseleave={() => hideShortcut("workflows")}
+            onfocus={() => showShortcut("workflows")}
+            onblur={() => hideShortcut("workflows")}
+            onclick={onOpenWorkflowLibrary}
+          >
             <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-            <span class="sidebar-action-label">Saved workflows</span>
-            <small class="sidebar-action-shortcut">.svvy</small>
+            <span class="sidebar-action-label">Workflows</span>
+            <Kbd value={workflowsDisplayShortcut} class="sidebar-action-shortcut" />
+          </button>
+        </Tooltip>
+      {/if}
+      {#if onOpenPromptLibrary}
+        <Tooltip label="Open context library" side="right" block>
+          <button
+            class={`sidebar-action-row reference-nav-row ${shortcutAction === "context" ? "shortcut-open" : ""}`.trim()}
+            type="button"
+            aria-label="Open context library"
+            onmouseenter={() => showShortcut("context")}
+            onmouseleave={() => hideShortcut("context")}
+            onfocus={() => showShortcut("context")}
+            onblur={() => hideShortcut("context")}
+            onclick={onOpenPromptLibrary}
+          >
+            <span class="sidebar-action-icon"><FileTextIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">Context</span>
+            <Kbd value={contextDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </Tooltip>
       {/if}
@@ -895,6 +935,16 @@
       transform 110ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
+  .sidebar-shortcut-slot {
+    display: grid;
+    justify-items: end;
+    min-width: max-content;
+  }
+
+  .sidebar-shortcut-slot > * {
+    grid-area: 1 / 1;
+  }
+
   .sidebar-action-row:hover :global(.sidebar-action-shortcut),
   .sidebar-action-row:focus-visible :global(.sidebar-action-shortcut),
   .sidebar-action-row:focus-within :global(.sidebar-action-shortcut),
@@ -904,6 +954,13 @@
   .new-session-menu-shell.menu-open .new-session-row :global(.sidebar-action-shortcut) {
     opacity: 1;
     transform: translateX(0);
+  }
+
+  .sidebar-action-row:hover .log-unread-badges,
+  .sidebar-action-row:focus-visible .log-unread-badges,
+  .sidebar-action-row:focus-within .log-unread-badges,
+  .shortcut-open .log-unread-badges {
+    opacity: 0;
   }
 
   .new-session-row {

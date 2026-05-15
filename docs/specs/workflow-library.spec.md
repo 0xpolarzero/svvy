@@ -390,7 +390,7 @@ The final completion rule is:
 
 The desktop app should expose:
 
-- a read-only saved workflow library view rooted at `.svvy/workflows/`
+- a read-only Workflows library view rooted at `.svvy/workflows/`
 - separate groupings for definitions, prompts, components, entries, and artifact workflows
 - asset detail views showing title, summary, kind, path, source preview, validation status, and diagnostics
 - entry detail views showing entry path, summary, launch schema, grouped asset refs, validation status, and diagnostics
@@ -400,7 +400,7 @@ The desktop app should expose:
 
 The UI save affordance is a shortcut prompt to the handler thread.
 
-The saved workflow library surface must not block on an in-app source editor. In-app editing, syntax highlighting, inline diagnostics, and file-tree integration are later editor-surface capabilities. Until those exist, this surface owns workflow-library discovery and inspection, while source editing happens through the configured external editor.
+The Workflows library surface must not block on an in-app source editor. In-app editing, syntax highlighting, inline diagnostics, and file-tree integration are later editor-surface capabilities. Until those exist, this surface owns workflow-library discovery and inspection, while source editing happens through the configured external editor.
 
 ## Handler Guidance
 

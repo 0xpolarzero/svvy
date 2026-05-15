@@ -25,7 +25,7 @@ This is product observability, not a developer console dump. Logs should be conc
 
 ## Product Shape
 
-The left sidebar gains a `Logs` button directly above `Saved workflows`.
+The left sidebar gains a `Logs` button directly above `Workflows`.
 
 The `Logs` button shows compact unread counts for action-worthy categories:
 
@@ -246,7 +246,7 @@ The logs pane is workspace-scoped. It may optionally carry `workspaceSessionId` 
 
 ## Sidebar UI
 
-The sidebar button belongs directly above `Saved workflows`.
+The sidebar button belongs directly above `Workflows`.
 
 Visual rules:
 
@@ -407,7 +407,7 @@ When more detail exists elsewhere, logs should link to the durable inspector or 
 5. Route existing `recordBridgeLog` and `recordBridgeError` call sites through the app logger while preserving bridge telemetry.
 6. Add targeted logging to the required sources, starting with auth, namer/title generation, prompts, RPC errors, Smithers, saved workflow validation, direct tools, and artifacts.
 7. Add renderer app-log state to the chat runtime/bootstrap path.
-8. Add the sidebar `Logs` button with unread counts above `Saved workflows`.
+8. Add the sidebar `Logs` button with unread counts above `Workflows`.
 9. Add `AppLogsPane.svelte` and Dockview routing for the app logs target.
 10. Add tests for store append/query/summary/redaction, RPC methods, live update handling, sidebar unread badges, mark-read behavior, and pane filters.
 11. Update `docs/prd.md`, `docs/features.ts`, and `docs/progress.md` when implementation lands.

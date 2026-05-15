@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { SerializedDockview } from "dockview-core";
 import {
+  createPanelChrome,
   createEmptyPaneLayout,
   getSidebarSessionOpenTarget,
   normalizePaneLayout,
@@ -18,6 +19,19 @@ describe("getSidebarSessionOpenTarget", () => {
   it("opens command-clicked sidebar sessions in the focused pane", () => {
     expect(getSidebarSessionOpenTarget({ metaKey: true })).toEqual({
       kind: "focused-panel",
+    });
+  });
+});
+
+describe("createPanelChrome", () => {
+  it("labels library panes with the current sidebar names", () => {
+    expect(createPanelChrome({ surface: "saved-workflow-library" })).toMatchObject({
+      title: "Workflows",
+      kind: "saved-workflow-library",
+    });
+    expect(createPanelChrome({ surface: "prompt-library" })).toMatchObject({
+      title: "Context",
+      kind: "prompt-library",
     });
   });
 });

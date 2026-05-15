@@ -41,6 +41,11 @@ import type {
   WorkspaceWorkflowInspectorMode,
   WorkspaceWorkflowInspectorReadModel,
 } from "../shared/workspace-contract";
+import type {
+  PromptLibraryActor,
+  PromptLibraryGeneratedEntry,
+  PromptLibraryState,
+} from "../shared/prompt-library";
 import { buildWorkflowInspectorReadModel } from "../shared/workflow-inspector";
 import {
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
@@ -81,7 +86,12 @@ import { resolveApiKey } from "./auth-store";
 import { createToolExecutionCommandTracker } from "./tool-execution-command-tracker";
 import { createStartThreadTool } from "./thread-start-tool";
 import { createThreadHandoffTool } from "./thread-handoff-tool";
-import { buildSystemPrompt, type SvvyActorKind } from "./default-system-prompt";
+import {
+  buildPromptLibraryGeneratedEntries,
+  buildSystemPrompt,
+  createDefaultPromptLibraryState,
+  type SvvyActorKind,
+} from "./default-system-prompt";
 import { createSmithersTools } from "./smithers-tools";
 import { createCxTools } from "./cx-tools";
 import { SmithersRuntimeManager } from "./smithers-runtime/manager";
@@ -92,6 +102,7 @@ import { createSessionAgentSettingsStore } from "./session-agent-settings";
 import { createSvvyDirectTools } from "./svvy-direct-tools";
 import { createListToolsTool } from "./list-tools-tool";
 import { createWebProvider } from "./web-runtime/provider-registry";
+import { createPromptLibraryStore, type PromptLibraryStore } from "./prompt-library-store";
 import {
   createRuntimeCurrentTool,
   createThreadCurrentTool,
@@ -132,6 +143,7 @@ interface ManagedSession {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   systemPrompt: string;
+  promptLibraryRevision: number;
   session: AgentSession;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
@@ -175,6 +187,7 @@ interface CreateManagedSessionOptions {
   model?: string;
   thinkingLevel?: ThinkingLevel;
   systemPrompt: string;
+  promptLibraryRevision?: number;
   sessionMode?: SessionMode;
   sessionAgentKey?: SessionAgentKey;
 }
@@ -206,6 +219,7 @@ export class WorkspaceSessionCatalog {
   private readonly structuredSessionStore: StructuredSessionStateStore;
   private readonly smithersRuntimeManager: SmithersRuntimeManager;
   private readonly agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
+  private readonly promptLibraryStore: PromptLibraryStore;
   private readonly titleGenerationJobs = new Set<string>();
   private closed = false;
   private focusedSurfacePiSessionId: string | null = null;
@@ -233,6 +247,10 @@ export class WorkspaceSessionCatalog {
       cwd: this.cwd,
       agentDir: this.agentDir,
     });
+    this.promptLibraryStore = createPromptLibraryStore({
+      agentDir: this.agentDir,
+    });
+    this.promptLibraryStore.getState();
     this.agentSettingsStore.ensureWorkflowAgentsComponent();
     this.smithersRuntimeManager = new SmithersRuntimeManager({
       cwd: this.cwd,
@@ -291,6 +309,83 @@ export class WorkspaceSessionCatalog {
 
   setTitleGenerationLogListener(listener: ((event: TitleGenerationLogEvent) => void) | null): void {
     this.titleGenerationLogListener = listener;
+  }
+
+  getPromptLibraryState(): PromptLibraryState {
+    return this.promptLibraryStore.getState();
+  }
+
+  getDefaultPromptLibraryState(): PromptLibraryState {
+    return createDefaultPromptLibraryState();
+  }
+
+  updatePromptLibraryState(state: PromptLibraryState): PromptLibraryState {
+    return this.promptLibraryStore.updateState(state);
+  }
+
+  resetPromptLibraryState(): PromptLibraryState {
+    return this.promptLibraryStore.resetState();
+  }
+
+  getPromptLibraryGeneratedEntries() {
+    const state = this.promptLibraryStore.getState();
+    const webProvider = this.createActiveWebProvider();
+    const materialize = (actor: PromptLibraryActor, entries: PromptLibraryGeneratedEntry[]) =>
+      entries.map((entry) => this.materializeGeneratedPromptEntry(actor, entry));
+    return {
+      orchestrator: materialize(
+        "orchestrator",
+        buildPromptLibraryGeneratedEntries("orchestrator", state, { webProvider }),
+      ),
+      handler: materialize(
+        "handler",
+        buildPromptLibraryGeneratedEntries("handler", state, { webProvider }),
+      ),
+      "workflow-task": materialize(
+        "workflow-task",
+        buildPromptLibraryGeneratedEntries("workflow-task", state, { webProvider }),
+      ),
+    };
+  }
+
+  private materializeGeneratedPromptEntry(
+    actor: PromptLibraryActor,
+    entry: PromptLibraryGeneratedEntry,
+  ): PromptLibraryGeneratedEntry {
+    const relativePath = join(".svvy", "generated", "context-library", actor, `${entry.id}.md`);
+    const absolutePath = join(this.cwd, relativePath);
+    mkdirSync(dirname(absolutePath), { recursive: true });
+    writeFileSync(
+      absolutePath,
+      [
+        `# ${entry.title}`,
+        "",
+        `Actor: ${actor}`,
+        `Generated part: ${entry.id}`,
+        "",
+        "Generated by svvy from current runtime settings and contracts.",
+        "Edit the owning app/runtime source or settings, not this file.",
+        "",
+        "```text",
+        entry.content,
+        "```",
+        "",
+      ].join("\n"),
+    );
+    return {
+      ...entry,
+      source: relativePath.replaceAll("\\", "/"),
+      sourcePath: relativePath.replaceAll("\\", "/"),
+    };
+  }
+
+  buildOrchestratorSystemPrompt(settings: { systemPrompt: string }): string {
+    return buildSessionAgentSystemPrompt(
+      settings,
+      this.promptLibraryStore.getState(),
+      this.cwd,
+      this.createActiveWebProvider(),
+    );
   }
 
   async listSessions(): Promise<ListSessionsResponse> {
@@ -721,8 +816,8 @@ export class WorkspaceSessionCatalog {
       thinkingLevel: defaults.thinkingLevel,
       systemPrompt:
         defaults.sessionAgentKey || request.mode === "dumb"
-          ? defaults.systemPrompt
-          : buildSystemPrompt("orchestrator"),
+          ? this.buildOrchestratorSystemPrompt({ systemPrompt: defaults.systemPrompt })
+          : this.buildPromptFromLibrary("orchestrator"),
       sessionMode: request.mode ?? "orchestrator",
       sessionAgentKey:
         defaults.sessionAgentKey ??
@@ -825,7 +920,7 @@ export class WorkspaceSessionCatalog {
     const session = await this.createManagedSurfaceRecord({
       sessionManager: forkedSessionManager,
       actorKind: "orchestrator",
-      systemPrompt: buildSystemPrompt("orchestrator"),
+      systemPrompt: this.buildPromptFromLibrary("orchestrator"),
     });
     const target = this.buildOrchestratorPromptTarget(session.sessionId);
     session.retainCount += 1;
@@ -1180,11 +1275,11 @@ export class WorkspaceSessionCatalog {
   private async loadManagedSurface(
     surfacePiSessionId: string,
     actorKind: SvvyActorKind,
-    systemPrompt = buildSystemPrompt(actorKind),
+    systemPrompt = this.buildPromptFromLibrary(actorKind),
   ): Promise<ManagedSession> {
     const existing = this.managedSurfaces.get(surfacePiSessionId);
     if (existing) {
-      if (existing.actorKind === actorKind && existing.systemPrompt === systemPrompt) {
+      if (existing.actorKind === actorKind) {
         return existing;
       }
       return this.recreateManagedSurface(existing, {
@@ -1249,13 +1344,6 @@ export class WorkspaceSessionCatalog {
       session.session.setThinkingLevel(options.thinkingLevel);
     }
 
-    if (session.systemPrompt !== resolvedSystemPrompt) {
-      return this.recreateManagedSurface(session, {
-        actorKind,
-        systemPrompt: resolvedSystemPrompt,
-      });
-    }
-
     return session;
   }
 
@@ -1291,6 +1379,10 @@ export class WorkspaceSessionCatalog {
       model,
       thinkingLevel,
       systemPrompt,
+      promptLibraryRevision:
+        overrides.systemPrompt && overrides.systemPrompt !== session.systemPrompt
+          ? this.promptLibraryStore.getState().revision
+          : session.promptLibraryRevision,
       sessionMode,
       sessionAgentKey,
       agentDir: this.agentDir,
@@ -1308,6 +1400,8 @@ export class WorkspaceSessionCatalog {
   ): Promise<ManagedSession> {
     const session = await createManagedSession({
       ...options,
+      promptLibraryRevision:
+        options.promptLibraryRevision ?? this.promptLibraryStore.getState().revision,
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
@@ -1405,6 +1499,7 @@ export class WorkspaceSessionCatalog {
       sessionAgentKey: session.sessionAgentKey,
       systemPrompt: session.systemPrompt,
       resolvedSystemPrompt: getResolvedSystemPrompt(session),
+      promptBinding: this.buildPromptBinding(session, target),
       messages: structuredClone(session.session.agent.state.messages),
       pendingUserMessage: session.pendingUserMessage
         ? structuredClone(session.pendingUserMessage.message)
@@ -1570,16 +1665,20 @@ export class WorkspaceSessionCatalog {
       const snapshot = this.getStructuredSnapshot(target.workspaceSessionId);
       const key = snapshot?.pi.defaultOrchestratorPromptKey ?? "defaultSession";
       const settings = this.resolveSessionAgentSettingsFromSnapshot(snapshot, key);
-      return buildSessionAgentSystemPrompt(settings, this.createActiveWebProvider());
+      return buildSessionAgentSystemPrompt(
+        settings,
+        this.promptLibraryStore.getState(),
+        this.cwd,
+        this.createActiveWebProvider(),
+      );
     }
 
     const thread =
       this.getStructuredSnapshot(target.workspaceSessionId)?.threads.find(
         (candidate) => candidate.id === target.threadId,
       ) ?? null;
-    const basePrompt = buildSystemPrompt("handler", {
+    const basePrompt = this.buildPromptFromLibrary("handler", {
       loadedContextKeys: thread?.loadedContextKeys ?? [],
-      webProvider: this.createActiveWebProvider(),
     });
     const agentSettings = this.resolveThreadAgentSettings(target.surfacePiSessionId);
     const suffix = agentSettings?.systemPrompt.trim();
@@ -1613,6 +1712,31 @@ export class WorkspaceSessionCatalog {
         firecrawlApiKey: resolveApiKey("firecrawl"),
       },
     );
+  }
+
+  private buildPromptFromLibrary(
+    actor: SvvyActorKind,
+    options: { loadedContextKeys?: readonly string[] } = {},
+  ): string {
+    return buildSystemPrompt(actor, {
+      ...options,
+      promptLibraryState: this.promptLibraryStore.getState(),
+      workspaceKey: this.cwd,
+      webProvider: this.createActiveWebProvider(),
+    });
+  }
+
+  private buildPromptBinding(session: ManagedSession, target: PromptTarget) {
+    const currentState = this.promptLibraryStore.getState();
+    const currentSystemPrompt = this.buildSystemPromptForTarget(target);
+    return {
+      currentRevision: currentState.revision,
+      boundSystemPrompt: session.systemPrompt,
+      currentSystemPrompt,
+      stale:
+        session.promptLibraryRevision !== currentState.revision ||
+        session.systemPrompt !== currentSystemPrompt,
+    };
   }
 
   private resolveSessionAgentSettingsFromSnapshot(
@@ -3161,6 +3285,7 @@ async function createManagedSession(
     sessionMode: options.sessionMode ?? "orchestrator",
     sessionAgentKey: options.sessionAgentKey ?? "defaultSession",
     systemPrompt: options.systemPrompt,
+    promptLibraryRevision: options.promptLibraryRevision ?? 1,
     session,
     authStorage,
     modelRegistry,
@@ -3190,13 +3315,19 @@ function createCustomToolDefinitions(tools: readonly AgentTool<any>[]): ToolDefi
 
 function buildSessionAgentSystemPrompt(
   settings: { systemPrompt: string },
+  promptLibraryState: PromptLibraryState,
+  workspaceKey: string,
   webProvider?: ReturnType<typeof createWebProvider>,
 ): string {
   const suffix = settings.systemPrompt.trim();
   if (!suffix || suffix === DEFAULT_ORCHESTRATOR_SESSION_PROMPT) {
-    return buildSystemPrompt("orchestrator", { webProvider });
+    return buildSystemPrompt("orchestrator", { promptLibraryState, workspaceKey, webProvider });
   }
-  return `${buildSystemPrompt("orchestrator", { webProvider })}\n\n## Session Agent\n${suffix}`;
+  return `${buildSystemPrompt("orchestrator", {
+    promptLibraryState,
+    workspaceKey,
+    webProvider,
+  })}\n\n## Session Agent\n${suffix}`;
 }
 
 function countVisibleMessages(messages: AgentMessage[]): number {

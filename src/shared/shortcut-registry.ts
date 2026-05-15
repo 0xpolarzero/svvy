@@ -8,6 +8,9 @@ export type ShortcutActionId =
   | "session.new"
   | "session.dumb"
   | "sidebar.toggle"
+  | "surface.logs.open"
+  | "surface.workflows.open"
+  | "surface.context.open"
   | "dialog.close"
   | "commandPalette.submit"
   | "commandPalette.submitFocusedPane"
@@ -15,7 +18,14 @@ export type ShortcutActionId =
 
 export type AppMenuAction = Extract<
   ShortcutActionId,
-  "commandPalette.open" | "quickOpen.open" | "session.new" | "session.dumb" | "sidebar.toggle"
+  | "commandPalette.open"
+  | "quickOpen.open"
+  | "session.new"
+  | "session.dumb"
+  | "sidebar.toggle"
+  | "surface.logs.open"
+  | "surface.workflows.open"
+  | "surface.context.open"
 >;
 
 export type ShortcutDefinition = {
@@ -85,6 +95,36 @@ export const SHORTCUTS = {
     scope: "workspace-shell",
     inputPolicy: "allow-while-typing",
     commandActionId: "sidebar.toggle",
+  },
+  "surface.logs.open": {
+    id: "surface.logs.open",
+    label: "Open Logs",
+    hotkey: "Mod+Shift+1",
+    readableShortcut: "Cmd+Shift+1",
+    compactShortcut: "⌘⇧1",
+    accelerator: "CommandOrControl+Shift+1",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+  },
+  "surface.workflows.open": {
+    id: "surface.workflows.open",
+    label: "Open Workflows",
+    hotkey: "Mod+Shift+2",
+    readableShortcut: "Cmd+Shift+2",
+    compactShortcut: "⌘⇧2",
+    accelerator: "CommandOrControl+Shift+2",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+  },
+  "surface.context.open": {
+    id: "surface.context.open",
+    label: "Open Context",
+    hotkey: "Mod+Shift+3",
+    readableShortcut: "Cmd+Shift+3",
+    compactShortcut: "⌘⇧3",
+    accelerator: "CommandOrControl+Shift+3",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
   },
   "dialog.close": {
     id: "dialog.close",
