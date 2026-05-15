@@ -1,10 +1,10 @@
 <script lang="ts" module>
-  import type { ReferenceStatus } from "./StatusBadge.svelte";
+  import type { TranscriptStatus } from "./StatusBadge.svelte";
 
-  export type ReferenceWorkflow = {
+  export type TranscriptWorkflow = {
     id: string;
     name: string;
-    status: ReferenceStatus;
+    status: TranscriptStatus;
     elapsed?: string;
     stepsDone?: number;
     stepsTotal?: number;
@@ -19,9 +19,9 @@
   import StatusBadge from "./StatusBadge.svelte";
 
   type Props = {
-    workflow: ReferenceWorkflow;
+    workflow: TranscriptWorkflow;
     class?: string;
-    onclick?: (workflow: ReferenceWorkflow) => void;
+    onclick?: (workflow: TranscriptWorkflow) => void;
   };
 
   let { workflow, class: className = "", onclick }: Props = $props();

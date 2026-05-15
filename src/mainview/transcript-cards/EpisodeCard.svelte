@@ -1,13 +1,13 @@
 <script lang="ts" module>
-  import type { ReferenceArtifact } from "./ArtifactChip.svelte";
+  import type { TranscriptArtifact } from "./ArtifactChip.svelte";
 
-  export type ReferenceEpisode = {
+  export type TranscriptEpisode = {
     id: string;
     title: string;
     summary: string;
     thread?: string;
     verified?: boolean;
-    artifacts?: ReferenceArtifact[];
+    artifacts?: TranscriptArtifact[];
   };
 </script>
 
@@ -18,9 +18,9 @@
   import ArtifactChip from "./ArtifactChip.svelte";
 
   type Props = {
-    episode: ReferenceEpisode;
+    episode: TranscriptEpisode;
     class?: string;
-    onartifactopen?: (artifact: ReferenceArtifact) => void;
+    onartifactopen?: (artifact: TranscriptArtifact) => void;
   };
 
   let { episode, class: className = "", onartifactopen }: Props = $props();

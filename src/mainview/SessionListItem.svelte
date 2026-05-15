@@ -222,6 +222,7 @@
     width: 100%;
     min-width: 0;
     padding: 0.42rem 0.58rem 0.44rem 0.9rem;
+    overflow: hidden;
     border-radius: var(--ui-radius-md);
     border: 1px solid transparent;
     background: transparent;
@@ -238,11 +239,11 @@
   .session-main::before {
     content: "";
     position: absolute;
-    top: 0.42rem;
-    bottom: 0.42rem;
-    left: 0.36rem;
+    top: 0;
+    bottom: 0;
+    left: 0;
     width: 0.16rem;
-    border-radius: 999px;
+    border-radius: var(--ui-radius-md) 0 0 var(--ui-radius-md);
     background: transparent;
     transition: background-color 160ms cubic-bezier(0.19, 1, 0.22, 1);
   }
@@ -262,7 +263,6 @@
   }
 
   .active .session-main {
-    border-color: var(--ui-selected-border);
     background: var(--ui-selected-bg);
   }
 
@@ -271,7 +271,6 @@
   }
 
   .open-in-pane:not(.active) .session-main {
-    border-color: color-mix(in oklab, var(--ui-border-soft) 62%, transparent);
     background: color-mix(in oklab, var(--ui-hover-bg) 48%, transparent);
   }
 
@@ -280,7 +279,6 @@
   }
 
   .open-tone-waiting:not(.active) .session-main {
-    border-color: color-mix(in oklab, var(--ui-status-waiting) 32%, transparent);
     background: color-mix(in oklab, var(--ui-status-waiting-soft) 28%, transparent);
   }
 
@@ -289,7 +287,6 @@
   }
 
   .open-tone-error:not(.active) .session-main {
-    border-color: color-mix(in oklab, var(--ui-danger) 34%, transparent);
     background: color-mix(in oklab, var(--ui-danger-soft) 30%, transparent);
   }
 

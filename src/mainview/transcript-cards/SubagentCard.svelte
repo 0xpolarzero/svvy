@@ -1,7 +1,7 @@
 <script lang="ts" module>
-  import type { ReferenceStatus } from "./StatusBadge.svelte";
+  import type { TranscriptStatus } from "./StatusBadge.svelte";
 
-  export type ReferenceAgentType =
+  export type TranscriptAgentType =
     | "orchestrator"
     | "handler-thread"
     | "workflow-task-agent"
@@ -11,11 +11,11 @@
     | "reviewer"
     | "workflow-writer";
 
-  export type ReferenceSubagent = {
+  export type TranscriptSubagent = {
     id: string;
-    type: ReferenceAgentType;
+    type: TranscriptAgentType;
     headline: string;
-    status: ReferenceStatus;
+    status: TranscriptStatus;
     model: string;
     tokens?: number;
   };
@@ -32,10 +32,10 @@
   import StatusBadge from "./StatusBadge.svelte";
 
   type Props = {
-    agent: ReferenceSubagent;
+    agent: TranscriptSubagent;
     class?: string;
     expandable?: boolean;
-    onclick?: (agent: ReferenceSubagent) => void;
+    onclick?: (agent: TranscriptSubagent) => void;
   };
 
   let { agent, class: className = "", expandable = true, onclick }: Props = $props();
@@ -70,7 +70,7 @@
 
 <button
   type="button"
-  class={`flex items-center gap-2 px-2 py-1.5 rounded-md bg-muted/40 border border-border/50 text-left min-w-0 ${expandable ? "hover:bg-muted/70 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""} ${className}`.trim()}
+  class={`transcript-subagent-card flex items-center gap-2 px-2 py-1.5 bg-muted/40 border border-border/50 text-left min-w-0 ${expandable ? "hover:bg-muted/70 transition-colors cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : ""} ${className}`.trim()}
   aria-disabled={!expandable}
   onclick={open}
   onkeydown={keydown}
@@ -94,3 +94,9 @@
     {/if}
   </div>
 </button>
+
+<style>
+  .transcript-subagent-card {
+    border-radius: var(--ui-radius-md);
+  }
+</style>

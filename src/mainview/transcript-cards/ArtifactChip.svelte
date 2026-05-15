@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export type ArtifactType = "diff" | "log" | "screenshot" | "report" | "html" | "json" | "file";
 
-  export type ReferenceArtifact = {
+  export type TranscriptArtifact = {
     id: string;
     name: string;
     type: ArtifactType;
@@ -23,9 +23,9 @@
   type Props = {
     name: string;
     type?: ArtifactType;
-    artifact?: ReferenceArtifact;
+    artifact?: TranscriptArtifact;
     class?: string;
-    onclick?: (artifact: ReferenceArtifact) => void;
+    onclick?: (artifact: TranscriptArtifact) => void;
   };
 
   let { name, type = "log", artifact, class: className = "", onclick }: Props = $props();

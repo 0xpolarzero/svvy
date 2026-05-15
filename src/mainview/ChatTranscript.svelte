@@ -21,13 +21,13 @@
 	} from "./transcript-scroll";
 	import AssistantMarkdown from "./AssistantMarkdown.svelte";
 	import ContextBudgetBar from "./ContextBudgetBar.svelte";
-	import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
-	import FailedCard from "./reference-cards/FailedCard.svelte";
-	import type { ReferenceStatus } from "./reference-cards/StatusBadge.svelte";
-	import ThreadCard, { type ReferenceThread } from "./reference-cards/ThreadCard.svelte";
-	import ToolCallCard from "./reference-cards/ToolCallCard.svelte";
-	import WaitingCard from "./reference-cards/WaitingCard.svelte";
-	import WorkflowCard, { type ReferenceWorkflow } from "./reference-cards/WorkflowCard.svelte";
+	import EpisodeCard, { type TranscriptEpisode } from "./transcript-cards/EpisodeCard.svelte";
+	import FailedCard from "./transcript-cards/FailedCard.svelte";
+	import type { TranscriptStatus } from "./transcript-cards/StatusBadge.svelte";
+	import ThreadCard, { type TranscriptThread } from "./transcript-cards/ThreadCard.svelte";
+	import ToolCallCard from "./transcript-cards/ToolCallCard.svelte";
+	import WaitingCard from "./transcript-cards/WaitingCard.svelte";
+	import WorkflowCard, { type TranscriptWorkflow } from "./transcript-cards/WorkflowCard.svelte";
 	import type { PromptTarget, WorkspaceHandlerThreadSummary } from "../shared/workspace-contract";
 	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
@@ -297,7 +297,7 @@
 		return status[0]?.toUpperCase() + status.slice(1);
 	}
 
-	function commandReferenceStatus(status: string): ReferenceStatus {
+	function commandTranscriptStatus(status: string): TranscriptStatus {
 		if (status === "succeeded" || status === "completed" || status === "passed") return "done";
 		if (status === "failed" || status === "cancelled") return "failed";
 		if (status === "blocked" || status === "troubleshooting") return "blocked";
@@ -306,13 +306,13 @@
 		return "idle";
 	}
 
-	function workflowReference(run: any): ReferenceWorkflow {
+	function workflowTranscript(run: any): TranscriptWorkflow {
 		const stepsDone = run.stepsDone ?? 0;
 		const stepsTotal = Math.max(1, run.stepsTotal ?? 1);
 		return {
 			id: run.workflowRunId,
 			name: run.workflowName ?? run.title ?? run.workflowRunId,
-			status: commandReferenceStatus(run.status),
+			status: commandTranscriptStatus(run.status),
 			elapsed: formatTimestamp(run.updatedAt),
 			stepsDone,
 			stepsTotal,
@@ -321,8 +321,8 @@
 		};
 	}
 
-	function commandRollupReference(command: TranscriptSemanticBlock & { kind: "command-rollup" }): ReferenceWorkflow {
-		const status = commandReferenceStatus(command.command.status);
+	function commandRollupTranscript(command: TranscriptSemanticBlock & { kind: "command-rollup" }): TranscriptWorkflow {
+		const status = commandTranscriptStatus(command.command.status);
 		const stepsTotal = Math.max(
 			1,
 			command.command.summaryChildCount + command.command.traceChildCount,
@@ -339,7 +339,7 @@
 		};
 	}
 
-	function episodeReference(block: TranscriptSemanticBlock & { kind: "handoff-episode" }): ReferenceEpisode {
+	function episodeTranscript(block: TranscriptSemanticBlock & { kind: "handoff-episode" }): TranscriptEpisode {
 		return {
 			id: block.episode.episodeId,
 			title: block.episode.title,
@@ -349,24 +349,24 @@
 		};
 	}
 
-	function threadReference(handlerThread: WorkspaceHandlerThreadSummary): ReferenceThread {
+	function threadTranscript(handlerThread: WorkspaceHandlerThreadSummary): TranscriptThread {
 		return {
 			id: handlerThread.threadId,
 			title: handlerThread.title,
 			objective: handlerThread.latestEpisode?.summary || handlerThread.objective,
-			status: commandReferenceStatus(handlerThread.status),
+			status: commandTranscriptStatus(handlerThread.status),
 			elapsed: formatTimestamp(handlerThread.updatedAt),
 			model: "handler-thread",
-			latestWorkflowRun: handlerThread.latestWorkflowRun ? workflowReference(handlerThread.latestWorkflowRun) : undefined,
+			latestWorkflowRun: handlerThread.latestWorkflowRun ? workflowTranscript(handlerThread.latestWorkflowRun) : undefined,
 		};
 	}
 
-	function subagentReferences(handlerThread: WorkspaceHandlerThreadSummary) {
+	function subagentTranscripts(handlerThread: WorkspaceHandlerThreadSummary) {
 		return (handlerThread.workflowTaskAttempts ?? []).map((attempt) => ({
 			id: attempt.workflowTaskAttemptId,
 			type: "workflow-task-agent" as const,
 			headline: attempt.title,
-			status: commandReferenceStatus(attempt.status),
+			status: commandTranscriptStatus(attempt.status),
 			model: attempt.model,
 		}));
 	}
@@ -589,7 +589,7 @@
 						{:else if row.block.kind === "command-rollup"}
 							<div class="reference-command-block">
 								<WorkflowCard
-									workflow={commandRollupReference(row.block)}
+									workflow={commandRollupTranscript(row.block)}
 									onclick={() => row.block.kind === "command-rollup" && onInspectCommand?.(row.block.command.commandId)}
 								/>
 								{#if row.block.command.summaryChildren.length > 0}
@@ -610,13 +610,13 @@
 							</div>
 						{:else if row.block.kind === "handoff-episode"}
 							<EpisodeCard
-								episode={episodeReference(row.block)}
+								episode={episodeTranscript(row.block)}
 								onartifactopen={(artifact) => onOpenArtifact(artifact.name)}
 							/>
 						{:else if row.block.kind === "thread"}
 							<ThreadCard
-								thread={threadReference(row.block.thread)}
-								subagents={subagentReferences(row.block.thread)}
+								thread={threadTranscript(row.block.thread)}
+								subagents={subagentTranscripts(row.block.thread)}
 								onopen={() => row.block.kind === "thread" && onOpenHandlerThread?.(row.block.thread.threadId)}
 								onworkflowopen={(workflow) => onInspectWorkflow?.(workflow.id)}
 								onsubagentopen={(agent) => onInspectWorkflowTaskAttempt?.(agent.id)}

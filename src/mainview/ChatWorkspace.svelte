@@ -92,13 +92,6 @@
     type ShortcutActionId,
   } from "../shared/shortcut-registry";
   import ModelPickerDialog from "./ModelPickerDialog.svelte";
-  import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
-  import VerificationCard, { type ReferenceVerification } from "./reference-cards/VerificationCard.svelte";
-  import type { ReferenceStatus } from "./reference-cards/StatusBadge.svelte";
-  import type { ReferenceSubagent } from "./reference-cards/SubagentCard.svelte";
-  import ThreadCard, { type ReferenceThread } from "./reference-cards/ThreadCard.svelte";
-  import WaitingCard from "./reference-cards/WaitingCard.svelte";
-  import WorkflowCard, { type ReferenceWorkflow } from "./reference-cards/WorkflowCard.svelte";
   import Dialog from "./ui/Dialog.svelte";
   import Badge from "./ui/Badge.svelte";
   import Button from "./ui/Button.svelte";
@@ -1211,110 +1204,6 @@
     }
   }
 
-  function getReferenceThreadStatus(status: WorkspaceHandlerThreadSummary["status"]): ReferenceStatus {
-    switch (status) {
-      case "idle":
-        return "idle";
-      case "running-handler":
-      case "running-workflow":
-        return "running";
-      case "waiting":
-        return "waiting";
-      case "completed":
-        return "done";
-      case "troubleshooting":
-        return "failed";
-      default:
-        return "idle";
-    }
-  }
-
-  function getReferenceThread(thread: WorkspaceHandlerThreadSummary): ReferenceThread {
-    return {
-      id: thread.threadId,
-      title: thread.title,
-      objective: getHandlerThreadPreview(thread),
-      status: getReferenceThreadStatus(thread.status),
-      elapsed: formatTimestamp(thread.updatedAt),
-      model: "handler-thread",
-    };
-  }
-
-  function getReferenceWorkflowStatus(status: WorkspaceHandlerThreadWorkflowSummary["status"]): ReferenceStatus {
-    switch (status) {
-      case "running":
-      case "continued":
-        return "running";
-      case "waiting":
-        return "waiting";
-      case "completed":
-        return "done";
-      case "failed":
-      case "cancelled":
-        return "failed";
-      default:
-        return "idle";
-    }
-  }
-
-  function getReferenceWorkflowTaskAttemptStatus(
-    status: WorkspaceWorkflowTaskAttemptSummary["status"],
-  ): ReferenceStatus {
-    switch (status) {
-      case "running":
-        return "running";
-      case "waiting":
-        return "waiting";
-      case "completed":
-        return "done";
-      case "failed":
-      case "cancelled":
-        return "failed";
-      default:
-        return "idle";
-    }
-  }
-
-  function getReferenceWorkflowTaskAgents(
-    thread: WorkspaceHandlerThreadSummary,
-  ): ReferenceSubagent[] {
-    return (thread.workflowTaskAttempts ?? []).map((attempt) => ({
-      id: attempt.workflowTaskAttemptId,
-      type: "workflow-task-agent",
-      headline: attempt.title,
-      status: getReferenceWorkflowTaskAttemptStatus(attempt.status),
-      model: "workflow-task-agent",
-      tokens: attempt.contextBudget?.usedTokens,
-    }));
-  }
-
-  function getReferenceWorkflow(run: WorkspaceHandlerThreadWorkflowSummary): ReferenceWorkflow {
-    const status = getReferenceWorkflowStatus(run.status);
-    return {
-      id: run.workflowRunId,
-      name: run.workflowName,
-      status,
-      elapsed: formatTimestamp(run.updatedAt),
-      stepsDone: status === "done" ? 1 : 0,
-      stepsTotal: 1,
-      currentStep: run.summary,
-      runId: run.workflowRunId,
-    };
-  }
-
-  function getReferenceEpisode(
-    episode: NonNullable<WorkspaceHandlerThreadSummary["latestEpisode"]>,
-    thread: WorkspaceHandlerThreadSummary,
-  ): ReferenceEpisode {
-    return {
-      id: episode.episodeId,
-      title: episode.title,
-      summary: episode.summary,
-      thread: thread.title,
-      verified: thread.status === "completed",
-    };
-  }
-
   function getThreadStateDetail(
     thread: WorkspaceHandlerThreadSummary | WorkspaceHandlerThreadInspector,
   ): string {
@@ -1407,31 +1296,6 @@
       return `${counts.passed}/${counts.total} passed, ${failed} attention`;
     }
     return `${counts.passed}/${counts.total} passed`;
-  }
-
-  function getProjectCiVerification(status: WorkspaceProjectCiStatusPanel): ReferenceVerification {
-    const testsPassed = status.checkCounts.passed;
-    const testsTotal = status.checkCounts.total;
-    return {
-      id: status.latestRun?.ciRunId ?? status.updatedAt ?? "project-ci",
-      passed: status.status === "passed",
-      testsPassed,
-      testsTotal,
-      summary: status.summary,
-      checks: status.checks.map((check) => ({
-        label: check.label,
-        status:
-          check.status === "passed"
-            ? "pass"
-            : check.status === "skipped"
-              ? "skip"
-              : check.status === "blocked"
-                ? "blocked"
-                : check.status === "cancelled"
-                  ? "cancelled"
-              : "fail",
-      })),
-    };
   }
 
   function handleInspectLatestProjectCiRun() {

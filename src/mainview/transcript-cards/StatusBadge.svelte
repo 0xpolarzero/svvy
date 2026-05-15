@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type ReferenceStatus =
+  export type TranscriptStatus =
     | "running"
     | "active"
     | "done"
@@ -13,7 +13,7 @@
 
   export type StatusBadgeSize = "xs" | "sm" | "md";
 
-  const statusLabels: Record<ReferenceStatus, string> = {
+  const statusLabels: Record<TranscriptStatus, string> = {
     running: "Running",
     active: "Active",
     done: "Done",
@@ -31,7 +31,7 @@
   import Tooltip from "../ui/Tooltip.svelte";
 
   type Props = {
-    status?: ReferenceStatus;
+    status?: TranscriptStatus;
     size?: StatusBadgeSize;
     class?: string;
     showDot?: boolean;

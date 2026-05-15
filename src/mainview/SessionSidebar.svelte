@@ -899,6 +899,7 @@
     width: 100%;
     min-width: 0;
     padding: 0.32rem 0.42rem 0.3rem 0.82rem;
+    overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--ui-radius-sm);
     background: transparent;
@@ -916,11 +917,11 @@
   .sidebar-child-row::before {
     content: "";
     position: absolute;
-    top: 0.32rem;
-    bottom: 0.32rem;
-    left: 0.32rem;
+    top: 0;
+    bottom: 0;
+    left: 0;
     width: 0.12rem;
-    border-radius: 999px;
+    border-radius: var(--ui-radius-sm) 0 0 var(--ui-radius-sm);
     background: transparent;
     transition: background-color 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }

@@ -650,7 +650,7 @@
 		content: "";
 		position: absolute;
 		border: 1.5px solid currentColor;
-		border-radius: 2px;
+		border-radius: var(--ui-radius-xs);
 	}
 
 	.assistant-markdown :global(.code-copy-icon::before) {

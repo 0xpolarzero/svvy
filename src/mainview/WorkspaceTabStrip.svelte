@@ -265,16 +265,15 @@
     max-width: min(16rem, 32vw);
     height: 1.68rem;
     overflow: hidden;
-    border: 1px solid transparent;
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-hover-bg) 42%, transparent);
+    box-shadow: none;
     color: var(--ui-text-secondary);
     -webkit-user-drag: none;
     transition:
       opacity 150ms cubic-bezier(0.19, 1, 0.22, 1),
       transform 170ms cubic-bezier(0.19, 1, 0.22, 1),
       background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
       color 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
@@ -283,7 +282,6 @@
   }
 
   .workspace-tab.active {
-    border-color: transparent;
     background: var(--ui-selected-bg);
     color: var(--ui-text-primary);
   }
@@ -296,8 +294,10 @@
   .workspace-tab-main,
   .workspace-tab-close,
   .workspace-tab-add {
+    appearance: none;
     border: 0;
     background: transparent;
+    box-shadow: none;
     color: inherit;
     font: inherit;
     cursor: pointer;
@@ -407,21 +407,19 @@
     width: 1.68rem;
     height: 1.68rem;
     flex: 0 0 auto;
-    border: 1px solid transparent;
     border-radius: var(--ui-radius-md);
     background: color-mix(in oklab, var(--ui-hover-bg) 34%, transparent);
+    box-shadow: none;
     color: var(--ui-text-tertiary);
     flex: 0 0 auto;
     transition:
       background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-      border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
       color 150ms cubic-bezier(0.19, 1, 0.22, 1),
       opacity 150ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .workspace-tab-add:hover,
   .workspace-tab-add:focus-visible {
-    border-color: transparent;
     background: var(--ui-hover-bg);
     color: var(--ui-text-primary);
   }

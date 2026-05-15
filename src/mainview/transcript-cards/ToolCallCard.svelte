@@ -1,15 +1,15 @@
 <script lang="ts" module>
-  import type { ReferenceStatus } from "./StatusBadge.svelte";
+  import type { TranscriptStatus } from "./StatusBadge.svelte";
 
   export type ToolCallParams = {
     command: string;
     filename: string;
   };
 
-  export type ReferenceToolCall = {
+  export type TranscriptToolCall = {
     id: string;
     name: string;
-    status: ReferenceStatus;
+    status: TranscriptStatus;
     params?: ToolCallParams | null;
     body?: string | null;
     result?: string | null;
@@ -30,7 +30,7 @@
   import { quintOut } from "svelte/easing";
 
   type Props = {
-    toolCall: ReferenceToolCall;
+    toolCall: TranscriptToolCall;
     class?: string;
     onopen?: (filename: string) => void;
   };
@@ -61,12 +61,12 @@
 </script>
 
 <div
-  class={`reference-tool-card border border-border/80 rounded-md bg-muted/30 transition-all duration-200 ${toolCall.isError ? "bg-destructive/5 border-destructive/30" : ""} ${className}`}
+  class={`transcript-tool-card border border-border/80 bg-muted/30 transition-all duration-200 ${toolCall.isError ? "bg-destructive/5 border-destructive/30" : ""} ${className}`}
   data-testid={`tool-card-${toolCall.id}`}
 >
   <header class="flex items-start justify-between gap-3 p-3">
     <div class="flex items-start gap-3 min-w-0">
-      <div class={`p-1.5 rounded bg-muted border border-border/50 ${toolCall.isError ? "text-destructive" : "text-muted-foreground"}`}>
+      <div class={`transcript-tool-icon p-1.5 bg-muted border border-border/50 ${toolCall.isError ? "text-destructive" : "text-muted-foreground"}`}>
         {#if toolCall.name === "execute_typescript"}
           <FileCodeIcon size={14} strokeWidth={2.2} />
         {:else}
@@ -98,7 +98,7 @@
       {#if toolCall.body || toolCall.result}
         <button
           type="button"
-          class="text-muted-foreground/40 hover:text-muted-foreground transition-colors p-1 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          class="transcript-tool-toggle text-muted-foreground/40 hover:text-muted-foreground transition-colors p-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           onclick={toggle}
           aria-expanded={expanded}
           aria-controls={bodyId}
@@ -122,14 +122,14 @@
       {#if toolCall.body}
         <div class="space-y-1.5">
           <span class="text-xs font-bold uppercase tracking-wide text-muted-foreground/70">Input</span>
-          <pre class="m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">{toolCall.body}</pre>
+          <pre class="transcript-tool-pre m-0 max-h-64 overflow-auto p-2.5 border border-border/60 bg-code text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">{toolCall.body}</pre>
         </div>
       {/if}
 
       {#if toolCall.result}
         <div class="space-y-1.5">
           <span class="text-xs font-bold uppercase tracking-wide text-muted-foreground/70">{toolCall.isError ? "Error Output" : "Output"}</span>
-          <pre class={`m-0 max-h-64 overflow-auto p-2.5 rounded border border-border/60 bg-code text-sm leading-relaxed whitespace-pre-wrap break-words ${toolCall.isError ? "text-destructive" : "text-foreground"}`}>{toolCall.result}</pre>
+          <pre class={`transcript-tool-pre m-0 max-h-64 overflow-auto p-2.5 border border-border/60 bg-code text-sm leading-relaxed whitespace-pre-wrap break-words ${toolCall.isError ? "text-destructive" : "text-foreground"}`}>{toolCall.result}</pre>
         </div>
       {/if}
     </div>
@@ -137,9 +137,19 @@
 </div>
 
 <style>
-  .reference-tool-card {
+  .transcript-tool-card {
     width: 100%;
     max-width: 100%;
+    border-radius: var(--ui-radius-md);
+  }
+
+  .transcript-tool-icon,
+  .transcript-tool-pre {
+    border-radius: var(--ui-radius-sm);
+  }
+
+  .transcript-tool-toggle {
+    border-radius: var(--ui-radius-xs);
   }
 
   .bg-code {

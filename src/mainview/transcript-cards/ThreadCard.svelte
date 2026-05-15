@@ -1,18 +1,18 @@
 <script lang="ts" module>
-  import type { ReferenceStatus } from "./StatusBadge.svelte";
-  import type { ReferenceSubagent } from "./SubagentCard.svelte";
-  import type { ReferenceWorkflow } from "./WorkflowCard.svelte";
+  import type { TranscriptStatus } from "./StatusBadge.svelte";
+  import type { TranscriptSubagent } from "./SubagentCard.svelte";
+  import type { TranscriptWorkflow } from "./WorkflowCard.svelte";
 
-	export type ReferenceThread = {
+	export type TranscriptThread = {
 		id: string;
 		title: string;
 		objective: string;
-		status: ReferenceStatus;
+		status: TranscriptStatus;
 		elapsed: string;
 		progress?: number;
 		worktree?: string;
 		model: string;
-		latestWorkflowRun?: ReferenceWorkflow;
+		latestWorkflowRun?: TranscriptWorkflow;
 	};
 </script>
 
@@ -25,19 +25,19 @@
 	import StatusBadge from "./StatusBadge.svelte";
 	import ModelBadge from "./ModelBadge.svelte";
 	import SubagentCard from "./SubagentCard.svelte";
-	import WorkflowCard, { type ReferenceWorkflow } from "./WorkflowCard.svelte";
+	import WorkflowCard, { type TranscriptWorkflow } from "./WorkflowCard.svelte";
 	import { slide } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import Tooltip from "../ui/Tooltip.svelte";
 
   type Props = {
-    thread: ReferenceThread;
-    subagents?: ReferenceSubagent[];
+    thread: TranscriptThread;
+    subagents?: TranscriptSubagent[];
     class?: string;
     defaultExpanded?: boolean;
-		onopen?: (thread: ReferenceThread) => void;
-		onworkflowopen?: (workflow: ReferenceWorkflow) => void;
-		onsubagentopen?: (agent: ReferenceSubagent) => void;
+		onopen?: (thread: TranscriptThread) => void;
+		onworkflowopen?: (workflow: TranscriptWorkflow) => void;
+		onsubagentopen?: (agent: TranscriptSubagent) => void;
 	};
 
   let {
