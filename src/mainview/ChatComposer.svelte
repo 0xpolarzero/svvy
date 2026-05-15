@@ -746,7 +746,7 @@
 	.composer-control-cluster,
 	.composer-action-cluster {
 		flex: 0 0 auto;
-		gap: 0.36rem;
+		gap: 0.46rem;
 		padding: 0;
 		border: 0;
 		border-radius: 0;
@@ -754,7 +754,7 @@
 	}
 
 	.composer-control-cluster {
-		max-width: 18rem;
+		max-width: 21rem;
 	}
 
 	.composer-action-cluster {
@@ -880,7 +880,7 @@
 		width: 7.35rem;
 		height: 1.7rem;
 		flex: 0 0 7.35rem;
-		margin-left: 0.64rem;
+		margin-left: 0.74rem;
 	}
 
 	.compact-budget :global(.context-budget-compact) {
