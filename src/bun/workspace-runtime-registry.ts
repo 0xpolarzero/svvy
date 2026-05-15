@@ -11,6 +11,7 @@ import { createAppLogger, type BridgeLogLevel } from "./app-logger";
 import { createAppLogStore, type AppLogStore } from "./app-log-store";
 import { createSessionAgentSettingsStore } from "./session-agent-settings";
 import {
+  getSvvySessionDir,
   getSvvyAgentDir,
   WorkspaceSessionCatalog,
   type TitleGenerationLogEvent,
@@ -136,11 +137,12 @@ export class WorkspaceRuntimeRegistry {
       "workspace-runtimes",
       sanitizeWorkspaceRuntimeId(workspaceId),
     );
+    const sessionDir = getSvvySessionDir(cwd, this.agentDir);
     const catalog = new WorkspaceSessionCatalog(
       cwd,
       this.agentDir,
-      join(runtimeDir, "sessions"),
-      join(runtimeDir, "namer"),
+      sessionDir,
+      join(sessionDir, "namer"),
       workspaceId,
     );
     const pathIndex = new WorkspacePathIndex(cwd);
