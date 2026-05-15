@@ -23,3 +23,30 @@ export function shouldUseNarrowShell(width: number): boolean {
 export function shouldUseDesktopInspectorSplit(width: number): boolean {
   return width >= DESKTOP_SPLIT_BREAKPOINT;
 }
+
+export interface SidebarVisibilityInput {
+  sidebarHidden: boolean;
+  narrowShell: boolean;
+  narrowSidebarOpen: boolean;
+}
+
+export function isSidebarEffectivelyHidden(input: SidebarVisibilityInput): boolean {
+  return input.narrowShell ? !input.narrowSidebarOpen : input.sidebarHidden;
+}
+
+export function toggleSidebarVisibility(input: SidebarVisibilityInput): {
+  sidebarHidden: boolean;
+  narrowSidebarOpen: boolean;
+} {
+  if (input.narrowShell) {
+    return {
+      sidebarHidden: input.sidebarHidden,
+      narrowSidebarOpen: !input.narrowSidebarOpen,
+    };
+  }
+
+  return {
+    sidebarHidden: !input.sidebarHidden,
+    narrowSidebarOpen: input.narrowSidebarOpen,
+  };
+}

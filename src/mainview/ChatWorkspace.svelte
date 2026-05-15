@@ -58,7 +58,13 @@
     getMaxSidebarWidth,
     MIN_SIDEBAR_WIDTH,
   } from "./sidebar-layout";
-  import { getViewportClass, shouldUseDesktopInspectorSplit, shouldUseNarrowShell } from "./responsive-layout";
+  import {
+    getViewportClass,
+    isSidebarEffectivelyHidden,
+    shouldUseDesktopInspectorSplit,
+    shouldUseNarrowShell,
+    toggleSidebarVisibility as getNextSidebarVisibility,
+  } from "./responsive-layout";
   import SessionSidebar from "./SessionSidebar.svelte";
   import {
     PRIMARY_CHAT_PANE_ID,
@@ -184,6 +190,7 @@
   let currentSurfaceController = $state<ChatSurfaceController | null>(null);
   let sidebarError = $state<string | undefined>(undefined);
   let sidebarHidden = $state(false);
+  let narrowSidebarOpen = $state(false);
   let sidebarWidth = $state(DEFAULT_SIDEBAR_WIDTH);
   let sidebarResizing = $state(false);
   let mutatingSession = $state(false);
@@ -252,6 +259,9 @@
   );
   const viewportClass = $derived(getViewportClass(windowWidth));
   const narrowShell = $derived(shouldUseNarrowShell(windowWidth));
+  const effectiveSidebarHidden = $derived(
+    isSidebarEffectivelyHidden({ sidebarHidden, narrowShell, narrowSidebarOpen }),
+  );
   const effectiveSidebarWidth = $derived(clampSidebarWidth(sidebarWidth, windowWidth));
   const currentSession = $derived(sessions.find((session) => session.id === activeSessionId) ?? null);
   const currentCommandRollups = $derived(getVisibleCommandRollups(currentSession));
@@ -739,7 +749,9 @@
   }
 
   function toggleSidebarVisibility() {
-    sidebarHidden = !sidebarHidden;
+    const next = getNextSidebarVisibility({ sidebarHidden, narrowShell, narrowSidebarOpen });
+    sidebarHidden = next.sidebarHidden;
+    narrowSidebarOpen = next.narrowSidebarOpen;
     syncDockviewAfterSidebarToggle();
   }
 
@@ -754,7 +766,7 @@
   }
 
   function startSidebarResize(event: PointerEvent) {
-    if (sidebarHidden || narrowShell || !sidebarResizeHandle) return;
+    if (effectiveSidebarHidden || narrowShell || !sidebarResizeHandle) return;
     event.preventDefault();
 
     sidebarResizePointerId = event.pointerId;
@@ -2106,24 +2118,24 @@
 
 <div class={`workspace-shell ${isMacWindowChrome ? "mac-window-chrome" : ""}`.trim()} style={`--sidebar-width: ${effectiveSidebarWidth}px;`}>
   <header
-    class={`workspace-titlebar electrobun-webkit-app-region-drag ${sidebarHidden ? "sidebar-titlebar-hidden" : ""}`.trim()}
+    class={`workspace-titlebar electrobun-webkit-app-region-drag viewport-${viewportClass} ${effectiveSidebarHidden ? "sidebar-titlebar-hidden" : ""}`.trim()}
   >
     <div class="workspace-titlebar-start">
       <Tooltip
         class="electrobun-webkit-app-region-no-drag"
-        label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+        label={effectiveSidebarHidden ? "Show sidebar" : "Hide sidebar"}
         shortcut={sidebarToggleShortcut}
         side="bottom"
       >
         <button
           class="titlebar-icon electrobun-webkit-app-region-no-drag"
           type="button"
-          aria-pressed={!sidebarHidden}
-          aria-label={sidebarHidden ? "Show sidebar" : "Hide sidebar"}
+          aria-pressed={!effectiveSidebarHidden}
+          aria-label={effectiveSidebarHidden ? "Show sidebar" : "Hide sidebar"}
           onclick={toggleSidebarVisibility}
         >
           <span class="titlebar-icon-glyph">
-            {#if sidebarHidden}
+            {#if effectiveSidebarHidden}
               <PanelLeftDashedIcon aria-hidden="true" size={14} strokeWidth={1.85} />
             {:else}
               <PanelLeftIcon aria-hidden="true" size={14} strokeWidth={1.85} />
@@ -2189,54 +2201,52 @@
   </header>
 
   <div
-    class={`chat-workspace ${showDesktopSplit ? "split" : ""} ${sidebarHidden ? "sidebar-hidden" : ""} viewport-${viewportClass}`.trim()}
+    class={`chat-workspace ${showDesktopSplit ? "split" : ""} ${effectiveSidebarHidden ? "sidebar-hidden" : ""} viewport-${viewportClass}`.trim()}
     style={`--sidebar-width: ${effectiveSidebarWidth}px;`}
     ontransitionend={handleWorkspaceTransitionEnd}
   >
-    {#if !narrowShell}
-      <aside class="workspace-sidebar" aria-hidden={sidebarHidden} inert={sidebarHidden}>
-        <div class="sidebar-surface">
-          <SessionSidebar
-            workspaceLabel={runtime.workspaceLabel}
-            {workspaceBranch}
-            navigation={sessionNavigation}
-            {activeSessionId}
-            activeOrchestratorSessionId={currentSurface?.surface === "orchestrator" ? activeSessionId : undefined}
-            activeThreadId={currentSurface?.threadId}
-            {paneLocationsBySessionId}
-            {paneLocationsByThreadId}
-            {paneLocationsByWorkflowRunId}
-            {appLogSummary}
-            busy={mutatingSession}
-            errorMessage={sidebarError}
-            onCreateSession={handleCreateSession}
-            onCreateDumbSession={handleCreateDumbSession}
-            onOpenSession={handleOpenSession}
-            onOpenHandlerThread={handleOpenSidebarHandlerThread}
-            onOpenWorkflowRun={handleOpenSidebarWorkflowRun}
-            onRenameSession={handleRenameSession}
-            onPinSession={handlePinSession}
-            onUnpinSession={handleUnpinSession}
-            onArchiveSession={handleArchiveSession}
-            onUnarchiveSession={handleUnarchiveSession}
-            onMarkSessionUnread={handleMarkSessionUnread}
-            onMarkSessionRead={handleMarkSessionRead}
-            onToggleArchivedGroup={handleToggleArchivedGroup}
-            onUpdateSessionNavigationSectionState={handleUpdateSessionNavigationSectionState}
-            onOpenSearch={() => openPalette("search")}
-            onOpenCommandPalette={() => openPalette("commands")}
-            onOpenAppLogs={openAppLogs}
-            onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
-            onOpenPromptLibrary={openPromptLibrary}
-            onOpenSettings={onOpenSettings}
-            onListWorkspaceBranches={runtime.listWorkspaceBranches}
-            onSwitchWorkspaceBranch={handleSwitchWorkspaceBranch}
-          />
-        </div>
-      </aside>
-    {/if}
+    <aside class="workspace-sidebar" aria-hidden={effectiveSidebarHidden} inert={effectiveSidebarHidden}>
+      <div class="sidebar-surface">
+        <SessionSidebar
+          workspaceLabel={runtime.workspaceLabel}
+          {workspaceBranch}
+          navigation={sessionNavigation}
+          {activeSessionId}
+          activeOrchestratorSessionId={currentSurface?.surface === "orchestrator" ? activeSessionId : undefined}
+          activeThreadId={currentSurface?.threadId}
+          {paneLocationsBySessionId}
+          {paneLocationsByThreadId}
+          {paneLocationsByWorkflowRunId}
+          {appLogSummary}
+          busy={mutatingSession}
+          errorMessage={sidebarError}
+          onCreateSession={handleCreateSession}
+          onCreateDumbSession={handleCreateDumbSession}
+          onOpenSession={handleOpenSession}
+          onOpenHandlerThread={handleOpenSidebarHandlerThread}
+          onOpenWorkflowRun={handleOpenSidebarWorkflowRun}
+          onRenameSession={handleRenameSession}
+          onPinSession={handlePinSession}
+          onUnpinSession={handleUnpinSession}
+          onArchiveSession={handleArchiveSession}
+          onUnarchiveSession={handleUnarchiveSession}
+          onMarkSessionUnread={handleMarkSessionUnread}
+          onMarkSessionRead={handleMarkSessionRead}
+          onToggleArchivedGroup={handleToggleArchivedGroup}
+          onUpdateSessionNavigationSectionState={handleUpdateSessionNavigationSectionState}
+          onOpenSearch={() => openPalette("search")}
+          onOpenCommandPalette={() => openPalette("commands")}
+          onOpenAppLogs={openAppLogs}
+          onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
+          onOpenPromptLibrary={openPromptLibrary}
+          onOpenSettings={onOpenSettings}
+          onListWorkspaceBranches={runtime.listWorkspaceBranches}
+          onSwitchWorkspaceBranch={handleSwitchWorkspaceBranch}
+        />
+      </div>
+    </aside>
 
-    {#if !sidebarHidden && !narrowShell}
+    {#if !effectiveSidebarHidden && !narrowShell}
       <div
         bind:this={sidebarResizeHandle}
         class={`sidebar-resize-handle ${sidebarResizing ? "dragging" : ""}`.trim()}
@@ -4017,23 +4027,10 @@
     .chat-workspace.sidebar-hidden.split {
       grid-template-columns: 0rem 0rem minmax(0, 1fr);
     }
+
   }
 
   @media (max-width: 980px) {
-    .workspace-main {
-      padding-top: 0.2rem;
-    }
-
-    .workspace-main-header {
-      flex-direction: column;
-      align-items: stretch;
-      padding-left: 0.4rem;
-    }
-
-    .workspace-main-meta {
-      justify-content: flex-start;
-    }
-
     .project-ci-header,
     .project-ci-entry,
     .project-ci-run-card-top,
@@ -4064,74 +4061,13 @@
   }
 
   @media (max-width: 760px) {
-    .workspace-titlebar {
-      padding-inline: 0.32rem;
-    }
-
-    .workspace-titlebar-start {
-      padding-left: 0;
-    }
-
-    .chat-workspace {
-      grid-template-columns: minmax(0, 1fr) !important;
-      padding: 0 0 0.32rem;
-      padding-bottom: 0;
-    }
-
     .workspace-shell {
       margin-inline: 0;
-    }
-
-    .workspace-main {
-      gap: 0.42rem;
-      padding: 0.32rem 0.42rem 0;
-    }
-
-    .workspace-main-header {
-      gap: 0.52rem;
-      padding: 0;
     }
 
     .workspace-main-subtitle {
       white-space: normal;
       overflow-wrap: anywhere;
-    }
-
-    .workspace-main-meta {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      width: 100%;
-      gap: 0.35rem;
-    }
-
-    .workspace-main-meta :global(.ui-button),
-    .project-ci-compact {
-      width: 100%;
-      max-width: 100%;
-      justify-content: center;
-    }
-
-    .workspace-main-chips {
-      display: grid;
-      grid-column: 1 / -1;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.35rem;
-      min-width: 0;
-    }
-
-    .workspace-main-meta :global(.ui-metadata-chip),
-    .workspace-main-meta :global(.context-budget-compact) {
-      width: 100%;
-      max-width: 100%;
-      min-width: 0;
-      flex: none;
-    }
-
-    .project-ci-compact {
-      grid-column: 1 / -1;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-      padding: 0.38rem;
     }
 
     .structured-command-card-top,

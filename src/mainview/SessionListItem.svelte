@@ -498,21 +498,6 @@
     box-shadow: var(--ui-focus-ring);
   }
 
-  @media (max-width: 760px) {
-    .session-inline-actions {
-      top: 0.32rem;
-      right: 0.34rem;
-      opacity: 1;
-      pointer-events: auto;
-      transform: none;
-    }
-
-    .session-inline-action {
-      width: 2.75rem;
-      height: 2.75rem;
-    }
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .blinking,
     .session-working-dot {
