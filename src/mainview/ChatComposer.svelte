@@ -842,15 +842,6 @@
 			color 150ms cubic-bezier(0.19, 1, 0.22, 1);
 	}
 
-	.model-pill strong {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: var(--text-xs);
-		font-weight: 500;
-	}
-
 	.model-pill.thinking-field {
 		max-width: 7rem;
 		padding-right: 1.62rem;

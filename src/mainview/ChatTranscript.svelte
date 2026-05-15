@@ -1095,8 +1095,7 @@
 		text-decoration-style: dashed;
 	}
 
-	.thinking-block,
-	.result-details {
+	.thinking-block {
 		margin-top: 0.8rem;
 		min-width: 0;
 		padding: 0.78rem 0 0;
@@ -1112,8 +1111,7 @@
 		border-top: none;
 	}
 
-	.thinking-block summary,
-	.result-details summary {
+	.thinking-block summary {
 		cursor: pointer;
 		font-size: var(--text-sm);
 		font-weight: 600;
@@ -1121,8 +1119,7 @@
 		color: var(--ui-text-secondary);
 	}
 
-	.thinking-block pre,
-	.result-details pre {
+	.thinking-block pre {
 		margin-top: 0.55rem;
 		max-width: 100%;
 		white-space: pre-wrap;
@@ -1131,62 +1128,6 @@
 		font-size: var(--text-base);
 		line-height: 1.6;
 		color: var(--ui-text-secondary);
-	}
-
-	.execute-result-grid {
-		margin-top: 0.7rem;
-		padding-top: 0.7rem;
-		border-top: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
-	}
-
-	.execute-result-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.38rem;
-	}
-
-	.execute-result-section pre {
-		margin: 0;
-		max-height: 12rem;
-		overflow: auto;
-		padding: 0.62rem 0.68rem;
-		border-radius: var(--ui-radius-sm);
-		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 78%, transparent);
-		background: color-mix(in oklab, var(--ui-code) 90%, var(--ui-surface));
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
-		font-size: var(--text-sm);
-		line-height: 1.5;
-		color: var(--ui-text-primary);
-	}
-
-	.diagnostic-row {
-		display: grid;
-		grid-template-columns: auto minmax(0, 1fr);
-		gap: 0.25rem 0.55rem;
-		padding: 0.5rem 0.58rem;
-		border-radius: var(--ui-radius-sm);
-		background: color-mix(in oklab, var(--ui-danger-soft) 38%, transparent);
-	}
-
-	.diagnostic-row span {
-		font-family: var(--font-mono);
-		font-size: var(--text-xs);
-		color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
-	}
-
-	.diagnostic-row p,
-	.diagnostic-row small {
-		margin: 0;
-		font-size: var(--text-sm);
-		line-height: 1.45;
-		color: var(--ui-text-secondary);
-	}
-
-	.diagnostic-row small {
-		grid-column: 2;
-		font-family: var(--font-mono);
-		color: var(--ui-text-tertiary);
 	}
 
 	@media (max-width: 760px) {

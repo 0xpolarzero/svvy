@@ -32,6 +32,7 @@
   bind:this={element}
   class="context-menu"
   role="menu"
+  tabindex="-1"
   aria-label={label}
   style={`left: ${x}px; top: ${y}px;`}
   oncontextmenu={(event) => event.preventDefault()}

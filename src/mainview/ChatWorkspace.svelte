@@ -158,7 +158,7 @@
   let isMacWindowChrome = $state(false);
   let dockviewLayoutEpoch = $state(0);
   let sessions = $state<WorkspaceSessionSummary[]>([]);
-  let workspaceBranch = $state(runtime.branch);
+  let workspaceBranch = $state<string | undefined>(undefined);
   let sessionNavigation = $state<WorkspaceSessionNavigationReadModel>({
     pinnedSessions: [],
     activeSessions: [],
@@ -3491,8 +3491,7 @@
   }
 
   .header-icon-button:hover,
-  .header-icon-button:focus-visible,
-  .header-icon-button[aria-pressed="true"] {
+  .header-icon-button:focus-visible {
     border-color: var(--ui-border-strong);
     background: var(--ui-surface-subtle);
     color: var(--ui-text-primary);
@@ -3545,372 +3544,6 @@
     border: 0;
     border-radius: 0;
     background: var(--ui-bg);
-  }
-
-  .new-session-empty {
-    display: grid;
-    align-content: start;
-    justify-items: center;
-    gap: 0.72rem;
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    padding: clamp(1.4rem, 8vh, 3.1rem) 1.25rem 1rem;
-    color: var(--ui-text-secondary);
-  }
-
-  .new-session-intro {
-    display: grid;
-    justify-items: center;
-    gap: 0.46rem;
-    width: min(32rem, 100%);
-  }
-
-  .new-session-watermark {
-    margin: 0;
-    color: color-mix(in oklab, var(--ui-text-tertiary) 22%, transparent);
-    font-size: var(--text-heading-sm);
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  .new-session-heading {
-    display: grid;
-    justify-items: center;
-    gap: 0.36rem;
-    text-align: center;
-  }
-
-  .new-session-heading h2,
-  .new-session-heading p {
-    margin: 0;
-  }
-
-  .new-session-heading h2 {
-    color: var(--ui-text-primary);
-    font-size: var(--text-base);
-    font-weight: 700;
-  }
-
-  .new-session-heading p {
-    color: var(--ui-text-tertiary);
-    font-size: var(--text-sm);
-  }
-
-  .new-session-controls,
-  .new-session-recent {
-    width: min(32rem, 100%);
-  }
-
-  .new-session-controls {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.72rem;
-    min-height: 2.35rem;
-    padding: 0.38rem 0.48rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 54%, transparent);
-  }
-
-  .new-session-mode-toggle,
-  .new-session-mode-buttons {
-    display: inline-flex;
-    align-items: center;
-    min-width: 0;
-  }
-
-  .new-session-mode-toggle {
-    gap: 0.5rem;
-  }
-
-  .new-session-mode-toggle > span {
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 500;
-    text-transform: uppercase;
-  }
-
-  .new-session-mode-buttons {
-    gap: 0.16rem;
-    padding: 0.12rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-sm);
-    background: color-mix(in oklab, var(--ui-surface) 64%, transparent);
-  }
-
-  .new-session-mode-buttons button {
-    min-height: 1.42rem;
-    padding: 0 0.5rem;
-    border: 0;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-tertiary);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  .new-session-mode-buttons button:hover:not(:disabled),
-  .new-session-mode-buttons button:focus-visible {
-    outline: none;
-    color: var(--ui-text-primary);
-    background: var(--ui-surface-subtle);
-  }
-
-  .new-session-mode-buttons button.active {
-    background: color-mix(in oklab, var(--ui-accent) 18%, var(--ui-surface-subtle));
-    color: var(--ui-text-primary);
-  }
-
-  .new-session-mode-buttons button:disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-
-  .new-session-mode-note {
-    margin: 0;
-    min-width: 0;
-    overflow: hidden;
-    color: var(--ui-text-tertiary);
-    font-size: var(--text-xs);
-    line-height: 1.3;
-    text-align: right;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .new-session-recent {
-    display: grid;
-    gap: 0.3rem;
-  }
-
-  .new-session-recent p {
-    margin: 0;
-    color: var(--ui-text-tertiary);
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    text-transform: uppercase;
-  }
-
-  .new-session-recent button {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
-    min-height: 1.7rem;
-    padding: 0 0.38rem;
-    border: 0;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-secondary);
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .new-session-recent button:hover,
-  .new-session-recent button:focus-visible {
-    background: var(--ui-surface-subtle);
-    color: var(--ui-text-primary);
-  }
-
-  .new-session-recent span:not(.status-dot) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--text-xs);
-  }
-
-  .new-session-recent small {
-    color: var(--ui-text-tertiary);
-    font-size: var(--text-xs);
-  }
-
-  .project-ci-panel,
-  .handler-thread-panel,
-  .structured-command-panel {
-    display: grid;
-    flex: 0 0 auto;
-    gap: 0.72rem;
-    padding: 0.72rem 0.9rem 0.66rem;
-    border-bottom: 1px solid color-mix(in oklab, var(--ui-shell-edge) 66%, transparent);
-    background:
-      linear-gradient(
-        180deg,
-        color-mix(in oklab, var(--ui-surface-raised) 78%, transparent),
-        transparent
-      ),
-      color-mix(in oklab, var(--ui-surface-subtle) 54%, transparent);
-  }
-
-  .project-ci-header,
-  .handler-thread-header,
-  .structured-command-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    min-width: 0;
-  }
-
-  .project-ci-header > div,
-  .handler-thread-header > div,
-  .structured-command-header > div {
-    min-width: 0;
-    flex: 0 0 auto;
-  }
-
-  .project-ci-header h3,
-  .project-ci-eyebrow,
-  .handler-thread-header h3,
-  .handler-thread-eyebrow,
-  .handler-thread-copy,
-  .structured-command-header h3,
-  .structured-command-eyebrow,
-  .structured-command-copy {
-    margin: 0;
-  }
-
-  .project-ci-eyebrow,
-  .handler-thread-eyebrow,
-  .structured-command-eyebrow {
-    font-size: var(--text-xs);
-    font-family: var(--font-mono);
-    letter-spacing: var(--tracking-wide);
-    text-transform: uppercase;
-    color: var(--ui-text-tertiary);
-  }
-
-  .project-ci-header h3,
-  .handler-thread-header h3,
-  .structured-command-header h3 {
-    margin-top: 0.18rem;
-    font-size: var(--text-base);
-    font-weight: 600;
-    letter-spacing: 0;
-    color: var(--ui-text-primary);
-  }
-
-  .handler-thread-copy,
-  .structured-command-copy {
-    max-width: 42rem;
-    min-width: 0;
-    text-align: right;
-  }
-
-  .handler-thread-copy,
-  .structured-command-copy {
-    max-width: 28rem;
-    font-size: var(--text-sm);
-    line-height: 1.5;
-    color: var(--ui-text-secondary);
-  }
-
-  .project-ci-body {
-    display: grid;
-    gap: 0.56rem;
-  }
-
-  .project-ci-summary,
-  .project-ci-muted,
-  .project-ci-empty,
-  .project-ci-run-card p,
-  .project-ci-check p {
-    margin: 0;
-    font-size: var(--text-sm);
-    line-height: 1.52;
-    color: var(--ui-text-secondary);
-  }
-
-  .project-ci-summary {
-    color: var(--ui-text-primary);
-  }
-
-  .project-ci-muted {
-    color: var(--ui-text-tertiary);
-  }
-
-  .project-ci-entries,
-  .project-ci-check-list {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .project-ci-entry,
-  .project-ci-run-card,
-  .project-ci-check {
-    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface) 94%, transparent);
-  }
-
-  .project-ci-entry {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.55rem 0.62rem;
-  }
-
-  .project-ci-entry strong,
-  .project-ci-run-card strong,
-  .project-ci-check-copy strong {
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--ui-text-primary);
-  }
-
-  .project-ci-entry span,
-  .project-ci-run-card span,
-  .project-ci-check-copy span,
-  .project-ci-check-meta {
-    font-size: var(--text-xs);
-    color: var(--ui-text-tertiary);
-  }
-
-  .project-ci-entry span,
-  .project-ci-run-card code,
-  .project-ci-check-meta code {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .project-ci-run-card,
-  .project-ci-check {
-    display: grid;
-    gap: 0.45rem;
-    padding: 0.68rem 0.72rem;
-  }
-
-  .project-ci-run-card-top,
-  .project-ci-check-top,
-  .project-ci-check-meta {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.72rem;
-  }
-
-  .project-ci-run-card-top > div,
-  .project-ci-check-copy {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-
-  .project-ci-run-card code,
-  .project-ci-check-meta code {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    color: var(--ui-text-secondary);
-  }
-
-  .project-ci-check-meta {
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
 
   .handler-thread-list {
@@ -3999,7 +3632,6 @@
     min-width: 0;
   }
 
-  .structured-command-card-copy strong,
   .thread-inspector-summary-copy strong,
   .thread-inspector-command-copy strong,
   .command-inspector-summary-copy strong,
@@ -4544,7 +4176,6 @@
       gap: 0.35rem;
     }
 
-    .workspace-main-meta > span,
     .workspace-main-meta :global(.ui-button),
     .project-ci-compact {
       width: 100%;
@@ -4573,29 +4204,6 @@
       flex-wrap: wrap;
       justify-content: flex-start;
       padding: 0.38rem;
-    }
-
-    .new-session-empty {
-      padding-inline: 0.72rem;
-    }
-
-    .new-session-controls {
-      display: grid;
-      justify-items: stretch;
-    }
-
-    .new-session-mode-toggle,
-    .new-session-mode-buttons {
-      width: 100%;
-    }
-
-    .new-session-mode-buttons button {
-      flex: 1 1 0;
-    }
-
-    .new-session-mode-note {
-      text-align: left;
-      white-space: normal;
     }
 
     .structured-command-card-top,
