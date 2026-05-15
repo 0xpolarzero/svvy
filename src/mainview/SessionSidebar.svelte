@@ -543,7 +543,6 @@
             class={`sidebar-action-row reference-nav-row logs-nav-row ${(appLogSummary?.unread.error ?? 0) > 0 ? "has-errors" : ""}`.trim()}
             type="button"
             aria-label={appLogUnreadTitle}
-            title={appLogUnreadTitle}
             onclick={onOpenAppLogs}
           >
             <span class="sidebar-action-icon"><LogsIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
