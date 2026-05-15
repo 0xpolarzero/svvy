@@ -30,7 +30,7 @@
     paneLocations?: SidebarPaneLocation[];
     relativeTimeNow?: number;
     disabled?: boolean;
-    onOpen: () => void;
+    onOpen: (event: MouseEvent) => void;
     onRename: () => void;
     onPin: () => void;
     onUnpin: () => void;
@@ -99,54 +99,65 @@
 <article
   class={`session-item ${active ? "active" : ""} ${session.isArchived ? "archived" : ""} ${session.isUnread ? "unread" : ""} ${hasPane ? "open-in-pane" : ""} open-tone-${paneTone} ${isWorking ? "working" : ""}`.trim()}
 >
-  <button
-    class="session-main"
-    type="button"
-    aria-current={active ? "true" : undefined}
-    aria-label={`${session.isUnread ? "Unread session: " : ""}${session.title}`}
-    disabled={disabled}
-    onclick={onOpen}
-    ondblclick={onRename}
-    oncontextmenu={(event) => {
-      event.preventDefault();
-      onContextMenu?.(event);
-    }}
-    onkeydown={handleKeydown}
+  <Tooltip
+    label="Session open behavior"
+    side="right"
+    block
+    delayMs={2000}
+    details={[
+      { icon: "mouse-left", label: "Open in a new pane" },
+      { shortcut: "⌘", icon: "mouse-left", label: "Replace focused pane" },
+    ]}
   >
-    <div class="session-main-top">
-      <strong>{session.title}</strong>
-      <div class="session-main-top-meta">
-        {#if session.parentSessionId}
-          <GitForkIcon aria-label="Forked session" size={11} strokeWidth={1.85} />
-        {/if}
-        {#if session.isUnread}
-          <span class="session-unread-dot" aria-hidden="true"></span>
-        {:else if isWorking}
-          <span class="session-unread-dot session-working-dot" aria-hidden="true"></span>
-        {:else if showUpdatedAt}
-          <span>{updatedAtLabel}</span>
+    <button
+      class="session-main"
+      type="button"
+      aria-current={active ? "true" : undefined}
+      aria-label={`${session.isUnread ? "Unread session: " : ""}${session.title}`}
+      disabled={disabled}
+      onclick={(event) => onOpen(event)}
+      ondblclick={onRename}
+      oncontextmenu={(event) => {
+        event.preventDefault();
+        onContextMenu?.(event);
+      }}
+      onkeydown={handleKeydown}
+    >
+      <div class="session-main-top">
+        <strong>{session.title}</strong>
+        <div class="session-main-top-meta">
+          {#if session.parentSessionId}
+            <GitForkIcon aria-label="Forked session" size={11} strokeWidth={1.85} />
+          {/if}
+          {#if session.isUnread}
+            <span class="session-unread-dot" aria-hidden="true"></span>
+          {:else if isWorking}
+            <span class="session-unread-dot session-working-dot" aria-hidden="true"></span>
+          {:else if showUpdatedAt}
+            <span>{updatedAtLabel}</span>
+          {/if}
+        </div>
+      </div>
+      <div class="session-main-body">
+        {#if sidebarSubtitle}
+          <div
+            class={`session-main-subtitle tone-${sidebarSubtitle.tone} ${sidebarSubtitle.badge ? "" : "text-only"} ${sidebarSubtitle.blinking ? "blinking" : ""}`.trim()}
+          >
+            {#if sidebarSubtitle.badge}
+              <span>{sidebarSubtitle.badge}</span>
+            {/if}
+            <span>{sidebarSubtitle.text}</span>
+          </div>
         {/if}
       </div>
-    </div>
-    <div class="session-main-body">
-      {#if sidebarSubtitle}
-        <div
-          class={`session-main-subtitle tone-${sidebarSubtitle.tone} ${sidebarSubtitle.badge ? "" : "text-only"} ${sidebarSubtitle.blinking ? "blinking" : ""}`.trim()}
-        >
-          {#if sidebarSubtitle.badge}
-            <span>{sidebarSubtitle.badge}</span>
-          {/if}
-          <span>{sidebarSubtitle.text}</span>
+
+      {#if contextBudget}
+        <div class="session-context-budget" aria-hidden="true">
+          <ContextBudgetBar budget={contextBudget} variant="compact" label="Context" showTooltip={false} />
         </div>
       {/if}
-    </div>
-
-    {#if contextBudget}
-      <div class="session-context-budget" aria-hidden="true">
-        <ContextBudgetBar budget={contextBudget} variant="compact" label="Context" showTooltip={false} />
-      </div>
-    {/if}
-  </button>
+    </button>
+  </Tooltip>
 
   <div class="session-inline-actions" role="toolbar" aria-label={`Actions for ${session.title}`}>
     <Tooltip label={session.isArchived ? "Unarchive session" : "Archive session"}>

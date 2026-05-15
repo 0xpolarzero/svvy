@@ -54,7 +54,7 @@
     errorMessage?: string;
     onCreateSession: () => void;
     onCreateDumbSession: () => void;
-    onOpenSession: (sessionId: string) => void;
+    onOpenSession: (sessionId: string, event: MouseEvent) => void;
     onOpenHandlerThread?: (sessionId: string, thread: WorkspaceSidebarHandlerThreadRow) => void;
     onOpenWorkflowRun?: (sessionId: string, workflow: WorkspaceSidebarWorkflowRow) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
@@ -503,7 +503,7 @@
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {relativeTimeNow}
               {session}
-              onOpen={() => onOpenSession(session.id)}
+              onOpen={(event) => onOpenSession(session.id, event)}
               onRename={() => onRenameSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
@@ -526,7 +526,7 @@
               paneLocations={paneLocationsBySessionId[session.id] ?? []}
               {relativeTimeNow}
               {session}
-              onOpen={() => onOpenSession(session.id)}
+              onOpen={(event) => onOpenSession(session.id, event)}
               onRename={() => onRenameSession(session)}
               onPin={() => onPinSession(session)}
               onUnpin={() => onUnpinSession(session)}
@@ -564,7 +564,7 @@
                 paneLocations={paneLocationsBySessionId[session.id] ?? []}
                 {relativeTimeNow}
                 {session}
-                onOpen={() => onOpenSession(session.id)}
+                onOpen={(event) => onOpenSession(session.id, event)}
                 onRename={() => onRenameSession(session)}
                 onPin={() => onPinSession(session)}
                 onUnpin={() => onUnpinSession(session)}

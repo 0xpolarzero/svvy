@@ -5,10 +5,17 @@
 	import { appendKeyboardShortcutParts } from "./keyboard-shortcut";
 
 	type TooltipSide = "top" | "bottom" | "left" | "right";
+	type TooltipDetailIcon = "mouse-left";
+	type TooltipDetail = {
+		label: string;
+		shortcut?: string | null;
+		icon?: TooltipDetailIcon;
+	};
 
 	type Props = HTMLAttributes<HTMLSpanElement> & {
 		label: string;
 		shortcut?: string | null;
+		details?: TooltipDetail[];
 		delayMs?: number;
 		side?: TooltipSide;
 		block?: boolean;
@@ -19,6 +26,7 @@
 	let {
 		label,
 		shortcut = null,
+		details = [],
 		delayMs = 500,
 		side = "top",
 		block = false,
@@ -51,6 +59,30 @@
 		}
 		tooltipElement.className = `ui-tooltip side-${side}`.trim();
 		tooltipElement.replaceChildren();
+		if (details.length > 0) {
+			const listElement = document.createElement("span");
+			listElement.className = "ui-tooltip-details";
+			for (const detail of details) {
+				const rowElement = document.createElement("span");
+				rowElement.className = "ui-tooltip-detail";
+				if (detail.shortcut) {
+					const shortcutElement = document.createElement("kbd");
+					shortcutElement.className = "ui-kbd ui-tooltip-shortcut";
+					appendKeyboardShortcutParts(shortcutElement, detail.shortcut);
+					rowElement.append(shortcutElement);
+				}
+				if (detail.icon) {
+					rowElement.append(createTooltipDetailIcon(detail.icon));
+				}
+				const labelElement = document.createElement("span");
+				labelElement.className = "ui-tooltip-label";
+				labelElement.textContent = detail.label;
+				rowElement.append(labelElement);
+				listElement.append(rowElement);
+			}
+			tooltipElement.append(listElement);
+			return;
+		}
 		const labelElement = document.createElement("span");
 		labelElement.className = "ui-tooltip-label";
 		labelElement.textContent = label;
@@ -61,6 +93,29 @@
 			appendKeyboardShortcutParts(shortcutElement, shortcut);
 			tooltipElement.append(shortcutElement);
 		}
+	}
+
+	function createTooltipDetailIcon(icon: TooltipDetailIcon): SVGSVGElement {
+		const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+		svg.setAttribute("aria-hidden", "true");
+		svg.setAttribute("class", `ui-tooltip-detail-icon icon-${icon}`);
+		svg.setAttribute("fill", "none");
+		svg.setAttribute("focusable", "false");
+		svg.setAttribute("stroke", "currentColor");
+		svg.setAttribute("stroke-linecap", "round");
+		svg.setAttribute("stroke-linejoin", "round");
+		svg.setAttribute("stroke-width", "2");
+		svg.setAttribute("viewBox", "0 0 24 24");
+		const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		path.setAttribute("d", "M12 7.318V10");
+		const body = document.createElementNS("http://www.w3.org/2000/svg", "path");
+		body.setAttribute("d", "M5 10v5a7 7 0 0 0 14 0V9c0-3.527-2.608-6.515-6-7");
+		const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+		circle.setAttribute("cx", "7");
+		circle.setAttribute("cy", "4");
+		circle.setAttribute("r", "2");
+		svg.append(path, body, circle);
+		return svg;
 	}
 
 	function updatePosition() {
@@ -242,6 +297,25 @@
 	:global(.ui-tooltip-label) {
 		min-width: 0;
 		overflow-wrap: anywhere;
+	}
+
+	:global(.ui-tooltip-details) {
+		display: grid;
+		gap: 0.26rem;
+	}
+
+	:global(.ui-tooltip-detail) {
+		display: flex;
+		align-items: center;
+		gap: 0.36rem;
+		white-space: nowrap;
+	}
+
+	:global(.ui-tooltip-detail-icon) {
+		width: 0.78rem;
+		height: 0.78rem;
+		flex: 0 0 auto;
+		color: var(--ui-text-secondary);
 	}
 
 	:global(.ui-tooltip-shortcut) {

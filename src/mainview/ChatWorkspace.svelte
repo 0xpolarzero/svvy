@@ -69,6 +69,7 @@
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
+    getSidebarSessionOpenTarget,
     type WorkspaceLayoutSlotId,
     type WorkspaceLayoutSlotSummary,
   } from "./pane-layout";
@@ -915,7 +916,7 @@
     await runSessionMutation(() => runtime.setSessionMode(focusedPanelId, mode));
   }
 
-  async function handleOpenSession(sessionId: string) {
+  async function handleOpenSession(sessionId: string, event?: MouseEvent) {
     if (
       sessionId === activeSessionId &&
       currentSurface?.surface === "orchestrator" &&
@@ -923,7 +924,7 @@
     ) {
       return;
     }
-    await runSessionMutation(() => runtime.openSession(sessionId, { kind: "new-panel", direction: "right" }));
+    await runSessionMutation(() => runtime.openSession(sessionId, getSidebarSessionOpenTarget(event)));
   }
 
   function handleRenameSession(session: WorkspaceSessionSummary) {

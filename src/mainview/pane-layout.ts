@@ -111,6 +111,10 @@ export type DockviewOpenTarget =
 
 export type PaneOpenTarget = DockviewOpenTarget;
 
+export function getSidebarSessionOpenTarget(event?: Pick<MouseEvent, "metaKey">): PaneOpenTarget {
+  return event?.metaKey ? { kind: "focused-panel" } : { kind: "new-panel", direction: "right" };
+}
+
 export function createDefaultPaneLocalState(): PaneLocalState {
   return {
     scroll: null,
