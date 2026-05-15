@@ -23,6 +23,29 @@ afterEach(async () => {
 });
 
 describe("WorkspaceRuntimeRegistry", () => {
+  it("does not open the initial cwd unless startup opening is requested", () => {
+    const cwd = tempWorkspace("no-startup-open");
+    const registry = createRegistry(cwd);
+
+    expect(registry.listOpenWorkspaces()).toEqual([]);
+    expect(registry.getActiveWorkspaceId()).toBeNull();
+  });
+
+  it("opens the initial cwd when startup opening is requested", () => {
+    const cwd = tempWorkspace("startup-open");
+    const registry = createRegistry(cwd, tempWorkspace("agent-dir"), {
+      openInitialWorkspace: true,
+    });
+
+    const [workspace] = registry.listOpenWorkspaces();
+
+    expect(workspace).toBeDefined();
+    if (!workspace) throw new Error("Expected startup workspace to open.");
+
+    expect(workspace?.cwd).toBe(realpathSync.native(cwd));
+    expect(registry.getActiveWorkspaceId()).toBe(workspace.workspaceId);
+  });
+
   it("opens the same cwd as separate workspace runtime tabs", () => {
     const cwd = tempWorkspace("duplicate-cwd");
     const registry = createRegistry(cwd);
@@ -37,6 +60,30 @@ describe("WorkspaceRuntimeRegistry", () => {
       first.workspaceId,
       second.workspaceId,
     ]);
+  });
+
+  it("reopens a persisted workspace tab with the saved runtime id", () => {
+    const cwd = tempWorkspace("persisted-runtime-id");
+    const registry = createRegistry(cwd);
+    const workspaceId = `${realpathSync.native(cwd)}#saved-tab`;
+
+    const restored = registry.openWorkspace(cwd, { workspaceId });
+
+    expect(restored.workspaceId).toBe(workspaceId);
+    expect(registry.getRuntime(workspaceId).cwd).toBe(realpathSync.native(cwd));
+  });
+
+  it("ignores a mismatched persisted workspace id for a different cwd", () => {
+    const cwd = tempWorkspace("mismatched-runtime-id");
+    const otherCwd = tempWorkspace("other-runtime-id");
+    const registry = createRegistry(cwd);
+
+    const restored = registry.openWorkspace(cwd, {
+      workspaceId: `${realpathSync.native(otherCwd)}#saved-tab`,
+    });
+
+    expect(restored.workspaceId).toStartWith(`${realpathSync.native(cwd)}#`);
+    expect(restored.workspaceId).not.toContain("saved-tab");
   });
 
   it("shares durable session storage across separate runtime ids for the same cwd", async () => {
@@ -89,10 +136,12 @@ describe("WorkspaceRuntimeRegistry", () => {
 function createRegistry(
   initialCwd: string,
   agentDir = tempWorkspace("agent-dir"),
+  options: { openInitialWorkspace?: boolean } = {},
 ): WorkspaceRuntimeRegistry {
   const registry = new WorkspaceRuntimeRegistry({
     initialCwd,
     agentDir,
+    ...options,
   });
   registries.push(registry);
   return registry;

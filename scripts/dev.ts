@@ -1,7 +1,3 @@
-import { mkdtemp } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-
 const DEV_SERVER_URL = process.env.SVVY_VITE_DEV_SERVER_URL ?? "http://localhost:5173";
 const DEV_SERVER_WAIT_TIMEOUT_MS = 15_000;
 const DEV_SERVER_POLL_INTERVAL_MS = 250;
@@ -13,7 +9,6 @@ const NATIVE_WINDOW_CONTROLS_BUILD_COMMAND = [
   "scripts/build-native-window-controls.ts",
 ];
 const ELECTROBUN_DEV_COMMAND = [process.execPath, "x", "electrobun", "dev", "--watch"];
-const DEV_WORKSPACE_PREFIX = "svvy-dev-workspace-";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,8 +76,7 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 
 try {
   const projectCwd = process.cwd();
-  const workspaceCwd =
-    process.env.SVVY_DEV_WORKSPACE_CWD ?? (await mkdtemp(join(tmpdir(), DEV_WORKSPACE_PREFIX)));
+  const workspaceCwd = process.env.SVVY_DEV_WORKSPACE_CWD;
 
   await runChecked(NATIVE_WINDOW_CONTROLS_BUILD_COMMAND);
 
@@ -96,17 +90,27 @@ try {
   await waitForDevServer(DEV_SERVER_URL, DEV_SERVER_WAIT_TIMEOUT_MS);
 
   await runChecked(VITE_BUILD_COMMAND);
-  console.log(`Launching svvy dev app with workspace cwd ${workspaceCwd}`);
+  console.log(
+    workspaceCwd
+      ? `Launching svvy dev app with startup workspace cwd ${workspaceCwd}`
+      : "Launching svvy dev app with restored workspace tabs",
+  );
+
+  const appEnv = {
+    ...process.env,
+    SVVY_VITE_DEV_SERVER: "wait",
+    ...(workspaceCwd
+      ? {
+          INIT_CWD: workspaceCwd,
+          PWD: workspaceCwd,
+          SVVY_WORKSPACE_CWD: workspaceCwd,
+        }
+      : {}),
+  };
 
   appProcess = Bun.spawn(ELECTROBUN_DEV_COMMAND, {
     cwd: projectCwd,
-    env: {
-      ...process.env,
-      INIT_CWD: workspaceCwd,
-      PWD: workspaceCwd,
-      SVVY_VITE_DEV_SERVER: "wait",
-      SVVY_WORKSPACE_CWD: workspaceCwd,
-    },
+    env: appEnv,
     stdio: ["inherit", "inherit", "inherit"],
   });
 

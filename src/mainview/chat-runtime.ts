@@ -6,6 +6,7 @@ import {
   type Message,
 } from "@mariozechner/pi-ai";
 import type {
+  AppWorkspaceUiRestoreState,
   AppLogQuery,
   AppLogReadModel,
   AppLogSummary,
@@ -46,7 +47,6 @@ import {
   createChatStorage,
   type ChatStorage,
   type WorkspaceInspectorSelection,
-  type WorkspaceUiRestoreState,
 } from "./chat-storage";
 import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-settings";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
@@ -77,6 +77,10 @@ import { rpc } from "./rpc";
 import { buildWorkspaceSessionNavigation } from "./session-state";
 
 export { PRIMARY_CHAT_PANE_ID } from "./pane-layout";
+
+type WorkspaceUiRestoreState = AppWorkspaceUiRestoreState & {
+  layouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>;
+};
 
 type UsageStats = {
   input: number;
@@ -168,6 +172,8 @@ export interface ChatRuntimeRpcClient {
     getProviderAuthState: typeof rpc.request.getProviderAuthState;
     getOpenWorkspaces: typeof rpc.request.getOpenWorkspaces;
     getWorkspaceInfo: typeof rpc.request.getWorkspaceInfo;
+    getWorkspaceUiRestore: typeof rpc.request.getWorkspaceUiRestore;
+    setWorkspaceUiRestore: typeof rpc.request.setWorkspaceUiRestore;
     listWorkspaceBranches: typeof rpc.request.listWorkspaceBranches;
     switchWorkspaceBranch: typeof rpc.request.switchWorkspaceBranch;
     getAppLogs: typeof rpc.request.getAppLogs;
@@ -897,9 +903,11 @@ export async function createChatRuntime(
       layouts: structuredClone(savedLayouts),
     };
 
-    void storage.workspaceUiRestore
-      .set(workspaceInfo.workspaceId, state)
-      .catch((error) => console.error("Failed to persist workspace UI restore state:", error));
+    void rpcClient.request
+      .setWorkspaceUiRestore(scoped({ state }))
+      .catch((error: unknown) =>
+        console.error("Failed to persist workspace UI restore state:", error),
+      );
   };
 
   const syncPaneTargetForSurface = (target: PromptTarget): void => {
@@ -1351,12 +1359,12 @@ export async function createChatRuntime(
   const syncProviderAuthPromise = syncProviderAuth(defaults.provider);
   await syncProviderAuthPromise;
 
-  const restoreState = await storage.workspaceUiRestore
-    .get(workspaceInfo.workspaceId)
-    .catch((error) => {
+  const restoreState = (await rpcClient.request
+    .getWorkspaceUiRestore(scoped())
+    .catch((error: unknown) => {
       console.error("Failed to load workspace UI restore state:", error);
       return null;
-    });
+    })) as WorkspaceUiRestoreState | null;
   if (restoreState) {
     activeLayoutId = restoreState.activeLayoutId;
     savedLayouts = {

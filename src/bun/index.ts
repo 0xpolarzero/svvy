@@ -40,7 +40,7 @@ import {
 } from "./auth-store";
 import { refreshIfNeeded, startOAuthLogin, supportsOAuth } from "./oauth-login";
 import { DEFAULT_SYSTEM_PROMPT } from "./default-system-prompt";
-import { type SessionDefaults } from "./session-catalog";
+import { getSvvyAgentDir, type SessionDefaults } from "./session-catalog";
 import {
   deleteSavedWorkflowLibraryPath,
   readSavedWorkflowLibraryReadModel,
@@ -49,6 +49,8 @@ import { createSvvyToolBridge } from "./tool-bridge";
 import { resolveWorkspaceCwd } from "./workspace-context";
 import { positionNativeTrafficLights } from "./native-window-controls";
 import { WorkspaceRuntimeRegistry, type WorkspaceRuntime } from "./workspace-runtime-registry";
+import { createAppWorkspaceTabsStore } from "./app-workspace-tabs-store";
+import { createAppWorkspaceUiRestoreStore } from "./app-workspace-ui-restore-store";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -73,6 +75,12 @@ const PREFERRED_MODEL_FRAGMENTS = [
 let resolvedDefaults: AgentDefaults | null = null;
 let mainWindow: BrowserWindow | null = null;
 const startupWorkspaceCwd = resolveWorkspaceCwd();
+const appWorkspaceTabsStore = createAppWorkspaceTabsStore({
+  agentDir: getSvvyAgentDir(),
+});
+const appWorkspaceUiRestoreStore = createAppWorkspaceUiRestoreStore({
+  agentDir: getSvvyAgentDir(),
+});
 
 const NATIVE_TRAFFIC_LIGHT_POSITION = {
   leading: 18,
@@ -671,7 +679,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const defaults = getDefaultAgentSettings();
         return createAuthState(providerId || defaults.provider);
       },
-      openWorkspace: async ({ cwd }) => {
+      openWorkspace: async ({ cwd, workspaceId }) => {
         const selectedCwd =
           cwd ??
           (
@@ -686,13 +694,27 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             })
           )[0];
         if (!selectedCwd) return { workspace: null };
-        const runtime = workspaceRuntimeRegistry.openWorkspace(selectedCwd);
+        const runtime = workspaceRuntimeRegistry.openWorkspace(selectedCwd, { workspaceId });
         runtime.appLog.info("workspace", "Workspace opened.", { workspaceId: runtime.workspaceId });
         recordBridgeEvent("workspace.opened", { workspaceId: runtime.workspaceId });
         return { workspace: addWorkspaceBranch(runtime.getInfo()) };
       },
       getOpenWorkspaces: async () => {
         return workspaceRuntimeRegistry.listOpenWorkspaces().map(addWorkspaceBranch);
+      },
+      getAppWorkspaceTabs: async () => {
+        return appWorkspaceTabsStore.getState();
+      },
+      setAppWorkspaceTabs: async (state) => {
+        appWorkspaceTabsStore.setState(state);
+        return { ok: true };
+      },
+      getWorkspaceUiRestore: async ({ workspaceId }) => {
+        return appWorkspaceUiRestoreStore.getState(workspaceId);
+      },
+      setWorkspaceUiRestore: async ({ workspaceId, state }) => {
+        appWorkspaceUiRestoreStore.setState(workspaceId, state);
+        return { ok: true };
       },
       setActiveWorkspace: async ({ workspaceId }) => {
         const runtime = workspaceRuntimeRegistry.setActiveWorkspace(workspaceId);

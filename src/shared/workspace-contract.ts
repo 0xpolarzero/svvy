@@ -272,8 +272,28 @@ export interface WorkspaceTabInfo extends WorkspaceInfoResponse {
   openedAt: string;
 }
 
+export interface AppWorkspaceTabsState {
+  version: 3;
+  activeWorkspaceId: string | null;
+  tabs: WorkspaceTabInfo[];
+  knownWorkspaces: WorkspaceTabInfo[];
+}
+
+export type WorkspaceLayoutSlotId = "A" | "B" | "C";
+
+export interface AppWorkspaceUiRestoreState {
+  version: 4;
+  activeLayoutId: WorkspaceLayoutSlotId;
+  layouts: Record<WorkspaceLayoutSlotId, unknown | null>;
+}
+
+export interface SetWorkspaceUiRestoreRequest extends WorkspaceScopedRequest {
+  state: AppWorkspaceUiRestoreState;
+}
+
 export interface OpenWorkspaceRequest {
   cwd?: string;
+  workspaceId?: string;
 }
 
 export interface OpenWorkspaceResponse {
@@ -1094,6 +1114,22 @@ export interface ChatRPCSchema {
       getOpenWorkspaces: {
         params: undefined;
         response: WorkspaceTabInfo[];
+      };
+      getAppWorkspaceTabs: {
+        params: undefined;
+        response: AppWorkspaceTabsState | null;
+      };
+      setAppWorkspaceTabs: {
+        params: AppWorkspaceTabsState;
+        response: WorkspaceMutationResponse;
+      };
+      getWorkspaceUiRestore: {
+        params: WorkspaceScopedRequest;
+        response: AppWorkspaceUiRestoreState | null;
+      };
+      setWorkspaceUiRestore: {
+        params: SetWorkspaceUiRestoreRequest;
+        response: WorkspaceMutationResponse;
       };
       setActiveWorkspace: {
         params: WorkspaceScopedRequest;

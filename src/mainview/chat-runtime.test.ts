@@ -13,6 +13,7 @@ import type {
   WorkspaceCommandInspector,
   WorkspaceHandlerThreadInspector,
   WorkspaceHandlerThreadSummary,
+  AppWorkspaceUiRestoreState,
   WorkspaceProjectCiStatusPanel,
   WorkspaceSessionSummary,
   WorkspaceSyncMessage,
@@ -21,6 +22,7 @@ import type {
 } from "../shared/workspace-contract";
 import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
+import type { WorkspaceDockviewLayoutState, WorkspaceLayoutSlotId } from "./pane-layout";
 import { getPromptLibraryContentKey, type PromptLibraryState } from "../shared/prompt-library";
 import { buildWorkspaceSessionNavigation } from "./session-state";
 
@@ -71,6 +73,10 @@ type SurfaceRecord = {
   retainCount: number;
 };
 
+type WorkspaceUiRestoreState = AppWorkspaceUiRestoreState & {
+  layouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>;
+};
+
 type FakeRpcHarness = {
   client: ChatRuntimeRpcClient;
   openedTargets: PromptTarget[];
@@ -102,6 +108,8 @@ type FakeRpcHarness = {
   ) => void;
   getRetainCount: (surfacePiSessionId: string) => number;
   getSurfaceSnapshot: (surfacePiSessionId: string) => ConversationSurfaceSnapshot;
+  getWorkspaceUiRestore: (workspaceId: string) => WorkspaceUiRestoreState | null;
+  setWorkspaceUiRestore: (workspaceId: string, state: WorkspaceUiRestoreState) => void;
 };
 
 function cloneTarget(target: PromptTarget): PromptTarget {
@@ -524,11 +532,6 @@ function createMemoryStorage(): ChatStorage {
   const providerKeys = new Map<string, string>();
   const customProviders = new Map<string, CustomProvider>();
   const promptHistory = new Map<string, PromptHistoryEntry[]>();
-  const workspaceUiRestore = new Map<
-    string,
-    Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>
-  >();
-  let appWorkspaceTabs: Awaited<ReturnType<ChatStorage["appWorkspaceTabs"]["get"]>> = null;
 
   return {
     providerKeys: {
@@ -562,28 +565,13 @@ function createMemoryStorage(): ChatStorage {
         return entry;
       },
     },
-    workspaceUiRestore: {
-      get: async (workspaceId: string) =>
-        structuredClone(workspaceUiRestore.get(workspaceId) ?? null),
-      set: async (workspaceId, state) => {
-        workspaceUiRestore.set(workspaceId, structuredClone(state));
-      },
-    },
-    appWorkspaceTabs: {
-      get: async () => structuredClone(appWorkspaceTabs),
-      set: async (state) => {
-        appWorkspaceTabs = structuredClone(state);
-      },
-    },
   } as ChatStorage;
 }
 
 function createWorkspaceRestoreState(
-  layout: NonNullable<
-    Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>
-  >["layouts"]["A"],
+  layout: WorkspaceUiRestoreState["layouts"]["A"],
   activeLayoutId: "A" | "B" | "C" = "A",
-): NonNullable<Awaited<ReturnType<ChatStorage["workspaceUiRestore"]["get"]>>> {
+): WorkspaceUiRestoreState {
   return {
     version: 4,
     activeLayoutId,
@@ -637,6 +625,7 @@ function createFakeRpc(input: {
   const appLogSeenRequests: number[] = [];
   const branchListRequests: string[] = [];
   const branchSwitchRequests: Array<{ workspaceId: string; branch: string }> = [];
+  const workspaceUiRestore = new Map<string, AppWorkspaceUiRestoreState>();
   let workspaceInfo = structuredClone(TEST_WORKSPACE_INFO);
   let appLogEntries: AppLogEntry[] = [];
   let appLogSeenSeq = 0;
@@ -921,6 +910,12 @@ function createFakeRpc(input: {
         }),
         getProviderAuthState: async () => ({ connected: true, accountId: "openai-oauth" }),
         getWorkspaceInfo: async () => structuredClone(workspaceInfo),
+        getWorkspaceUiRestore: async ({ workspaceId }) =>
+          structuredClone(workspaceUiRestore.get(workspaceId) ?? null),
+        setWorkspaceUiRestore: async ({ workspaceId, state }) => {
+          workspaceUiRestore.set(workspaceId, structuredClone(state));
+          return { ok: true };
+        },
         listWorkspaceBranches: async ({ workspaceId }) => {
           branchListRequests.push(workspaceId);
           return {
@@ -1654,6 +1649,11 @@ function createFakeRpc(input: {
     getRetainCount: (surfacePiSessionId) => surfaces.get(surfacePiSessionId)?.retainCount ?? 0,
     getSurfaceSnapshot: (surfacePiSessionId) =>
       structuredClone(getSurfaceRecord(surfacePiSessionId).snapshot),
+    getWorkspaceUiRestore: (workspaceId) =>
+      structuredClone((workspaceUiRestore.get(workspaceId) as WorkspaceUiRestoreState) ?? null),
+    setWorkspaceUiRestore: (workspaceId, state) => {
+      workspaceUiRestore.set(workspaceId, structuredClone(state));
+    },
   };
 
   return harness;
@@ -2594,7 +2594,7 @@ describe("createChatRuntime", () => {
     await Bun.sleep(0);
     firstRuntime.dispose();
 
-    const restoreState = await storage.workspaceUiRestore.get(TEST_WORKSPACE_INFO.workspaceId);
+    const restoreState = firstHarness.getWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId);
     expect(restoreState?.activeLayoutId).toBe("A");
     expect(restoreState?.layouts.A?.focusedPanelId).toBe("secondary");
     expect(restoreState?.layouts.A?.panels).toContainEqual(
@@ -2620,6 +2620,7 @@ describe("createChatRuntime", () => {
         }),
       ],
     });
+    secondHarness.setWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId, restoreState!);
     const secondRuntime = await createRuntime(secondHarness, storage);
 
     expect(secondRuntime.paneLayout.focusedPanelId).toBe("secondary");
@@ -2641,7 +2642,20 @@ describe("createChatRuntime", () => {
       surface: "workflow-inspector" as const,
       workflowRunId: "workflow-1",
     };
-    await storage.workspaceUiRestore.set(
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: orchestratorTarget,
+          messages: [assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [assistantMessage("worker ready")],
+        }),
+      ],
+    });
+    harness.setWorkspaceUiRestore(
       TEST_WORKSPACE_INFO.workspaceId,
       createWorkspaceRestoreState({
         dockview: null,
@@ -2688,19 +2702,6 @@ describe("createChatRuntime", () => {
         updatedAt: "2026-04-27T00:00:00.000Z",
       }),
     );
-    const harness = createFakeRpc({
-      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
-      surfaces: [
-        createSurfaceSnapshot({
-          target: orchestratorTarget,
-          messages: [assistantMessage("main reply")],
-        }),
-        createSurfaceSnapshot({
-          target: threadTarget,
-          messages: [assistantMessage("worker ready")],
-        }),
-      ],
-    });
 
     const runtime = await createRuntime(harness, storage);
 
@@ -2731,7 +2732,17 @@ describe("createChatRuntime", () => {
   it("restores prompt lock state from opened surface snapshots", async () => {
     const storage = createMemoryStorage();
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
-    await storage.workspaceUiRestore.set(
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Waiting Session", "worker waiting")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [assistantMessage("still running")],
+          promptStatus: "streaming",
+        }),
+      ],
+    });
+    harness.setWorkspaceUiRestore(
       TEST_WORKSPACE_INFO.workspaceId,
       createWorkspaceRestoreState({
         dockview: null,
@@ -2751,16 +2762,6 @@ describe("createChatRuntime", () => {
         updatedAt: "2026-04-27T00:00:00.000Z",
       }),
     );
-    const harness = createFakeRpc({
-      sessions: [createSummary("session-1", "Waiting Session", "worker waiting")],
-      surfaces: [
-        createSurfaceSnapshot({
-          target: threadTarget,
-          messages: [assistantMessage("still running")],
-          promptStatus: "streaming",
-        }),
-      ],
-    });
 
     const runtime = await createRuntime(harness, storage);
 
@@ -2774,7 +2775,16 @@ describe("createChatRuntime", () => {
 
   it("drops restored empty panes and focuses a restorable bound pane", async () => {
     const storage = createMemoryStorage();
-    await storage.workspaceUiRestore.set(
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+    harness.setWorkspaceUiRestore(
       TEST_WORKSPACE_INFO.workspaceId,
       createWorkspaceRestoreState({
         dockview: null,
@@ -2803,15 +2813,6 @@ describe("createChatRuntime", () => {
         updatedAt: "2026-04-27T00:00:00.000Z",
       }),
     );
-    const harness = createFakeRpc({
-      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
-      surfaces: [
-        createSurfaceSnapshot({
-          target: createOrchestratorTarget("session-1"),
-          messages: [assistantMessage("main reply")],
-        }),
-      ],
-    });
 
     const runtime = await createRuntime(harness, storage);
 
@@ -2862,7 +2863,7 @@ describe("createChatRuntime", () => {
     expect(runtime.activeLayoutId).toBe("A");
     expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
 
-    const restoreState = await storage.workspaceUiRestore.get(TEST_WORKSPACE_INFO.workspaceId);
+    const restoreState = harness.getWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId);
     expect(restoreState?.activeLayoutId).toBe("A");
     expect(restoreState?.layouts.A?.panels[0]?.binding).toEqual(
       createOrchestratorTarget("session-1"),
@@ -2877,7 +2878,8 @@ describe("createChatRuntime", () => {
 
   it("creates an initial session when a restored empty pane layout has no sessions", async () => {
     const storage = createMemoryStorage();
-    await storage.workspaceUiRestore.set(
+    const harness = createFakeRpc({ sessions: [], surfaces: [] });
+    harness.setWorkspaceUiRestore(
       TEST_WORKSPACE_INFO.workspaceId,
       createWorkspaceRestoreState({
         dockview: null,
@@ -2897,7 +2899,6 @@ describe("createChatRuntime", () => {
         updatedAt: "2026-04-27T00:00:00.000Z",
       }),
     );
-    const harness = createFakeRpc({ sessions: [], surfaces: [] });
 
     const runtime = await createRuntime(harness, storage);
 

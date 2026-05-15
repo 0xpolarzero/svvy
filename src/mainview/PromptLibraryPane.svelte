@@ -223,14 +223,9 @@
   }
 
   async function loadWorkspaceScopeOptions() {
-    const [tabState, openWorkspaces] = await Promise.all([
-      runtime.storage.appWorkspaceTabs.get().catch(() => null),
-      runtime.listOpenWorkspaces().catch(() => []),
-    ]);
+    const openWorkspaces = await runtime.listOpenWorkspaces().catch(() => []);
     const now = new Date().toISOString();
     workspaceScopeOptions = mergeWorkspaceOptions([
-      ...(tabState?.knownWorkspaces ?? []),
-      ...(tabState?.tabs ?? []),
       ...openWorkspaces,
       {
         workspaceId: runtime.workspaceId,

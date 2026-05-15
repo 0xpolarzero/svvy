@@ -16,7 +16,11 @@
 		reorderWorkspaceTabs,
 		type WorkspaceTabCounts,
 	} from "./workspace-tabs";
-	import type { WorkspaceInfoResponse, WorkspaceTabInfo } from "../shared/workspace-contract";
+	import type {
+		AppWorkspaceTabsState,
+		WorkspaceInfoResponse,
+		WorkspaceTabInfo,
+	} from "../shared/workspace-contract";
 	import type { AppAppearance } from "../shared/agent-settings";
 
 	type OpenWorkspaceTab = {
@@ -90,17 +94,18 @@
 		);
 	}
 
-	function persistWorkspaceTabs() {
+	async function persistWorkspaceTabs() {
 		const openTabs = tabs.map((tab) => tab.workspace);
 		knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, openTabs);
-		void storage.appWorkspaceTabs
-			.set({
-				version: 3,
-				activeWorkspaceId,
-				tabs: openTabs,
-				knownWorkspaces,
-			})
-			.catch((error) => console.error("Failed to persist workspace tabs:", error));
+		const state: AppWorkspaceTabsState = {
+			version: 3,
+			activeWorkspaceId,
+			tabs: openTabs,
+			knownWorkspaces,
+		};
+		await rpc.request
+			.setAppWorkspaceTabs(state)
+			.catch((error) => console.error("Failed to persist app workspace tabs:", error));
 	}
 
 	function openSettings() {
@@ -156,7 +161,7 @@
 	async function setActiveWorkspace(workspaceId: string | null) {
 		activeWorkspaceId = workspaceId;
 		if (!workspaceId) {
-			persistWorkspaceTabs();
+			await persistWorkspaceTabs();
 			return;
 		}
 		try {
@@ -165,19 +170,22 @@
 		} catch (error) {
 			console.error("Failed to set active workspace:", error);
 		}
-		persistWorkspaceTabs();
+		await persistWorkspaceTabs();
 	}
 
 	async function restoreWorkspaceTabs() {
 		try {
-			const restoreState = await storage.appWorkspaceTabs.get();
+			const restoreState = await rpc.request.getAppWorkspaceTabs().catch((error) => {
+				console.error("Failed to load app workspace tabs:", error);
+				return null;
+			});
 			knownWorkspaces = restoreState?.knownWorkspaces ?? [];
 			const tabsToRestore = restoreState?.tabs.length
 				? restoreState.tabs
 				: await rpc.request.getOpenWorkspaces();
 			knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, tabsToRestore);
 			if (!tabsToRestore.length) {
-				persistWorkspaceTabs();
+				await persistWorkspaceTabs();
 				restoring = false;
 				return;
 			}
@@ -187,7 +195,7 @@
 				if (disposed) return;
 				try {
 					const workspaceInfo = restoreState?.tabs.length
-						? (await rpc.request.openWorkspace({ cwd: savedTab.cwd })).workspace
+						? (await rpc.request.openWorkspace({ cwd: savedTab.cwd, workspaceId: savedTab.workspaceId })).workspace
 						: await rpc.request.getWorkspaceInfo({
 								workspaceId: savedTab.workspaceId,
 							});
@@ -278,7 +286,7 @@
 			await setActiveWorkspace(nextTab?.workspace.workspaceId ?? null);
 			return;
 		}
-		persistWorkspaceTabs();
+		await persistWorkspaceTabs();
 	}
 
 	function reorderWorkspaceTab(workspaceId: string, beforeWorkspaceId: string | null) {
@@ -287,7 +295,7 @@
 			return;
 		}
 		tabs = nextTabs;
-		persistWorkspaceTabs();
+		void persistWorkspaceTabs();
 	}
 
 	async function handleProviderAuthChanged(providerId: string) {

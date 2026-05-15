@@ -35,6 +35,10 @@ type WorkspaceRuntimeRegistryOptions = {
   onWorkspaceSync?: (workspaceId: string, payload: WorkspaceSyncMessage) => void;
 };
 
+type OpenWorkspaceOptions = {
+  workspaceId?: string;
+};
+
 export type WorkspaceRuntime = {
   workspaceId: string;
   cwd: string;
@@ -65,9 +69,12 @@ export class WorkspaceRuntimeRegistry {
     }
   }
 
-  openWorkspace(cwd: string): WorkspaceRuntime {
+  openWorkspace(cwd: string, options: OpenWorkspaceOptions = {}): WorkspaceRuntime {
     const workspaceCwd = canonicalizeWorkspaceCwd(cwd);
-    const workspaceId = `${workspaceCwd}#${randomUUID()}`;
+    const workspaceId = normalizeWorkspaceRuntimeId(workspaceCwd, options.workspaceId);
+    if (this.runtimes.has(workspaceId)) {
+      throw new Error(`Workspace is already open: ${workspaceId}`);
+    }
     const runtime = this.createRuntime(workspaceId, workspaceCwd);
     this.runtimes.set(workspaceId, runtime);
     this.activeWorkspaceId = workspaceId;
@@ -213,6 +220,13 @@ export class WorkspaceRuntimeRegistry {
 
 function sanitizeWorkspaceRuntimeId(workspaceId: string): string {
   return workspaceId.replace(/^[/\\]/, "").replace(/[/\\:#]/g, "-");
+}
+
+function normalizeWorkspaceRuntimeId(cwd: string, workspaceId?: string): string {
+  if (workspaceId?.startsWith(`${cwd}#`)) {
+    return workspaceId;
+  }
+  return `${cwd}#${randomUUID()}`;
 }
 
 function recordTitleGenerationLog(
