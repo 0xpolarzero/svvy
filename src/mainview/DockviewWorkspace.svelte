@@ -558,8 +558,8 @@
     --dv-background-color: var(--ui-shell);
     --dv-group-view-background-color: var(--ui-bg);
     --dv-paneview-active-outline-color: var(--ui-accent);
-    --dv-tabs-and-actions-container-background-color: var(--ui-bg);
-    --dv-activegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 88%, var(--ui-surface-subtle));
+    --dv-tabs-and-actions-container-background-color: var(--ui-chrome);
+    --dv-activegroup-visiblepanel-tab-background-color: var(--ui-panel);
     --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 72%, var(--ui-shell));
     --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 54%, var(--ui-shell));
     --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 48%, var(--ui-shell));
@@ -583,8 +583,8 @@
     --dv-color-abyss-primary-text: var(--ui-text);
     --dv-color-abyss-secondary-text: var(--ui-text-muted);
     --dv-group-view-background-color: var(--ui-bg);
-    --dv-tabs-and-actions-container-background-color: var(--ui-bg);
-    --dv-activegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 88%, var(--ui-surface-subtle));
+    --dv-tabs-and-actions-container-background-color: var(--ui-chrome);
+    --dv-activegroup-visiblepanel-tab-background-color: var(--ui-panel);
     --dv-inactivegroup-visiblepanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 72%, var(--ui-shell));
     --dv-activegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 54%, var(--ui-shell));
     --dv-inactivegroup-hiddenpanel-tab-background-color: color-mix(in oklab, var(--ui-panel) 48%, var(--ui-shell));
