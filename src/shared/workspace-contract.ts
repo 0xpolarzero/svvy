@@ -13,8 +13,12 @@ import type {
 } from "./agent-settings";
 import type {
   PromptLibraryActor,
+  CreatePromptLibrarySnapshotRequest,
   PromptLibraryGeneratedEntry,
+  PromptLibrarySnapshotSummary,
   PromptLibraryState,
+  RenamePromptLibrarySnapshotRequest,
+  RestorePromptLibrarySnapshotRequest,
   UpdatePromptLibraryRequest,
 } from "./prompt-library";
 import type { AppMenuAction } from "./shortcut-registry";
@@ -1041,6 +1045,22 @@ export interface ChatRPCSchema {
       };
       resetPromptLibrary: {
         params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibraryState;
+      };
+      listPromptLibrarySnapshots: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibrarySnapshotSummary[];
+      };
+      createPromptLibrarySnapshot: {
+        params: WorkspaceScoped<CreatePromptLibrarySnapshotRequest>;
+        response: PromptLibrarySnapshotSummary;
+      };
+      renamePromptLibrarySnapshot: {
+        params: WorkspaceScoped<RenamePromptLibrarySnapshotRequest>;
+        response: PromptLibrarySnapshotSummary;
+      };
+      restorePromptLibrarySnapshot: {
+        params: WorkspaceScoped<RestorePromptLibrarySnapshotRequest>;
         response: PromptLibraryState;
       };
       getPromptLibraryGeneratedEntries: {

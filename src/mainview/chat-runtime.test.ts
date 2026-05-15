@@ -21,7 +21,7 @@ import type {
 } from "../shared/workspace-contract";
 import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
-import type { PromptLibraryState } from "../shared/prompt-library";
+import { getPromptLibraryContentKey, type PromptLibraryState } from "../shared/prompt-library";
 import { buildWorkspaceSessionNavigation } from "./session-state";
 
 mock.module("electrobun/view", () => {
@@ -875,6 +875,22 @@ function createFakeRpc(input: {
           };
           return structuredClone(promptLibraryState);
         },
+        listPromptLibrarySnapshots: async () => [],
+        createPromptLibrarySnapshot: async ({ name }) => ({
+          id: "snapshot-1",
+          name,
+          createdAt: new Date().toISOString(),
+          revision: promptLibraryState.revision,
+          contentKey: getPromptLibraryContentKey(promptLibraryState),
+        }),
+        renamePromptLibrarySnapshot: async ({ snapshotId, name }) => ({
+          id: snapshotId,
+          name,
+          createdAt: new Date().toISOString(),
+          revision: promptLibraryState.revision,
+          contentKey: getPromptLibraryContentKey(promptLibraryState),
+        }),
+        restorePromptLibrarySnapshot: async () => structuredClone(promptLibraryState),
         getOpenWorkspaces: async () => [structuredClone(TEST_WORKSPACE_INFO)],
         updateSessionAgentDefault: async ({ key, settings }) => {
           return {

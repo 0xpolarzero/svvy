@@ -142,7 +142,7 @@
 {:else if pane?.target?.surface === "app-logs"}
   <AppLogsPane {runtime} {panelId} />
 {:else if pane?.target?.surface === "prompt-library"}
-  <PromptLibraryPane {runtime} />
+  <PromptLibraryPane {runtime} {panelId} />
 {:else if pane?.target?.surface === "saved-workflow-library"}
   <SavedWorkflowLibraryPane {runtime} />
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}

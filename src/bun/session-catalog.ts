@@ -44,6 +44,7 @@ import type {
 import type {
   PromptLibraryActor,
   PromptLibraryGeneratedEntry,
+  PromptLibrarySnapshotSummary,
   PromptLibraryState,
 } from "../shared/prompt-library";
 import { buildWorkflowInspectorReadModel } from "../shared/workflow-inspector";
@@ -325,6 +326,22 @@ export class WorkspaceSessionCatalog {
 
   resetPromptLibraryState(): PromptLibraryState {
     return this.promptLibraryStore.resetState();
+  }
+
+  listPromptLibrarySnapshots(): PromptLibrarySnapshotSummary[] {
+    return this.promptLibraryStore.listSnapshots();
+  }
+
+  createPromptLibrarySnapshot(name: string): PromptLibrarySnapshotSummary {
+    return this.promptLibraryStore.createSnapshot(name);
+  }
+
+  renamePromptLibrarySnapshot(snapshotId: string, name: string): PromptLibrarySnapshotSummary {
+    return this.promptLibraryStore.renameSnapshot(snapshotId, name);
+  }
+
+  restorePromptLibrarySnapshot(snapshotId: string): PromptLibraryState {
+    return this.promptLibraryStore.restoreSnapshot(snapshotId);
   }
 
   getPromptLibraryGeneratedEntries() {

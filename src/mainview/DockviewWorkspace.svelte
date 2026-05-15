@@ -14,6 +14,7 @@
   // oxlint-disable-next-line import/no-unassigned-import
   import "dockview-core/dist/styles/dockview.css";
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
+  import PromptLibrarySnapshotControls from "./PromptLibrarySnapshotControls.svelte";
   import type { ChatRuntime } from "./chat-runtime";
   import type { WorkspaceDockviewPanelState } from "./pane-layout";
   import { getSurfaceDisplayTitle } from "./surface-title";
@@ -240,13 +241,18 @@
 
   class SurfaceHeaderActionsRenderer implements IHeaderActionsRenderer {
     readonly element = document.createElement("div");
+    private snapshotContainer = document.createElement("div");
+    private snapshotComponent: Record<string, unknown> | null = null;
+    private renderedSnapshotPanelId: string | null = null;
     private group: Parameters<IHeaderActionsRenderer["init"]>[0]["group"] | null = null;
     private activePanelDisposable: IDisposable | null = null;
 
     init(params: Parameters<IHeaderActionsRenderer["init"]>[0]): void {
       this.group = params.group;
       this.element.className = "dockview-surface-actions";
+      this.snapshotContainer.className = "dockview-context-snapshot-actions";
       this.element.append(
+        this.snapshotContainer,
         this.createActionButton("Duplicate pane right", "split-right", () => this.duplicate("right")),
         this.createActionButton("Duplicate pane below", "split-below", () => this.duplicate("below")),
         this.createActionButton("Close pane", "close", () => this.close()),
@@ -258,12 +264,18 @@
     dispose(): void {
       this.activePanelDisposable?.dispose();
       this.activePanelDisposable = null;
+      this.unmountSnapshotControls();
       this.element.replaceChildren();
       this.group = null;
     }
 
     private get activePanelId(): string | null {
       return this.group?.activePanel?.id ?? null;
+    }
+
+    private get activePanel(): WorkspaceDockviewPanelState | null {
+      const panelId = this.activePanelId;
+      return panelId ? (panels.find((candidate) => candidate.panelId === panelId) ?? null) : null;
     }
 
     private createActionButton(
@@ -298,10 +310,36 @@
     }
 
     private syncDisabledState(): void {
+      this.syncSnapshotControls();
       const disabled = !this.activePanelId;
-      for (const child of this.element.querySelectorAll("button")) {
+      for (const child of this.element.querySelectorAll<HTMLButtonElement>("button.dockview-surface-action")) {
         child.toggleAttribute("disabled", disabled);
       }
+    }
+
+    private syncSnapshotControls(): void {
+      const panel = this.activePanel;
+      const panelId = panel?.panelId ?? null;
+      if (!panelId || panel?.binding?.surface !== "prompt-library") {
+        this.unmountSnapshotControls();
+        return;
+      }
+      if (this.snapshotComponent && this.renderedSnapshotPanelId === panelId) return;
+      this.unmountSnapshotControls();
+      this.snapshotComponent = mount(PromptLibrarySnapshotControls, {
+        target: this.snapshotContainer,
+        props: { runtime, panelId },
+      }) as Record<string, unknown>;
+      this.renderedSnapshotPanelId = panelId;
+    }
+
+    private unmountSnapshotControls(): void {
+      if (this.snapshotComponent) {
+        unmount(this.snapshotComponent);
+        this.snapshotComponent = null;
+      }
+      this.renderedSnapshotPanelId = null;
+      this.snapshotContainer.replaceChildren();
     }
   }
 
@@ -710,6 +748,13 @@
     gap: 0.16rem;
     height: 100%;
     padding: 0 0.32rem 0 0.18rem;
+  }
+
+  :global(.dockview-context-snapshot-actions) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 100%;
   }
 
   :global(.dockview-surface-action) {

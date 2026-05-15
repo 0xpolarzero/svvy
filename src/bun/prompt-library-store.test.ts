@@ -60,4 +60,34 @@ describe("prompt library store", () => {
       buildSystemPrompt("orchestrator"),
     );
   });
+
+  it("creates, renames, and restores named snapshots", () => {
+    const agentDir = createTempAgentDir();
+    const store = createPromptLibraryStore({ agentDir });
+    const initial = store.getState();
+    const changed = structuredClone(initial);
+    changed.instructionBlocks.common!.body = "Snapshot this instruction.";
+    const saved = store.updateState(changed);
+
+    const snapshot = store.createSnapshot("Stable prompt");
+    expect(snapshot.name).toBe("Stable prompt");
+    expect(snapshot.revision).toBe(saved.revision);
+    expect(store.listSnapshots()).toEqual([snapshot]);
+
+    const renamed = store.renameSnapshot(snapshot.id, "Release prompt");
+    expect(renamed.name).toBe("Release prompt");
+    expect(store.listSnapshots()[0]?.name).toBe("Release prompt");
+
+    const next = structuredClone(saved);
+    next.instructionBlocks.common!.body = "A later autosaved edit.";
+    store.updateState(next);
+
+    const restored = store.restoreSnapshot(snapshot.id);
+    expect(restored.revision).toBe(4);
+    expect(restored.instructionBlocks.common!.body).toBe("Snapshot this instruction.");
+
+    const reloaded = createPromptLibraryStore({ agentDir });
+    expect(reloaded.listSnapshots()[0]?.name).toBe("Release prompt");
+    expect(reloaded.getState().instructionBlocks.common!.body).toBe("Snapshot this instruction.");
+  });
 });

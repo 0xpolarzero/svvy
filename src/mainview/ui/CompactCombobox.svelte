@@ -25,6 +25,7 @@
     menuClass?: string;
     optionClass?: string;
     leadingIcon?: "branch" | "workspace";
+    placement?: "above" | "below";
     emptyLabel?: string;
     open?: boolean;
     onBeforeOpen?: () => void | Promise<void>;
@@ -44,6 +45,7 @@
     menuClass = "",
     optionClass = "",
     leadingIcon,
+    placement = "above",
     emptyLabel = "No matches.",
     open = $bindable(false),
     onBeforeOpen,
@@ -66,6 +68,7 @@
   const selectedOptions = $derived(options.filter((option) => selectedValueSet.has(option.value)));
   const triggerLabel = $derived.by(() => {
     if (!multiple) {
+      if (!selectedOption && !value) return placeholder;
       return selectedOption?.triggerLabel ?? selectedOption?.label ?? value;
     }
     if (selectedOptions.length === 0) return placeholder;
@@ -136,7 +139,10 @@
     const rect = triggerElement.getBoundingClientRect();
     const gap = 5;
     const menuHeight = menuElement?.getBoundingClientRect().height ?? (menuClass.includes("model-menu") ? 225 : 240);
-    const top = Math.max(8, rect.top - menuHeight - gap);
+    const top =
+      placement === "below"
+        ? Math.min(window.innerHeight - menuHeight - 8, rect.bottom + gap)
+        : Math.max(8, rect.top - menuHeight - gap);
     const left = Math.max(8, Math.min(rect.left, window.innerWidth - 232));
     const minimumWidth = menuClass.includes("model-menu") ? 256 : 128;
     menuStyle = `left: ${left}px; top: ${top}px; min-width: ${Math.max(rect.width, minimumWidth)}px;`;

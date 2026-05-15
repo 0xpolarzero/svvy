@@ -11,7 +11,7 @@
   - define actor prompt recipes
   - define generated prompt parts inside actor recipes
   - define app-global and workspace-scoped prompt blocks
-  - define prompt revisions and session binding
+  - define internal prompt revision binding and user-named snapshots
   - define stale-prompt warnings, diffs, and update behavior
   - define the sidebar rename from `Saved Workflows` to `Workflows`
 
@@ -25,7 +25,7 @@ The product model is:
 Context Library = reusable blocks + actor recipes + generated contracts
 ```
 
-The user manages reusable prompt material. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. New sessions always use the latest context library revision. Existing sessions keep the revision they were created with until the user explicitly updates them.
+The user manages reusable prompt material. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. New sessions always use the latest context library revision. Existing sessions keep the revision they were created with until the user explicitly updates them. Raw revision counters are internal and are not shown as primary Context pane UI.
 
 ## Product Principles
 
@@ -36,6 +36,7 @@ The user manages reusable prompt material. Actor prompts are aggregates assemble
 - Generated prompt parts are visible inside actor recipes but are not edited as normal text blocks.
 - Scope is explicit. Blocks are app-global by default, but each block can be limited to selected previously opened workspaces.
 - The app records exactly which prompt revision each session, handler thread, and workflow task agent used.
+- The user can explicitly save named snapshots and restore them later without relying on autosave history.
 - The UI warns when an existing surface uses prompt material that differs from current settings.
 - Updating an existing surface to the latest prompt revision is deliberate and happens before a later turn, not silently in the middle of active work.
 
@@ -56,11 +57,17 @@ It contains:
 - enabled states
 - generated prompt-part references
 
-### Prompt Revision
+### Internal Prompt Revision
 
-An immutable snapshot of the context library at a meaningful autosave boundary.
+A monotonically increasing internal version of the context library used for binding sessions, handler threads, and workflow task agents to the prompt state that was current when they started.
 
 New sessions, handler threads, and workflow task agents bind to a prompt revision so the product can explain what prompt shape they used later.
+
+### User Snapshot
+
+A named, user-created copy of the current Context Library state.
+
+Snapshots are for recovery and experimentation. They are created explicitly from the Context pane navigation, can be loaded later, and can be renamed. Loading a snapshot makes that snapshot's state the current Context Library state and creates a new internal revision.
 
 ### Instruction Block
 
@@ -153,6 +160,7 @@ The pane uses a dense workbench layout:
 - a searchable list for the selected section
 - a detail/editor area for the selected record
 - stable action locations for create, delete, reset, compare, navigation, and autosave status
+- explicit snapshot creation, loading, and rename controls docked in the Context pane header beside the pane chrome actions
 
 The Context pane must not rely on modal-first flows. Inline editing and progressive disclosure are preferred.
 
@@ -550,15 +558,14 @@ Stable library order is user-visible and reorderable after MVP. Until reorder UI
 
 Instruction and context-pack names should appear as section headings in composed previews. The raw pi system prompt may omit extra UI-only provenance wrappers if the runtime needs a compact prompt, but the preview must preserve provenance.
 
-## Prompt Revisions
+## Internal Revisions And User Snapshots
 
-Every meaningful prompt-library autosave creates an immutable prompt revision.
+Every prompt-library save increments an internal revision number. The raw counter is not user-facing Context pane copy; it exists so surfaces can bind to the exact prompt state they used and so stale-prompt warnings can be computed.
 
 ```ts
 type PromptRevision = {
   id: string;
   createdAt: string;
-  label: string | null;
   libraryHash: string;
   instructionBlocks: InstructionBlock[];
   contextPacks: ContextPack[];
@@ -569,11 +576,40 @@ type PromptRevision = {
 
 `libraryHash` is a canonical hash of revision content excluding volatile timestamps.
 
-The product must coalesce rapid field edits into one revision at an autosave boundary. It must not create a new durable revision for every keystroke.
+The product does not expose autosave revision history as the recovery UI. Instead, the user explicitly creates named snapshots.
+
+```ts
+type PromptLibrarySnapshot = {
+  id: string;
+  name: string;
+  createdAt: string;
+  state: PromptLibraryState;
+};
+```
+
+The Context pane has no redundant title header. Snapshot controls live in the Dockview pane header beside the normal pane duplicate and close actions:
+
+- save-snapshot button
+- popover with a preselected readable timestamp-style name
+- input text selected by default so the user can immediately replace it
+- confirmation button to save the snapshot
+- snapshot combobox listing saved snapshots
+- loading a snapshot by choosing it from the combobox
+- rename button for the selected snapshot
+
+The snapshot combobox is also a current-state indicator:
+
+- when the current Context Library content matches a saved snapshot, the combobox displays that snapshot name
+- when the current Context Library content does not match any saved snapshot, the combobox displays a special current-state label rather than implying a saved snapshot is active
+- when there are no saved snapshots, the combobox displays an empty-snapshot label
+
+The match is based on Context Library content: instruction blocks, context packs, actor recipes, enabled states, actor selections, and scopes. Volatile revision numbers and timestamps must not decide whether the current Context matches a saved snapshot.
+
+Loading a snapshot replaces the current Context Library state and increments the internal revision. It does not mutate the saved snapshot.
 
 ## Surface Prompt Binding
 
-New surfaces always bind to the latest prompt revision.
+New surfaces always bind to the latest internal prompt revision.
 
 ### Top-Level Session
 
@@ -838,7 +874,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Workspace-scoped blocks remain visible even when inactive in the current workspace.
 - Actor aggregate views are recipes, not the primary editing surface.
 - Generated prompt parts are visible inside actor recipes.
-- New sessions use the latest prompt revision.
+- New sessions use the latest internal prompt revision.
 - Existing sessions warn when their bound prompt revision or resolved hash differs from current prompt settings.
 - Existing sessions update only through an explicit user action.
 
@@ -860,9 +896,10 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Add create, edit, custom-record delete, reset, compare, and filters.
 - Compose actor prompts from persisted blocks plus generated parts.
 
-### Phase 3: Revisions And Bindings
+### Phase 3: Snapshots, Revisions, And Bindings
 
-- Persist prompt revisions.
+- Persist internal prompt revisions and user-named snapshots.
+- Add Context pane snapshot creation, loading, and rename controls.
 - Bind new sessions, handler threads, and workflow task agents to the latest revision.
 - Store resolved prompt hashes and inspectable prompt text.
 - Show stale-prompt warnings on existing surfaces.

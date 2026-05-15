@@ -50,7 +50,6 @@
   };
 
   type PromptLibraryReadModel = {
-    revisionId: string;
     updatedAt: string;
     sections: Record<PromptLibrarySection, PromptLibraryBlock[]>;
     actors: PromptLibraryActorAggregate[];
@@ -69,9 +68,10 @@
 
   type Props = {
     runtime: ChatRuntime;
+    panelId: string;
   };
 
-  let { runtime }: Props = $props();
+  let { runtime, panelId }: Props = $props();
 
   const SECTION_LABELS: Record<PromptLibrarySection, string> = {
     instructions: "Instructions",
@@ -133,7 +133,6 @@
     !!selectedBlock && (draftTitle !== selectedBlock.title || draftContent !== selectedBlock.content),
   );
   const saveStatusLabel = $derived(getSaveStatusLabel());
-
   function clonePromptLibraryState(state: PromptLibraryState): PromptLibraryState {
     return JSON.parse(JSON.stringify(state)) as PromptLibraryState;
   }
@@ -493,7 +492,6 @@
       };
     });
     return {
-      revisionId: `revision ${state.revision}`,
       updatedAt: state.updatedAt,
       sections: {
         instructions: instructionEntries,
@@ -621,6 +619,14 @@
     }
   }
 
+  function notifyPromptLibraryCurrentChanged(options: { unsnapshotted?: boolean } = {}) {
+    window.dispatchEvent(
+      new CustomEvent("svvy:prompt-library-current-changed", {
+        detail: { panelId, ...options },
+      }),
+    );
+  }
+
   async function persistDraftSnapshot(snapshot: DraftSnapshot) {
     if (!promptState || !snapshot.title.trim() || !snapshot.content.trim()) return;
     saving = true;
@@ -635,6 +641,7 @@
       const next = convertStateToReadModel(nextState);
       readModel = next;
       autosaveStatus = "saved";
+      notifyPromptLibraryCurrentChanged();
     } catch (err) {
       actionMessage = err instanceof Error ? err.message : "Unable to save prompt block.";
       autosaveStatus = "error";
@@ -649,6 +656,7 @@
       autosaveTimer = null;
     }
     autosaveStatus = "saving";
+    notifyPromptLibraryCurrentChanged({ unsnapshotted: true });
     instantSaveQueue = instantSaveQueue
       .catch(() => undefined)
       .then(() => persistDraftSnapshot(snapshot));
@@ -700,6 +708,7 @@
 
     if (!draftTitle.trim() || !draftContent.trim()) {
       autosaveStatus = "dirty";
+      notifyPromptLibraryCurrentChanged({ unsnapshotted: true });
       return;
     }
 
@@ -709,6 +718,7 @@
     }
 
     scheduleAutosave(selectedBlock);
+    notifyPromptLibraryCurrentChanged({ unsnapshotted: true });
 
     return () => {
       if (autosaveTimer) {
@@ -789,6 +799,7 @@
       const next = convertStateToReadModel(nextState);
       readModel = next;
       const block = next.sections[section].find((candidate) => candidate.id === id);
+      notifyPromptLibraryCurrentChanged();
       if (block) {
         selectBlock(block, { flushCurrentDraft: false });
       } else {
@@ -836,6 +847,7 @@
       const next = convertStateToReadModel(nextState);
       readModel = next;
       syncSelection(next);
+      notifyPromptLibraryCurrentChanged();
     } catch (err) {
       actionMessage = err instanceof Error ? err.message : "Unable to delete prompt block.";
     } finally {
@@ -874,6 +886,7 @@
       const next = convertStateToReadModel(nextState);
       readModel = next;
       syncSelection(next);
+      notifyPromptLibraryCurrentChanged();
     } catch (err) {
       actionMessage = err instanceof Error ? err.message : "Unable to reset prompt block.";
     } finally {
@@ -897,6 +910,19 @@
     void loadLibrary();
     void loadWorkspaceScopeOptions();
 
+    const handleHeaderFlush = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        panelId?: string;
+        register?: (promise: Promise<void>) => void;
+      }>).detail;
+      if (detail?.panelId !== panelId) return;
+      detail.register?.(flushPendingAutosave());
+    };
+    const handleHeaderReload = (event: Event) => {
+      const detail = (event as CustomEvent<{ panelId?: string }>).detail;
+      if (detail?.panelId !== panelId) return;
+      void loadLibrary();
+    };
     const refreshInBackground = () => {
       if (document.visibilityState === "visible") {
         void loadLibrary({ background: true });
@@ -904,11 +930,15 @@
       }
     };
     const interval = window.setInterval(refreshInBackground, BACKGROUND_REFRESH_INTERVAL_MS);
+    window.addEventListener("svvy:prompt-library-flush", handleHeaderFlush);
+    window.addEventListener("svvy:prompt-library-reload", handleHeaderReload);
     window.addEventListener("focus", refreshInBackground);
     document.addEventListener("visibilitychange", refreshInBackground);
 
     return () => {
       window.clearInterval(interval);
+      window.removeEventListener("svvy:prompt-library-flush", handleHeaderFlush);
+      window.removeEventListener("svvy:prompt-library-reload", handleHeaderReload);
       window.removeEventListener("focus", refreshInBackground);
       document.removeEventListener("visibilitychange", refreshInBackground);
       if (autosaveTimer) {
@@ -920,13 +950,6 @@
 </script>
 
 <section class="prompt-library" aria-label="Context library">
-  <header class="library-header">
-    <div>
-      <p>Context Library</p>
-      <h2>{readModel?.revisionId ?? "Loading"}</h2>
-    </div>
-  </header>
-
   {#if error}
     <p class="library-message error">{error}</p>
   {:else if loading}
@@ -1009,6 +1032,7 @@
             </button>
           {/each}
         </section>
+
       </div>
 
       <article class="library-detail">
@@ -1260,14 +1284,13 @@
 <style>
   .prompt-library {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     height: 100%;
     min-height: 0;
     color: var(--ui-text-primary);
     background: var(--ui-surface);
   }
 
-  .library-header,
   .detail-header,
   .row-top {
     display: flex;
@@ -1277,13 +1300,6 @@
     min-width: 0;
   }
 
-  .library-header {
-    padding: 0.58rem 0.78rem;
-    border-bottom: 1px solid color-mix(in oklab, var(--ui-border-soft) 90%, transparent);
-    background: color-mix(in oklab, var(--ui-surface-subtle) 88%, transparent);
-  }
-
-  .library-header p,
   .detail-header p,
   .library-group-header,
   .detail-section h4,
@@ -1295,7 +1311,6 @@
     text-transform: uppercase;
   }
 
-  .library-header h2,
   .detail-header h3 {
     margin: 0.12rem 0 0;
     overflow: hidden;

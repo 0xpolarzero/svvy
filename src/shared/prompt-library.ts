@@ -62,3 +62,49 @@ export interface PromptLibraryState {
 export interface UpdatePromptLibraryRequest {
   state: PromptLibraryState;
 }
+
+export interface PromptLibrarySnapshotSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  revision: number;
+  contentKey: string;
+}
+
+export interface CreatePromptLibrarySnapshotRequest {
+  name: string;
+}
+
+export interface RenamePromptLibrarySnapshotRequest {
+  snapshotId: string;
+  name: string;
+}
+
+export interface RestorePromptLibrarySnapshotRequest {
+  snapshotId: string;
+}
+
+export function getPromptLibraryContentKey(state: PromptLibraryState): string {
+  return JSON.stringify(
+    sortPromptLibraryValue({
+      version: state.version,
+      instructionBlocks: state.instructionBlocks,
+      contextPacks: state.contextPacks,
+      actorRecipes: state.actorRecipes,
+    }),
+  );
+}
+
+function sortPromptLibraryValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortPromptLibraryValue);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .toSorted(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, sortPromptLibraryValue(entry)]),
+  );
+}

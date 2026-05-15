@@ -1,11 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { getPromptLibraryContentKey } from "../shared/prompt-library";
 import type {
   PromptLibraryActor,
   PromptLibraryActorRecipe,
   PromptLibraryContextPack,
   PromptLibraryGeneratedSectionId,
   PromptLibraryInstructionBlock,
+  PromptLibrarySnapshotSummary,
   PromptLibraryState,
 } from "../shared/prompt-library";
 import { createDefaultPromptLibraryState } from "./default-system-prompt";
@@ -14,10 +17,15 @@ export type PromptLibraryStore = {
   getState(): PromptLibraryState;
   updateState(state: PromptLibraryState): PromptLibraryState;
   resetState(): PromptLibraryState;
+  listSnapshots(): PromptLibrarySnapshotSummary[];
+  createSnapshot(name: string): PromptLibrarySnapshotSummary;
+  renameSnapshot(snapshotId: string, name: string): PromptLibrarySnapshotSummary;
+  restoreSnapshot(snapshotId: string): PromptLibraryState;
   getPath(): string;
 };
 
 const PROMPT_LIBRARY_FILENAME = "prompt-library.json";
+const PROMPT_LIBRARY_SNAPSHOTS_FILENAME = "prompt-library-snapshots.json";
 const ACTORS: PromptLibraryActor[] = ["orchestrator", "handler", "workflow-task"];
 const GENERATED_SECTION_IDS: PromptLibraryGeneratedSectionId[] = [
   "web-context",
@@ -29,6 +37,7 @@ const GENERATED_SECTION_IDS: PromptLibraryGeneratedSectionId[] = [
 
 export function createPromptLibraryStore(input: { agentDir: string }): PromptLibraryStore {
   const libraryPath = join(input.agentDir, PROMPT_LIBRARY_FILENAME);
+  const snapshotsPath = join(input.agentDir, PROMPT_LIBRARY_SNAPSHOTS_FILENAME);
 
   const writeState = (state: PromptLibraryState): PromptLibraryState => {
     mkdirSync(dirname(libraryPath), { recursive: true });
@@ -49,6 +58,26 @@ export function createPromptLibraryStore(input: { agentDir: string }): PromptLib
     }
   };
 
+  const writeSnapshots = (snapshots: PromptLibrarySnapshot[]): PromptLibrarySnapshot[] => {
+    mkdirSync(dirname(snapshotsPath), { recursive: true });
+    writeFileSync(snapshotsPath, `${JSON.stringify({ version: 1, snapshots }, null, 2)}\n`);
+    return snapshots;
+  };
+
+  const readSnapshots = (): PromptLibrarySnapshot[] => {
+    if (!existsSync(snapshotsPath)) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(readFileSync(snapshotsPath, "utf8")) as Partial<{
+        snapshots: unknown[];
+      }>;
+      return normalizeSnapshots(parsed.snapshots);
+    } catch {
+      return writeSnapshots([]);
+    }
+  };
+
   return {
     getState: readState,
     updateState: (state) => {
@@ -65,8 +94,112 @@ export function createPromptLibraryStore(input: { agentDir: string }): PromptLib
         createDefaultPromptLibraryState(new Date().toISOString(), current.revision + 1),
       );
     },
+    listSnapshots: () => summarizeSnapshots(readSnapshots()),
+    createSnapshot: (name) => {
+      const snapshots = readSnapshots();
+      const state = readState();
+      const snapshot = normalizeSnapshot({
+        id: randomUUID(),
+        name: normalizeSnapshotName(name, state.updatedAt),
+        createdAt: new Date().toISOString(),
+        state,
+      });
+      if (!snapshot) {
+        throw new Error("Unable to create prompt library snapshot.");
+      }
+      writeSnapshots([snapshot, ...snapshots]);
+      return summarizeSnapshot(snapshot);
+    },
+    renameSnapshot: (snapshotId, name) => {
+      const snapshots = readSnapshots();
+      const index = snapshots.findIndex((snapshot) => snapshot.id === snapshotId);
+      if (index === -1) {
+        throw new Error("Prompt library snapshot not found.");
+      }
+      const snapshot = {
+        ...snapshots[index]!,
+        name: normalizeSnapshotName(name, snapshots[index]!.createdAt),
+      };
+      snapshots[index] = snapshot;
+      writeSnapshots(snapshots);
+      return summarizeSnapshot(snapshot);
+    },
+    restoreSnapshot: (snapshotId) => {
+      const snapshots = readSnapshots();
+      const snapshot = snapshots.find((candidate) => candidate.id === snapshotId);
+      if (!snapshot) {
+        throw new Error("Prompt library snapshot not found.");
+      }
+      const current = readState();
+      const restored = normalizePromptLibraryState(snapshot.state, {
+        revision: current.revision + 1,
+        updatedAt: new Date().toISOString(),
+      });
+      return writeState(restored);
+    },
     getPath: () => libraryPath,
   };
+}
+
+type PromptLibrarySnapshot = {
+  id: string;
+  name: string;
+  createdAt: string;
+  state: PromptLibraryState;
+};
+
+function normalizeSnapshots(input: unknown[] | undefined): PromptLibrarySnapshot[] {
+  return (input ?? [])
+    .map((entry) => normalizeSnapshot(entry))
+    .filter((entry): entry is PromptLibrarySnapshot => Boolean(entry))
+    .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt));
+}
+
+function normalizeSnapshot(input: unknown): PromptLibrarySnapshot | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const record = input as Partial<PromptLibrarySnapshot>;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (!id || !record.state) {
+    return null;
+  }
+  const createdAt = normalizeTimestamp(record.createdAt, new Date().toISOString());
+  const state = normalizePromptLibraryState(record.state);
+  return {
+    id,
+    name: normalizeSnapshotName(record.name, createdAt),
+    createdAt,
+    state,
+  };
+}
+
+function summarizeSnapshots(
+  snapshots: readonly PromptLibrarySnapshot[],
+): PromptLibrarySnapshotSummary[] {
+  return snapshots.map(summarizeSnapshot);
+}
+
+function summarizeSnapshot(snapshot: PromptLibrarySnapshot): PromptLibrarySnapshotSummary {
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    createdAt: snapshot.createdAt,
+    revision: snapshot.state.revision,
+    contentKey: getPromptLibraryContentKey(snapshot.state),
+  };
+}
+
+function normalizeSnapshotName(value: unknown, createdAt: string): string {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return `Snapshot ${new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(createdAt))}`;
 }
 
 export function normalizePromptLibraryState(

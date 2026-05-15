@@ -602,6 +602,36 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return next;
       },
+      listPromptLibrarySnapshots: async () => {
+        return workspaceRuntimeRegistry.getActiveRuntime().catalog.listPromptLibrarySnapshots();
+      },
+      createPromptLibrarySnapshot: async ({ name }) => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        const snapshot = runtime.catalog.createPromptLibrarySnapshot(name);
+        runtime.appLog.info("settings", "Prompt library snapshot created.", {
+          snapshotId: snapshot.id,
+          name: snapshot.name,
+        });
+        return snapshot;
+      },
+      renamePromptLibrarySnapshot: async ({ snapshotId, name }) => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        const snapshot = runtime.catalog.renamePromptLibrarySnapshot(snapshotId, name);
+        runtime.appLog.info("settings", "Prompt library snapshot renamed.", {
+          snapshotId: snapshot.id,
+          name: snapshot.name,
+        });
+        return snapshot;
+      },
+      restorePromptLibrarySnapshot: async ({ snapshotId }) => {
+        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+        const next = runtime.catalog.restorePromptLibrarySnapshot(snapshotId);
+        runtime.appLog.info("settings", "Prompt library snapshot loaded.", {
+          snapshotId,
+          revision: next.revision,
+        });
+        return next;
+      },
       getPromptLibraryGeneratedEntries: async () => {
         return workspaceRuntimeRegistry
           .getActiveRuntime()

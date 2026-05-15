@@ -38,6 +38,7 @@ import type {
 import type {
   PromptLibraryActor,
   PromptLibraryGeneratedEntry,
+  PromptLibrarySnapshotSummary,
   PromptLibraryState,
   UpdatePromptLibraryRequest,
 } from "../shared/prompt-library";
@@ -156,6 +157,10 @@ export interface ChatRuntimeRpcClient {
     getPromptLibraryDefaults: typeof rpc.request.getPromptLibraryDefaults;
     updatePromptLibrary: typeof rpc.request.updatePromptLibrary;
     resetPromptLibrary: typeof rpc.request.resetPromptLibrary;
+    listPromptLibrarySnapshots: typeof rpc.request.listPromptLibrarySnapshots;
+    createPromptLibrarySnapshot: typeof rpc.request.createPromptLibrarySnapshot;
+    renamePromptLibrarySnapshot: typeof rpc.request.renamePromptLibrarySnapshot;
+    restorePromptLibrarySnapshot: typeof rpc.request.restorePromptLibrarySnapshot;
     updateSessionAgentDefault: typeof rpc.request.updateSessionAgentDefault;
     updateWorkflowAgent: typeof rpc.request.updateWorkflowAgent;
     updateAppPreferences: typeof rpc.request.updateAppPreferences;
@@ -361,6 +366,13 @@ export interface ChatRuntime {
   >;
   updatePromptLibrary: (request: UpdatePromptLibraryRequest) => Promise<PromptLibraryState>;
   resetPromptLibrary: () => Promise<PromptLibraryState>;
+  listPromptLibrarySnapshots: () => Promise<PromptLibrarySnapshotSummary[]>;
+  createPromptLibrarySnapshot: (name: string) => Promise<PromptLibrarySnapshotSummary>;
+  renamePromptLibrarySnapshot: (
+    snapshotId: string,
+    name: string,
+  ) => Promise<PromptLibrarySnapshotSummary>;
+  restorePromptLibrarySnapshot: (snapshotId: string) => Promise<PromptLibraryState>;
 }
 
 function createFailureMessage(
@@ -1964,6 +1976,13 @@ export async function createChatRuntime(
       rpcClient.request.getPromptLibraryGeneratedEntries(scoped()),
     updatePromptLibrary: (request) => rpcClient.request.updatePromptLibrary(scoped(request)),
     resetPromptLibrary: () => rpcClient.request.resetPromptLibrary(scoped()),
+    listPromptLibrarySnapshots: () => rpcClient.request.listPromptLibrarySnapshots(scoped()),
+    createPromptLibrarySnapshot: (name) =>
+      rpcClient.request.createPromptLibrarySnapshot(scoped({ name })),
+    renamePromptLibrarySnapshot: (snapshotId, name) =>
+      rpcClient.request.renamePromptLibrarySnapshot(scoped({ snapshotId, name })),
+    restorePromptLibrarySnapshot: (snapshotId) =>
+      rpcClient.request.restorePromptLibrarySnapshot(scoped({ snapshotId })),
   };
 
   return runtime;
