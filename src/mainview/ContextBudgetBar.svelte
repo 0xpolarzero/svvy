@@ -2,45 +2,87 @@
   import { formatContextBudgetTooltip, type ContextBudget } from "../shared/context-budget";
   import Tooltip from "./ui/Tooltip.svelte";
 
-  type Variant = "full" | "compact";
+  type Variant = "full" | "compact" | "inline";
+  type TooltipDetail = {
+    label: string;
+    value?: string | null;
+    shortcut?: string | null;
+    icon?: "mouse-left";
+  };
 
   type Props = {
     budget: ContextBudget | null;
     variant?: Variant;
     label?: string;
     showTooltip?: boolean;
+    tooltipLabel?: string;
+    tooltipDetails?: TooltipDetail[];
   };
 
-  let { budget, variant = "full", label = "Context", showTooltip = true }: Props = $props();
+  let {
+    budget,
+    variant = "full",
+    label = "Context",
+    showTooltip = true,
+    tooltipLabel,
+    tooltipDetails = [],
+  }: Props = $props();
 
-  const detailText = $derived(budget ? formatContextBudgetTooltip(budget) : "Context unavailable");
+  const detailText = $derived(
+    budget ? (tooltipLabel ?? formatContextBudgetTooltip(budget)) : "Context unavailable",
+  );
+  const percentText = $derived(
+    budget
+      ? Number.isInteger(budget.percent)
+        ? budget.percent.toString()
+        : budget.percent.toFixed(1)
+      : "",
+  );
 </script>
 
 {#if budget}
-  <Tooltip label={detailText} disabled={!showTooltip} delayMs={250} block>
-    <div
-      class={`context-budget context-budget-${variant} tone-${budget.tone}`.trim()}
-      role="meter"
-      aria-label={`${label} budget`}
-      aria-valuemin="0"
-      aria-valuemax="100"
-      aria-valuenow={budget.percent}
-      data-testid={`context-budget-${variant}`}
-    >
+  <div
+    class={`context-budget context-budget-${variant} tone-${budget.tone}`.trim()}
+    role="meter"
+    aria-label={`${label} budget`}
+    aria-valuemin="0"
+    aria-valuemax="100"
+    aria-valuenow={budget.percent}
+    data-testid={`context-budget-${variant}`}
+  >
+    {#if variant === "full"}
+      {#if showTooltip}
+        <Tooltip label={detailText} details={tooltipDetails} delayMs={250} block>
+          <div class="context-budget-track" aria-hidden="true">
+            <span style={`width: ${budget.percent}%`}></span>
+          </div>
+        </Tooltip>
+      {:else}
+        <div class="context-budget-track" aria-hidden="true">
+          <span style={`width: ${budget.percent}%`}></span>
+        </div>
+      {/if}
+      <div class="context-budget-copy">
+        <span>{label}</span>
+        <strong>{budget.label}</strong>
+        <small>{budget.detail}</small>
+      </div>
+    {:else if showTooltip}
+      <Tooltip label={detailText} details={tooltipDetails} delayMs={250} block>
+        <div class="context-budget-hover-target">
+          <div class="context-budget-track" aria-hidden="true">
+            <span style={`width: ${budget.percent}%`}></span>
+          </div>
+          <span class="context-budget-compact-label">{percentText}%</span>
+        </div>
+      </Tooltip>
+    {:else}
       <div class="context-budget-track" aria-hidden="true">
         <span style={`width: ${budget.percent}%`}></span>
       </div>
-      {#if variant === "full"}
-        <div class="context-budget-copy">
-          <span>{label}</span>
-          <strong>{budget.label}</strong>
-          <small>{budget.detail}</small>
-        </div>
-      {:else}
-        <span class="context-budget-compact-label">{budget.percent}%</span>
-      {/if}
-    </div>
-  </Tooltip>
+      <span class="context-budget-compact-label">{percentText}%</span>
+    {/if}
+  </div>
 {/if}
 
 <style>
@@ -88,6 +130,10 @@
     display: contents;
   }
 
+  .context-budget-hover-target {
+    display: contents;
+  }
+
   .context-budget-copy span,
   .context-budget-copy strong,
   .context-budget-copy small,
@@ -120,12 +166,22 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.4rem;
-    pointer-events: none;
   }
 
   .context-budget-compact .context-budget-track {
     height: 0.26rem;
     background: color-mix(in oklab, var(--context-budget-soft) 52%, var(--ui-border-soft));
+  }
+
+  .context-budget-compact :global(.ui-tooltip-anchor),
+  .context-budget-inline :global(.ui-tooltip-anchor) {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    min-height: 1rem;
+    padding-block: 0.24rem;
+    margin-block: -0.24rem;
   }
 
   .context-budget-compact-label {
@@ -134,15 +190,20 @@
 
   .context-budget-inline {
     display: grid;
-    grid-template-columns: minmax(4.6rem, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.42rem;
-    width: min(10.5rem, 100%);
+    gap: 0.22rem;
+    width: min(5.7rem, 100%);
   }
 
   .context-budget-inline .context-budget-track {
-    height: 0.26rem;
+    height: 0.14rem;
     background: color-mix(in oklab, var(--context-budget-soft) 48%, var(--ui-border-soft));
+  }
+
+  .context-budget-inline .context-budget-compact-label {
+    font-size: 9px;
+    font-weight: 600;
   }
 
   @container (max-width: 34rem) {

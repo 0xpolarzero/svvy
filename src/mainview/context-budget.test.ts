@@ -41,19 +41,23 @@ describe("context budget", () => {
     expect(getContextBudgetTone(60)).toBe("red");
   });
 
-  it("projects the latest prompt input as active context percentage", () => {
+  it("projects the latest processed tokens as active context percentage", () => {
     expect(
-      buildContextBudgetFromUsage({ input: 40, cacheRead: 30, cacheWrite: 30 }, 100),
+      buildContextBudgetFromUsage({ input: 300, output: 45, cacheRead: 30, cacheWrite: 30 }, 1000),
     ).toMatchObject({
-      usedTokens: 40,
-      maxTokens: 100,
-      percent: 40,
+      usedTokens: 405,
+      maxTokens: 1000,
+      percent: 40.5,
       tone: "orange",
+      label: "40.5% context",
     });
   });
 
   it("formats exact token usage for hover detail", () => {
-    const budget = buildContextBudgetFromUsage({ input: 12345, cacheRead: 0, cacheWrite: 0 }, 200000);
+    const budget = buildContextBudgetFromUsage(
+      { input: 12345, output: 0, cacheRead: 0, cacheWrite: 0 },
+      200000,
+    );
 
     expect(budget && formatContextBudgetTooltip(budget)).toBe("12,345 / 200,000 tokens");
   });
@@ -81,8 +85,8 @@ describe("context budget", () => {
     );
 
     expect(budget).toMatchObject({
-      usedTokens: 60,
-      percent: 60,
+      usedTokens: 61,
+      percent: 61,
       tone: "red",
     });
   });

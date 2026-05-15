@@ -7,7 +7,6 @@
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
   import { projectConversation } from "./conversation-projection";
   import { buildSurfaceContextBudget } from "./context-budget";
-  import { formatUsage } from "./chat-format";
   import { getSurfaceDisplayTitle } from "./surface-title";
   import type { PromptHistoryEntry } from "./prompt-history";
   import type { ChatRuntime } from "./chat-runtime";
@@ -149,6 +148,7 @@
       sessionId={controller.agent.sessionId ?? controller.target.surfacePiSessionId}
       systemPrompt={controller.resolvedSystemPrompt}
       streamMessage={visibleStreamMessage}
+      currentModel={currentModel ?? controller.agent.state.model}
       {pendingToolCalls}
       {isStreaming}
       workspaceMentionPaths={new Set()}
@@ -162,7 +162,6 @@
       {isStreaming}
       {errorMessage}
       {promptHistory}
-      usageText={formatUsage(conversation.usage) || undefined}
       {contextBudget}
       sessionName={surfaceDisplayTitle}
       targetLabel={pane?.target?.surface === "thread" ? "Messaging handler thread" : "Messaging orchestrator"}

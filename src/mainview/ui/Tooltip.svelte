@@ -8,6 +8,7 @@
 	type TooltipDetailIcon = "mouse-left";
 	type TooltipDetail = {
 		label: string;
+		value?: string | null;
 		shortcut?: string | null;
 		icon?: TooltipDetailIcon;
 	};
@@ -78,6 +79,12 @@
 				labelElement.className = "ui-tooltip-label";
 				labelElement.textContent = detail.label;
 				rowElement.append(labelElement);
+				if (detail.value) {
+					const valueElement = document.createElement("span");
+					valueElement.className = "ui-tooltip-value";
+					valueElement.textContent = detail.value;
+					rowElement.append(valueElement);
+				}
 				listElement.append(rowElement);
 			}
 			tooltipElement.append(listElement);
@@ -259,7 +266,7 @@
 		position: fixed;
 		z-index: var(--ui-z-dialog);
 		display: inline-flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 0.44rem;
 		width: max-content;
 		max-width: min(18rem, calc(100vw - 1.25rem));
@@ -301,13 +308,23 @@
 
 	:global(.ui-tooltip-details) {
 		display: grid;
-		gap: 0.26rem;
+		gap: 0.22rem;
+		min-width: 12rem;
 	}
 
 	:global(.ui-tooltip-detail) {
-		display: flex;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 0.36rem;
+		min-width: 0;
+	}
+
+	:global(.ui-tooltip-value) {
+		color: var(--ui-text-primary);
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
+		font-weight: 700;
 		white-space: nowrap;
 	}
 

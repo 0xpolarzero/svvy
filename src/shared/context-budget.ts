@@ -28,15 +28,23 @@ export function createContextBudget(input: {
     return null;
   }
 
-  const percent = Math.min(100, Math.max(0, Math.round((usedTokens / maxTokens) * 100)));
+  const percent = Math.min(100, Math.max(0, roundContextPercent((usedTokens / maxTokens) * 100)));
   return {
     usedTokens,
     maxTokens,
     percent,
     tone: getContextBudgetTone(percent),
-    label: `${percent}% context`,
+    label: `${formatContextPercent(percent)}% context`,
     detail: `${formatTokenCount(usedTokens)} of ${formatTokenCount(maxTokens)} tokens`,
   };
+}
+
+function roundContextPercent(percent: number): number {
+  return Math.round(percent * 10) / 10;
+}
+
+function formatContextPercent(percent: number): string {
+  return Number.isInteger(percent) ? percent.toString() : percent.toFixed(1);
 }
 
 export function readContextBudgetFromMeta(meta: Record<string, unknown> | null | undefined) {

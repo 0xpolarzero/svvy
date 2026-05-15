@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { AssistantMessage, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
+	import { getModels, type AssistantMessage, type Model, type ToolResultMessage, type UserMessage } from "@mariozechner/pi-ai";
 	import CheckIcon from "@lucide/svelte/icons/check";
 	import CopyIcon from "@lucide/svelte/icons/copy";
 	import GitForkIcon from "@lucide/svelte/icons/git-fork";
@@ -7,7 +7,8 @@
 	import { onDestroy, onMount, tick } from "svelte";
 	import { get } from "svelte/store";
 	import { parseArtifactsParams } from "./artifacts";
-	import { formatTimestamp, formatUsage } from "./chat-format";
+	import { formatCost, formatTimestamp } from "./chat-format";
+	import { buildContextBudgetFromUsage, formatContextBudgetTooltip, type ContextBudget } from "./context-budget";
 	import { parseTranscriptMentionLinks } from "./composer-mentions";
 	import type { ConversationProjection, ProjectedToolCall } from "./conversation-projection";
 	import {
@@ -19,6 +20,7 @@
 		shouldAdjustTranscriptScrollForMeasuredItem,
 	} from "./transcript-scroll";
 	import AssistantMarkdown from "./AssistantMarkdown.svelte";
+	import ContextBudgetBar from "./ContextBudgetBar.svelte";
 	import EpisodeCard, { type ReferenceEpisode } from "./reference-cards/EpisodeCard.svelte";
 	import FailedCard from "./reference-cards/FailedCard.svelte";
 	import type { ReferenceStatus } from "./reference-cards/StatusBadge.svelte";
@@ -39,6 +41,7 @@
 		sessionId?: string;
 		systemPrompt?: string;
 		streamMessage?: AssistantMessage;
+		currentModel?: Model<any> | null;
 		pendingToolCalls: ReadonlySet<string>;
 		isStreaming: boolean;
 		workspaceMentionPaths?: ReadonlySet<string>;
@@ -62,6 +65,7 @@
 		sessionId,
 		systemPrompt,
 		streamMessage,
+		currentModel = null,
 		pendingToolCalls,
 		isStreaming,
 		workspaceMentionPaths = new Set(),
@@ -170,6 +174,45 @@
 			.map((block) => block.text)
 			.join("\n\n")
 			.trim();
+	}
+
+	function exactTokenCount(count: number): string {
+		return count.toLocaleString("en-US");
+	}
+
+	function knownModelContextWindow(message: AssistantMessage): number | null {
+		if (currentModel?.provider === message.provider && currentModel.id === message.model) {
+			return currentModel.contextWindow;
+		}
+		try {
+			return getModels(message.provider).find((model) => model.id === message.model)?.contextWindow ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	function assistantMessageContextBudget(message: AssistantMessage): ContextBudget | null {
+		return buildContextBudgetFromUsage(message.usage, knownModelContextWindow(message));
+	}
+
+	function assistantMessageContextTooltip(message: AssistantMessage, budget: ContextBudget): string {
+		return `Message context: ${formatContextBudgetTooltip(budget)} (${budget.percent}%)`;
+	}
+
+	function assistantMessageContextTooltipDetails(message: AssistantMessage, budget: ContextBudget) {
+		const rows = [
+			{ label: "Context", value: `${exactTokenCount(budget.usedTokens)} tok` },
+			{ label: "Input", value: `${exactTokenCount(message.usage.input)} tok` },
+			message.usage.cacheRead
+				? { label: "Cache read", value: `${exactTokenCount(message.usage.cacheRead)} tok` }
+				: null,
+			{ label: "Output", value: `${exactTokenCount(message.usage.output)} tok` },
+			message.usage.cacheWrite
+				? { label: "Cache write", value: `${exactTokenCount(message.usage.cacheWrite)} tok` }
+				: null,
+			message.usage.cost?.total ? { label: "Cost", value: formatCost(message.usage.cost.total) } : null,
+		];
+		return rows.filter((row): row is { label: string; value: string } => row !== null);
 	}
 
 	async function copyTextToClipboard(text: string): Promise<void> {
@@ -615,6 +658,7 @@
 				</article>
 				{:else if row?.kind === "message" && row.message.role === "assistant"}
 					{@const message = row.message}
+					{@const messageBudget = assistantMessageContextBudget(message)}
 					<article
 						data-index={virtualRow.index}
 						use:measureTranscriptRow
@@ -626,12 +670,6 @@
 							<div>
 								<span>svvy</span>
 								<small>{message.provider} · {message.model}</small>
-							</div>
-							<div class="message-meta">
-								{#if formatUsage(message.usage)}
-									<span class="message-usage">{formatUsage(message.usage)}</span>
-								{/if}
-								<time>{formatTimestamp(message.timestamp)}</time>
 							</div>
 						</header>
 
@@ -668,35 +706,47 @@
 								/>
 							{/if}
 						{/each}
-						<div class="assistant-message-actions" aria-label="Assistant message actions">
-							<Tooltip label="Fork session from this message">
-								<Button
-									variant="ghost"
-									size="xs"
-									iconOnly
-									aria-label="Fork session from this message"
-									onclick={() => onForkAssistantMessage?.(message)}
-								>
-									<GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-								</Button>
-							</Tooltip>
-							<Tooltip label="Copy assistant message" disabled={!assistantMessageText(message)}>
-								<Button
-									variant="ghost"
-									size="xs"
-									iconOnly
-									aria-label="Copy assistant message"
-									disabled={!assistantMessageText(message)}
-									onclick={() => void handleCopyAssistantMessage(message)}
-								>
-									{#if copiedAssistantMessageTimestamp === message.timestamp}
-										<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-									{:else}
-										<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
-									{/if}
-								</Button>
-							</Tooltip>
-						</div>
+						<footer class="assistant-message-footer">
+							<div class="assistant-message-actions" aria-label="Assistant message actions">
+								<time>{formatTimestamp(message.timestamp)}</time>
+								<Tooltip label="Fork session from this message">
+									<Button
+										variant="ghost"
+										size="xs"
+										iconOnly
+										aria-label="Fork session from this message"
+										onclick={() => onForkAssistantMessage?.(message)}
+									>
+										<GitForkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+									</Button>
+								</Tooltip>
+								<Tooltip label="Copy assistant message" disabled={!assistantMessageText(message)}>
+									<Button
+										variant="ghost"
+										size="xs"
+										iconOnly
+										aria-label="Copy assistant message"
+										disabled={!assistantMessageText(message)}
+										onclick={() => void handleCopyAssistantMessage(message)}
+									>
+										{#if copiedAssistantMessageTimestamp === message.timestamp}
+											<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+										{:else}
+											<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+										{/if}
+									</Button>
+								</Tooltip>
+							</div>
+							{#if messageBudget}
+								<ContextBudgetBar
+									budget={messageBudget}
+									variant="inline"
+									label="Message context"
+									tooltipLabel={assistantMessageContextTooltip(message, messageBudget)}
+									tooltipDetails={assistantMessageContextTooltipDetails(message, messageBudget)}
+								/>
+							{/if}
+						</footer>
 						</div>
 					</article>
 				{:else if row?.kind === "message" && row.message.role === "toolResult"}
@@ -733,7 +783,6 @@
 							<span>svvy</span>
 							<small>{message.provider} · {message.model}</small>
 						</div>
-						<span class="tool-status tone-warning">Streaming</span>
 					</header>
 
 					{#each message.content as block, blockIndex (`streaming:${blockIndex}`)}
@@ -761,6 +810,12 @@
 							/>
 						{/if}
 					{/each}
+					<footer class="assistant-message-footer streaming-footer">
+						<div class="assistant-message-actions" aria-label="Assistant message status">
+							<time>{formatTimestamp(message.timestamp)}</time>
+							<span class="tool-status tone-warning">Streaming</span>
+						</div>
+					</footer>
 				</div>
 			</article>
 				{/if}
@@ -914,6 +969,7 @@
 		color: var(--ui-text-tertiary);
 	}
 
+	.message-bubble header small,
 	time {
 		font-family: var(--font-mono);
 		font-size: var(--text-xs);
@@ -969,19 +1025,51 @@
 		margin-top: 0.72rem;
 	}
 
+	.assistant-message-footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.55rem;
+		margin-top: 0.6rem;
+		color: var(--ui-text-secondary);
+		opacity: 0.74;
+		transition: opacity 150ms ease;
+	}
+
 	.assistant-message-actions {
 		display: flex;
 		align-items: center;
 		gap: 0.18rem;
-		margin-top: 0.55rem;
+		min-width: 0;
 		color: var(--ui-text-secondary);
-		opacity: 0.72;
-		transition: opacity 150ms ease;
 	}
 
-	.assistant-bubble:hover .assistant-message-actions,
-	.assistant-bubble:focus-within .assistant-message-actions {
+	.assistant-message-actions time {
+		margin-right: 0.16rem;
+	}
+
+	.assistant-bubble:hover .assistant-message-footer,
+	.assistant-bubble:focus-within .assistant-message-footer {
 		opacity: 1;
+	}
+
+	.assistant-message-footer :global(.context-budget-inline) {
+		flex: 0 0 5.7rem;
+		margin-left: auto;
+	}
+
+	.streaming-footer {
+		justify-content: flex-start;
+	}
+
+	@container (max-width: 34rem) {
+		.assistant-message-footer {
+			gap: 0.38rem;
+		}
+
+		.assistant-message-footer :global(.context-budget-inline) {
+			flex-basis: 5.2rem;
+		}
 	}
 
 	.workspace-mention-link {

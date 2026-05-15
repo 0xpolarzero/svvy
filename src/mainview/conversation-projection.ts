@@ -18,7 +18,7 @@ export interface ConversationProjection {
   artifactResultTextById: Map<string, string>;
   toolResultsById: Map<string, ToolResultMessage>;
   usage: Usage;
-  latestContextUsage: Pick<Usage, "input" | "cacheRead" | "cacheWrite"> | null;
+  latestContextUsage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite"> | null;
   messageCount: number;
   toolCallCount: number;
   lastActivity: number | null;
@@ -26,7 +26,7 @@ export interface ConversationProjection {
 
 export interface ConversationSummary {
   usage: Usage;
-  latestContextUsage: Pick<Usage, "input" | "cacheRead" | "cacheWrite"> | null;
+  latestContextUsage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite"> | null;
   messageCount: number;
   toolCallCount: number;
   lastActivity: number | null;

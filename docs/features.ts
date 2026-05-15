@@ -114,7 +114,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Context Budget Observability",
     status: "shipped",
     summary:
-      "Shows active context usage as a percentage of the current model's maximum for orchestrator surfaces, handler-thread surfaces, and workflow task-agent attempts, with neutral below 40%, orange from 40%, and red from 60% so context pressure is visible without treating any single percentage as a universal model failure point.",
+      "Shows active context usage as a percentage of the current model's maximum for orchestrator surfaces, handler-thread surfaces, workflow task-agent attempts, and individual assistant messages, with neutral below 40%, orange from 40%, red from 60%, decimal percentages, and hover details so context pressure is visible without treating any single percentage as a universal model failure point.",
     sourceSpecs: ["docs/prd.md", "docs/specs/context-budget-observability.spec.md"],
   },
   {

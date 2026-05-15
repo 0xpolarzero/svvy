@@ -10,19 +10,19 @@ export {
 } from "../shared/context-budget";
 
 export function buildContextBudgetFromUsage(
-  usage: Pick<Usage, "input" | "cacheRead" | "cacheWrite"> | null | undefined,
+  usage: Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite"> | null | undefined,
   maxTokens: number | null | undefined,
 ): ContextBudget | null {
   if (!usage) return null;
   return createContextBudget({
-    usedTokens: usage.input,
+    usedTokens: usage.input + usage.output + usage.cacheRead + usage.cacheWrite,
     maxTokens,
   });
 }
 
 export function getLatestAssistantUsage(
   messages: AgentMessage[],
-): Pick<Usage, "input" | "cacheRead" | "cacheWrite"> | null {
+): Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite"> | null {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message || message.role !== "assistant") {
@@ -31,6 +31,7 @@ export function getLatestAssistantUsage(
     const usage = message.usage;
     return {
       input: usage.input,
+      output: usage.output,
       cacheRead: usage.cacheRead,
       cacheWrite: usage.cacheWrite,
     };
@@ -43,8 +44,10 @@ export function buildSurfaceContextBudget(
   model: Pick<Model<any>, "contextWindow"> | null | undefined,
 ): ContextBudget | null {
   const latestUsage = getLatestAssistantUsage(messages);
-  return createContextBudget({
-    usedTokens: latestUsage?.input ?? 0,
-    maxTokens: model?.contextWindow,
-  });
+  return latestUsage
+    ? buildContextBudgetFromUsage(latestUsage, model?.contextWindow)
+    : createContextBudget({
+        usedTokens: 0,
+        maxTokens: model?.contextWindow,
+      });
 }

@@ -40,7 +40,6 @@
 		isStreaming: boolean;
 		promptHistory: PromptHistoryEntry[];
 		errorMessage?: string;
-		usageText?: string;
 		contextBudget?: ContextBudget | null;
 		sessionName?: string;
 		targetLabel?: string;
@@ -63,7 +62,6 @@
 		isStreaming,
 		promptHistory,
 		errorMessage,
-		usageText,
 		contextBudget,
 		sessionName = "Current session",
 		targetLabel = "orchestrator",
@@ -127,10 +125,11 @@
 	const canSubmit = $derived(Boolean(draft.trim() || selectedMentions.length > 0));
 	const contextBudgetTooltip = $derived(
 		contextBudget
-			? [formatContextBudgetTooltip(contextBudget), usageText ? `usage ${usageText}` : ""]
-					.filter(Boolean)
-					.join(" · ")
+			? `Current context: ${formatContextBudgetTooltip(contextBudget)} (${contextBudget.percent}%)`
 			: "Context unavailable",
+	);
+	const contextBudgetTooltipDetails = $derived(
+		contextBudget ? buildContextBudgetTooltipDetails(contextBudget) : [],
 	);
 	const showMentionPicker = $derived(
 		Boolean(
@@ -406,6 +405,20 @@
 		if (!model) return;
 		onModelChange(model);
 	}
+
+	function exactTokenCount(count: number): string {
+		return count.toLocaleString("en-US");
+	}
+
+	function buildContextBudgetTooltipDetails(budget: ContextBudget) {
+		const availableTokens = Math.max(0, budget.maxTokens - budget.usedTokens);
+		return [
+			{ label: "Context", value: `${exactTokenCount(budget.usedTokens)} tok` },
+			{ label: "Window", value: `${exactTokenCount(budget.maxTokens)} tok` },
+			{ label: "Available", value: `${exactTokenCount(availableTokens)} tok` },
+			{ label: "Used", value: `${budget.percent}%` },
+		];
+	}
 </script>
 
 <div class="composer-shell">
@@ -509,11 +522,15 @@
 							textTransform="lowercase"
 							onSelect={(level) => onThinkingChange(level as ThinkingLevel)}
 						/>
-						<Tooltip label={contextBudgetTooltip} disabled={!contextBudget} delayMs={250}>
-							<div class="compact-budget">
-								<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" showTooltip={false} />
-							</div>
-						</Tooltip>
+						<div class="compact-budget">
+							<ContextBudgetBar
+								budget={contextBudget ?? null}
+								variant="compact"
+								label="Context"
+								tooltipLabel={contextBudgetTooltip}
+								tooltipDetails={contextBudgetTooltipDetails}
+							/>
+						</div>
 					</div>
 					<div class="composer-action-cluster" aria-label="Composer actions">
 						<Tooltip label="Attach file context">
@@ -852,9 +869,9 @@
 		position: relative;
 		display: flex;
 		align-items: center;
-		width: 5.8rem;
-		height: 1.45rem;
-		flex: 0 0 5.8rem;
+		width: 7.35rem;
+		height: 1.7rem;
+		flex: 0 0 7.35rem;
 		margin-left: 0.64rem;
 	}
 
@@ -864,6 +881,7 @@
 	}
 
 	.compact-budget :global(.context-budget-track) {
+		height: 0.32rem;
 		transform: translateY(0.08rem);
 	}
 

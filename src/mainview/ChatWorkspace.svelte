@@ -11,7 +11,7 @@
   import CommandPalette from "./CommandPalette.svelte";
   import ContextBudgetBar from "./ContextBudgetBar.svelte";
   import DockviewWorkspace from "./DockviewWorkspace.svelte";
-  import { formatTimestamp, formatUsage } from "./chat-format";
+  import { formatTimestamp } from "./chat-format";
   import {
     getCommandInspectorSections,
     getVisibleCommandRollups,
@@ -453,7 +453,6 @@
       paneController.agent.state.model,
     );
   }
-  const usageText = $derived(formatUsage(conversation.usage));
   const summaryMessageCount = $derived(conversationSummary.messageCount);
   const composerErrorMessage = $derived.by(() => {
     const message =
