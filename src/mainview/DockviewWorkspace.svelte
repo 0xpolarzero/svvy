@@ -54,7 +54,7 @@
 
   type PaneTabPresentation = {
     title: string;
-    typeLabel: string;
+    typeLabel: string | null;
     state: PaneTabState;
   };
 
@@ -132,7 +132,7 @@
       const presentation = getPaneTabPresentation(panelId);
 
       this.element.replaceChildren();
-      this.element.title = `${presentation.title} · ${presentation.typeLabel}${
+      this.element.title = `${presentation.title}${presentation.typeLabel ? ` · ${presentation.typeLabel}` : ""}${
         presentation.state ? ` · ${presentation.state}` : ""
       }`;
       this.element.ariaLabel = this.element.title;
@@ -143,11 +143,14 @@
       title.className = "dockview-surface-tab-title";
       title.textContent = presentation.title;
 
-      const type = document.createElement("span");
-      type.className = "dockview-surface-tab-type";
-      type.textContent = presentation.typeLabel;
+      this.element.append(title);
 
-      this.element.append(title, type);
+      if (presentation.typeLabel) {
+        const type = document.createElement("span");
+        type.className = "dockview-surface-tab-type";
+        type.textContent = presentation.typeLabel;
+        this.element.append(type);
+      }
 
       if (presentation.state) {
         const statePin = document.createElement("span");
@@ -186,7 +189,7 @@
     };
   }
 
-  function getPaneTypeLabel(panel: WorkspaceDockviewPanelState | null): string {
+  function getPaneTypeLabel(panel: WorkspaceDockviewPanelState | null): string | null {
     switch (panel?.binding?.surface) {
       case "orchestrator":
         return "orchestrator";
@@ -195,9 +198,9 @@
       case "workflow-inspector":
         return "workflow";
       case "saved-workflow-library":
-        return "library";
+      case "prompt-library":
       case "app-logs":
-        return "logs";
+        return null;
       case "command":
         return "command";
       case "workflow-task-attempt":
