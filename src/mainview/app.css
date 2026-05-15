@@ -121,7 +121,20 @@
   --ui-overlay: hsl(35 12% 14% / 0.36);
   --ui-tooltip-bg: oklch(98% 0.003 75);
   --ui-tooltip-border: oklch(74% 0.008 75 / 0.95);
-  --ui-keycap-shadow: inset 0 -1px 0 hsl(35 12% 14% / 0.14);
+  --ui-keycap-bg: color-mix(
+    in oklab,
+    var(--ui-surface-raised) 82%,
+    var(--ui-bg) 18%
+  );
+  --ui-keycap-border: oklch(79% 0.007 75 / 0.72);
+  --ui-keycap-text: color-mix(
+    in oklab,
+    var(--ui-text-secondary) 86%,
+    var(--ui-text-primary) 14%
+  );
+  --ui-keycap-shadow:
+    inset 0 -1px 0 hsl(35 12% 14% / 0.06),
+    0 1px 0 hsl(0 0% 100% / 0.72);
   --ui-diff-add-bg: hsl(142 55% 42% / 0.12);
   --ui-diff-add-border: hsl(142 55% 42% / 0.34);
   --ui-diff-add-text: oklch(31% 0.065 150);
@@ -184,6 +197,17 @@
     --ui-overlay: hsl(0 0% 0% / 0.58);
     --ui-tooltip-bg: oklch(18% 0.006 55);
     --ui-tooltip-border: oklch(34% 0.008 55 / 0.86);
+    --ui-keycap-bg: color-mix(
+      in oklab,
+      var(--ui-surface-muted) 58%,
+      transparent
+    );
+    --ui-keycap-border: color-mix(
+      in oklab,
+      var(--ui-border-strong) 76%,
+      transparent
+    );
+    --ui-keycap-text: var(--ui-text-secondary);
     --ui-keycap-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.05);
     --ui-diff-add-bg: hsl(142 71% 45% / 0.12);
     --ui-diff-add-border: hsl(142 71% 45% / 0.28);
@@ -725,6 +749,17 @@ summary {
   --ui-overlay: hsl(0 0% 0% / 0.58);
   --ui-tooltip-bg: oklch(18% 0.006 55);
   --ui-tooltip-border: oklch(34% 0.008 55 / 0.86);
+  --ui-keycap-bg: color-mix(
+    in oklab,
+    var(--ui-surface-muted) 58%,
+    transparent
+  );
+  --ui-keycap-border: color-mix(
+    in oklab,
+    var(--ui-border-strong) 76%,
+    transparent
+  );
+  --ui-keycap-text: var(--ui-text-secondary);
   --ui-keycap-shadow: inset 0 -1px 0 hsl(0 0% 100% / 0.05);
   --ui-diff-add-bg: hsl(142 71% 45% / 0.12);
   --ui-diff-add-border: hsl(142 71% 45% / 0.28);

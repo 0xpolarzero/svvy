@@ -358,10 +358,11 @@
 		min-width: 1rem;
 		min-height: 1rem;
 		padding: 0.08rem 0.24rem;
-		border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
+		color: var(--ui-keycap-text);
+		border: 1px solid var(--ui-keycap-border);
 		border-radius: var(--ui-radius-xs);
-		background: color-mix(in oklab, currentColor 10%, transparent);
-		box-shadow: inset 0 -1px 0 color-mix(in oklab, black 18%, transparent);
+		background: var(--ui-keycap-bg);
+		box-shadow: var(--ui-keycap-shadow);
 	}
 
 	:global(.ui-tooltip-shortcut .ui-kbd-icon) {

@@ -58,9 +58,10 @@
 		min-width: 1rem;
 		min-height: 1rem;
 		padding: 0.08rem 0.24rem;
-		border: 1px solid color-mix(in oklab, currentColor 24%, transparent);
+		color: var(--ui-keycap-text);
+		border: 1px solid var(--ui-keycap-border);
 		border-radius: var(--ui-radius-xs);
-		background: color-mix(in oklab, currentColor 10%, transparent);
+		background: var(--ui-keycap-bg);
 		box-shadow: var(--ui-keycap-shadow);
 	}
 
@@ -74,7 +75,4 @@
 		min-width: 0;
 	}
 
-	.ui-kbd.has-parts :global(.ui-kbd-key:first-child) {
-		color: color-mix(in oklab, currentColor 94%, var(--ui-accent) 18%);
-	}
 </style>
