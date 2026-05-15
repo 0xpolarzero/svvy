@@ -50,10 +50,15 @@
 
 <style>
   .context-menu {
+    --compact-control-font-family: var(--font-mono);
+    --compact-control-font-weight: 500;
+
     position: fixed;
     z-index: var(--ui-z-overlay);
     display: grid;
+    gap: 0;
     min-width: 10rem;
+    max-width: min(14rem, calc(100vw - 2rem));
     padding: 0.28rem;
     border: 1px solid var(--ui-border-soft);
     border-radius: var(--ui-radius-md);
@@ -62,6 +67,7 @@
       0 18px 48px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
       0 0 0 1px color-mix(in oklab, var(--ui-surface) 60%, transparent);
     backdrop-filter: blur(16px);
+    transform-origin: top left;
   }
 
   .context-menu button {
@@ -74,9 +80,10 @@
     border-radius: var(--ui-radius-sm);
     background: transparent;
     color: var(--ui-text-secondary);
-    font: inherit;
-    font-size: 0.72rem;
-    font-weight: 500;
+    font-family: var(--compact-control-font-family);
+    font-size: 0.62rem;
+    font-weight: var(--compact-control-font-weight);
+    line-height: 1;
     text-align: left;
     cursor: pointer;
   }
@@ -90,7 +97,7 @@
 
   .context-menu button:disabled {
     color: var(--ui-text-tertiary);
-    cursor: not-allowed;
-    opacity: 0.56;
+    cursor: default;
+    opacity: 1;
   }
 </style>

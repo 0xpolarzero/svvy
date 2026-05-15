@@ -3325,6 +3325,10 @@
     will-change: opacity, transform;
   }
 
+  .workspace-sidebar:has(:global(.context-menu)) {
+    z-index: var(--ui-z-overlay);
+  }
+
   .chat-workspace.sidebar-hidden .workspace-sidebar {
     opacity: 0;
     transform: translateX(-0.42rem);
