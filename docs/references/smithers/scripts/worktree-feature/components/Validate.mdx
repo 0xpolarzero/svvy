@@ -4,7 +4,7 @@ Independently verify implementation correctness. Don't trust implementation agen
 
 ## CANONICAL CHECK
 
-**Run: `cd submodules/smithers && bun test`**
+**Run: `cd docs/references/smithers && bun test`**
 
 This runs the smithers framework test suite. ALL tests must pass.
 
@@ -16,7 +16,7 @@ If `bun test` fails → validation FAILS. Must:
 
 ## ADDITIONAL CHECKS
 
-1. TypeScript compilation: `cd submodules/smithers && bunx tsc --noEmit` (if tsconfig exists)
+1. TypeScript compilation: `cd docs/references/smithers && bunx tsc --noEmit` (if tsconfig exists)
 2. Verify new exports work: check `src/index.ts` re-exports new components/types
 3. If docs were changed, verify MDX syntax is valid
 

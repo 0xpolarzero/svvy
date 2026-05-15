@@ -13,7 +13,7 @@ RULES:
 2. If FALSE POSITIVE: record it in falsePositiveComments array in your output JSON with file, line, issue, and rationale. Do NOT add comments to source code — false positives tracked in database.
 3. **ALL commits go directly on `main`. NEVER create branches. Stay on `main`.**
 4. Atomic commits: fix(scope): description
-5. Run `cd submodules/smithers && bun test` after fixes. Everything green.
+5. Run `cd docs/references/smithers && bun test` after fixes. Everything green.
 6. Significant refactoring required? Do it properly. No half-fixes.
 7. Remove verbose/redundant comments flagged. Keep only high-quality comments.
 

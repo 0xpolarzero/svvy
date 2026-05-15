@@ -55,7 +55,7 @@ ${schedulerTs}
 ### src/engine/index.ts (first 100 lines + key sections)
 \`\`\`ts
 ${engineTs.split("\n").slice(0, 100).join("\n")}
-// ... (full file available at submodules/smithers/src/engine/index.ts)
+// ... (full file available at docs/references/smithers/src/engine/index.ts)
 \`\`\`
 
 ### src/vcs/jj.ts

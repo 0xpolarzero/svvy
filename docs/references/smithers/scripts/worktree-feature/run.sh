@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# Root = main agent repo, NOT submodules/smithers — agents need access to scripts/smithers-workflow/ too
+# Root = main agent repo, NOT docs/references/smithers — agents need access to scripts/smithers-workflow/ too
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 cd "$SCRIPT_DIR"
