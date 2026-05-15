@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -43,6 +44,7 @@ import type {
 } from "../shared/workspace-contract";
 import type {
   PromptLibraryActor,
+  PromptLibraryExternalSource,
   PromptLibraryGeneratedEntry,
   PromptLibrarySnapshotSummary,
   PromptLibraryState,
@@ -145,6 +147,7 @@ interface ManagedSession {
   sessionAgentKey: SessionAgentKey;
   systemPrompt: string;
   promptLibraryRevision: number;
+  externalContextSources: PromptLibraryExternalSource[];
   session: AgentSession;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
@@ -363,6 +366,30 @@ export class WorkspaceSessionCatalog {
         buildPromptLibraryGeneratedEntries("workflow-task", state, { webProvider }),
       ),
     };
+  }
+
+  async getPromptLibraryExternalSources(): Promise<PromptLibraryExternalSource[]> {
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: this.cwd,
+      agentDir: this.agentDir,
+      settingsManager: SettingsManager.create(this.cwd, this.agentDir),
+      systemPromptOverride: () => this.buildPromptFromLibrary("orchestrator"),
+      appendSystemPromptOverride: () => [],
+    });
+    await resourceLoader.reload();
+    return buildExternalContextSources(resourceLoader);
+  }
+
+  private async buildCurrentExternalContextSources(): Promise<PromptLibraryExternalSource[]> {
+    const resourceLoader = new DefaultResourceLoader({
+      cwd: this.cwd,
+      agentDir: this.agentDir,
+      settingsManager: SettingsManager.create(this.cwd, this.agentDir),
+      systemPromptOverride: () => this.buildPromptFromLibrary("orchestrator"),
+      appendSystemPromptOverride: () => [],
+    });
+    await resourceLoader.reload();
+    return buildExternalContextSources(resourceLoader);
   }
 
   private materializeGeneratedPromptEntry(
@@ -865,7 +892,9 @@ export class WorkspaceSessionCatalog {
     this.assertValidPromptTarget(target);
     const session = await this.retainManagedSurface(target);
     await this.restoreWorkflowSupervisionIfTracked(target.workspaceSessionId);
-    const snapshot = await this.buildSurfaceSnapshot(session, target);
+    const snapshot = await this.buildSurfaceSnapshot(session, target, {
+      refreshExternalSources: true,
+    });
     if (!session.activePrompt && snapshot.queuedMessages.length > 0) {
       setTimeout(() => {
         void this.drainNextQueuedSurfacePrompt(target).catch((error) => {
@@ -1506,7 +1535,11 @@ export class WorkspaceSessionCatalog {
   private async buildSurfaceSnapshot(
     session: ManagedSession,
     target: PromptTarget,
+    options: { refreshExternalSources?: boolean } = {},
   ): Promise<ConversationSurfaceSnapshot> {
+    const currentExternalSources = options.refreshExternalSources
+      ? await this.buildCurrentExternalContextSources()
+      : session.externalContextSources;
     return {
       target: structuredClone(target),
       provider: session.provider,
@@ -1516,7 +1549,8 @@ export class WorkspaceSessionCatalog {
       sessionAgentKey: session.sessionAgentKey,
       systemPrompt: session.systemPrompt,
       resolvedSystemPrompt: getResolvedSystemPrompt(session),
-      promptBinding: this.buildPromptBinding(session, target),
+      externalContextSources: structuredClone(session.externalContextSources),
+      promptBinding: this.buildPromptBinding(session, target, currentExternalSources),
       messages: structuredClone(session.session.agent.state.messages),
       pendingUserMessage: session.pendingUserMessage
         ? structuredClone(session.pendingUserMessage.message)
@@ -1743,16 +1777,25 @@ export class WorkspaceSessionCatalog {
     });
   }
 
-  private buildPromptBinding(session: ManagedSession, target: PromptTarget) {
+  private buildPromptBinding(
+    session: ManagedSession,
+    target: PromptTarget,
+    currentExternalSources: readonly PromptLibraryExternalSource[],
+  ) {
     const currentState = this.promptLibraryStore.getState();
     const currentSystemPrompt = this.buildSystemPromptForTarget(target);
+    const currentExternalSourceHashes = externalSourceHashes(currentExternalSources);
+    const boundExternalSourceHashes = externalSourceHashes(session.externalContextSources);
     return {
       currentRevision: currentState.revision,
       boundSystemPrompt: session.systemPrompt,
       currentSystemPrompt,
+      boundExternalSourceHashes,
+      currentExternalSourceHashes,
       stale:
         session.promptLibraryRevision !== currentState.revision ||
-        session.systemPrompt !== currentSystemPrompt,
+        session.systemPrompt !== currentSystemPrompt ||
+        !sameStringList(boundExternalSourceHashes, currentExternalSourceHashes),
     };
   }
 
@@ -3261,8 +3304,10 @@ async function createManagedSession(
     agentDir: options.agentDir,
     settingsManager,
     systemPromptOverride: () => options.systemPrompt,
+    appendSystemPromptOverride: () => [],
   });
   await resourceLoader.reload();
+  const externalContextSources = buildExternalContextSources(resourceLoader);
   const restoredDefaults = resolveRestoredSessionDefaults(options.sessionManager, {
     provider: options.provider,
     model: options.model,
@@ -3303,6 +3348,7 @@ async function createManagedSession(
     sessionAgentKey: options.sessionAgentKey ?? "defaultSession",
     systemPrompt: options.systemPrompt,
     promptLibraryRevision: options.promptLibraryRevision ?? 1,
+    externalContextSources,
     session,
     authStorage,
     modelRegistry,
@@ -3363,6 +3409,37 @@ function convertToLlmMessages(messages: AgentMessage[]): Message[] {
 function getResolvedSystemPrompt(session: ManagedSession): string {
   const resolved = session.session.agent.state.systemPrompt?.trim();
   return resolved && resolved.length > 0 ? resolved : session.systemPrompt;
+}
+
+function buildExternalContextSources(input: {
+  getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
+}): PromptLibraryExternalSource[] {
+  return input.getAgentsFiles().agentsFiles.map((source, index) => {
+    const normalizedPath = source.path.replaceAll("\\", "/");
+    const fileName = normalizedPath.split("/").at(-1);
+    const kind = fileName === "CLAUDE.md" ? "CLAUDE.md" : "AGENTS.md";
+    return {
+      id: `${index}:${normalizedPath}`,
+      kind,
+      title: kind,
+      path: source.path,
+      content: source.content,
+      contentHash: hashContent(source.content),
+      order: index,
+    };
+  });
+}
+
+function externalSourceHashes(sources: readonly PromptLibraryExternalSource[]): string[] {
+  return sources.map((source) => `${source.path}:${source.contentHash}`);
+}
+
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 function flattenUserMessageContent(content: Message["content"]): string {

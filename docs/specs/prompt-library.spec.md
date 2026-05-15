@@ -10,6 +10,7 @@
   - define reusable context packs
   - define actor prompt recipes
   - define generated prompt parts inside actor recipes
+  - define read-only runtime standards sources shown in Context
   - define app-global and workspace-scoped prompt blocks
   - define internal prompt revision binding and user-named snapshots
   - define stale-prompt warnings, diffs, and update behavior
@@ -22,10 +23,10 @@
 The product model is:
 
 ```text
-Context Library = reusable blocks + actor recipes + generated contracts
+Context = editable Context Library + generated contracts + read-only runtime standards
 ```
 
-The user manages reusable prompt material. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. New sessions always use the latest context library revision. Existing sessions keep the revision they were created with until the user explicitly updates them. Raw revision counters are internal and are not shown as primary Context pane UI.
+The user manages reusable prompt material in the editable Context Library. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. Pi-discovered runtime standards sources are shown in the same read-only generated-context area as generated prompt parts, but they are not edited, snapshotted, or rediscovered by svvy. New sessions always use the latest context library revision and current runtime standards hashes. Existing sessions keep the revision and standards content they were created with until the user explicitly updates them. Raw revision counters are internal and are not shown as primary Context pane UI.
 
 ## Product Principles
 
@@ -34,8 +35,9 @@ The user manages reusable prompt material. Actor prompts are aggregates assemble
 - Instruction blocks and context packs are ordinary editable records with names, bodies, actor settings, enabled state, scope, custom-record delete actions, and reset behavior.
 - Shipped defaults are protected from deletion but not editing. Reset actions restore their shipped state.
 - Generated prompt parts are visible inside actor recipes but are not edited as normal text blocks.
+- Runtime standards sources loaded by pi are visible as read-only generated-context material with file name, path, content, order, and an external-editor action.
 - Scope is explicit. Blocks are app-global by default, but each block can be limited to selected previously opened workspaces.
-- The app records exactly which prompt revision each session, handler thread, and workflow task agent used.
+- The app records exactly which prompt revision and runtime standards hashes each session, handler thread, and workflow task agent used.
 - The user can explicitly save named snapshots and restore them later without relying on autosave history.
 - The UI warns when an existing surface uses prompt material that differs from current settings.
 - Updating an existing surface to the latest prompt revision is deliberate and happens before a later turn, not silently in the middle of active work.
@@ -56,6 +58,19 @@ It contains:
 - scope settings
 - enabled states
 - generated prompt-part references
+
+### Runtime Standards Source
+
+A read-only agent standards file discovered by pi's resource loader and appended to the actual agent prompt as project context.
+
+Adopted runtime standards sources:
+
+- `AGENTS.md`
+- `CLAUDE.md`
+
+Runtime standards sources are not Context Library records. They are not user-editable from the Context pane, not saved in user-named Context snapshots, and not discovered through svvy's own file search. svvy asks pi's loaded resource state which standards files it found, displays the exact loaded content in the actor aggregate's generated-context area, stores the exact bound content and hash for each surface, and uses those hashes in prompt drift checks.
+
+`svvy` does not use pi prompt replacement or append files. Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files are ignored by svvy sessions, handler threads, and workflow task agents.
 
 ### Internal Prompt Revision
 
@@ -468,6 +483,8 @@ Context Packs Loaded By Default
 Generated
 - Orchestrator tool declarations
 - execute_typescript API
+- AGENTS.md
+- CLAUDE.md
 ```
 
 ```text
@@ -490,6 +507,8 @@ Generated
 - Smithers tool declarations
 - execute_typescript API
 - workflow authoring contract
+- AGENTS.md
+- CLAUDE.md
 ```
 
 ```text
@@ -507,13 +526,15 @@ Context Packs Loaded By Default
 Generated
 - Workflow task tool declarations
 - execute_typescript API
+- AGENTS.md
+- CLAUDE.md
 ```
 
 Rows have actions:
 
 - instruction row: open that instruction block in the right detail pane
 - context-pack row: open that context pack in the right detail pane
-- generated row: view the actual generated text in a scrollable code block, copy generated text, and open the generated context file in the configured editor
+- generated row: view the actual generated or runtime standards text in a scrollable code block, copy generated text when applicable, and open the generated context file or pi-discovered standards file in the configured editor
 
 The Actors section supports:
 
@@ -553,10 +574,11 @@ The composition order is:
 1. enabled active instruction blocks ordered by stable library order
 2. enabled active context packs default-loaded for the actor ordered by stable library order
 3. generated actor-specific prompt parts ordered by product contract
+4. pi-discovered runtime standards sources appended by pi in its project-context order
 
 Stable library order is user-visible and reorderable after MVP. Until reorder UI exists, shipped defaults and creation order define the order.
 
-Instruction and context-pack names should appear as section headings in composed previews. The raw pi system prompt may omit extra UI-only provenance wrappers if the runtime needs a compact prompt, but the preview must preserve provenance.
+Instruction and context-pack names should appear as section headings in composed previews. The raw pi system prompt may omit extra UI-only provenance wrappers if the runtime needs a compact prompt, but the preview must preserve provenance. Runtime standards preview rows must reflect the exact content pi loaded, not an independently scanned approximation.
 
 ## Internal Revisions And User Snapshots
 
@@ -619,6 +641,7 @@ When a new orchestrator session is created, persist:
 type SessionPromptBinding = {
   promptRevisionId: string;
   actor: "orchestrator";
+  boundExternalSourceHashes: string[];
   resolvedPromptHash: string;
   resolvedPromptTextArtifactId: string | null;
   boundAt: string;
@@ -633,6 +656,7 @@ When a handler thread is created, persist:
 type ThreadPromptBinding = {
   promptRevisionId: string;
   actor: "handler";
+  boundExternalSourceHashes: string[];
   resolvedPromptHash: string;
   resolvedPromptTextArtifactId: string | null;
   boundAt: string;
@@ -647,6 +671,7 @@ When a workflow task agent attempt is created, persist:
 type WorkflowTaskPromptBinding = {
   promptRevisionId: string;
   actor: "workflow-task";
+  boundExternalSourceHashes: string[];
   resolvedPromptHash: string;
   resolvedPromptTextArtifactId: string | null;
   boundAt: string;
@@ -654,6 +679,8 @@ type WorkflowTaskPromptBinding = {
 ```
 
 The `resolvedPromptHash` records the exact prompt text used at the binding point.
+
+`boundExternalSourceHashes` records the ordered runtime standards content hashes used at the binding point.
 
 The optional `resolvedPromptTextArtifactId` allows later inspection without depending on reconstructing an old generated contract from current code. The implementation may store the prompt text in structured prompt-revision tables instead of an artifact, but the product must preserve enough information to display what was used.
 
@@ -702,10 +729,16 @@ surface.promptRevisionId !== currentPromptRevisionId
 and:
 
 ```ts
+surface.boundExternalSourceHashes !== currentExternalSourceHashes
+```
+
+and:
+
+```ts
 surface.resolvedPromptHash !== computeCurrentResolvedPromptHash(actor, workspace)
 ```
 
-Revision mismatch produces:
+Revision or runtime standards hash mismatch produces:
 
 ```text
 Context settings changed since this surface started.
@@ -740,6 +773,10 @@ Actors
 
 Generated
 - execute_typescript API declaration changed
+
+Runtime Standards
+- AGENTS.md changed
+- CLAUDE.md removed
 ```
 
 Raw text diff is available as a secondary view.
@@ -750,6 +787,7 @@ The semantic diff should group changes by:
 - context packs
 - actor recipe settings
 - generated prompt parts
+- runtime standards sources
 - scope changes
 - enabled or disabled state
 - actor inclusion/default-loaded changes
@@ -874,8 +912,10 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Workspace-scoped blocks remain visible even when inactive in the current workspace.
 - Actor aggregate views are recipes, not the primary editing surface.
 - Generated prompt parts are visible inside actor recipes.
+- Runtime standards sources are visible in the generated-context area, read-only, openable in the configured external editor, and not editable through the Context pane.
+- Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files do not participate in svvy prompt composition.
 - New sessions use the latest internal prompt revision.
-- Existing sessions warn when their bound prompt revision or resolved hash differs from current prompt settings.
+- Existing sessions warn when their bound prompt revision, runtime standards hashes, or resolved hash differs from current prompt settings.
 - Existing sessions update only through an explicit user action.
 
 ## Implementation Phases
@@ -885,8 +925,8 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Rename `Saved Workflows` to `Workflows`.
 - Add the `Context` sidebar entry.
 - Add the Context pane with `Instructions`, `Context Packs`, and `Actors`.
-- Project current hardcoded instruction and context material as structured read-only blocks.
-- Show generated prompt parts inside actor recipes.
+- Project current hardcoded instruction and context material as structured builtin blocks.
+- Show generated prompt parts and pi-discovered runtime standards sources inside actor recipes.
 
 ### Phase 2: Editable Library
 
@@ -902,6 +942,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Add Context pane snapshot creation, loading, and rename controls.
 - Bind new sessions, handler threads, and workflow task agents to the latest revision.
 - Store resolved prompt hashes and inspectable prompt text.
+- Store runtime standards hashes in prompt bindings.
 - Show stale-prompt warnings on existing surfaces.
 - Add grouped semantic diff and raw text diff.
 - Add update-for-next-turn.
@@ -911,7 +952,8 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Route `thread.start({ context })` and `request_context` through requestable context packs.
 - Show requested context packs in handler-thread metadata.
 - Ensure provider, generated contract, and tool-declaration changes produce hash drift warnings when they alter exact prompt output.
-- Add representative unit and integration coverage for composition, scope filtering, revision binding, stale warning, reset, and actor aggregate projection.
+- Ensure runtime standards content, order, addition, and removal produce hash drift warnings when they alter exact prompt output.
+- Add representative unit and integration coverage for composition, scope filtering, runtime standards projection, revision binding, stale warning, reset, and actor aggregate projection.
 
 ## Open Non-Goals
 
@@ -920,3 +962,4 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - A marketplace or sharing format for prompt packs is not required.
 - Prompt A/B testing is not required.
 - Prompt changes should not rewrite historical pi transcripts.
+- Runtime standards source editing is done in the workspace files, not inside the Context pane.

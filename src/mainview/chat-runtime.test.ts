@@ -258,6 +258,7 @@ function createSurfaceSnapshot(input: {
   sessionAgentKey?: ConversationSurfaceSnapshot["sessionAgentKey"];
   systemPrompt?: string;
   resolvedSystemPrompt?: string;
+  externalContextSources?: ConversationSurfaceSnapshot["externalContextSources"];
   promptStatus?: ConversationSurfaceSnapshot["promptStatus"];
 }): ConversationSurfaceSnapshot {
   const systemPrompt = input.systemPrompt ?? "You are svvy.";
@@ -274,6 +275,7 @@ function createSurfaceSnapshot(input: {
     sessionAgentKey: input.sessionAgentKey ?? "defaultSession",
     systemPrompt,
     resolvedSystemPrompt: input.resolvedSystemPrompt ?? systemPrompt,
+    externalContextSources: structuredClone(input.externalContextSources ?? []),
     promptStatus: input.promptStatus ?? "idle",
   };
 }
@@ -1009,11 +1011,17 @@ function createFakeRpc(input: {
           editor: "system",
           path,
         }),
+        openPromptLibraryExternalSourceInEditor: async ({ path }) => ({
+          opened: true,
+          editor: "system",
+          path,
+        }),
         getPromptLibraryGeneratedEntries: async () => ({
           orchestrator: [],
           handler: [],
           "workflow-task": [],
         }),
+        getPromptLibraryExternalSources: async () => [],
         listSessions: async () => {
           requestCounts.listSessions += 1;
           return { sessions: listSessions(), navigation: listNavigation() };
@@ -1681,6 +1689,17 @@ describe("createChatRuntime", () => {
           messages: [userMessage("inspect"), assistantMessage("done")],
           systemPrompt: rawPrompt,
           resolvedSystemPrompt: resolvedPrompt,
+          externalContextSources: [
+            {
+              id: "0:/tmp/svvy/AGENTS.md",
+              kind: "AGENTS.md",
+              title: "AGENTS.md",
+              path: "/tmp/svvy/AGENTS.md",
+              content: "# Standards",
+              contentHash: "abc123",
+              order: 0,
+            },
+          ],
         }),
       ],
     });
@@ -1696,6 +1715,9 @@ describe("createChatRuntime", () => {
     expect(controller).toBeTruthy();
     expect(controller?.agent.state.systemPrompt).toBe(rawPrompt);
     expect(controller?.resolvedSystemPrompt).toContain("# Project Context");
+    expect(controller?.externalContextSources).toEqual([
+      expect.objectContaining({ path: "/tmp/svvy/AGENTS.md", contentHash: "abc123" }),
+    ]);
     expect(controller?.agent.state.messages.at(-1)).toMatchObject({
       role: "assistant",
     });

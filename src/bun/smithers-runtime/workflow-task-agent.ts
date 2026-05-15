@@ -128,6 +128,7 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         settingsManager,
         noExtensions: true,
         systemPromptOverride: () => resolvedSystemPrompt,
+        appendSystemPromptOverride: () => [],
       });
       await resourceLoader.reload();
 

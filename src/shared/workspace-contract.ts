@@ -14,6 +14,7 @@ import type {
 import type {
   PromptLibraryActor,
   CreatePromptLibrarySnapshotRequest,
+  PromptLibraryExternalSource,
   PromptLibraryGeneratedEntry,
   PromptLibrarySnapshotSummary,
   PromptLibraryState,
@@ -570,6 +571,10 @@ export interface OpenWorkspaceSourceInEditorRequest {
   path: string;
 }
 
+export interface OpenPromptLibraryExternalSourceInEditorRequest {
+  path: string;
+}
+
 export interface OpenWorkspaceSourceInEditorResponse {
   opened: boolean;
   editor: string;
@@ -970,10 +975,13 @@ export interface ConversationSurfaceSnapshot {
   sessionAgentKey: SessionAgentKey;
   systemPrompt: string;
   resolvedSystemPrompt: string;
+  externalContextSources: PromptLibraryExternalSource[];
   promptBinding?: {
     currentRevision: number;
     boundSystemPrompt: string;
     currentSystemPrompt: string;
+    boundExternalSourceHashes: string[];
+    currentExternalSourceHashes: string[];
     stale: boolean;
   };
   promptStatus: "idle" | "streaming";
@@ -1087,6 +1095,10 @@ export interface ChatRPCSchema {
         params: WorkspaceScoped<Record<string, never>>;
         response: Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>;
       };
+      getPromptLibraryExternalSources: {
+        params: WorkspaceScoped<Record<string, never>>;
+        response: PromptLibraryExternalSource[];
+      };
       updateSessionAgentDefault: {
         params: UpdateSessionAgentDefaultRequest;
         response: AgentSettingsState;
@@ -1189,6 +1201,10 @@ export interface ChatRPCSchema {
       };
       openWorkspaceSourceInEditor: {
         params: WorkspaceScoped<OpenWorkspaceSourceInEditorRequest>;
+        response: OpenWorkspaceSourceInEditorResponse;
+      };
+      openPromptLibraryExternalSourceInEditor: {
+        params: WorkspaceScoped<OpenPromptLibraryExternalSourceInEditorRequest>;
         response: OpenWorkspaceSourceInEditorResponse;
       };
       listSessions: {

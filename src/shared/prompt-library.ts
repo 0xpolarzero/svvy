@@ -15,6 +15,16 @@ export interface PromptLibraryGeneratedEntry {
   content: string;
 }
 
+export interface PromptLibraryExternalSource {
+  id: string;
+  kind: "AGENTS.md" | "CLAUDE.md";
+  title: string;
+  path: string;
+  content: string;
+  contentHash: string;
+  order: number;
+}
+
 export interface PromptLibraryScope {
   appGlobal: boolean;
   workspaceKeys: string[];

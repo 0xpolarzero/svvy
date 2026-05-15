@@ -645,6 +645,11 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           .getActiveRuntime()
           .catalog.getPromptLibraryGeneratedEntries();
       },
+      getPromptLibraryExternalSources: async () => {
+        return workspaceRuntimeRegistry
+          .getActiveRuntime()
+          .catalog.getPromptLibraryExternalSources();
+      },
       updateSessionAgentDefault: async ({ key, settings }) => {
         const runtime = workspaceRuntimeRegistry.getActiveRuntime();
         resolvedDefaults = null;
@@ -858,6 +863,28 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           opened: result.opened,
         });
         return { ...result, path };
+      },
+      openPromptLibraryExternalSourceInEditor: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const sources = await runtime.catalog.getPromptLibraryExternalSources();
+        const source = sources.find((candidate) => candidate.path === input.path);
+        if (!source || getWorkspacePathKind(source.path) === "missing") {
+          runtime.appLog.warning("external-editor", "Prompt standards source does not exist.", {
+            path: input.path,
+          });
+          throw new Error(`Prompt standards source does not exist: ${input.path}`);
+        }
+        const result = openPathInPreferredEditor(runtime, source.path);
+        runtime.appLog.info(
+          "external-editor",
+          "Prompt standards source opened in external editor.",
+          {
+            path: source.path,
+            editor: result.editor,
+            opened: result.opened,
+          },
+        );
+        return { ...result, path: source.path };
       },
       listSessions: async (input) => {
         return await getWorkspaceRuntime(input).catalog.listSessions();

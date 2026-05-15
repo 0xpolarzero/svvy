@@ -21,6 +21,8 @@ Prompt contexts are the runtime loading mechanics for Prompt Library context pac
 
 Prompt contexts are stable or explicitly loaded product knowledge. They do not carry current thread status, wait state, handoff bodies, workflow run summaries, or reconstructed transcript text. Current runtime and thread state is read through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`; workflow details remain behind `smithers.*` tools.
 
+Prompt contexts are distinct from runtime standards sources. Pi-discovered `AGENTS.md` and `CLAUDE.md` files are shown in the Context pane's generated-context previews for transparency and are appended by pi as project context, but they are not registry-backed context packs, not requestable context keys, and not editable prompt-context records. Pi `SYSTEM.md` and `APPEND_SYSTEM.md` prompt replacement or append files do not participate in svvy prompt composition.
+
 There are two load modes:
 
 - default-loaded contexts, included in eligible actor prompts by default according to Prompt Library context-pack switches
@@ -211,6 +213,9 @@ Default-loaded context keys are visible through the resolved system prompt and a
 ## Invariants
 
 - Prompt contexts are registry-backed and surfaced as Prompt Library context packs.
+- Runtime standards sources are visible in actor generated-context previews but are not prompt contexts and cannot be requested through `thread.start({ context })` or `request_context`.
+- Pi-discovered `AGENTS.md` and `CLAUDE.md` files remain runtime standards sources loaded by pi, not svvy-owned context-pack records.
+- Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files are ignored by svvy sessions, handler threads, and workflow task agents.
 - `cx` is default-loaded for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.
 - `smithers` is default-loaded with actor-specific content through shipped library defaults.
 - `web` is default-loaded from current provider settings for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -940,6 +940,9 @@ describe("WorkspaceSessionCatalog", () => {
 
   it("loads svvy's prompt into pi's real systemPrompt channel for orchestrator and handler surfaces", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    writeFileSync(join(cwd, "AGENTS.md"), "# Project Standards\n\nUse repo rules.");
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "APPEND_SYSTEM.md"), "Hidden append text.");
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
     try {
@@ -948,6 +951,17 @@ describe("WorkspaceSessionCatalog", () => {
 
       expect(created.systemPrompt).toBe(buildSystemPrompt("orchestrator"));
       expect(created.resolvedSystemPrompt).toContain(buildSystemPrompt("orchestrator"));
+      expect(created.resolvedSystemPrompt).toContain("# Project Context");
+      expect(created.resolvedSystemPrompt).toContain("# Project Standards");
+      expect(created.resolvedSystemPrompt).not.toContain("Hidden append text.");
+      expect(created.externalContextSources).toEqual([
+        expect.objectContaining({
+          kind: "AGENTS.md",
+          path: join(cwd, "AGENTS.md"),
+          content: "# Project Standards\n\nUse repo rules.",
+          contentHash: expect.any(String),
+        }),
+      ]);
       expect(created.resolvedSystemPrompt).toContain("Current date:");
       expect(created.resolvedSystemPrompt).toContain(`Current working directory: ${cwd}`);
       expect(orchestratorManaged.session.agent.state.systemPrompt).toBe(
@@ -963,9 +977,35 @@ describe("WorkspaceSessionCatalog", () => {
 
       expect(openedHandler.systemPrompt).toBe(buildSystemPrompt("handler"));
       expect(openedHandler.resolvedSystemPrompt).toContain(buildSystemPrompt("handler"));
+      expect(openedHandler.resolvedSystemPrompt).toContain("# Project Standards");
+      expect(openedHandler.resolvedSystemPrompt).not.toContain("Hidden append text.");
+      expect(openedHandler.externalContextSources).toEqual(created.externalContextSources);
       expect(handlerManaged.session.agent.state.systemPrompt).toBe(
         openedHandler.resolvedSystemPrompt,
       );
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("marks prompt binding stale when runtime standards change", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const standardsPath = join(cwd, "AGENTS.md");
+    writeFileSync(standardsPath, "# Project Standards\n\nInitial.");
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Standards Drift" }, DEFAULTS);
+      expect(created.promptBinding?.stale).toBe(false);
+
+      writeFileSync(standardsPath, "# Project Standards\n\nChanged.");
+      const reopened = await catalog.openSurface(created.target);
+
+      expect(reopened.promptBinding?.stale).toBe(true);
+      expect(reopened.promptBinding?.boundExternalSourceHashes).not.toEqual(
+        reopened.promptBinding?.currentExternalSourceHashes,
+      );
+      expect(reopened.externalContextSources[0]?.content).toContain("Initial.");
     } finally {
       await catalog.dispose();
     }
@@ -1297,7 +1337,15 @@ describe("WorkspaceSessionCatalog", () => {
               (payload) =>
                 payload.reason === "prompt.settled" &&
                 payload.target.surfacePiSessionId === created.target.surfacePiSessionId,
-            ) && workspaceSyncs.some((payload) => payload.reason === "workspace.updated"),
+            ) &&
+            workspaceSyncs
+              .flatMap((payload) => payload.sessions)
+              .some(
+                (session) =>
+                  session.id === created.target.workspaceSessionId &&
+                  session.status === "idle" &&
+                  session.preview.length > 0,
+              ),
         );
 
         expect("snapshot" in (workspaceSyncs[0] as unknown as Record<string, unknown>)).toBe(false);

@@ -38,6 +38,7 @@ import type {
 } from "../shared/workspace-contract";
 import type {
   PromptLibraryActor,
+  PromptLibraryExternalSource,
   PromptLibraryGeneratedEntry,
   PromptLibrarySnapshotSummary,
   PromptLibraryState,
@@ -132,6 +133,7 @@ export interface ChatSurfaceController {
   target: PromptTarget;
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
+  externalContextSources: PromptLibraryExternalSource[];
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
@@ -165,6 +167,7 @@ export interface ChatRuntimeRpcClient {
     createPromptLibrarySnapshot: typeof rpc.request.createPromptLibrarySnapshot;
     renamePromptLibrarySnapshot: typeof rpc.request.renamePromptLibrarySnapshot;
     restorePromptLibrarySnapshot: typeof rpc.request.restorePromptLibrarySnapshot;
+    getPromptLibraryExternalSources: typeof rpc.request.getPromptLibraryExternalSources;
     updateSessionAgentDefault: typeof rpc.request.updateSessionAgentDefault;
     updateWorkflowAgent: typeof rpc.request.updateWorkflowAgent;
     updateAppPreferences: typeof rpc.request.updateAppPreferences;
@@ -186,6 +189,7 @@ export interface ChatRuntimeRpcClient {
     getSavedWorkflowLibrary: typeof rpc.request.getSavedWorkflowLibrary;
     deleteSavedWorkflowLibraryItem: typeof rpc.request.deleteSavedWorkflowLibraryItem;
     openWorkspaceSourceInEditor: typeof rpc.request.openWorkspaceSourceInEditor;
+    openPromptLibraryExternalSourceInEditor: typeof rpc.request.openPromptLibraryExternalSourceInEditor;
     getPromptLibraryGeneratedEntries: typeof rpc.request.getPromptLibraryGeneratedEntries;
     listSessions: typeof rpc.request.listSessions;
     getCommandInspector: typeof rpc.request.getCommandInspector;
@@ -365,11 +369,13 @@ export interface ChatRuntime {
   getSavedWorkflowLibrary: () => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
   deleteSavedWorkflowLibraryItem: (path: string) => Promise<WorkspaceSavedWorkflowLibraryReadModel>;
   openWorkspaceSourceInEditor: (path: string) => Promise<boolean>;
+  openPromptLibraryExternalSourceInEditor: (path: string) => Promise<boolean>;
   getPromptLibrary: () => Promise<PromptLibraryState>;
   getPromptLibraryDefaults: () => Promise<PromptLibraryState>;
   getPromptLibraryGeneratedEntries: () => Promise<
     Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>
   >;
+  getPromptLibraryExternalSources: () => Promise<PromptLibraryExternalSource[]>;
   updatePromptLibrary: (request: UpdatePromptLibraryRequest) => Promise<PromptLibraryState>;
   resetPromptLibrary: () => Promise<PromptLibraryState>;
   listPromptLibrarySnapshots: () => Promise<PromptLibrarySnapshotSummary[]>;
@@ -476,6 +482,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   target: PromptTarget;
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
+  externalContextSources: PromptLibraryExternalSource[];
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
@@ -496,6 +503,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.target = normalizePromptTarget(snapshot.target);
     this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
     this.promptBinding = snapshot.promptBinding;
+    this.externalContextSources = structuredClone(snapshot.externalContextSources ?? []);
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
@@ -556,6 +564,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.target = normalizePromptTarget(snapshot.target);
     this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
+    this.promptBinding = snapshot.promptBinding;
+    this.externalContextSources = structuredClone(snapshot.externalContextSources ?? []);
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
@@ -782,6 +792,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       sessionAgentKey: this.sessionAgentKey,
       systemPrompt: this.agent.state.systemPrompt,
       resolvedSystemPrompt: this.resolvedSystemPrompt,
+      externalContextSources: structuredClone(this.externalContextSources),
       promptBinding: this.promptBinding,
       promptStatus: this.promptStatus,
     };
@@ -1978,10 +1989,18 @@ export async function createChatRuntime(
       const result = await rpcClient.request.openWorkspaceSourceInEditor(scoped({ path }));
       return result.opened;
     },
+    openPromptLibraryExternalSourceInEditor: async (path) => {
+      const result = await rpcClient.request.openPromptLibraryExternalSourceInEditor(
+        scoped({ path }),
+      );
+      return result.opened;
+    },
     getPromptLibrary: () => rpcClient.request.getPromptLibrary(scoped()),
     getPromptLibraryDefaults: () => rpcClient.request.getPromptLibraryDefaults(scoped()),
     getPromptLibraryGeneratedEntries: () =>
       rpcClient.request.getPromptLibraryGeneratedEntries(scoped()),
+    getPromptLibraryExternalSources: () =>
+      rpcClient.request.getPromptLibraryExternalSources(scoped()),
     updatePromptLibrary: (request) => rpcClient.request.updatePromptLibrary(scoped(request)),
     resetPromptLibrary: () => rpcClient.request.resetPromptLibrary(scoped()),
     listPromptLibrarySnapshots: () => rpcClient.request.listPromptLibrarySnapshots(scoped()),

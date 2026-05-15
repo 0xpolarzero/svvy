@@ -16,6 +16,7 @@
   import type {
     PromptLibraryActor,
     PromptLibraryContextPack,
+    PromptLibraryExternalSource,
     PromptLibraryGeneratedEntry,
     PromptLibraryInstructionBlock,
     PromptLibraryState,
@@ -47,12 +48,14 @@
     summary: string;
     blockIds: string[];
     generatedEntries: PromptLibraryGeneratedEntry[];
+    externalSources: PromptLibraryExternalSource[];
   };
 
   type PromptLibraryReadModel = {
     updatedAt: string;
     sections: Record<PromptLibrarySection, PromptLibraryBlock[]>;
     actors: PromptLibraryActorAggregate[];
+    externalSources: PromptLibraryExternalSource[];
   };
   type AutosaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
   type DraftSnapshot = {
@@ -86,6 +89,7 @@
     PromptLibraryActorKey,
     PromptLibraryGeneratedEntry[]
   > | null>(null);
+  let externalSources = $state<PromptLibraryExternalSource[]>([]);
   let selectedKind = $state<"block" | "actor">("block");
   let selectedId = $state<string | null>(null);
   let draftTitle = $state("");
@@ -492,6 +496,7 @@
         instructions: instructionEntries,
         contextPacks: contextEntries,
       },
+      externalSources,
       actors: actors.map((actor) => ({
         id: actor,
         label: actorLabel(actor),
@@ -501,6 +506,7 @@
           ...(state.actorRecipes[actor]?.contextPackIds ?? []),
         ],
         generatedEntries: generatedEntriesForActor(actor),
+        externalSources,
       })),
     };
   }
@@ -578,16 +584,18 @@
       error = null;
     }
     try {
-      const [state, defaults, generatedEntries] = await Promise.all([
+      const [state, defaults, generatedEntries, runtimeExternalSources] = await Promise.all([
         runtime.getPromptLibrary(),
         runtime.getPromptLibraryDefaults(),
         runtime.getPromptLibraryGeneratedEntries(),
+        runtime.getPromptLibraryExternalSources(),
       ]);
       promptState = state;
       defaultPromptState = defaults;
       lastSavedAt = state.updatedAt;
       autosaveStatus = "saved";
       generatedEntriesByActor = generatedEntries;
+      externalSources = runtimeExternalSources;
       const next = convertStateToReadModel(state);
       readModel = next;
       syncSelection(next);
@@ -609,6 +617,18 @@
       actionMessage = opened
         ? `Opened ${entry.sourcePath}`
         : `Could not open ${entry.sourcePath}. Check the configured external editor.`;
+    } catch (err) {
+      actionMessage = err instanceof Error ? err.message : "Unable to view in external editor.";
+    }
+  }
+
+  async function openExternalSource(source: PromptLibraryExternalSource) {
+    actionMessage = null;
+    try {
+      const opened = await runtime.openPromptLibraryExternalSourceInEditor(source.path);
+      actionMessage = opened
+        ? `Opened ${source.path}`
+        : `Could not open ${source.path}. Check the configured external editor.`;
     } catch (err) {
       actionMessage = err instanceof Error ? err.message : "Unable to view in external editor.";
     }
@@ -1222,7 +1242,8 @@
             {/each}
           </section>
 
-          <section class="detail-section">
+          {#if selectedActor.generatedEntries.length || selectedActor.externalSources.length}
+            <section class="detail-section">
             <h4>Generated Context</h4>
             {#each selectedActor.generatedEntries as entry (entry.id)}
               <div class="generated-entry">
@@ -1247,7 +1268,31 @@
                 <pre><code>{entry.content}</code></pre>
               </div>
             {/each}
-          </section>
+            {#each selectedActor.externalSources as source (source.id)}
+              <div class="generated-entry">
+                <span>
+                  <span class="generated-entry-title">
+                    <strong>{source.title}</strong>
+                    <code>{source.path}</code>
+                  </span>
+                  <Tooltip label="View in external editor">
+                    <Button
+                      class="library-tool-button"
+                      variant="ghost"
+                      size="xs"
+                      iconOnly
+                      aria-label={`View ${source.path} in external editor`}
+                      onclick={() => openExternalSource(source)}
+                    >
+                      <ExternalLinkIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                    </Button>
+                  </Tooltip>
+                </span>
+                <pre><code>{source.content}</code></pre>
+              </div>
+            {/each}
+            </section>
+          {/if}
         {/if}
       </article>
     </div>
