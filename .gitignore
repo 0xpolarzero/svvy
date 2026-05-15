@@ -21,3 +21,4 @@ run-*.log
 .env
 .env.*
 .playwright-mcp
+fixtures/
