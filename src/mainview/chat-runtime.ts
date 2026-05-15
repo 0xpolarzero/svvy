@@ -13,6 +13,7 @@ import type {
   ConversationSurfaceSnapshot,
   CreateSessionRequest,
   PromptTarget,
+  QueuedSurfaceMessage,
   SendPromptRequest,
   SurfaceSyncMessage,
   WorkspaceBranchInfo,
@@ -101,6 +102,8 @@ const ZERO_USAGE: UsageStats = {
 type ChatRuntimeListener = () => void;
 type PromptStatus = ConversationSurfaceSnapshot["promptStatus"];
 
+export type QueuedPrompt = QueuedSurfaceMessage;
+
 export interface ChatPaneState {
   id: string;
   target: WorkspacePaneSurfaceTarget | null;
@@ -118,8 +121,13 @@ export interface ChatSurfaceController {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
+  queuedPrompts: QueuedPrompt[];
   ownerPaneIds: string[];
   sendPrompt: (input: string) => Promise<void>;
+  editQueuedPrompt: (promptId: string) => Promise<string | null>;
+  deleteQueuedPrompt: (promptId: string) => Promise<boolean>;
+  reorderQueuedPrompt: (promptId: string, beforePromptId: string | null) => Promise<boolean>;
+  steerQueuedPrompt: (promptId: string) => Promise<boolean>;
   abort: () => Promise<void>;
   subscribe: (listener: ChatRuntimeListener) => () => void;
 }
@@ -180,6 +188,10 @@ export interface ChatRuntimeRpcClient {
     recordFocusedSession: typeof rpc.request.recordFocusedSession;
     setArchivedGroupCollapsed: typeof rpc.request.setArchivedGroupCollapsed;
     sendPrompt: typeof rpc.request.sendPrompt;
+    deleteQueuedSurfaceMessage: typeof rpc.request.deleteQueuedSurfaceMessage;
+    editQueuedSurfaceMessage: typeof rpc.request.editQueuedSurfaceMessage;
+    reorderQueuedSurfaceMessage: typeof rpc.request.reorderQueuedSurfaceMessage;
+    steerQueuedSurfaceMessage: typeof rpc.request.steerQueuedSurfaceMessage;
     setSurfaceModel: typeof rpc.request.setSurfaceModel;
     setSurfaceThoughtLevel: typeof rpc.request.setSurfaceThoughtLevel;
     cancelPrompt: typeof rpc.request.cancelPrompt;
@@ -419,6 +431,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
+  queuedPrompts: QueuedPrompt[] = [];
 
   private listeners = new Set<ChatRuntimeListener>();
   private panelIds = new Set<string>();
@@ -437,6 +450,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
+    this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
     this.agent = createInitialAgent(snapshot, this.createStreamFn());
 
     const originalSetModel = this.agent.setModel.bind(this.agent);
@@ -496,6 +510,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
+    this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
 
     this.suppressSurfaceMutationSync = true;
     this.applyingSnapshot = true;
@@ -523,10 +538,96 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
   async sendPrompt(input: string): Promise<void> {
     const text = input.trim();
-    if (!text || this.promptDispatchInFlight || this.promptStatus === "streaming") {
+    if (!text) {
       return;
     }
 
+    if (this.promptDispatchInFlight || this.promptStatus === "streaming") {
+      await this.enqueuePrompt(text);
+      return;
+    }
+
+    await this.dispatchPrompt(text);
+  }
+
+  async editQueuedPrompt(promptId: string): Promise<string | null> {
+    const response = await this.rpcClient.request.editQueuedSurfaceMessage({
+      workspaceId: this.workspaceId,
+      target: this.target,
+      queuedMessageId: promptId,
+    });
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+    return response.text ?? null;
+  }
+
+  async deleteQueuedPrompt(promptId: string): Promise<boolean> {
+    const response = await this.rpcClient.request.deleteQueuedSurfaceMessage({
+      workspaceId: this.workspaceId,
+      target: this.target,
+      queuedMessageId: promptId,
+    });
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+    return response.ok;
+  }
+
+  async reorderQueuedPrompt(promptId: string, beforePromptId: string | null): Promise<boolean> {
+    const response = await this.rpcClient.request.reorderQueuedSurfaceMessage({
+      workspaceId: this.workspaceId,
+      target: this.target,
+      queuedMessageId: promptId,
+      beforeQueuedMessageId: beforePromptId,
+    });
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+    return response.ok;
+  }
+
+  async steerQueuedPrompt(promptId: string): Promise<boolean> {
+    const response = await this.rpcClient.request.steerQueuedSurfaceMessage({
+      workspaceId: this.workspaceId,
+      target: this.target,
+      queuedMessageId: promptId,
+    });
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+    return response.ok;
+  }
+
+  private async enqueuePrompt(text: string): Promise<void> {
+    const userMessage: Message = {
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    };
+    const provider = this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider;
+    const model = this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model;
+    const reasoningEffort =
+      (this.agent.state.thinkingLevel as ReasoningEffort | undefined) ??
+      DEFAULT_AGENT_SETTINGS.reasoningEffort;
+    const response = await this.rpcClient.request.sendPrompt({
+      messages: [...(this.agent.state.messages as Message[]), userMessage],
+      provider,
+      model,
+      reasoningEffort,
+      target: this.target,
+      systemPrompt: this.agent.state.systemPrompt,
+      queueOnly: true,
+      workspaceId: this.workspaceId,
+    });
+    this.target = normalizePromptTarget(response.target);
+    this.agent.sessionId = response.target.surfacePiSessionId;
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+  }
+
+  private async dispatchPrompt(text: string): Promise<void> {
     const userMessage: Message = {
       role: "user",
       content: [{ type: "text", text }],
@@ -618,6 +719,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       target: this.target,
       messages: structuredClone(this.agent.state.messages),
       pendingUserMessage: null,
+      queuedMessages: structuredClone(this.queuedPrompts),
       streamMessage:
         this.agent.state.streamMessage?.role === "assistant"
           ? structuredClone(this.agent.state.streamMessage)

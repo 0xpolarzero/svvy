@@ -357,6 +357,28 @@ export interface StructuredLifecycleEventRecord {
   data?: Record<string, unknown>;
 }
 
+export type StructuredSurfaceQueuedMessageStatus =
+  | "queued"
+  | "steering"
+  | "dispatching"
+  | "delivered"
+  | "cancelled";
+
+export interface StructuredSurfaceQueuedMessageRecord {
+  id: string;
+  sessionId: string;
+  surfacePiSessionId: string;
+  threadId: string | null;
+  messageJson: string;
+  requestSummary: string;
+  status: StructuredSurfaceQueuedMessageStatus;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+}
+
 export interface StructuredSessionSnapshot {
   workspace: StructuredWorkspaceRecord;
   pi: StructuredPiSessionRecord;
@@ -381,6 +403,7 @@ export interface StructuredSessionSnapshot {
   workflowTaskAttempts: StructuredWorkflowTaskAttemptRecord[];
   workflowTaskMessages: StructuredWorkflowTaskMessageRecord[];
   artifacts: StructuredArtifactRecord[];
+  queuedMessages?: StructuredSurfaceQueuedMessageRecord[];
   events: StructuredLifecycleEventRecord[];
 }
 
@@ -616,6 +639,34 @@ export interface StructuredSessionStateStore {
     heartbeatAt?: string | null;
     summary: string;
   }): StructuredWorkflowRunRecord;
+  enqueueSurfaceMessage(input: {
+    sessionId: string;
+    surfacePiSessionId: string;
+    threadId?: string | null;
+    messageJson: string;
+    requestSummary: string;
+    position?: "front" | "back";
+  }): StructuredSurfaceQueuedMessageRecord;
+  listQueuedSurfaceMessages(input: {
+    surfacePiSessionId: string;
+  }): StructuredSurfaceQueuedMessageRecord[];
+  getSurfaceQueuedMessage(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
+  peekPendingSurfaceMessage(input: {
+    surfacePiSessionId: string;
+  }): StructuredSurfaceQueuedMessageRecord | null;
+  markSurfaceMessageDispatching(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
+  markSurfaceMessageSteering(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
+  markSurfaceMessageQueued(input: {
+    id: string;
+    position?: "front" | "back";
+  }): StructuredSurfaceQueuedMessageRecord;
+  markSurfaceMessageDelivered(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
+  cancelSurfaceMessage(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
+  reorderSurfaceMessage(input: {
+    surfacePiSessionId: string;
+    id: string;
+    beforeId?: string | null;
+  }): StructuredSurfaceQueuedMessageRecord[];
   getSessionState(sessionId: string): StructuredSessionSnapshot;
   listSessionStates(): StructuredSessionSnapshot[];
   getThreadDetail(threadId: string): StructuredThreadDetail;
@@ -865,6 +916,21 @@ type ArtifactRow = {
   created_at: string;
 };
 
+type SurfaceQueuedMessageRow = {
+  id: string;
+  session_id: string;
+  surface_pi_session_id: string;
+  thread_id: string | null;
+  message_json: string;
+  request_summary: string;
+  status: StructuredSurfaceQueuedMessageStatus;
+  position: number;
+  created_at: string;
+  updated_at: string;
+  delivered_at: string | null;
+  cancelled_at: string | null;
+};
+
 type EventRow = {
   id: string;
   session_id: string;
@@ -897,6 +963,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     this.db = new Database(databasePath);
     this.nowFn = options.now ?? (() => new Date().toISOString());
     initializeSchema(this.db);
+    this.restoreInterruptedQueuedMessages();
 
     const existingWorkspace = this.db.query(`SELECT * FROM workspace LIMIT 1`).get() as
       | { id: string; label: string; cwd: string; artifact_dir: string }
@@ -939,6 +1006,75 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
 
   close(): void {
     this.db.close();
+  }
+
+  private restoreInterruptedQueuedMessages(): void {
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE surface_message_queue
+         SET status = 'queued',
+             updated_at = ?,
+             delivered_at = NULL,
+             cancelled_at = NULL
+         WHERE status IN ('steering', 'dispatching')`,
+      )
+      .run(timestamp);
+  }
+
+  private nextSurfaceMessagePosition(
+    surfacePiSessionId: string,
+    placement: "front" | "back",
+  ): number {
+    const row = this.db
+      .query(
+        `SELECT MIN(position) AS min_position, MAX(position) AS max_position
+         FROM surface_message_queue
+         WHERE surface_pi_session_id = ? AND status IN ('queued', 'steering', 'dispatching')`,
+      )
+      .get(surfacePiSessionId) as
+      | { min_position: number | null; max_position: number | null }
+      | undefined;
+    if (placement === "front") {
+      return (row?.min_position ?? 1) - 1;
+    }
+    return (row?.max_position ?? 0) + 1;
+  }
+
+  private recordSurfaceMessageEvent(row: SurfaceQueuedMessageRow, kind: string, at: string): void {
+    this.recordEvent({
+      sessionId: row.session_id,
+      kind,
+      subjectKind: "session",
+      subjectId: row.session_id,
+      at,
+      data: {
+        surfacePiSessionId: row.surface_pi_session_id,
+        threadId: row.thread_id,
+        queuedMessageId: row.id,
+      },
+    });
+  }
+
+  private updateSurfaceMessageStatus(input: {
+    id: string;
+    status: StructuredSurfaceQueuedMessageStatus;
+    eventKind: string;
+  }): StructuredSurfaceQueuedMessageRecord {
+    const existing = this.mustFindSurfaceQueuedMessageRow(input.id);
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE surface_message_queue
+         SET status = ?,
+             updated_at = ?,
+             delivered_at = CASE WHEN ? = 'delivered' THEN ? ELSE delivered_at END,
+             cancelled_at = CASE WHEN ? = 'cancelled' THEN ? ELSE cancelled_at END
+         WHERE id = ?`,
+      )
+      .run(input.status, timestamp, input.status, timestamp, input.status, timestamp, input.id);
+    this.recordSurfaceMessageEvent(existing, input.eventKind, timestamp);
+    return this.mustFindSurfaceQueuedMessageRecord(input.id);
   }
 
   upsertPiSession(pi: StructuredPiSessionRecord): void {
@@ -2648,6 +2784,200 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return this.mustFindWorkflowRunRecord(input.workflowId);
   }
 
+  enqueueSurfaceMessage(input: {
+    sessionId: string;
+    surfacePiSessionId: string;
+    threadId?: string | null;
+    messageJson: string;
+    requestSummary: string;
+    position?: "front" | "back";
+  }): StructuredSurfaceQueuedMessageRecord {
+    this.mustFindSessionRow(input.sessionId);
+    if (input.threadId) {
+      this.mustFindThreadRow(input.threadId);
+    }
+    const id = createId("queued-message");
+    const timestamp = this.now();
+    const queuePosition = this.nextSurfaceMessagePosition(
+      input.surfacePiSessionId,
+      input.position ?? "back",
+    );
+    this.db
+      .query(
+        `INSERT INTO surface_message_queue (
+           id,
+           session_id,
+           surface_pi_session_id,
+           thread_id,
+           message_json,
+           request_summary,
+           status,
+           position,
+           created_at,
+           updated_at,
+           delivered_at,
+           cancelled_at
+         ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL)`,
+      )
+      .run(
+        id,
+        input.sessionId,
+        input.surfacePiSessionId,
+        input.threadId ?? null,
+        input.messageJson,
+        input.requestSummary,
+        queuePosition,
+        timestamp,
+        timestamp,
+      );
+
+    this.recordEvent({
+      sessionId: input.sessionId,
+      kind: "surfaceMessage.queued",
+      subjectKind: "session",
+      subjectId: input.sessionId,
+      at: timestamp,
+      data: {
+        surfacePiSessionId: input.surfacePiSessionId,
+        threadId: input.threadId ?? null,
+        queuedMessageId: id,
+      },
+    });
+
+    return this.mustFindSurfaceQueuedMessageRecord(id);
+  }
+
+  listQueuedSurfaceMessages(input: {
+    surfacePiSessionId: string;
+  }): StructuredSurfaceQueuedMessageRecord[] {
+    return this.queryQueuedSurfaceMessageRows(input.surfacePiSessionId).map((row) =>
+      this.mapSurfaceQueuedMessage(row),
+    );
+  }
+
+  getSurfaceQueuedMessage(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
+    return this.mustFindSurfaceQueuedMessageRecord(input.id);
+  }
+
+  peekPendingSurfaceMessage(input: {
+    surfacePiSessionId: string;
+  }): StructuredSurfaceQueuedMessageRecord | null {
+    const row =
+      (this.db
+        .query(
+          `SELECT * FROM surface_message_queue
+           WHERE surface_pi_session_id = ? AND status = 'queued'
+           ORDER BY position ASC, rowid ASC
+           LIMIT 1`,
+        )
+        .get(input.surfacePiSessionId) as SurfaceQueuedMessageRow | undefined) ?? null;
+    return row ? this.mapSurfaceQueuedMessage(row) : null;
+  }
+
+  markSurfaceMessageDispatching(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
+    return this.updateSurfaceMessageStatus({
+      id: input.id,
+      status: "dispatching",
+      eventKind: "surfaceMessage.dispatching",
+    });
+  }
+
+  markSurfaceMessageSteering(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
+    return this.updateSurfaceMessageStatus({
+      id: input.id,
+      status: "steering",
+      eventKind: "surfaceMessage.steering",
+    });
+  }
+
+  markSurfaceMessageQueued(input: {
+    id: string;
+    position?: "front" | "back";
+  }): StructuredSurfaceQueuedMessageRecord {
+    const existing = this.mustFindSurfaceQueuedMessageRow(input.id);
+    const timestamp = this.now();
+    const position = this.nextSurfaceMessagePosition(
+      existing.surface_pi_session_id,
+      input.position ?? "front",
+    );
+    this.db
+      .query(
+        `UPDATE surface_message_queue
+         SET status = 'queued',
+             position = ?,
+             updated_at = ?,
+             delivered_at = NULL,
+             cancelled_at = NULL
+         WHERE id = ?`,
+      )
+      .run(position, timestamp, input.id);
+    this.recordSurfaceMessageEvent(existing, "surfaceMessage.restored", timestamp);
+    return this.mustFindSurfaceQueuedMessageRecord(input.id);
+  }
+
+  markSurfaceMessageDelivered(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
+    return this.updateSurfaceMessageStatus({
+      id: input.id,
+      status: "delivered",
+      eventKind: "surfaceMessage.delivered",
+    });
+  }
+
+  cancelSurfaceMessage(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
+    const existing = this.mustFindSurfaceQueuedMessageRow(input.id);
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE surface_message_queue
+         SET status = 'cancelled',
+             updated_at = ?,
+             cancelled_at = ?
+         WHERE id = ?`,
+      )
+      .run(timestamp, timestamp, input.id);
+    this.recordSurfaceMessageEvent(existing, "surfaceMessage.cancelled", timestamp);
+    return this.mustFindSurfaceQueuedMessageRecord(input.id);
+  }
+
+  reorderSurfaceMessage(input: {
+    surfacePiSessionId: string;
+    id: string;
+    beforeId?: string | null;
+  }): StructuredSurfaceQueuedMessageRecord[] {
+    const rows = this.queryQueuedSurfaceMessageRows(input.surfacePiSessionId);
+    if (!rows.some((row) => row.id === input.id) || input.id === input.beforeId) {
+      return rows.map((row) => this.mapSurfaceQueuedMessage(row));
+    }
+
+    const moving = rows.find((row) => row.id === input.id)!;
+    const remaining = rows.filter((row) => row.id !== input.id);
+    const beforeIndex = input.beforeId
+      ? remaining.findIndex((row) => row.id === input.beforeId)
+      : remaining.length;
+    if (beforeIndex < 0) {
+      return rows.map((row) => this.mapSurfaceQueuedMessage(row));
+    }
+
+    const reordered = [...remaining.slice(0, beforeIndex), moving, ...remaining.slice(beforeIndex)];
+    const timestamp = this.now();
+    const updatePositions = this.db.transaction((nextRows: SurfaceQueuedMessageRow[]) => {
+      nextRows.forEach((row, index) => {
+        this.db
+          .query(
+            `UPDATE surface_message_queue
+             SET position = ?, updated_at = ?
+             WHERE id = ?`,
+          )
+          .run(index + 1, timestamp, row.id);
+      });
+    });
+    updatePositions(reordered);
+    this.recordSurfaceMessageEvent(moving, "surfaceMessage.reordered", timestamp);
+    return this.queryQueuedSurfaceMessageRows(input.surfacePiSessionId).map((row) =>
+      this.mapSurfaceQueuedMessage(row),
+    );
+  }
+
   getSessionState(sessionId: string): StructuredSessionSnapshot {
     const session = this.mustFindSessionRow(sessionId);
     const workflowRuns = this.queryWorkflowRunRecords(sessionId);
@@ -2675,6 +3005,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       workflowTaskAttempts: this.queryWorkflowTaskAttemptRecords(sessionId),
       workflowTaskMessages: this.queryWorkflowTaskMessageRecords(sessionId),
       artifacts: this.queryArtifactRecords(sessionId),
+      queuedMessages: this.querySurfaceQueuedMessageRecords(sessionId),
       events: this.queryEventRecords(sessionId),
     };
   }
@@ -2865,6 +3196,16 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return row;
   }
 
+  private mustFindSurfaceQueuedMessageRow(id: string): SurfaceQueuedMessageRow {
+    const row = this.db.query(`SELECT * FROM surface_message_queue WHERE id = ?`).get(id) as
+      | SurfaceQueuedMessageRow
+      | undefined;
+    if (!row) {
+      throw new Error(`Structured queued surface message not found: ${id}`);
+    }
+    return row;
+  }
+
   private findWorkflowTaskAttemptRowByIdentity(input: {
     workflowRunId: string;
     nodeId: string;
@@ -2957,6 +3298,10 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return this.mapWorkflowTaskAttempt(this.mustFindWorkflowTaskAttemptRow(workflowTaskAttemptId));
   }
 
+  private mustFindSurfaceQueuedMessageRecord(id: string): StructuredSurfaceQueuedMessageRecord {
+    return this.mapSurfaceQueuedMessage(this.mustFindSurfaceQueuedMessageRow(id));
+  }
+
   private mustFindArtifactRecord(artifactId: string): StructuredArtifactRecord {
     const row = this.db.query(`SELECT * FROM artifact WHERE id = ?`).get(artifactId) as
       | ArtifactRow
@@ -3041,6 +3386,26 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       .all(sessionId) as ArtifactRow[];
   }
 
+  private querySurfaceQueuedMessageRows(sessionId: string): SurfaceQueuedMessageRow[] {
+    return this.db
+      .query(
+        `SELECT * FROM surface_message_queue
+         WHERE session_id = ?
+         ORDER BY surface_pi_session_id ASC, position ASC, rowid ASC`,
+      )
+      .all(sessionId) as SurfaceQueuedMessageRow[];
+  }
+
+  private queryQueuedSurfaceMessageRows(surfacePiSessionId: string): SurfaceQueuedMessageRow[] {
+    return this.db
+      .query(
+        `SELECT * FROM surface_message_queue
+         WHERE surface_pi_session_id = ? AND status IN ('queued', 'steering')
+         ORDER BY position ASC, rowid ASC`,
+      )
+      .all(surfacePiSessionId) as SurfaceQueuedMessageRow[];
+  }
+
   private queryEventRows(sessionId: string): EventRow[] {
     return this.db
       .query(`SELECT * FROM event WHERE session_id = ? ORDER BY rowid ASC`)
@@ -3101,6 +3466,14 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
 
   private queryArtifactRecords(sessionId: string): StructuredArtifactRecord[] {
     return this.queryArtifactRows(sessionId).map((row) => this.mapArtifact(row));
+  }
+
+  private querySurfaceQueuedMessageRecords(
+    sessionId: string,
+  ): StructuredSurfaceQueuedMessageRecord[] {
+    return this.querySurfaceQueuedMessageRows(sessionId).map((row) =>
+      this.mapSurfaceQueuedMessage(row),
+    );
   }
 
   private queryEventRecords(sessionId: string): StructuredLifecycleEventRecord[] {
@@ -3581,6 +3954,25 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     };
   }
 
+  private mapSurfaceQueuedMessage(
+    row: SurfaceQueuedMessageRow,
+  ): StructuredSurfaceQueuedMessageRecord {
+    return {
+      id: row.id,
+      sessionId: row.session_id,
+      surfacePiSessionId: row.surface_pi_session_id,
+      threadId: row.thread_id,
+      messageJson: row.message_json,
+      requestSummary: row.request_summary,
+      status: row.status,
+      position: row.position,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      deliveredAt: row.delivered_at,
+      cancelledAt: row.cancelled_at,
+    };
+  }
+
   private mapEvent(row: EventRow): StructuredLifecycleEventRecord {
     return {
       id: row.id,
@@ -3846,6 +4238,21 @@ function initializeSchema(db: Database): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS surface_message_queue (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      surface_pi_session_id TEXT NOT NULL,
+      thread_id TEXT,
+      message_json TEXT NOT NULL,
+      request_summary TEXT NOT NULL,
+      status TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      delivered_at TEXT,
+      cancelled_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS event (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -3873,6 +4280,12 @@ function initializeSchema(db: Database): void {
   ensureColumn(db, "session", "title_auto_frozen", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "session", "title_manual_override", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "thread", "session_agent_json", "TEXT");
+  ensureColumn(db, "surface_message_queue", "position", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(db, "surface_message_queue", "cancelled_at", "TEXT");
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_surface_message_queue_pending
+     ON surface_message_queue (surface_pi_session_id, status, position)`,
+  );
 }
 
 function ensureColumn(

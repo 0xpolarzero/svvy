@@ -33,6 +33,8 @@
 	import CompactSelect from "./ui/CompactSelect.svelte";
 	import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
 	import { getModelComboboxValue, type ModelComboboxOption } from "./model-options";
+	import QueuedMessagesStrip from "./QueuedMessagesStrip.svelte";
+	import type { QueuedPrompt } from "./chat-runtime";
 
 	type Props = {
 		currentModel: Model<any> | null;
@@ -41,6 +43,7 @@
 		promptHistory: PromptHistoryEntry[];
 		errorMessage?: string;
 		contextBudget?: ContextBudget | null;
+		queuedMessages?: QueuedPrompt[];
 		sessionName?: string;
 		targetLabel?: string;
 		worktreeLabel?: string;
@@ -49,6 +52,10 @@
 		onListModels: () => Promise<ModelComboboxOption[]>;
 		onModelChange: (model: Model<any>) => void;
 		onSend: (input: string) => Promise<boolean> | boolean;
+		onEditQueuedMessage?: (promptId: string) => Promise<string | null> | string | null;
+		onDeleteQueuedMessage?: (promptId: string) => void;
+		onSteerQueuedMessage?: (promptId: string) => void;
+		onReorderQueuedMessage?: (promptId: string, beforePromptId: string | null) => void;
 		onThinkingChange: (level: ThinkingLevel) => void;
 		listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
 		pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
@@ -63,6 +70,7 @@
 		promptHistory,
 		errorMessage,
 		contextBudget,
+		queuedMessages = [],
 		sessionName = "Current session",
 		targetLabel = "orchestrator",
 		worktreeLabel = "worktree",
@@ -71,6 +79,10 @@
 		onListModels,
 		onModelChange,
 		onSend,
+		onEditQueuedMessage = () => {},
+		onDeleteQueuedMessage = () => {},
+		onSteerQueuedMessage = () => {},
+		onReorderQueuedMessage = () => {},
 		onThinkingChange,
 		listWorkspacePaths,
 		pickWorkspaceAttachments,
@@ -203,6 +215,13 @@
 		moveCaretToDraftEnd(nextDraft);
 	}
 
+	async function editQueuedMessage(promptId: string) {
+		const text = await onEditQueuedMessage(promptId);
+		if (text) {
+			await restoreDraftBuffer(text);
+		}
+	}
+
 	function resetHistoryNavigation() {
 		historyNavigation = createPromptHistoryNavigationState();
 	}
@@ -293,7 +312,7 @@
 	}
 
 	async function submit() {
-		if (!canSubmit || isStreaming || isSubmitting) return;
+		if (!canSubmit || isSubmitting) return;
 		const nextDraft = serializeComposerDraft(draft, selectedMentions);
 		const nextVisibleDraft = draft;
 		const nextVisibleMentions = selectedMentions;
@@ -460,6 +479,15 @@
 
 		<div class="composer-main-row">
 			<div class="composer-input-wrap">
+				{#if queuedMessages.length > 0}
+					<QueuedMessagesStrip
+						{queuedMessages}
+						onEdit={(promptId) => void editQueuedMessage(promptId)}
+						onDelete={onDeleteQueuedMessage}
+						onSteer={onSteerQueuedMessage}
+						onReorder={onReorderQueuedMessage}
+					/>
+				{/if}
 				{#if selectedMentions.length > 0}
 					<section class="composer-context-row" aria-label="Attached file and context items">
 						<div class="mention-chip-row">
@@ -549,33 +577,23 @@
 									<SquareIcon size={13} aria-hidden="true" />
 								</button>
 							</Tooltip>
-						{:else}
-							<Tooltip label="Send message" disabled={!currentModel || !canSubmit || isSubmitting}>
-								<button
-									class="composer-submit"
-									type="button"
-									aria-label="Send"
-									onclick={() => void submit()}
-									disabled={!currentModel || !canSubmit || isSubmitting}
-								>
-									<ArrowUpIcon size={15} aria-hidden="true" />
-								</button>
-							</Tooltip>
 						{/if}
+						<Tooltip label={isStreaming ? "Queue message" : "Send message"} disabled={!currentModel || !canSubmit || isSubmitting}>
+							<button
+								class="composer-submit"
+								type="button"
+								aria-label={isStreaming ? "Queue message" : "Send"}
+								onclick={() => void submit()}
+								disabled={!currentModel || !canSubmit || isSubmitting}
+							>
+								<ArrowUpIcon size={15} aria-hidden="true" />
+							</button>
+						</Tooltip>
 					</div>
 				</div>
 			</div>
 		</div>
 
-		{#if isStreaming}
-			<div class="composer-streaming-row">
-				<span class="streaming-dot pulse-dot"></span>
-				<span>{targetLabel} is working...</span>
-				{#if contextBudget}
-					<strong>{contextBudget.label} context used</strong>
-				{/if}
-			</div>
-		{/if}
 	</div>
 </div>
 
@@ -592,8 +610,7 @@
 		transition: background-color 160ms cubic-bezier(0.19, 1, 0.22, 1);
 	}
 
-	.composer-context-row,
-	.composer-streaming-row {
+	.composer-context-row {
 		border-top: 1px solid var(--ui-border-soft);
 	}
 

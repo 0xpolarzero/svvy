@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { getModel, type AssistantMessage } from "@mariozechner/pi-ai";
+import { getModel, type AssistantMessage, type Message } from "@mariozechner/pi-ai";
 import type { ChatStorage, CustomProvider } from "./chat-storage";
 import type {
   AppLogEntry,
@@ -241,6 +241,7 @@ function createSurfaceSnapshot(input: {
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
   streamMessage?: AssistantMessage | null;
+  queuedMessages?: ConversationSurfaceSnapshot["queuedMessages"];
   provider?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
@@ -255,6 +256,7 @@ function createSurfaceSnapshot(input: {
     target: structuredClone(input.target),
     messages: structuredClone(input.messages),
     pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
+    queuedMessages: structuredClone(input.queuedMessages ?? []),
     streamMessage: input.streamMessage ? structuredClone(input.streamMessage) : null,
     provider: input.provider ?? "openai",
     model: input.model ?? "gpt-4o",
@@ -641,6 +643,7 @@ function createFakeRpc(input: {
     listSessions: 0,
   };
   let focusedSurfacePiSessionId: string | null = null;
+  let queuedMessageSequence = 0;
 
   const listSessions = (): WorkspaceSessionSummary[] =>
     Array.from(summaries.values()).map((summary) => structuredClone(summary));
@@ -1233,12 +1236,45 @@ function createFakeRpc(input: {
           return { ok: true };
         },
         sendPrompt: async (request) => {
-          promptRequests.push(structuredClone(request));
-          pendingPromptSurfaces.add(request.target.surfacePiSessionId);
           const record = getSurfaceRecord(request.target.surfacePiSessionId);
           const pendingUserMessage =
             (request.messages as AgentMessage[]).findLast((message) => message.role === "user") ??
             null;
+          if (request.queueOnly || record.snapshot.promptStatus === "streaming") {
+            record.snapshot = {
+              ...record.snapshot,
+              queuedMessages: [
+                ...record.snapshot.queuedMessages,
+                {
+                  id: `queued-${++queuedMessageSequence}`,
+                  text:
+                    pendingUserMessage && typeof pendingUserMessage.content !== "string"
+                      ? pendingUserMessage.content
+                          .map((block) => (block.type === "text" ? block.text : ""))
+                          .join("")
+                      : String(pendingUserMessage?.content ?? ""),
+                  status: "queued",
+                  createdAt: "2026-04-10T10:12:00.000Z",
+                  updatedAt: "2026-04-10T10:12:00.000Z",
+                },
+              ],
+            };
+            queueMicrotask(() => {
+              emitSurfaceSync({
+                reason: "surface.updated",
+                target: cloneTarget(request.target),
+                snapshot: structuredClone(record.snapshot),
+              });
+            });
+            return {
+              target: cloneTarget(request.target),
+              queued: true,
+              snapshot: structuredClone(record.snapshot),
+            };
+          }
+
+          promptRequests.push(structuredClone(request));
+          pendingPromptSurfaces.add(request.target.surfacePiSessionId);
           record.snapshot = {
             ...record.snapshot,
             target: cloneTarget(request.target),
@@ -1313,9 +1349,115 @@ function createFakeRpc(input: {
               emitSurfaceSync(surfaceSyncPayload);
             }
             emitWorkspaceSync("workspace.updated");
+            const [nextQueued, ...remainingQueued] = record.snapshot.queuedMessages;
+            if (nextQueued) {
+              record.snapshot = { ...record.snapshot, queuedMessages: remainingQueued };
+              void harness.client.request.sendPrompt({
+                ...request,
+                messages: [
+                  ...(record.snapshot.messages as AgentMessage[]),
+                  userMessage(nextQueued.text),
+                ] as Message[],
+              });
+            }
           });
 
           return { target: cloneTarget(request.target) };
+        },
+        deleteQueuedSurfaceMessage: async ({ target, queuedMessageId }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          record.snapshot = {
+            ...record.snapshot,
+            queuedMessages: record.snapshot.queuedMessages.filter(
+              (message) => message.id !== queuedMessageId,
+            ),
+          };
+          queueMicrotask(() =>
+            emitSurfaceSync({
+              reason: "surface.updated",
+              target: cloneTarget(target),
+              snapshot: structuredClone(record.snapshot),
+            }),
+          );
+          return {
+            ok: true,
+            target: cloneTarget(target),
+            snapshot: structuredClone(record.snapshot),
+          };
+        },
+        editQueuedSurfaceMessage: async ({ target, queuedMessageId }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          const queued = record.snapshot.queuedMessages.find(
+            (message) => message.id === queuedMessageId,
+          );
+          record.snapshot = {
+            ...record.snapshot,
+            queuedMessages: record.snapshot.queuedMessages.filter(
+              (message) => message.id !== queuedMessageId,
+            ),
+          };
+          return {
+            ok: true,
+            text: queued?.text,
+            snapshot: structuredClone(record.snapshot),
+          };
+        },
+        reorderQueuedSurfaceMessage: async ({ target, queuedMessageId, beforeQueuedMessageId }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          const moving = record.snapshot.queuedMessages.find(
+            (message) => message.id === queuedMessageId,
+          );
+          if (moving) {
+            const remaining = record.snapshot.queuedMessages.filter(
+              (message) => message.id !== queuedMessageId,
+            );
+            const beforeIndex = beforeQueuedMessageId
+              ? remaining.findIndex((message) => message.id === beforeQueuedMessageId)
+              : remaining.length;
+            record.snapshot = {
+              ...record.snapshot,
+              queuedMessages: [
+                ...remaining.slice(0, beforeIndex < 0 ? remaining.length : beforeIndex),
+                moving,
+                ...remaining.slice(beforeIndex < 0 ? remaining.length : beforeIndex),
+              ],
+            };
+          }
+          queueMicrotask(() =>
+            emitSurfaceSync({
+              reason: "surface.updated",
+              target: cloneTarget(target),
+              snapshot: structuredClone(record.snapshot),
+            }),
+          );
+          return {
+            ok: true,
+            target: cloneTarget(target),
+            snapshot: structuredClone(record.snapshot),
+          };
+        },
+        steerQueuedSurfaceMessage: async ({ target, queuedMessageId }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          record.snapshot = {
+            ...record.snapshot,
+            queuedMessages: record.snapshot.queuedMessages.map((message) =>
+              message.id === queuedMessageId
+                ? { ...message, status: "steering", updatedAt: "2026-04-10T10:13:00.000Z" }
+                : message,
+            ),
+          };
+          queueMicrotask(() =>
+            emitSurfaceSync({
+              reason: "surface.updated",
+              target: cloneTarget(target),
+              snapshot: structuredClone(record.snapshot),
+            }),
+          );
+          return {
+            ok: true,
+            target: cloneTarget(target),
+            snapshot: structuredClone(record.snapshot),
+          };
         },
         setSurfaceModel: async ({ target, provider, model }) => {
           modelUpdates.push({ target: cloneTarget(target), model });
@@ -1735,6 +1877,104 @@ describe("createChatRuntime", () => {
           message.content[0].text === "Orchestrator settled.",
       ),
     ).toBe(true);
+
+    runtime.dispose();
+  });
+
+  it("queues prompts sent to a streaming surface and dispatches them after the active turn settles", async () => {
+    const session = createSummary("session-1", "Parser", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [userMessage("Initial"), assistantMessage("Ready")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    const activeTurn = createDeferred<PromptHandlerResult>();
+    harness.setPromptHandler(target.surfacePiSessionId, () => activeTurn.promise);
+
+    const firstPrompt = controller.sendPrompt("Run the first turn");
+    await waitFor(() => controller.promptStatus === "streaming");
+
+    await controller.sendPrompt("Follow up while streaming");
+
+    expect(harness.promptRequests).toHaveLength(1);
+    expect(controller.queuedPrompts.map((prompt) => prompt.text)).toEqual([
+      "Follow up while streaming",
+    ]);
+
+    activeTurn.resolve({ assistantText: "First turn done" });
+    await firstPrompt;
+    await waitFor(() => harness.promptRequests.length >= 2);
+
+    const queuedRequest = harness.promptRequests[1];
+    expect(queuedRequest).toBeDefined();
+    if (!queuedRequest) return;
+    const queuedUserMessage = (queuedRequest.messages as AgentMessage[]).findLast(
+      (message) => message.role === "user",
+    );
+    expect(queuedUserMessage?.content).toEqual([
+      { type: "text", text: "Follow up while streaming" },
+    ]);
+    expect(controller.queuedPrompts).toEqual([]);
+
+    runtime.dispose();
+  });
+
+  it("edits, deletes, promotes, and reorders queued prompts without touching the active prompt", async () => {
+    const session = createSummary("session-1", "Parser", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [userMessage("Initial"), assistantMessage("Ready")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    const activeTurn = createDeferred<PromptHandlerResult>();
+    harness.setPromptHandler(target.surfacePiSessionId, () => activeTurn.promise);
+
+    const activePrompt = controller.sendPrompt("Active turn");
+    await waitFor(() => controller.promptStatus === "streaming");
+    await controller.sendPrompt("First queued");
+    await controller.sendPrompt("Second queued");
+    await controller.sendPrompt("Third queued");
+
+    const [first, second, third] = controller.queuedPrompts;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(third).toBeDefined();
+    if (!first || !second || !third) return;
+    const editedText = await controller.editQueuedPrompt(second.id);
+    expect(editedText).toBe("Second queued");
+    await controller.sendPrompt("Second queued, revised");
+    expect(await controller.reorderQueuedPrompt(third.id, first.id)).toBe(true);
+    expect(await controller.deleteQueuedPrompt(first.id)).toBe(true);
+    expect(await controller.steerQueuedPrompt(third.id)).toBe(true);
+
+    expect(harness.promptRequests).toHaveLength(1);
+    expect(controller.queuedPrompts.map((prompt) => [prompt.text, prompt.status])).toEqual([
+      ["Third queued", "steering"],
+      ["Second queued, revised", "queued"],
+    ]);
+
+    activeTurn.resolve({ assistantText: "Active turn done" });
+    await activePrompt;
 
     runtime.dispose();
   });

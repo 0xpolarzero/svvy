@@ -11,6 +11,7 @@
   import type { PromptHistoryEntry } from "./prompt-history";
   import type { ChatRuntime } from "./chat-runtime";
   import type { ChatSurfaceController } from "./chat-runtime";
+  import type { QueuedPrompt } from "./chat-runtime";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import { onDestroy, onMount } from "svelte";
   import { listModelComboboxOptions } from "./model-options";
@@ -28,6 +29,7 @@
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
   let streamMessage = $state<ChatSurfaceController["agent"]["state"]["streamMessage"]>(null);
   let pendingToolCalls = $state(new Set<string>());
+  let queuedMessages = $state<QueuedPrompt[]>([]);
   let isStreaming = $state(false);
   let errorMessage = $state<string | undefined>(undefined);
   let currentModel = $state<ChatSurfaceController["agent"]["state"]["model"] | null>(null);
@@ -55,6 +57,7 @@
       messages = [];
       streamMessage = null;
       pendingToolCalls = new Set();
+      queuedMessages = [];
       isStreaming = false;
       errorMessage = undefined;
       currentModel = null;
@@ -65,6 +68,7 @@
     messages = [...controller.agent.state.messages];
     streamMessage = controller.agent.state.streamMessage;
     pendingToolCalls = new Set(controller.agent.state.pendingToolCalls);
+    queuedMessages = [...controller.queuedPrompts];
     isStreaming = controller.agent.state.isStreaming || controller.promptStatus === "streaming";
     errorMessage = controller.agent.state.error;
     currentModel = controller.agent.state.model;
@@ -162,6 +166,7 @@
       {isStreaming}
       {errorMessage}
       {promptHistory}
+      {queuedMessages}
       {contextBudget}
       sessionName={surfaceDisplayTitle}
       targetLabel={pane?.target?.surface === "thread" ? "Messaging handler thread" : "Messaging orchestrator"}
@@ -174,6 +179,11 @@
         controller?.agent.setModel(model);
       }}
       onSend={send}
+      onEditQueuedMessage={(promptId) => controller.editQueuedPrompt(promptId)}
+      onDeleteQueuedMessage={(promptId) => void controller.deleteQueuedPrompt(promptId)}
+      onSteerQueuedMessage={(promptId) => void controller.steerQueuedPrompt(promptId)}
+      onReorderQueuedMessage={(promptId, beforePromptId) =>
+        void controller.reorderQueuedPrompt(promptId, beforePromptId)}
       onThinkingChange={(level) => controller?.agent.setThinkingLevel(level)}
       listWorkspacePaths={(options) => runtime.listWorkspacePaths(options)}
       pickWorkspaceAttachments={() => runtime.pickWorkspaceAttachments()}

@@ -46,6 +46,8 @@ type PromptableSession = {
       expandPromptTemplates?: boolean;
     },
   ): Promise<void>;
+  steer(text: string): Promise<void>;
+  clearQueue(): { steering: string[]; followUp: string[] };
   abort(): Promise<void>;
   agent: {
     appendMessage(message: Message): void;
@@ -1379,14 +1381,16 @@ describe("WorkspaceSessionCatalog", () => {
             getManagedSurface(catalog, handler.target.surfacePiSessionId).activePrompt,
         );
 
-        await expect(
-          catalog.sendPrompt({
-            ...DEFAULTS,
-            target: handler.target,
-            messages: [handlerPrompt],
-            onEvent: () => {},
-          }),
-        ).rejects.toThrow("already streaming");
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: handler.target,
+          messages: [handlerPrompt],
+          onEvent: () => {},
+        });
+        expect(
+          getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
+            .queuedMessages,
+        ).toHaveLength(1);
 
         await catalog.sendPrompt({
           ...DEFAULTS,
@@ -1407,9 +1411,91 @@ describe("WorkspaceSessionCatalog", () => {
             !getManagedSurface(catalog, handler.target.surfacePiSessionId).activePrompt &&
             !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
+        await waitFor(() => handlerPromptSpy.mock.calls.length === 3);
+        expect(
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.map((message) => message.status) ?? [],
+        ).toEqual(["delivered"]);
       } finally {
         handlerPromptGate.resolve();
         handlerPromptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("steers an active surface through pi without durably queueing the message", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Steer Surface" }, DEFAULTS);
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptGate = createDeferred<void>();
+      const prompt = userMessage("Start a long turn.");
+      const steer = userMessage("Focus on the failing backend contract.");
+      let targetPromptCalls = 0;
+      const sessionPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(
+          promptText: string,
+          options?: {
+            expandPromptTemplates?: boolean;
+          },
+        ): Promise<void>;
+        steer(text: string): Promise<void>;
+      };
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(
+        async function (this: PromptableSession) {
+          const surface = findManagedSurfaceBySession(catalog, this);
+          if (surface?.sessionId !== created.target.surfacePiSessionId) {
+            appendMessagesToSession(this, [
+              userMessage("Name the session."),
+              assistantMessage("Steer surface"),
+            ]);
+            return;
+          }
+          targetPromptCalls += 1;
+          await promptGate.promise;
+          appendMessagesToSession(this, [prompt, assistantMessage("Long turn finished.")]);
+        },
+      );
+      const steerSpy = spyOn(sessionPrototype, "steer").mockResolvedValue(undefined);
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [prompt],
+          onEvent: () => {},
+        });
+        await waitFor(
+          () => getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+
+        await catalog.steerPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [steer],
+          onEvent: () => {},
+        });
+
+        expect(steerSpy).toHaveBeenCalledWith("Focus on the failing backend contract.");
+        expect(
+          getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
+            .queuedMessages,
+        ).toHaveLength(0);
+
+        promptGate.resolve();
+        await waitFor(
+          () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+        expect(targetPromptCalls).toBe(1);
+      } finally {
+        promptGate.resolve();
+        promptSpy.mockRestore();
+        steerSpy.mockRestore();
       }
     } finally {
       await catalog.dispose();
@@ -1711,12 +1797,30 @@ describe("WorkspaceSessionCatalog", () => {
             getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
 
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: handler.target,
+          messages: [userMessage("Run this after the current handler turn.")],
+          onEvent: () => {},
+        });
+        expect(
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.map((message) => message.status) ?? [],
+        ).toEqual(["queued"]);
+
         await cancelSurfacePrompt(catalog, handler.target);
         await waitFor(
           () => !getManagedSurface(catalog, handler.target.surfacePiSessionId).activePrompt,
         );
 
         expect(handlerAbortSpy).toHaveBeenCalledTimes(1);
+        expect(handlerPromptSpy).toHaveBeenCalledTimes(2);
+        expect(
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.map((message) => message.status) ?? [],
+        ).toEqual(["queued"]);
         expect(getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt).toBe(
           true,
         );

@@ -14,9 +14,9 @@ import type {
   AuthStateResponse,
   ChatRPCSchema,
   ComposerMentionKind,
-  PromptTarget,
   ProviderAuthInfo,
   SendPromptRequest,
+  SendPromptResponse,
   SwitchWorkspaceBranchResponse,
   WorkspaceScopedRequest,
 } from "../shared/workspace-contract";
@@ -1022,7 +1022,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         recordBridgeEvent("session.archived-group.toggled", { collapsed });
         return result;
       },
-      sendPrompt: async (payload): Promise<{ target: PromptTarget }> => {
+      sendPrompt: async (payload): Promise<SendPromptResponse> => {
         const runtime = getWorkspaceRuntime(payload);
         const resolved = resolveSendDefaults(runtime, payload);
 
@@ -1076,6 +1076,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           thinkingLevel: resolved.reasoningEffort,
           messages: payload.messages,
           systemPrompt: payload.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+          queueOnly: payload.queueOnly ?? false,
           onEvent: (event) => {
             if (event.type === "start") {
               recordBridgeEvent("prompt.started", {
@@ -1134,14 +1135,127 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
 
         surfacePiSessionId = session.target.surfacePiSessionId;
-        runtime.appLog.info("prompt", "Prompt dispatched to pi runtime.", {
+        runtime.appLog.info(
+          "prompt",
+          session.queued ? "Prompt queued for active surface." : "Prompt dispatched to pi runtime.",
+          {
+            model: model.id,
+            provider: resolved.provider,
+            queued: session.queued ?? false,
+            surfacePiSessionId,
+            workspaceSessionId: session.target.workspaceSessionId,
+            threadId: session.target.threadId,
+          },
+        );
+        return session;
+      },
+      steerPrompt: async (payload): Promise<SendPromptResponse> => {
+        const runtime = getWorkspaceRuntime(payload);
+        const resolved = resolveSendDefaults(runtime, payload);
+
+        if (supportsOAuth(resolved.provider)) {
+          await refreshIfNeeded(resolved.provider);
+        }
+
+        const apiKey = resolveApiKey(resolved.provider);
+        if (!apiKey) {
+          const message = getApiKeyMissingError(resolved.provider);
+          runtime.appLog.warning(
+            "auth.provider",
+            "Configured provider is not connected for prompt steering.",
+            {
+              provider: resolved.provider,
+              workspaceSessionId: payload.target.workspaceSessionId,
+              surfacePiSessionId: payload.target.surfacePiSessionId,
+              threadId: payload.target.threadId,
+            },
+          );
+          throw new Error(message);
+        }
+
+        const model = getModel(
+          resolved.provider as Parameters<typeof getModel>[0],
+          resolved.model as Parameters<typeof getModel>[1],
+        );
+        recordBridgeEvent("prompt.steer.requested", {
+          messageCount: payload.messages.length,
           model: model.id,
           provider: resolved.provider,
-          surfacePiSessionId,
+          requestedSurfacePiSessionId: payload.target.surfacePiSessionId,
+          requestedWorkspaceSessionId: payload.target.workspaceSessionId,
+          requestedThreadId: payload.target.threadId ?? null,
+        });
+        runtime.appLog.info("prompt", "Prompt steer requested.", {
+          messageCount: payload.messages.length,
+          model: model.id,
+          provider: resolved.provider,
+          workspaceSessionId: payload.target.workspaceSessionId,
+          surfacePiSessionId: payload.target.surfacePiSessionId,
+          threadId: payload.target.threadId,
+        });
+
+        const session = await runtime.catalog.steerPrompt({
+          target: payload.target,
+          provider: resolved.provider,
+          model: model.id,
+          thinkingLevel: resolved.reasoningEffort,
+          messages: payload.messages,
+          systemPrompt: payload.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+        });
+
+        runtime.appLog.info("prompt", "Prompt steer dispatched to pi runtime.", {
+          model: model.id,
+          provider: resolved.provider,
+          surfacePiSessionId: session.target.surfacePiSessionId,
           workspaceSessionId: session.target.workspaceSessionId,
           threadId: session.target.threadId,
         });
         return session;
+      },
+      deleteQueuedSurfaceMessage: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const result = await runtime.catalog.deleteQueuedSurfaceMessage(input);
+        runtime.appLog.info("prompt", "Queued surface message deleted.", {
+          workspaceSessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId,
+          queuedMessageId: input.queuedMessageId,
+        });
+        return result;
+      },
+      editQueuedSurfaceMessage: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const result = await runtime.catalog.editQueuedSurfaceMessage(input);
+        runtime.appLog.info("prompt", "Queued surface message restored to composer.", {
+          workspaceSessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId,
+          queuedMessageId: input.queuedMessageId,
+        });
+        return result;
+      },
+      reorderQueuedSurfaceMessage: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const result = await runtime.catalog.reorderQueuedSurfaceMessage(input);
+        runtime.appLog.info("prompt", "Queued surface messages reordered.", {
+          workspaceSessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId,
+          queuedMessageId: input.queuedMessageId,
+          beforeQueuedMessageId: input.beforeQueuedMessageId ?? null,
+        });
+        return result;
+      },
+      steerQueuedSurfaceMessage: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const result = await runtime.catalog.steerQueuedSurfaceMessage(input);
+        runtime.appLog.info("prompt", "Queued surface message steered.", {
+          workspaceSessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId,
+          queuedMessageId: input.queuedMessageId,
+        });
+        return result;
       },
       cancelPrompt: async (input): Promise<{ ok: boolean }> => {
         const runtime = getWorkspaceRuntime(input);

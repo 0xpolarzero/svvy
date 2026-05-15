@@ -145,10 +145,38 @@ export interface SendPromptRequest {
   reasoningEffort?: ReasoningEffort;
   target: PromptTarget;
   systemPrompt?: string;
+  queueOnly?: boolean;
 }
 
 export interface SendPromptResponse {
   target: PromptTarget;
+  queued?: boolean;
+  snapshot?: ConversationSurfaceSnapshot;
+}
+
+export type QueuedSurfaceMessageStatus = "queued" | "steering" | "dispatching";
+
+export interface QueuedSurfaceMessage {
+  id: string;
+  text: string;
+  status: QueuedSurfaceMessageStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QueuedSurfaceMessageRequest {
+  target: PromptTarget;
+  queuedMessageId: string;
+}
+
+export interface ReorderQueuedSurfaceMessageRequest extends QueuedSurfaceMessageRequest {
+  beforeQueuedMessageId?: string | null;
+}
+
+export interface EditQueuedSurfaceMessageResponse {
+  ok: boolean;
+  text?: string;
+  snapshot?: ConversationSurfaceSnapshot;
 }
 
 export interface CloseSurfaceRequest {
@@ -890,6 +918,7 @@ export interface ConversationSurfaceSnapshot {
   target: PromptTarget;
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
+  queuedMessages: QueuedSurfaceMessage[];
   streamMessage?: AssistantMessage | null;
   provider: string;
   model: string;
@@ -959,6 +988,7 @@ export interface WriteClipboardTextRequest {
 export interface SurfaceMutationResponse {
   ok: boolean;
   target: PromptTarget;
+  snapshot?: ConversationSurfaceSnapshot;
 }
 
 export interface ChatRPCSchema {
@@ -1184,6 +1214,26 @@ export interface ChatRPCSchema {
       sendPrompt: {
         params: WorkspaceScoped<SendPromptRequest>;
         response: SendPromptResponse;
+      };
+      steerPrompt: {
+        params: WorkspaceScoped<SendPromptRequest>;
+        response: SendPromptResponse;
+      };
+      deleteQueuedSurfaceMessage: {
+        params: WorkspaceScoped<QueuedSurfaceMessageRequest>;
+        response: SurfaceMutationResponse;
+      };
+      editQueuedSurfaceMessage: {
+        params: WorkspaceScoped<QueuedSurfaceMessageRequest>;
+        response: EditQueuedSurfaceMessageResponse;
+      };
+      reorderQueuedSurfaceMessage: {
+        params: WorkspaceScoped<ReorderQueuedSurfaceMessageRequest>;
+        response: SurfaceMutationResponse;
+      };
+      steerQueuedSurfaceMessage: {
+        params: WorkspaceScoped<QueuedSurfaceMessageRequest>;
+        response: SurfaceMutationResponse;
       };
       setSurfaceModel: {
         params: WorkspaceScoped<SetSurfaceModelRequest>;

@@ -45,6 +45,7 @@ The shipped product must let a user:
 - inspect durable outputs from each meaningful unit of work
 - delegate bounded work while keeping top-level strategy and state visible
 - talk directly inside delegated thread surfaces when that work needs clarification or follow-up
+- queue follow-up user messages against a running orchestrator or handler-thread surface without creating a concurrent turn, losing the prompt, or retargeting it to another surface
 - configure, run, and interpret Project CI as first-class product behavior
 - save a reusable authored workflow into the workspace workflow library and discover it later
 - use `Cmd+Shift+P` to open the shared palette with `>` prefilled for product actions, and `Cmd+P` to open the same palette as the reserved file quick-open entry point
@@ -489,7 +490,7 @@ It must not replace pi with a second agent shell.
 - product behavior above the pi seam
 - the orchestrator
 - delegated handler thread creation and supervision policy
-- session, turn, thread, workflow-run, command, episode, artifact, Project CI, and wait models
+- session, turn, queued-message, thread, workflow-run, command, episode, artifact, Project CI, and wait models
 - reconciliation
 - desktop UI product semantics
 - read models and selectors that drive the app
@@ -594,6 +595,7 @@ That live runtime owns:
 - the resolved system prompt
 - the current prompt execution context
 - one prompt lock for that surface
+- a surface-local queue of user-authored follow-up messages waiting for the prompt lock to release
 
 Live surface runtime is separate from both durable workspace state and Dockview layout state.
 
@@ -601,6 +603,8 @@ Streaming state belongs to the live surface runtime, not to a Dockview panel or 
 request. A surface may keep streaming with zero, one, or many attached panels, and a panel opened
 mid-stream renders the committed transcript, pending user message, and current assistant stream from
 the surface snapshot.
+
+Queued follow-up messages are structured product state, not committed transcript history until they are delivered as the next real user message for the same `surfacePiSessionId`. If the user submits from a composer while the target surface is already running, `svvy` queues that message for the same surface, keeps the active turn undisturbed, and starts the next normal turn only after the current turn settles or is cancelled. Ordinary composer submit is follow-up queueing; the explicit queued-row `Steer` action is the separate control for pi/Codex-style steering at the next safe active-turn boundary. A steered row remains visible in a locked state until pi accepts it into the active turn or `svvy` restores it after rejection. The queued message survives panel changes and duplicated panel views because it belongs to the surface, not to a Dockview panel.
 
 ### Dockview Panel And Layout State
 
@@ -843,7 +847,7 @@ At minimum:
 
 ### High-Level Flow
 
-Every user request goes through one orchestrator-controlled product loop:
+Every user request that can start immediately goes through one orchestrator-controlled product loop:
 
 1. load current workspace, session, thread, workflow-run, episode, artifact, Project CI, and wait context
 2. identify the target surface of the message
@@ -858,6 +862,8 @@ Every user request goes through one orchestrator-controlled product loop:
 11. render updated workspace and Dockview panel surfaces by joining those updates with panel bindings
 
 Read APIs and renderer code must not compensate for missing lifecycle writes with polling, transcript parsing, or inferred repair logic.
+
+If the target surface already has an active prompt lock, the composer submit does not enter this flow immediately. It creates a surface-local queued-message record and waits for the same `surfacePiSessionId` to become available. Delivery of that queued message then enters the normal flow as a real user message and normal turn for that surface.
 
 ### Main Orchestrator Loop
 

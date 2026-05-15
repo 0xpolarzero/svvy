@@ -142,6 +142,14 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     sourceSpecs: ["docs/specs/prompt-history.spec.md"],
   },
   {
+    id: "queued-surface-messages",
+    name: "Queued Surface Messages",
+    status: "in-progress",
+    summary:
+      "Lets a user submit follow-up messages to an already-running orchestrator or handler-thread surface by placing them in a visible FIFO queue owned by the target `surfacePiSessionId`; ordinary queued sends do not steer, interrupt, or create concurrent turns, while a row-level `Steer` action deliberately locks the row and uses pi/Codex-style steering at the next safe boundary; queued messages remain structured product state until delivered as real pi user input, survive panel focus changes and duplicated panels, write prompt history once at queue time, and stay recoverable across restart, cancellation, restore-to-composer, and pre-accept delivery failure.",
+    sourceSpecs: ["docs/prd.md", "docs/specs/queued-messages.spec.md"],
+  },
+  {
     id: "composer-mention-links",
     name: "Composer Mention Links",
     status: "shipped",
@@ -206,7 +214,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Multi-Surface Live Runtime",
     status: "in-progress",
     summary:
-      "Separates integrated app-chrome workspace tabs, durable workspace state, live surface runtimes, and Dockview-backed layout state, using one backend workspace runtime per open tab and explicit runtime `workspaceId` routing for workspace-scoped requests and sync events; allows opening the same cwd in multiple independent workspace tabs; keeps workspace tabs left-aligned at the start of the main chrome, horizontally scrollable when crowded, draggable for user reordering, durably restored in user-defined order, and paired with compact icon controls plus colored running, unread, waiting, and error count badges shown only above zero with hover context; uses Dockview core for panels, groups, tabs, tab groups, splitters, drag/drop overlays, edge groups, floating groups, popouts, and serialized layout restore inside fixed workspace layout slots A, B, and C pinned at the far right while svvy stores panel-to-surface bindings and panel-local metadata; keeps empty layout slots muted but selectable, manages live pi surfaces in a shared registry keyed by `surfacePiSessionId`, gives each surface its own prompt lock, model or reasoning lifecycle, pending user message, and surface-owned live assistant stream state, supports explicit open and close semantics, sidebar panel-location indicators, compact thread and workflow-run projections, and lets zero, one, or multiple panels attach to the same streaming surface without duplicating or cancelling the underlying runtime while keeping panel-local scroll independent.",
+      "Separates integrated app-chrome workspace tabs, durable workspace state, live surface runtimes, and Dockview-backed layout state, using one backend workspace runtime per open tab and explicit runtime `workspaceId` routing for workspace-scoped requests and sync events; allows opening the same cwd in multiple independent workspace tabs; keeps workspace tabs left-aligned at the start of the main chrome, horizontally scrollable when crowded, draggable for user reordering, durably restored in user-defined order, and paired with compact icon controls plus colored running, unread, waiting, and error count badges shown only above zero with hover context; uses Dockview core for panels, groups, tabs, tab groups, splitters, drag/drop overlays, edge groups, floating groups, popouts, and serialized layout restore inside fixed workspace layout slots A, B, and C pinned at the far right while svvy stores panel-to-surface bindings and panel-local metadata; keeps empty layout slots muted but selectable, manages live pi surfaces in a shared registry keyed by `surfacePiSessionId`, gives each surface its own prompt lock, model or reasoning lifecycle, pending user message, queued follow-up messages, and surface-owned live assistant stream state, supports explicit open and close semantics, sidebar panel-location indicators, compact thread and workflow-run projections, and lets zero, one, or multiple panels attach to the same streaming surface without duplicating or cancelling the underlying runtime while keeping panel-local scroll independent.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/multi-session-support.spec.md",

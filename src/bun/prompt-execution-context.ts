@@ -15,6 +15,7 @@ export interface PromptExecutionContext {
   sessionWaitApplied: boolean;
   threadWasTerminalAtStart: boolean;
   suppressPendingWorkflowAttentionDelivery?: boolean;
+  queuedMessageId?: string | null;
 }
 
 export interface PromptExecutionRuntimeHandle {
@@ -33,6 +34,7 @@ export function createPromptExecutionContext(input: {
   rootEpisodeKind?: StructuredEpisodeKind;
   threadWasTerminalAtStart?: boolean;
   suppressPendingWorkflowAttentionDelivery?: boolean;
+  queuedMessageId?: string | null;
 }): PromptExecutionContext {
   const surfaceKind = input.surfaceKind ?? "orchestrator";
   const surfaceThreadId = input.surfaceThreadId ?? input.rootThreadId ?? null;
@@ -56,5 +58,6 @@ export function createPromptExecutionContext(input: {
     threadWasTerminalAtStart: input.threadWasTerminalAtStart ?? false,
     suppressPendingWorkflowAttentionDelivery:
       input.suppressPendingWorkflowAttentionDelivery ?? false,
+    queuedMessageId: input.queuedMessageId ?? null,
   };
 }

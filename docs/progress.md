@@ -253,6 +253,16 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [x] Render sent mentions in the transcript as actionable workspace links that reveal files, open folders, and visibly mark missing paths.
 - [x] Keep mentions agent-neutral: no prompt injection, no eager file reads, no folder expansion, and no special context-target resolution.
 
+## 13A. Queued Surface Messages
+
+Current product decisions for this section are specified in `docs/specs/queued-messages.spec.md`.
+
+- [ ] Persist queued user messages as structured surface-local product state keyed by `workspaceSessionId`, `surfacePiSessionId`, optional `threadId`, and FIFO queue position.
+- [ ] When a composer submits to an active orchestrator or handler-thread surface, queue the message for that same surface instead of steering the current turn, interrupting tool work, starting a concurrent turn, or retargeting to the focused panel.
+- [ ] Deliver queued messages as the next real pi user message after the owning surface prompt lock releases, creating a normal turn record and preserving prompt history as a single queue-time submission.
+- [ ] Project queued messages near the owning surface composer, including count, order, remove, restore-to-composer, delivery failure, and duplicated-panel consistency.
+- [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
+
 ## 14. Layered Workflow Knowledge
 
 - [x] Define always-loaded cx and Smithers prompt context plus optional handler-only `ci` prompt context. Commit(s): `673837a`
