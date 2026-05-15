@@ -4,7 +4,6 @@
   import CommandIcon from "@lucide/svelte/icons/command";
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
@@ -13,6 +12,7 @@
   import { getShortcutCompact } from "../shared/shortcut-registry";
   import type {
     AppLogSummary,
+    WorkspaceBranchInfo,
     WorkspaceSessionNavigationReadModel,
     WorkspaceSessionSummary,
     WorkspaceSidebarHandlerThreadRow,
@@ -28,6 +28,8 @@
   import ContextBudgetBar from "./ContextBudgetBar.svelte";
   import Kbd from "./ui/Kbd.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+  import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
+  import ContextMenu, { type ContextMenuItem } from "./ui/ContextMenu.svelte";
 
   type SidebarPaneLocation = {
     paneId: string;
@@ -39,6 +41,7 @@
 
   type Props = {
     workspaceLabel: string;
+    workspaceBranch?: string;
     navigation: WorkspaceSessionNavigationReadModel;
     activeSessionId?: string;
     activeOrchestratorSessionId?: string;
@@ -67,10 +70,13 @@
     onOpenWorkflowLibrary?: () => void;
     onOpenAppLogs?: () => void;
     onOpenSettings?: () => void;
+    onListWorkspaceBranches?: () => Promise<WorkspaceBranchInfo[]>;
+    onSwitchWorkspaceBranch?: (branch: string) => Promise<void>;
   };
 
   let {
     workspaceLabel,
+    workspaceBranch,
     navigation,
     activeSessionId,
     activeOrchestratorSessionId,
@@ -99,17 +105,36 @@
     onOpenWorkflowLibrary,
     onOpenAppLogs,
     onOpenSettings,
+    onListWorkspaceBranches,
+    onSwitchWorkspaceBranch,
   }: Props = $props();
+
+  const footerWorkspaceLabel = $derived(workspaceBranch ?? workspaceLabel);
+  const footerShowsBranch = $derived(Boolean(workspaceBranch));
+  const branchControlEnabled = $derived(
+    footerShowsBranch && Boolean(onListWorkspaceBranches && onSwitchWorkspaceBranch),
+  );
+  const branchSelectOptions = $derived.by<CompactComboboxOption[]>(() => {
+    if (branchMenuError) return [{ value: "__error", label: branchMenuError, disabled: true }];
+    if (branchOptions.length === 0) {
+      return [{ value: "__empty", label: "No local branches found.", disabled: true }];
+    }
+    return branchOptions.map((branch) => ({ value: branch.name, label: branch.name }));
+  });
 
   let showNewSessionMenu = $state(false);
   let shortcutAction = $state<string | null>(null);
   let relativeTimeNow = $state(Date.now());
+  let branchMenuOpen = $state(false);
+  let branchMenuLoading = $state(false);
+  let branchMenuError = $state<string | null>(null);
+  let branchOptions = $state<WorkspaceBranchInfo[]>([]);
   let sessionContextMenu = $state<{
     session: WorkspaceSessionSummary;
     x: number;
     y: number;
   } | null>(null);
-  let sessionContextMenuElement = $state<HTMLDivElement | null>(null);
+  let sessionContextMenuElement = $state<ContextMenu | null>(null);
   let relativeTimeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   let relativeTimeInterval: ReturnType<typeof window.setInterval> | null = null;
   const newSessionDisplayShortcut = getShortcutCompact("session.new");
@@ -159,10 +184,40 @@
 
   function handleWindowPointerDown(event: PointerEvent) {
     const target = event.target as Node | null;
-    if (sessionContextMenuElement && target && sessionContextMenuElement.contains(target)) {
+    if (sessionContextMenuElement?.contains(target)) {
       return;
     }
     sessionContextMenu = null;
+  }
+
+  async function loadBranchOptions() {
+    if (!onListWorkspaceBranches) return;
+    branchMenuError = null;
+    branchMenuLoading = true;
+    try {
+      branchOptions = await onListWorkspaceBranches();
+    } catch (error) {
+      branchMenuError = error instanceof Error ? error.message : "Unable to load branches.";
+    } finally {
+      branchMenuLoading = false;
+    }
+  }
+
+  async function switchBranch(branch: string) {
+    if (branch === workspaceBranch || !onSwitchWorkspaceBranch) return;
+    branchMenuError = null;
+    branchMenuLoading = true;
+    try {
+      await onSwitchWorkspaceBranch(branch);
+      branchOptions = branchOptions.map((option) => ({
+        ...option,
+        current: option.name === branch,
+      }));
+    } catch (error) {
+      branchMenuError = error instanceof Error ? error.message : "Unable to switch branch.";
+    } finally {
+      branchMenuLoading = false;
+    }
   }
 
   function openSessionContextMenu(
@@ -188,6 +243,53 @@
   function runSessionContextAction(action: () => void) {
     action();
     closeSessionContextMenu();
+  }
+
+  function getSessionContextMenuItems(session: WorkspaceSessionSummary): ContextMenuItem[] {
+    const renameLocked = session.titleGeneration?.renameLocked ?? false;
+    return [
+      {
+        id: "read-state",
+        label: session.isUnread ? "Mark as Read" : "Mark as Unread",
+      },
+      {
+        id: "pin-state",
+        label: session.isPinned ? "Unpin" : "Pin",
+      },
+      {
+        id: "rename",
+        label: "Rename",
+        disabled: renameLocked,
+      },
+      {
+        id: "archive-state",
+        label: session.isArchived ? "Unarchive" : "Archive",
+      },
+    ];
+  }
+
+  function selectSessionContextMenuItem(session: WorkspaceSessionSummary, item: ContextMenuItem) {
+    if (item.id === "read-state") {
+      runSessionContextAction(() =>
+        session.isUnread ? onMarkSessionRead(session) : onMarkSessionUnread(session),
+      );
+      return;
+    }
+    if (item.id === "pin-state") {
+      runSessionContextAction(() =>
+        session.isPinned ? onUnpinSession(session) : onPinSession(session),
+      );
+      return;
+    }
+    if (item.id === "rename") {
+      runSessionContextAction(() => onRenameSession(session));
+      return;
+    }
+    if (item.id === "archive-state") {
+      runSessionContextAction(() =>
+        session.isArchived ? onUnarchiveSession(session) : onArchiveSession(session),
+      );
+    }
   }
 
   function showShortcut(action: string) {
@@ -481,58 +583,15 @@
 
   {#if sessionContextMenu}
     {@const menuSession = sessionContextMenu.session}
-    {@const renameLocked = menuSession.titleGeneration?.renameLocked ?? false}
-    <div
+    <ContextMenu
       bind:this={sessionContextMenuElement}
-      class="session-context-menu"
-      role="menu"
-      aria-label={`Session actions for ${menuSession.title}`}
-      style={`left: ${sessionContextMenu.x}px; top: ${sessionContextMenu.y}px;`}
-      oncontextmenu={(event) => event.preventDefault()}
-    >
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runSessionContextAction(() =>
-            menuSession.isUnread
-              ? onMarkSessionRead(menuSession)
-              : onMarkSessionUnread(menuSession),
-          )}
-      >
-        {menuSession.isUnread ? "Mark as Read" : "Mark as Unread"}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runSessionContextAction(() =>
-            menuSession.isPinned ? onUnpinSession(menuSession) : onPinSession(menuSession),
-          )}
-      >
-        {menuSession.isPinned ? "Unpin" : "Pin"}
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        disabled={renameLocked}
-        onclick={() => runSessionContextAction(() => onRenameSession(menuSession))}
-      >
-        Rename
-      </button>
-      <button
-        type="button"
-        role="menuitem"
-        onclick={() =>
-          runSessionContextAction(() =>
-            menuSession.isArchived
-              ? onUnarchiveSession(menuSession)
-              : onArchiveSession(menuSession),
-          )}
-      >
-        {menuSession.isArchived ? "Unarchive" : "Archive"}
-      </button>
-    </div>
+      x={sessionContextMenu.x}
+      y={sessionContextMenu.y}
+      label={`Session actions for ${menuSession.title}`}
+      items={getSessionContextMenuItems(menuSession)}
+      onSelect={(item) => selectSessionContextMenuItem(menuSession, item)}
+      onClose={closeSessionContextMenu}
+    />
   {/if}
 
   {#if onOpenWorkflowLibrary || onOpenAppLogs}
@@ -568,10 +627,23 @@
   {/if}
 
   <footer class="sidebar-footer">
-    <div class="workspace-path" title={workspaceLabel}>
-      <FolderGit2Icon size={12} aria-hidden="true" />
-      <span>{workspaceLabel}</span>
-    </div>
+    <Tooltip label="Switch branch">
+      <CompactCombobox
+        bind:open={branchMenuOpen}
+        value={footerWorkspaceLabel}
+        options={branchSelectOptions}
+        ariaLabel="Switch branch"
+        placeholder="Search branches"
+        emptyLabel="No branches match."
+        disabled={!branchControlEnabled || busy}
+        triggerClass="workspace-path"
+        menuClass="branch-menu"
+        optionClass="branch-option"
+        leadingIcon={footerShowsBranch ? "branch" : "workspace"}
+        onBeforeOpen={loadBranchOptions}
+        onSelect={switchBranch}
+      />
+    </Tooltip>
     {#if onOpenSettings}
       <Tooltip label="Open settings">
         <button
@@ -1063,50 +1135,6 @@
     padding: 0.25rem 0.72rem 0.42rem;
   }
 
-  .session-context-menu {
-    position: fixed;
-    z-index: 1000;
-    display: grid;
-    min-width: 11.5rem;
-    padding: 0.28rem;
-    border: 1px solid var(--ui-border-soft);
-    border-radius: var(--ui-radius-md);
-    background: color-mix(in oklab, var(--ui-surface-raised) 96%, transparent);
-    box-shadow:
-      0 18px 48px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
-      0 0 0 1px color-mix(in oklab, var(--ui-surface) 60%, transparent);
-    backdrop-filter: blur(16px);
-  }
-
-  .session-context-menu button {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    min-height: 1.8rem;
-    padding: 0 0.56rem;
-    border: 0;
-    border-radius: var(--ui-radius-sm);
-    background: transparent;
-    color: var(--ui-text-secondary);
-    font-size: 0.72rem;
-    font-weight: 500;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .session-context-menu button:hover,
-  .session-context-menu button:focus-visible {
-    outline: none;
-    background: var(--ui-surface-subtle);
-    color: var(--ui-text-primary);
-  }
-
-  .session-context-menu button:disabled {
-    color: var(--ui-text-tertiary);
-    cursor: not-allowed;
-    opacity: 0.56;
-  }
-
   .reference-nav-row {
     font-size: 0.76rem;
     font-weight: 500;
@@ -1155,6 +1183,7 @@
   }
 
   .sidebar-footer {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1163,22 +1192,6 @@
     padding: 0.34rem 0.42rem 0.34rem 0.6rem;
     border-top: 1px solid var(--ui-shell-edge);
     color: var(--ui-text-tertiary);
-  }
-
-  .workspace-path {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.32rem;
-    min-width: 0;
-    font-family: var(--font-mono);
-    font-size: 0.56rem;
-  }
-
-  .workspace-path span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .sidebar-footer-button {

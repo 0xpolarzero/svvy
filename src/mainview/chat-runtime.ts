@@ -15,6 +15,7 @@ import type {
   PromptTarget,
   SendPromptRequest,
   SurfaceSyncMessage,
+  WorkspaceBranchInfo,
   WorkspaceCommandInspector,
   WorkspacePathIndexEntry,
   WorkspaceHandlerThreadInspector,
@@ -140,6 +141,8 @@ export interface ChatRuntimeRpcClient {
     ensureWorkflowAgentsComponent: typeof rpc.request.ensureWorkflowAgentsComponent;
     getProviderAuthState: typeof rpc.request.getProviderAuthState;
     getWorkspaceInfo: typeof rpc.request.getWorkspaceInfo;
+    listWorkspaceBranches: typeof rpc.request.listWorkspaceBranches;
+    switchWorkspaceBranch: typeof rpc.request.switchWorkspaceBranch;
     getAppLogs: typeof rpc.request.getAppLogs;
     getAppLogSummary: typeof rpc.request.getAppLogSummary;
     markAppLogsSeen: typeof rpc.request.markAppLogsSeen;
@@ -309,6 +312,8 @@ export interface ChatRuntime {
   syncProviderAuth: (providerId: string) => Promise<boolean>;
   requireProviderAccess: (providerId: string) => Promise<boolean>;
   listConfiguredProviders: () => Promise<string[]>;
+  listWorkspaceBranches: () => Promise<WorkspaceBranchInfo[]>;
+  switchWorkspaceBranch: (branch: string) => Promise<void>;
   listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
   pickWorkspaceAttachments: () => Promise<WorkspacePathIndexEntry[]>;
   openWorkspacePath: (workspaceRelativePath: string) => Promise<boolean>;
@@ -698,6 +703,7 @@ export async function createChatRuntime(
     B: null,
     C: null,
   };
+  let workspaceBranch = workspaceInfo.branch;
   let disposed = false;
 
   const emit = () => {
@@ -1352,7 +1358,9 @@ export async function createChatRuntime(
     storage,
     workspaceId: workspaceInfo.workspaceId,
     workspaceLabel: workspaceInfo.workspaceLabel,
-    branch: workspaceInfo.branch,
+    get branch() {
+      return workspaceBranch;
+    },
     primaryPaneId: PRIMARY_CHAT_PANE_ID,
     get sessions() {
       return sessions;
@@ -1739,6 +1747,18 @@ export async function createChatRuntime(
     syncProviderAuth,
     requireProviderAccess,
     listConfiguredProviders,
+    listWorkspaceBranches: async () => {
+      const result = await rpcClient.request.listWorkspaceBranches(scoped());
+      return result.branches;
+    },
+    switchWorkspaceBranch: async (branch) => {
+      const result = await rpcClient.request.switchWorkspaceBranch(scoped({ branch }));
+      if (!result.ok) {
+        throw new Error(result.error ?? "Unable to switch branch.");
+      }
+      workspaceBranch = result.workspace.branch;
+      emit();
+    },
     listWorkspacePaths: (pathOptions) =>
       rpcClient.request.listWorkspacePaths(scoped(pathOptions ?? {})),
     pickWorkspaceAttachments: async () => {

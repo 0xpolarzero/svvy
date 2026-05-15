@@ -14,6 +14,7 @@
   import type { ChatSurfaceController } from "./chat-runtime";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import { onDestroy, onMount } from "svelte";
+  import { listModelComboboxOptions } from "./model-options";
 
   type Props = {
     runtime: ChatRuntime;
@@ -95,6 +96,12 @@
     return true;
   }
 
+  async function listModelsForComposer() {
+    if (!currentModel) return [];
+    const configuredProviders = await runtime.listConfiguredProviders().catch(() => []);
+    return listModelComboboxOptions(currentModel, runtime.storage, configuredProviders);
+  }
+
   async function forkFromAssistantMessage(messageTimestamp: string | number): Promise<void> {
     if (!controller) return;
     await runtime.forkSession(
@@ -162,6 +169,11 @@
       worktreeLabel={runtime.branch ?? runtime.workspaceLabel}
       onAbort={() => void controller?.abort()}
       onOpenModelPicker={() => onOpenModelPicker(panelId)}
+      onListModels={listModelsForComposer}
+      onModelChange={(model) => {
+        currentModel = model;
+        controller?.agent.setModel(model);
+      }}
       onSend={send}
       onThinkingChange={(level) => controller?.agent.setThinkingLevel(level)}
       listWorkspacePaths={(options) => runtime.listWorkspacePaths(options)}

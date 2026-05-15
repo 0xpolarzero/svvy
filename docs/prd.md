@@ -533,6 +533,8 @@ The desktop shell presents open workspaces as compact tabs inside the app chrome
 
 Each workspace tab summarizes that workspace's session-level running, unread, waiting, and error counts from durable workspace read models. Count badges render only when their value is greater than zero, stay in the stable running, unread, waiting, error order, use status color instead of icons, and expose title or tooltip context on hover. Workspace open and close controls are compact icon controls with accessible labels. Workspace-scoped backend requests and renderer sync events carry an explicit runtime `workspaceId`; the backend must not route user work through a process-global active cwd or treat cwd as the workspace id.
 
+The sidebar footer shows the current checked-out branch with a branch icon when the workspace is inside a git repository. That branch affordance opens a compact local-branch menu and switches branches through a workspace-scoped Bun RPC using normal git semantics. If the workspace is not a git repository or no branch is checked out, the footer falls back to the workspace label with the workspace icon and does not expose a branch switcher.
+
 Each workspace has three fixed layout slots: `A`, `B`, and `C`. These are not user-named layouts. The slots render as compact controls pinned at the far right of the same chrome row as the workspace tabs and status controls. Selecting a layout slot swaps the active Dockview layout snapshot for that workspace. Empty slots remain selectable and render muted, not disabled, so the user can start a new layout from scratch.
 
 ### Session Container

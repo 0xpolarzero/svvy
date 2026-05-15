@@ -205,6 +205,26 @@ export interface WorkspaceInfoResponse {
   branch?: string;
 }
 
+export interface WorkspaceBranchInfo {
+  name: string;
+  current: boolean;
+}
+
+export interface WorkspaceBranchListResponse {
+  branches: WorkspaceBranchInfo[];
+  currentBranch?: string;
+}
+
+export interface SwitchWorkspaceBranchRequest {
+  branch: string;
+}
+
+export interface SwitchWorkspaceBranchResponse {
+  ok: boolean;
+  workspace: WorkspaceInfoResponse;
+  error?: string;
+}
+
 export interface WorkspaceTabInfo extends WorkspaceInfoResponse {
   openedAt: string;
 }
@@ -991,6 +1011,14 @@ export interface ChatRPCSchema {
       getWorkspaceInfo: {
         params: WorkspaceScopedRequest;
         response: WorkspaceInfoResponse;
+      };
+      listWorkspaceBranches: {
+        params: WorkspaceScopedRequest;
+        response: WorkspaceBranchListResponse;
+      };
+      switchWorkspaceBranch: {
+        params: WorkspaceScoped<SwitchWorkspaceBranchRequest>;
+        response: SwitchWorkspaceBranchResponse;
       };
       getAppLogs: {
         params: WorkspaceScoped<AppLogQuery> | undefined;

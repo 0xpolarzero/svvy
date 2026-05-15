@@ -17,6 +17,7 @@ import type {
   PromptTarget,
   ProviderAuthInfo,
   SendPromptRequest,
+  SwitchWorkspaceBranchResponse,
   WorkspaceScopedRequest,
 } from "../shared/workspace-contract";
 import {
@@ -313,6 +314,66 @@ function getWorkspaceBranch(cwd: string): string | undefined {
   return branch && branch !== "HEAD" ? branch : undefined;
 }
 
+function getWorkspaceBranches(cwd: string): string[] {
+  const result = spawnSync("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads"], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) {
+    return [];
+  }
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((branch) => branch.trim())
+    .filter(Boolean);
+}
+
+function switchWorkspaceBranch(
+  runtime: WorkspaceRuntime,
+  branch: string,
+): SwitchWorkspaceBranchResponse {
+  const nextBranch = branch.trim();
+  const branches = getWorkspaceBranches(runtime.cwd);
+  if (!nextBranch || !branches.includes(nextBranch)) {
+    return {
+      ok: false,
+      workspace: addWorkspaceBranch(runtime.getInfo()),
+      error: "Branch is not available in this workspace.",
+    };
+  }
+
+  if (getWorkspaceBranch(runtime.cwd) === nextBranch) {
+    return { ok: true, workspace: addWorkspaceBranch(runtime.getInfo()) };
+  }
+
+  const result = spawnSync("git", ["switch", nextBranch], {
+    cwd: runtime.cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    const message = (result.stderr || result.stdout).trim() || "Unable to switch branch.";
+    return {
+      ok: false,
+      workspace: addWorkspaceBranch(runtime.getInfo()),
+      error: message,
+    };
+  }
+
+  runtime.pathIndex.refresh();
+  runtime.appLog.info("workspace", "Workspace branch switched.", {
+    workspaceId: runtime.workspaceId,
+    branch: nextBranch,
+  });
+  recordBridgeEvent("workspace.branch-switched", {
+    workspaceId: runtime.workspaceId,
+    branch: nextBranch,
+  });
+  return { ok: true, workspace: addWorkspaceBranch(runtime.getInfo()) };
+}
+
 function resolveSafeWorkspacePath(
   runtime: WorkspaceRuntime,
   workspaceRelativePath: string,
@@ -566,6 +627,20 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       getWorkspaceInfo: (input) => {
         return addWorkspaceBranch(getWorkspaceRuntime(input).getInfo());
+      },
+      listWorkspaceBranches: (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const currentBranch = getWorkspaceBranch(runtime.cwd);
+        return {
+          currentBranch,
+          branches: getWorkspaceBranches(runtime.cwd).map((branch) => ({
+            name: branch,
+            current: branch === currentBranch,
+          })),
+        };
+      },
+      switchWorkspaceBranch: (input) => {
+        return switchWorkspaceBranch(getWorkspaceRuntime(input), input.branch);
       },
       getAppLogs: (query) => {
         const runtime = query

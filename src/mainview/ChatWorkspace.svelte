@@ -157,6 +157,7 @@
   let isMacWindowChrome = $state(false);
   let dockviewLayoutEpoch = $state(0);
   let sessions = $state<WorkspaceSessionSummary[]>([]);
+  let workspaceBranch = $state(runtime.branch);
   let sessionNavigation = $state<WorkspaceSessionNavigationReadModel>({
     pinnedSessions: [],
     activeSessions: [],
@@ -426,7 +427,7 @@
     if (binding?.surface === "workflow-task-attempt") return { label: "surface", value: "task" };
     if (binding?.surface === "artifact") return { label: "surface", value: "artifact" };
     if (binding?.surface === "project-ci-check") return { label: "surface", value: "project-ci" };
-    if (runtime.branch) return { label: "worktree", value: runtime.branch };
+    if (workspaceBranch) return { label: "worktree", value: workspaceBranch };
     return { label: "workspace", value: runtime.workspaceLabel };
   }
   function getPaneSurfaceStatus(
@@ -760,7 +761,10 @@
     setSidebarResizing(false);
   }
 
-  async function runSessionMutation(action: () => Promise<void>) {
+  async function runSessionMutation(
+    action: () => Promise<void>,
+    options: { rethrow?: boolean } = {},
+  ) {
     if (mutatingSession) return;
     mutatingSession = true;
     sidebarError = undefined;
@@ -773,9 +777,16 @@
       await syncArtifactsFromRuntime();
     } catch (error) {
       sidebarError = error instanceof Error ? error.message : "Session update failed.";
+      if (options.rethrow) {
+        throw error;
+      }
     } finally {
       mutatingSession = false;
     }
+  }
+
+  async function handleSwitchWorkspaceBranch(branch: string) {
+    await runSessionMutation(() => runtime.switchWorkspaceBranch(branch), { rethrow: true });
   }
 
   async function handleSwitchLayout(layoutId: WorkspaceLayoutSlotId) {
@@ -2067,6 +2078,7 @@
 
   function syncRuntimeState() {
     sessions = [...runtime.sessions];
+    workspaceBranch = runtime.branch;
     sessionNavigation = runtime.sessionNavigation;
     appLogSummary = runtime.appLogSummary;
     paneLayout = runtime.paneLayout;
@@ -2260,6 +2272,7 @@
         <div class="sidebar-surface">
           <SessionSidebar
             workspaceLabel={runtime.workspaceLabel}
+            {workspaceBranch}
             navigation={sessionNavigation}
             {activeSessionId}
             activeOrchestratorSessionId={currentSurface?.surface === "orchestrator" ? activeSessionId : undefined}
@@ -2288,6 +2301,8 @@
             onOpenAppLogs={openAppLogs}
             onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
             onOpenSettings={onOpenSettings}
+            onListWorkspaceBranches={runtime.listWorkspaceBranches}
+            onSwitchWorkspaceBranch={handleSwitchWorkspaceBranch}
           />
         </div>
       </aside>

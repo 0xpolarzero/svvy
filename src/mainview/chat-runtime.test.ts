@@ -82,6 +82,8 @@ type FakeRpcHarness = {
     listSessions: number;
   };
   appLogSeenRequests: number[];
+  branchListRequests: string[];
+  branchSwitchRequests: Array<{ workspaceId: string; branch: string }>;
   emitAppLogUpdate: (payload: AppLogUpdateMessage) => void;
   commandInspectorRequests: Array<{ sessionId: string; commandId: string }>;
   handlerThreadListRequests: string[];
@@ -630,6 +632,9 @@ function createFakeRpc(input: {
   }> = [];
   const projectCiStatusRequests: string[] = [];
   const appLogSeenRequests: number[] = [];
+  const branchListRequests: string[] = [];
+  const branchSwitchRequests: Array<{ workspaceId: string; branch: string }> = [];
+  let workspaceInfo = structuredClone(TEST_WORKSPACE_INFO);
   let appLogEntries: AppLogEntry[] = [];
   let appLogSeenSeq = 0;
   const requestCounts = {
@@ -851,7 +856,29 @@ function createFakeRpc(input: {
           path: "/tmp/svvy/.svvy/workflows/components/agents.ts",
         }),
         getProviderAuthState: async () => ({ connected: true, accountId: "openai-oauth" }),
-        getWorkspaceInfo: async () => structuredClone(TEST_WORKSPACE_INFO),
+        getWorkspaceInfo: async () => structuredClone(workspaceInfo),
+        listWorkspaceBranches: async ({ workspaceId }) => {
+          branchListRequests.push(workspaceId);
+          return {
+            currentBranch: workspaceInfo.branch,
+            branches: ["main", "feature/sidebar"].map((branch) => ({
+              name: branch,
+              current: branch === workspaceInfo.branch,
+            })),
+          };
+        },
+        switchWorkspaceBranch: async ({ workspaceId, branch }) => {
+          branchSwitchRequests.push({ workspaceId, branch });
+          if (branch === "missing") {
+            return {
+              ok: false,
+              workspace: structuredClone(workspaceInfo),
+              error: "Branch is not available in this workspace.",
+            };
+          }
+          workspaceInfo = { ...workspaceInfo, branch };
+          return { ok: true, workspace: structuredClone(workspaceInfo) };
+        },
         getAppLogs: async (query) => {
           const scopedQuery = query ?? {
             workspaceId: TEST_WORKSPACE_INFO.workspaceId,
@@ -1401,6 +1428,8 @@ function createFakeRpc(input: {
     workflowTaskAttemptInspectorRequests,
     projectCiStatusRequests,
     appLogSeenRequests,
+    branchListRequests,
+    branchSwitchRequests,
     setPromptHandler: (surfacePiSessionId, handler) => {
       promptHandlers.set(surfacePiSessionId, handler);
     },
@@ -2138,6 +2167,36 @@ describe("createChatRuntime", () => {
 
     await expect(runtime.openWorkspacePath("docs/progress.md")).resolves.toBe(true);
     await expect(runtime.openWorkspacePath("missing/file.ts")).resolves.toBe(false);
+
+    runtime.dispose();
+  });
+
+  it("lists and switches workspace branches through workspace-scoped runtime RPC", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "First", "first reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("first reply")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+
+    await expect(runtime.listWorkspaceBranches()).resolves.toEqual([
+      { name: "main", current: true },
+      { name: "feature/sidebar", current: false },
+    ]);
+    await runtime.switchWorkspaceBranch("feature/sidebar");
+
+    expect(runtime.branch).toBe("feature/sidebar");
+    expect(harness.branchListRequests).toEqual([TEST_WORKSPACE_INFO.workspaceId]);
+    expect(harness.branchSwitchRequests).toEqual([
+      { workspaceId: TEST_WORKSPACE_INFO.workspaceId, branch: "feature/sidebar" },
+    ]);
+    await expect(runtime.switchWorkspaceBranch("missing")).rejects.toThrow(
+      "Branch is not available in this workspace.",
+    );
 
     runtime.dispose();
   });

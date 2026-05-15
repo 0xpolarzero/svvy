@@ -1,5 +1,4 @@
 <script lang="ts">
-	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
 	import FileIcon from "@lucide/svelte/icons/file";
 	import FolderIcon from "@lucide/svelte/icons/folder";
 	import PaperclipIcon from "@lucide/svelte/icons/paperclip";
@@ -31,6 +30,9 @@
 	import ContextBudgetBar from "./ContextBudgetBar.svelte";
 	import TextArea from "./ui/TextArea.svelte";
 	import Tooltip from "./ui/Tooltip.svelte";
+	import CompactSelect from "./ui/CompactSelect.svelte";
+	import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
+	import { getModelComboboxValue, type ModelComboboxOption } from "./model-options";
 
 	type Props = {
 		currentModel: Model<any> | null;
@@ -45,6 +47,8 @@
 		worktreeLabel?: string;
 		onAbort: () => void;
 		onOpenModelPicker: () => void;
+		onListModels: () => Promise<ModelComboboxOption[]>;
+		onModelChange: (model: Model<any>) => void;
 		onSend: (input: string) => Promise<boolean> | boolean;
 		onThinkingChange: (level: ThinkingLevel) => void;
 		listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
@@ -66,6 +70,8 @@
 		worktreeLabel = "worktree",
 		onAbort,
 		onOpenModelPicker,
+		onListModels,
+		onModelChange,
 		onSend,
 		onThinkingChange,
 		listWorkspacePaths,
@@ -75,8 +81,10 @@
 	let draft = $state("");
 	let isSubmitting = $state(false);
 	let showThinkingMenu = $state(false);
+	let showModelMenu = $state(false);
+	let modelOptions = $state<CompactComboboxOption[]>([]);
+	let modelOptionModels = $state(new Map<string, Model<any>>());
 	let draftElement = $state<HTMLTextAreaElement | null>(null);
-	let thinkingMenuRoot = $state<HTMLDivElement | null>(null);
 	let historyNavigation = $state<PromptHistoryNavigationState>(createPromptHistoryNavigationState());
 	let mentionRoot = $state<HTMLDivElement | null>(null);
 	let workspacePaths = $state<WorkspacePathIndexEntry[]>([]);
@@ -91,6 +99,16 @@
 	const availableThinkingLevels = $derived(
 		currentModel && supportsXhigh(currentModel) ? [...BASE_LEVELS, "xhigh"] : BASE_LEVELS,
 	);
+	const thinkingOptions = $derived(
+		availableThinkingLevels.map((level) => ({ value: level, label: level })),
+	);
+	const modelValue = $derived(currentModel ? getModelComboboxValue(currentModel) : "no-surface");
+	const visibleModelOptions = $derived.by<CompactComboboxOption[]>(() => {
+		if (!currentModel) return [{ value: "no-surface", label: "No surface", disabled: true }];
+		const currentValue = getModelComboboxValue(currentModel);
+		if (modelOptions.some((option) => option.value === currentValue)) return modelOptions;
+		return [{ value: currentValue, label: currentModel.name, triggerLabel: currentModel.name }, ...modelOptions];
+	});
 	const mentionQuery = $derived(getActiveMentionQuery(draft, caretPosition));
 	const mentionQueryKey = $derived(mentionQuery ? `${mentionQuery.start}:${mentionQuery.query}` : null);
 	const activeMentionIsSelected = $derived(
@@ -153,15 +171,12 @@
 		const handlePointerDown = (event: PointerEvent) => {
 			const target = event.target;
 			if (!(target instanceof Node)) return;
-			if (thinkingMenuRoot?.contains(target)) return;
 			if (mentionRoot?.contains(target) || draftElement?.contains(target)) return;
-			showThinkingMenu = false;
 			closeMentionPicker();
 		};
 
 		const handleKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
-				showThinkingMenu = false;
 				closeMentionPicker();
 			}
 		};
@@ -348,11 +363,6 @@
 		void submit();
 	}
 
-	function selectThinkingLevel(level: ThinkingLevel) {
-		onThinkingChange(level);
-		showThinkingMenu = false;
-	}
-
 	async function attachPickedWorkspaceFiles() {
 		try {
 			const entries = await pickWorkspaceAttachments();
@@ -376,6 +386,18 @@
 		} catch {
 			draftElement?.focus();
 		}
+	}
+
+	async function loadModelOptions() {
+		const options = await onListModels();
+		modelOptions = options;
+		modelOptionModels = new Map(options.map((option) => [option.value, option.model]));
+	}
+
+	function selectModel(value: string) {
+		const model = modelOptionModels.get(value);
+		if (!model) return;
+		onModelChange(model);
 	}
 </script>
 
@@ -457,47 +479,29 @@
 
 				<div class="composer-row-actions">
 					<div class="composer-control-cluster" aria-label="Runtime controls">
-						<button
-							class="model-pill model-control"
-							type="button"
+						<CompactCombobox
+							bind:open={showModelMenu}
+							value={modelValue}
+							options={visibleModelOptions}
+							ariaLabel="Change model"
+							placeholder="Search models"
+							emptyLabel="No models match."
 							disabled={!currentModel}
-							onclick={() => onOpenModelPicker()}
-						>
-							<strong>{currentModel?.name ?? "No surface"}</strong>
-						</button>
-						<div bind:this={thinkingMenuRoot} class="thinking-wrap compact-thinking-wrap">
-							<button
-								class="model-pill thinking-field"
-								type="button"
-								aria-haspopup="listbox"
-								aria-expanded={showThinkingMenu}
-								aria-label="Thinking level"
-								onclick={() => (showThinkingMenu = !showThinkingMenu)}
-							>
-								<strong>{thinkingLevel}</strong>
-								<ChevronDownIcon
-									class={`thinking-chevron ${showThinkingMenu ? "open" : ""}`.trim()}
-									aria-hidden="true"
-									size={13}
-									strokeWidth={1.9}
-								/>
-							</button>
-							{#if showThinkingMenu}
-								<div class="thinking-menu" role="listbox" aria-label="Thinking level options">
-									{#each availableThinkingLevels as level}
-										<button
-											class={`thinking-option ${level === thinkingLevel ? "active" : ""}`.trim()}
-											type="button"
-											role="option"
-											aria-selected={level === thinkingLevel}
-											onclick={() => selectThinkingLevel(level)}
-										>
-											<span>{level}</span>
-										</button>
-									{/each}
-								</div>
-							{/if}
-						</div>
+							triggerClass="model-pill model-control"
+							menuClass="model-menu"
+							optionClass="model-option"
+							onBeforeOpen={loadModelOptions}
+							onSelect={selectModel}
+						/>
+						<CompactSelect
+							bind:open={showThinkingMenu}
+							value={thinkingLevel}
+							options={thinkingOptions}
+							ariaLabel="Thinking level"
+							triggerClass="ghost-select thinking-field"
+							textTransform="lowercase"
+							onSelect={(level) => onThinkingChange(level as ThinkingLevel)}
+						/>
 						<div class="compact-budget">
 							<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
 						</div>
@@ -793,8 +797,8 @@
 
 	.model-pill {
 		position: relative;
-		min-height: 1.9rem;
-		padding: 0.22rem 0.5rem;
+		min-height: 1.45rem;
+		padding: 0.08rem 0.44rem;
 		cursor: pointer;
 		transition:
 			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
@@ -808,7 +812,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 0.62rem;
-		font-weight: 650;
+		font-weight: 500;
 	}
 
 	.model-pill.thinking-field {
@@ -928,72 +932,7 @@
 	}
 
 	.thinking-field {
-		position: relative;
-		padding-right: 1.62rem;
-	}
-
-	:global(.thinking-chevron) {
-		position: absolute;
-		right: 0.56rem;
-		top: 50%;
-		transform: translateY(-50%);
-		pointer-events: none;
-		transition: transform 150ms cubic-bezier(0.19, 1, 0.22, 1);
-	}
-
-	:global(.thinking-chevron.open) {
-		transform: translateY(-50%) rotate(180deg);
-	}
-
-	.thinking-menu {
-		position: absolute;
-		right: 0;
-		bottom: calc(100% + 0.35rem);
-		z-index: var(--ui-z-overlay);
-		display: grid;
-		gap: 0;
-		min-width: max(11.5rem, 100%);
-		max-width: min(14rem, calc(100vw - 2rem));
-		padding: 0.28rem;
-		border: 1px solid var(--ui-border-soft);
-		border-radius: var(--ui-radius-md);
-		background: color-mix(in oklab, var(--ui-surface-raised) 96%, transparent);
-		box-shadow:
-			0 18px 48px color-mix(in oklab, var(--ui-shadow) 28%, transparent),
-			0 0 0 1px color-mix(in oklab, var(--ui-surface) 60%, transparent);
-		backdrop-filter: blur(16px);
-		transform-origin: bottom right;
-	}
-
-	.thinking-option {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.8rem;
-		min-height: 1.8rem;
-		padding: 0 0.56rem;
-		border: 0;
-		border-radius: var(--ui-radius-sm);
-		background: transparent;
-		color: var(--ui-text-secondary);
-		font: inherit;
-		font-size: 0.72rem;
-		font-weight: 500;
-		text-transform: lowercase;
-		text-align: left;
-		cursor: pointer;
-	}
-
-	.thinking-option.active {
-		background: color-mix(in oklab, var(--ui-surface-subtle) 82%, transparent);
-		color: var(--ui-text-primary);
-	}
-
-	.thinking-option:hover,
-	.thinking-option:focus-visible {
-		outline: none;
-		background: var(--ui-surface-subtle);
-		color: var(--ui-text-primary);
+		width: auto;
 	}
 
 	.composer-error {
