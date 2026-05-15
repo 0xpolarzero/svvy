@@ -8,7 +8,7 @@
 	import { onMount, tick } from "svelte";
 	import { supportsXhigh, type Model } from "@mariozechner/pi-ai";
 	import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-	import type { ContextBudget } from "../shared/context-budget";
+	import { formatContextBudgetTooltip, type ContextBudget } from "../shared/context-budget";
 	import {
 		createPromptHistoryNavigationState,
 		navigatePromptHistory,
@@ -125,6 +125,13 @@
 		mentionQuery && workspacePathsLoaded ? searchMentionPaths(workspacePaths, mentionQuery.query, 10) : [],
 	);
 	const canSubmit = $derived(Boolean(draft.trim() || selectedMentions.length > 0));
+	const contextBudgetTooltip = $derived(
+		contextBudget
+			? [formatContextBudgetTooltip(contextBudget), usageText ? `usage ${usageText}` : ""]
+					.filter(Boolean)
+					.join(" · ")
+			: "Context unavailable",
+	);
 	const showMentionPicker = $derived(
 		Boolean(
 			mentionQuery &&
@@ -502,9 +509,11 @@
 							textTransform="lowercase"
 							onSelect={(level) => onThinkingChange(level as ThinkingLevel)}
 						/>
-						<div class="compact-budget">
-							<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
-						</div>
+						<Tooltip label={contextBudgetTooltip} disabled={!contextBudget} delayMs={250}>
+							<div class="compact-budget">
+								<ContextBudgetBar budget={contextBudget ?? null} variant="compact" label="Context" />
+							</div>
+						</Tooltip>
 					</div>
 					<div class="composer-action-cluster" aria-label="Composer actions">
 						<Tooltip label="Attach file context">
@@ -541,12 +550,6 @@
 			</div>
 		</div>
 
-		{#if usageText}
-			<div class="composer-status-row">
-				<p class="composer-usage">usage {usageText}</p>
-			</div>
-		{/if}
-
 		{#if isStreaming}
 			<div class="composer-streaming-row">
 				<span class="streaming-dot pulse-dot"></span>
@@ -573,7 +576,6 @@
 	}
 
 	.composer-context-row,
-	.composer-status-row,
 	.composer-streaming-row {
 		border-top: 1px solid var(--ui-border-soft);
 	}
@@ -710,7 +712,7 @@
 	.composer-control-cluster,
 	.composer-action-cluster {
 		flex: 0 0 auto;
-		gap: 0.22rem;
+		gap: 0.36rem;
 		padding: 0;
 		border: 0;
 		border-radius: 0;
@@ -848,12 +850,21 @@
 
 	.compact-budget {
 		position: relative;
+		display: flex;
+		align-items: center;
 		width: 5.8rem;
-		height: 1.9rem;
+		height: 1.45rem;
+		flex: 0 0 5.8rem;
+		margin-left: 0.64rem;
 	}
 
 	.compact-budget :global(.context-budget-compact) {
-		inset: auto 0 0.42rem 0;
+		position: static;
+		width: 100%;
+	}
+
+	.compact-budget :global(.context-budget-track) {
+		transform: translateY(0.08rem);
 	}
 
 	.mention-picker {
@@ -922,15 +933,6 @@
 		color: var(--ui-danger);
 	}
 
-	.composer-status-row {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 0.7rem;
-		min-width: 0;
-		padding: 0.28rem 0.72rem 0.34rem;
-	}
-
 	.thinking-field {
 		width: auto;
 	}
@@ -945,14 +947,6 @@
 		color: color-mix(in oklab, var(--ui-danger) 82%, var(--ui-text-primary));
 		font-size: 0.78rem;
 		line-height: 1.5;
-	}
-
-	.composer-usage {
-		margin: 0;
-		font-size: 0.66rem;
-		font-family: var(--font-mono);
-		color: var(--ui-text-tertiary);
-		font-variant-numeric: tabular-nums;
 	}
 
 	.composer-streaming-row {
@@ -1010,15 +1004,10 @@
 			display: none;
 		}
 
-		.composer-status-row,
 		.composer-row-actions {
 			align-items: flex-start;
 			flex-direction: column;
 			justify-content: flex-start;
-		}
-
-		.composer-status-row {
-			padding: 0.44rem 0.5rem;
 		}
 	}
 
@@ -1048,8 +1037,5 @@
 			display: none;
 		}
 
-		.composer-status-row {
-			padding: 0.24rem 0.56rem 0.3rem;
-		}
 	}
 </style>

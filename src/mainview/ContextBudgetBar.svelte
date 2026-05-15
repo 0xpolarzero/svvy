@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ContextBudget } from "../shared/context-budget";
+  import { formatContextBudgetTooltip, type ContextBudget } from "../shared/context-budget";
 
   type Variant = "full" | "compact";
 
@@ -11,7 +11,7 @@
 
   let { budget, variant = "full", label = "Context" }: Props = $props();
 
-  const detailText = $derived(budget ? `${budget.label} · ${budget.detail}` : "Context unavailable");
+  const detailText = $derived(budget ? formatContextBudgetTooltip(budget) : "Context unavailable");
 </script>
 
 {#if budget}

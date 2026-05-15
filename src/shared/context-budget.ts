@@ -22,7 +22,7 @@ export function createContextBudget(input: {
   usedTokens: number | null | undefined;
   maxTokens: number | null | undefined;
 }): ContextBudget | null {
-  const usedTokens = normalizePositiveInteger(input.usedTokens);
+  const usedTokens = normalizeNonNegativeInteger(input.usedTokens);
   const maxTokens = normalizePositiveInteger(input.maxTokens);
   if (usedTokens === null || maxTokens === null) {
     return null;
@@ -47,6 +47,12 @@ export function readContextBudgetFromMeta(meta: Record<string, unknown> | null |
   });
 }
 
+export function formatContextBudgetTooltip(
+  budget: Pick<ContextBudget, "usedTokens" | "maxTokens">,
+): string {
+  return `${formatExactTokenCount(budget.usedTokens)} / ${formatExactTokenCount(budget.maxTokens)} tokens`;
+}
+
 function readRecord(
   record: Record<string, unknown> | null | undefined,
   key: string,
@@ -69,9 +75,21 @@ function normalizePositiveInteger(value: number | null | undefined): number | nu
   return normalized > 0 ? normalized : null;
 }
 
+function normalizeNonNegativeInteger(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  const normalized = Math.floor(value);
+  return normalized >= 0 ? normalized : null;
+}
+
 function formatTokenCount(count: number): string {
   if (count < 1000) return count.toString();
   if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
   if (count < 1000000) return `${Math.round(count / 1000)}k`;
   return `${(count / 1000000).toFixed(1)}m`;
+}
+
+function formatExactTokenCount(count: number): string {
+  return count.toLocaleString("en-US");
 }

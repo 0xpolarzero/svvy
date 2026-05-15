@@ -4,6 +4,7 @@ import { createContextBudget, type ContextBudget } from "../shared/context-budge
 
 export {
   createContextBudget,
+  formatContextBudgetTooltip,
   getContextBudgetTone,
   type ContextBudget,
 } from "../shared/context-budget";
@@ -41,5 +42,9 @@ export function buildSurfaceContextBudget(
   messages: AgentMessage[],
   model: Pick<Model<any>, "contextWindow"> | null | undefined,
 ): ContextBudget | null {
-  return buildContextBudgetFromUsage(getLatestAssistantUsage(messages), model?.contextWindow);
+  const latestUsage = getLatestAssistantUsage(messages);
+  return createContextBudget({
+    usedTokens: latestUsage?.input ?? 0,
+    maxTokens: model?.contextWindow,
+  });
 }

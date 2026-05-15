@@ -3,6 +3,7 @@ import type { AssistantMessage } from "@mariozechner/pi-ai";
 import {
   buildContextBudgetFromUsage,
   buildSurfaceContextBudget,
+  formatContextBudgetTooltip,
   getContextBudgetTone,
 } from "./context-budget";
 
@@ -48,6 +49,23 @@ describe("context budget", () => {
       maxTokens: 100,
       percent: 40,
       tone: "orange",
+    });
+  });
+
+  it("formats exact token usage for hover detail", () => {
+    const budget = buildContextBudgetFromUsage({ input: 12345, cacheRead: 0, cacheWrite: 0 }, 200000);
+
+    expect(budget && formatContextBudgetTooltip(budget)).toBe("12,345 / 200,000 tokens");
+  });
+
+  it("shows an empty live surface as 0 percent when the model has a context window", () => {
+    expect(buildSurfaceContextBudget([], { contextWindow: 200000 })).toMatchObject({
+      usedTokens: 0,
+      maxTokens: 200000,
+      percent: 0,
+      tone: "neutral",
+      label: "0% context",
+      detail: "0 of 200k tokens",
     });
   });
 
