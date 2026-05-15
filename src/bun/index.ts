@@ -570,6 +570,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       updateAppPreferences: async (preferences) => {
         const runtime = workspaceRuntimeRegistry.getActiveRuntime();
         runtime.appLog.info("settings", "App preferences updated.", {
+          appAppearance: preferences.appAppearance,
           preferredExternalEditor: preferences.preferredExternalEditor,
         });
         return runtime.agentSettingsStore.setAppPreferences(preferences);

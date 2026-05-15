@@ -823,6 +823,7 @@ function createFakeRpc(input: {
             },
           },
           appPreferences: {
+            appAppearance: "system",
             preferredExternalEditor: "system",
             customExternalEditorCommand: "",
             webProvider: null,

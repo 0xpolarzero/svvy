@@ -262,7 +262,7 @@
     position: fixed;
     inset: 0;
     z-index: 80;
-    background: color-mix(in oklab, var(--ui-bg) 22%, hsl(220 18% 6% / 0.66));
+    background: color-mix(in oklab, var(--ui-bg) 22%, var(--ui-overlay));
   }
 
   :global(.command-palette-content) {
