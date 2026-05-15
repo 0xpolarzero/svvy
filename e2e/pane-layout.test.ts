@@ -22,18 +22,65 @@ async function createPaneLayoutPage(app: SvvyApp): Promise<Page> {
 async function waitForDockviewShell(page: Page): Promise<void> {
   await page.locator('[data-testid="dockview-workbench"]').waitFor({ state: "visible" });
   await page.locator('[data-testid="workspace-pane"]').first().waitFor({ state: "visible" });
+  await expectNoUnavailablePane(page);
 }
 
-async function runPaneCommand(page: Page, command: string): Promise<void> {
-  await page
-    .getByRole("button", { name: "Open command palette" })
-    .filter({ visible: true })
-    .first()
-    .click({ force: true });
-  await page.getByTestId("command-palette").waitFor({ state: "visible" });
-  await page.locator("[data-cmdk-input]").fill(`>${command}`);
-  await page.locator("[data-cmdk-input]").press("Enter");
-  await page.getByTestId("command-palette").waitFor({ state: "hidden" });
+async function expectNoUnavailablePane(page: Page): Promise<void> {
+  expect(await page.locator(".dockview-empty-panel").count()).toBe(0);
+  expect(await page.getByText("Surface unavailable").count()).toBe(0);
+}
+
+async function waitForWorkspacePaneCount(
+  page: Page,
+  expectedCount: number,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const panes = page.locator('[data-testid="workspace-pane"]');
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await panes.count()) === expectedCount) {
+      return;
+    }
+    await Bun.sleep(100);
+  }
+  throw new Error(`Timed out waiting for ${expectedCount} visible workspace panes.`);
+}
+
+async function waitForDockviewTabCount(
+  page: Page,
+  expectedCount: number,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const tabs = page.locator(".dockview-surface-tab");
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if ((await tabs.count()) === expectedCount) {
+      return;
+    }
+    await Bun.sleep(100);
+  }
+  throw new Error(`Timed out waiting for ${expectedCount} Dockview tabs.`);
+}
+
+async function clickPaneAction(page: Page, name: string): Promise<void> {
+  const actionClass =
+    name === "Duplicate pane right"
+      ? "action-split-right"
+      : name === "Duplicate pane below"
+        ? "action-split-below"
+        : "action-close";
+  await page.locator(`.dockview-surface-action.${actionClass}`).first().click({ force: true });
+}
+
+async function clickSessionByTitle(page: Page, title: string): Promise<void> {
+  const sessionButton = page
+    .locator(".session-main")
+    .filter({
+      has: page.locator("strong").filter({ hasText: title }),
+    })
+    .first();
+  await sessionButton.waitFor({ state: "visible" });
+  await sessionButton.click({ force: true });
 }
 
 test("opens, duplicates, resizes, and closes Dockview panels without custom pane chrome", async () => {
@@ -61,11 +108,14 @@ test("opens, duplicates, resizes, and closes Dockview panels without custom pane
       const page = await createPaneLayoutPage(app);
       await waitForDockviewShell(page);
 
-      expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(1);
+      await waitForWorkspacePaneCount(page, 1);
+      await waitForDockviewTabCount(page, 1);
+      await expectNoUnavailablePane(page);
 
-      await runPaneCommand(page, "Duplicate Pane Right");
-      await page.locator('[data-testid="workspace-pane"]').nth(1).waitFor({ state: "visible" });
-      expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(2);
+      await clickPaneAction(page, "Duplicate pane right");
+      await waitForWorkspacePaneCount(page, 2);
+      await waitForDockviewTabCount(page, 2);
+      await expectNoUnavailablePane(page);
 
       const firstBox = await page.locator('[data-testid="workspace-pane"]').nth(0).boundingBox();
       const secondBox = await page.locator('[data-testid="workspace-pane"]').nth(1).boundingBox();
@@ -75,12 +125,83 @@ test("opens, duplicates, resizes, and closes Dockview panels without custom pane
         Math.abs(firstBox!.x - secondBox!.x) + Math.abs(firstBox!.y - secondBox!.y),
       ).toBeGreaterThan(20);
 
-      await runPaneCommand(page, "Duplicate Pane Below");
-      await page.locator('[data-testid="workspace-pane"]').nth(2).waitFor({ state: "visible" });
-      expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(3);
+      await clickPaneAction(page, "Duplicate pane below");
+      await waitForWorkspacePaneCount(page, 3);
+      await waitForDockviewTabCount(page, 3);
+      await expectNoUnavailablePane(page);
 
-      await runPaneCommand(page, "Close Pane");
-      expect(await page.locator('[data-testid="workspace-pane"]').count()).toBe(2);
+      await clickPaneAction(page, "Close pane");
+      await waitForWorkspacePaneCount(page, 2);
+      await waitForDockviewTabCount(page, 2);
+      await expectNoUnavailablePane(page);
+    },
+  );
+});
+
+test("opens session and workspace-scoped surface panes without unavailable Dockview panels", async () => {
+  await withSvvyApp(
+    {
+      beforeLaunch: async ({ homeDir: seededHome, workspaceDir }) => {
+        await seedSessions(
+          seededHome,
+          [
+            {
+              title: "First Pane Target",
+              messages: [
+                userMessage("Seed first pane target.", 1_730_000_000_100),
+                assistantTextMessage("First pane target is ready.", {
+                  timestamp: 1_730_000_000_101,
+                }),
+              ],
+            },
+            {
+              title: "Second Pane Target",
+              messages: [
+                userMessage("Seed second pane target.", 1_730_000_000_200),
+                assistantTextMessage("Second pane target is ready.", {
+                  timestamp: 1_730_000_000_201,
+                }),
+              ],
+            },
+          ],
+          workspaceDir,
+        );
+      },
+    },
+    async (app) => {
+      const page = await createPaneLayoutPage(app);
+      await waitForDockviewShell(page);
+
+      const activeSessionTitle =
+        (await page.locator('.session-main[aria-current="true"] strong').textContent())?.trim() ??
+        "";
+      const openedSessionTitle =
+        activeSessionTitle === "First Pane Target" ? "Second Pane Target" : "First Pane Target";
+      await clickSessionByTitle(page, openedSessionTitle);
+      await waitForWorkspacePaneCount(page, 2);
+      await waitForDockviewTabCount(page, 2);
+      expect(openedSessionTitle).toMatch(/Pane Target/);
+      await expectNoUnavailablePane(page);
+
+      await page
+        .getByRole("button", { name: "Open workflows" })
+        .filter({ visible: true })
+        .first()
+        .click({ force: true });
+      await page.locator(".saved-workflow-library").waitFor({
+        state: "visible",
+      });
+      await waitForDockviewTabCount(page, 3);
+      await expectNoUnavailablePane(page);
+
+      await page
+        .getByRole("button", { name: "Open app logs" })
+        .filter({ visible: true })
+        .first()
+        .click({ force: true });
+      await page.locator(".app-logs-pane").waitFor({ state: "visible" });
+      await waitForDockviewTabCount(page, 4);
+      await expectNoUnavailablePane(page);
     },
   );
 });

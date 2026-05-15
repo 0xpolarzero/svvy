@@ -151,7 +151,7 @@ export function createPanelChrome(
     case "workflow-inspector":
       return chrome("Workflow Inspector", binding.workflowRunId, "workflow-inspector", true);
     case "saved-workflow-library":
-      return chrome("Saved Workflow Library", ".svvy/workflows", "saved-workflow-library", true);
+      return chrome("Workflows", ".svvy/workflows", "saved-workflow-library", true);
     case "app-logs":
       return chrome("Logs", "workspace", "app-logs", true);
     case "command":
@@ -172,12 +172,12 @@ export function createPanelChrome(
 
 export function createDockviewPanelState(
   panelId: string,
-  binding: WorkspacePaneSurfaceTarget | null = null,
+  binding: WorkspacePaneSurfaceTarget,
   placement: DockviewPanelPlacementState | null = null,
 ): WorkspaceDockviewPanelState {
   return {
     panelId,
-    binding: binding ? { ...binding } : null,
+    binding: { ...binding },
     localState: createDefaultPaneLocalState(),
     chrome: createPanelChrome(binding),
     placement: placement ? { ...placement } : null,
@@ -193,9 +193,9 @@ export function createEmptyPaneLayout(
 ): WorkspaceDockviewLayoutState {
   return {
     dockview: null,
-    panels: [createDockviewPanelState(PRIMARY_CHAT_PANE_ID)],
+    panels: [],
     compactSurfaces: [],
-    focusedPanelId: PRIMARY_CHAT_PANE_ID,
+    focusedPanelId: null,
     updatedAt: now,
   };
 }
@@ -214,38 +214,50 @@ export function normalizePaneLayout(
     return createEmptyPaneLayout(now);
   }
 
-  const panels = rawPanels.map((panel) => {
+  const panels = rawPanels.flatMap((panel) => {
     const next = panel as Partial<WorkspaceDockviewPanelState>;
-    const binding = next.binding ? { ...next.binding } : null;
-    return {
-      panelId: String(next.panelId ?? createPanelId()),
-      binding,
-      localState: {
-        ...createDefaultPaneLocalState(),
-        ...next.localState,
-        inspectorSelection: next.localState?.inspectorSelection ?? null,
-        scroll: next.localState?.scroll ?? null,
+    if (!next.binding) {
+      return [];
+    }
+    const binding = { ...next.binding };
+    return [
+      {
+        panelId: String(next.panelId ?? createPanelId()),
+        binding,
+        localState: {
+          ...createDefaultPaneLocalState(),
+          ...next.localState,
+          inspectorSelection: next.localState?.inspectorSelection ?? null,
+          scroll: next.localState?.scroll ?? null,
+        },
+        chrome: {
+          ...createPanelChrome(binding),
+          ...next.chrome,
+        },
+        placement: normalizePlacement(next.placement),
+        restore: {
+          unavailableReason: null,
+          lastKnownLocationLabel: null,
+          ...next.restore,
+        },
       },
-      chrome: {
-        ...createPanelChrome(binding),
-        ...next.chrome,
-      },
-      placement: normalizePlacement(next.placement),
-      restore: {
-        unavailableReason: null,
-        lastKnownLocationLabel: null,
-        ...next.restore,
-      },
-    };
+    ];
   });
+
+  if (panels.length === 0) {
+    return createEmptyPaneLayout(now);
+  }
 
   const focusedPanelId =
     layout.focusedPanelId && panels.some((panel) => panel.panelId === layout.focusedPanelId)
       ? layout.focusedPanelId
       : panels[0]!.panelId;
+  const droppedPanels = panels.length !== rawPanels.length;
+  const panelIds = new Set(panels.map((panel) => panel.panelId));
+  const dockview = sanitizeSerializedDockview(layout.dockview, panelIds, droppedPanels);
 
   return {
-    dockview: isSerializedDockview(layout.dockview) ? layout.dockview : null,
+    dockview,
     panels,
     compactSurfaces: Array.isArray(layout.compactSurfaces)
       ? layout.compactSurfaces.map((surface) => ({ ...surface }))
@@ -319,7 +331,7 @@ export function setPaneScroll(
 
 export function addDockviewPanel(
   layout: WorkspaceDockviewLayoutState,
-  binding: WorkspacePaneSurfaceTarget | null = null,
+  binding: WorkspacePaneSurfaceTarget,
   panelId = createPanelId(),
   placement: DockviewPanelPlacementState | null = null,
 ): WorkspaceDockviewLayoutState {
@@ -351,7 +363,10 @@ export function splitPane(
   options: { duplicateBinding?: boolean; size?: number; nextPaneId?: string } = {},
 ): WorkspaceDockviewLayoutState {
   const source = layout.panels.find((panel) => panel.panelId === panelId);
-  const binding = options.duplicateBinding && source?.binding ? { ...source.binding } : null;
+  if (!options.duplicateBinding || !source?.binding) {
+    return layout;
+  }
+  const binding = { ...source.binding };
   return addDockviewPanel(layout, binding, options.nextPaneId ?? createPanelId(), {
     referencePanelId: panelId,
     direction,
@@ -371,9 +386,10 @@ export function setDockviewSerializedLayout(
   dockview: SerializedDockview | null,
   focusedPanelId = layout.focusedPanelId,
 ): WorkspaceDockviewLayoutState {
+  const panelIds = new Set(layout.panels.map((panel) => panel.panelId));
   return touch({
     ...layout,
-    dockview,
+    dockview: sanitizeSerializedDockview(dockview, panelIds),
     focusedPanelId,
   });
 }
@@ -444,4 +460,52 @@ function normalizePlacement(value: unknown): DockviewPanelPlacementState | null 
 
 function isSerializedDockview(value: unknown): value is SerializedDockview {
   return !!value && typeof value === "object" && "grid" in value && "panels" in value;
+}
+
+function sanitizeSerializedDockview(
+  value: unknown,
+  panelIds: Set<string>,
+  forceDiscard = false,
+): SerializedDockview | null {
+  if (forceDiscard || !isSerializedDockview(value)) {
+    return null;
+  }
+
+  const serializedPanelIds = collectSerializedDockviewPanelIds(value);
+  if (serializedPanelIds.size === 0) {
+    return panelIds.size === 0 ? null : value;
+  }
+
+  if (serializedPanelIds.size !== panelIds.size) {
+    return null;
+  }
+  for (const panelId of serializedPanelIds) {
+    if (!panelIds.has(panelId)) {
+      return null;
+    }
+  }
+
+  return value;
+}
+
+function collectSerializedDockviewPanelIds(value: SerializedDockview): Set<string> {
+  const ids = new Set<string>();
+  const panels = (value as { panels?: unknown }).panels;
+  if (Array.isArray(panels)) {
+    for (const panel of panels) {
+      if (panel && typeof panel === "object") {
+        const id = (panel as { id?: unknown }).id;
+        if (typeof id === "string") {
+          ids.add(id);
+        }
+      }
+    }
+    return ids;
+  }
+  if (panels && typeof panels === "object") {
+    for (const id of Object.keys(panels)) {
+      ids.add(id);
+    }
+  }
+  return ids;
 }

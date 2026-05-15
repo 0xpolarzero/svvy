@@ -45,12 +45,12 @@ export type CommandExecutionTarget =
       action: "pin" | "unpin" | "archive" | "unarchive";
     }
   | { kind: "open-surface"; surface: PromptTarget }
-  | { kind: "open-saved-workflow-library"; workspaceSessionId: string }
+  | { kind: "open-saved-workflow-library" }
   | { kind: "start-orchestrator-turn"; workspaceSessionId: string; prompt: string }
   | { kind: "open-settings"; target: string }
   | {
       kind: "pane-action";
-      action: "split-right" | "split-below" | "duplicate-right" | "duplicate-below" | "close";
+      action: "duplicate-right" | "duplicate-below" | "close";
     };
 
 export type CommandAction = {
@@ -117,7 +117,7 @@ const COMMAND_ACTION_CATEGORY_LABELS: Record<CommandActionCategory, string> = {
   "project-ci": "Project CI",
   "handler-thread": "Handler Threads",
   "workflow-inspector": "Workflow Inspectors",
-  "workflow-library": "Workflow Library",
+  "workflow-library": "Workflows",
   pane: "Panes",
   settings: "Settings",
   "agent-settings": "Agent Settings",
@@ -210,35 +210,12 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
     },
     {
       id: "workflow-library.open",
-      label: "Open Saved Workflow Library",
+      label: "Open Workflows",
       category: "workflow-library",
       aliases: ["saved workflows", "workflow assets", "workflow entries", "workflow library"],
       shortcut: null,
-      availability: hasFocusedSession
-        ? { kind: "available" }
-        : { kind: "disabled", reason: "Open a session before browsing saved workflows." },
-      execute: {
-        kind: "open-saved-workflow-library",
-        workspaceSessionId: input.focusedSessionId ?? "",
-      },
-    },
-    {
-      id: "pane.split-right",
-      label: "Split Pane Right",
-      category: "pane",
-      aliases: ["pane right", "new pane right", "split column"],
-      shortcut: null,
       availability: { kind: "available" },
-      execute: { kind: "pane-action", action: "split-right" },
-    },
-    {
-      id: "pane.split-below",
-      label: "Split Pane Below",
-      category: "pane",
-      aliases: ["pane below", "new pane below", "split row"],
-      shortcut: null,
-      availability: { kind: "available" },
-      execute: { kind: "pane-action", action: "split-below" },
+      execute: { kind: "open-saved-workflow-library" },
     },
     {
       id: "pane.duplicate-right",
@@ -598,10 +575,7 @@ export async function executeCommandAction(input: {
       await runtime.openSurface(target.surface, paneId);
       return;
     case "open-saved-workflow-library":
-      await runtime.openSurface(
-        { workspaceSessionId: target.workspaceSessionId, surface: "saved-workflow-library" },
-        paneId,
-      );
+      await runtime.openSurface({ surface: "saved-workflow-library" }, paneId);
       return;
     case "start-orchestrator-turn":
       await runtime.openSession(target.workspaceSessionId, paneId);
@@ -611,14 +585,6 @@ export async function executeCommandAction(input: {
       input.onOpenSettings?.(target.target);
       return;
     case "pane-action":
-      if (target.action === "split-right") {
-        const nextPanelId = await runtime.splitPane(paneId, "right");
-        if (nextPanelId) runtime.focusPane(nextPanelId);
-      }
-      if (target.action === "split-below") {
-        const nextPanelId = await runtime.splitPane(paneId, "below");
-        if (nextPanelId) runtime.focusPane(nextPanelId);
-      }
       if (target.action === "duplicate-right") {
         const nextPanelId = await runtime.splitPane(paneId, "right", { duplicateBinding: true });
         if (nextPanelId) runtime.focusPane(nextPanelId);

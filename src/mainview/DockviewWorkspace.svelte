@@ -523,8 +523,11 @@
   }
 
   $effect(() => {
+    void panels;
+    void focusedPanelId;
     syncDockviewPanels();
     refreshSurfaceTabs();
+    scheduleDockviewLayout();
   });
 
   $effect(() => {

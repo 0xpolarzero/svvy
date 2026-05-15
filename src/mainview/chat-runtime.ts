@@ -59,6 +59,7 @@ import {
   splitPane,
   WORKSPACE_LAYOUT_SLOT_IDS,
   type PaneOpenTarget,
+  type DockviewPanelPlacementState,
   type DockviewSplitDirection,
   type WorkspaceDockviewLayoutState,
   type WorkspaceLayoutSlotId,
@@ -893,13 +894,13 @@ export async function createChatRuntime(
     return controller;
   };
 
-  const clearPaneBinding = (panelId: string): void => {
+  const removePaneForSurface = (panelId: string): void => {
     const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     if (!target) {
       return;
     }
 
-    paneLayout = bindPane(paneLayout, panelId, null);
+    paneLayout = closePane(paneLayout, panelId);
     if (isPromptTarget(target)) {
       surfaceControllers.get(target.surfacePiSessionId)?.detachPane(panelId);
     }
@@ -1038,7 +1039,9 @@ export async function createChatRuntime(
 
     const focusedTarget =
       paneLayout.panels.find((pane) => pane.panelId === paneLayout.focusedPanelId)?.binding ?? null;
-    return focusedTarget?.workspaceSessionId;
+    return focusedTarget && "workspaceSessionId" in focusedTarget
+      ? focusedTarget.workspaceSessionId
+      : undefined;
   };
 
   const syncProviderAuth = async (providerId: string): Promise<boolean> => {
@@ -1227,51 +1230,61 @@ export async function createChatRuntime(
     return await rpcClient.request.getArtifactPreview(scoped({ sessionId, artifactId }));
   };
 
-  const resolveOpenTarget = (openTarget?: PaneOpenTarget | string): string => {
-    const createPanelForOpen = (panelId = PRIMARY_CHAT_PANE_ID): string => {
-      paneLayout = addDockviewPanel(paneLayout, null, panelId);
-      persistWorkspaceUiRestore();
-      emit();
-      return panelId;
-    };
+  const getFallbackPanelId = (): string | null =>
+    paneLayout.focusedPanelId &&
+    paneLayout.panels.some((pane) => pane.panelId === paneLayout.focusedPanelId)
+      ? paneLayout.focusedPanelId
+      : (paneLayout.panels[0]?.panelId ?? null);
 
+  const addBoundPanel = (
+    binding: WorkspacePaneSurfaceTarget,
+    panelId = paneLayout.panels.length === 0 ? PRIMARY_CHAT_PANE_ID : createPanelId(),
+    placement: DockviewPanelPlacementState | null = null,
+  ): string => {
+    paneLayout = addDockviewPanel(paneLayout, binding, panelId, placement);
+    persistWorkspaceUiRestore();
+    emit();
+    return panelId;
+  };
+
+  const resolveOpenTarget = (
+    binding: WorkspacePaneSurfaceTarget,
+    openTarget?: PaneOpenTarget | string,
+  ): string => {
     if (typeof openTarget === "string") {
       if (!paneLayout.panels.some((pane) => pane.panelId === openTarget)) {
-        return createPanelForOpen(openTarget);
+        return addBoundPanel(binding, openTarget);
       }
       return openTarget;
     }
     if (!openTarget || openTarget.kind === "focused-panel") {
-      return paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? createPanelForOpen();
+      return getFallbackPanelId() ?? addBoundPanel(binding);
     }
     if (openTarget.kind === "panel") {
       if (!paneLayout.panels.some((pane) => pane.panelId === openTarget.panelId)) {
-        return createPanelForOpen(openTarget.panelId);
+        return addBoundPanel(binding, openTarget.panelId);
       }
       return openTarget.panelId;
     }
     if (openTarget.kind === "split") {
-      if (!paneLayout.panels.some((pane) => pane.panelId === openTarget.panelId)) {
-        return createPanelForOpen(openTarget.panelId);
-      }
-      const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
-      paneLayout = splitPane(paneLayout, openTarget.panelId, openTarget.direction, {
-        size: openTarget.size,
-      });
-      persistWorkspaceUiRestore();
-      emit();
-      return (
-        paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? openTarget.panelId
-      );
+      const referencePanelId = paneLayout.panels.some((pane) => pane.panelId === openTarget.panelId)
+        ? openTarget.panelId
+        : getFallbackPanelId();
+      return referencePanelId
+        ? addBoundPanel(binding, createPanelId(), {
+            referencePanelId,
+            direction: openTarget.direction,
+            size: openTarget.size,
+          })
+        : addBoundPanel(binding);
     }
     if (openTarget.kind === "tab") {
-      return createPanelForOpen(createPanelId());
+      return addBoundPanel(binding);
     }
-    if (paneLayout.panels.length === 0) {
-      return createPanelForOpen();
+    const basePaneId = getFallbackPanelId();
+    if (!basePaneId) {
+      return addBoundPanel(binding);
     }
-    const basePaneId =
-      paneLayout.focusedPanelId ?? paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID;
     const before = new Set(paneLayout.panels.map((pane) => pane.panelId));
     const direction =
       openTarget.kind === "new-panel"
@@ -1280,10 +1293,12 @@ export async function createChatRuntime(
           ? openTarget.direction
           : "right";
     const size = "size" in openTarget ? openTarget.size : undefined;
-    paneLayout = splitPane(paneLayout, basePaneId, direction, { size });
-    persistWorkspaceUiRestore();
-    emit();
-    return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? basePaneId;
+    const nextPanelId = addBoundPanel(binding, createPanelId(), {
+      referencePanelId: basePaneId,
+      direction,
+      size,
+    });
+    return paneLayout.panels.find((pane) => !before.has(pane.panelId))?.panelId ?? nextPanelId;
   };
 
   const [defaults, initialCatalog, initialAppLogSummary] = await Promise.all([
@@ -1321,6 +1336,7 @@ export async function createChatRuntime(
       (paneState) =>
         !paneState.binding ||
         paneState.binding.surface === "app-logs" ||
+        paneState.binding.surface === "saved-workflow-library" ||
         sessionIds.has(paneState.binding.workspaceSessionId),
     );
     if (!hasOnlyRestorablePanes) {
@@ -1330,6 +1346,7 @@ export async function createChatRuntime(
       if (
         !paneState.binding ||
         (paneState.binding.surface !== "app-logs" &&
+          paneState.binding.surface !== "saved-workflow-library" &&
           !sessionIds.has(paneState.binding.workspaceSessionId))
       ) {
         continue;
@@ -1399,10 +1416,12 @@ export async function createChatRuntime(
       throw new Error("Expected an initial session to open.");
     }
     const snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession.id }));
-    await bindPaneToSnapshot(PRIMARY_CHAT_PANE_ID, snapshot);
+    const panelId = resolveOpenTarget(normalizePromptTarget(snapshot.target), PRIMARY_CHAT_PANE_ID);
+    await bindPaneToSnapshot(panelId, snapshot);
   } else {
     const snapshot = await rpcClient.request.createSession(scoped({}));
-    await bindPaneToSnapshot(PRIMARY_CHAT_PANE_ID, snapshot);
+    const panelId = resolveOpenTarget(normalizePromptTarget(snapshot.target), PRIMARY_CHAT_PANE_ID);
+    await bindPaneToSnapshot(panelId, snapshot);
     await refreshSessions();
   }
 
@@ -1427,7 +1446,7 @@ export async function createChatRuntime(
           isPromptTarget(pane.binding) &&
           pane.binding.surfacePiSessionId === payload.target.surfacePiSessionId
         ) {
-          clearPaneBinding(pane.panelId);
+          removePaneForSurface(pane.panelId);
         }
       }
 
@@ -1633,16 +1652,26 @@ export async function createChatRuntime(
       await rpcClient.request.writeClipboardText({ text });
     },
     createSession: async (request = {}, openTarget) => {
-      const nextPaneId = resolveOpenTarget(openTarget);
       const snapshot = await rpcClient.request.createSession(scoped(request));
+      const nextPaneId = resolveOpenTarget(normalizePromptTarget(snapshot.target), openTarget);
       await bindPaneToSnapshot(nextPaneId, snapshot);
       await refreshSessions();
     },
     openSession: async (sessionId, openTarget) => {
-      const nextPaneId = resolveOpenTarget(openTarget);
+      const existingController = surfaceControllers.get(sessionId);
+      const target = existingController?.target ?? {
+        workspaceSessionId: sessionId,
+        surface: "orchestrator" as const,
+        surfacePiSessionId: sessionId,
+      };
+      const nextPaneId = resolveOpenTarget(normalizePromptTarget(target), openTarget);
       const currentTarget =
         paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
       if (
+        existingController &&
+        existingController.ownerPaneIds.length > 0 &&
+        currentTarget &&
+        "workspaceSessionId" in currentTarget &&
         currentTarget?.workspaceSessionId === sessionId &&
         currentTarget.surface === "orchestrator" &&
         currentTarget.surfacePiSessionId === sessionId
@@ -1654,8 +1683,12 @@ export async function createChatRuntime(
         return;
       }
 
-      const existingController = surfaceControllers.get(sessionId);
       if (existingController) {
+        if (existingController.ownerPaneIds.length === 0) {
+          const snapshot = await rpcClient.request.openSession(scoped({ sessionId }));
+          await bindPaneToSnapshot(nextPaneId, snapshot);
+          return;
+        }
         bindPaneToExistingController(nextPaneId, existingController);
         void rpcClient.request.recordSessionOpened(scoped({ sessionId }));
         return;
@@ -1665,7 +1698,6 @@ export async function createChatRuntime(
       await bindPaneToSnapshot(nextPaneId, snapshot);
     },
     openSurface: async (target, openTarget) => {
-      const nextPaneId = resolveOpenTarget(openTarget);
       if (
         target.surface === "workflow-inspector" ||
         target.surface === "command" ||
@@ -1675,6 +1707,7 @@ export async function createChatRuntime(
         target.surface === "saved-workflow-library" ||
         target.surface === "app-logs"
       ) {
+        const nextPaneId = resolveOpenTarget({ ...target }, openTarget);
         const previousTarget =
           paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
         if (isPromptTarget(previousTarget)) {
@@ -1687,21 +1720,24 @@ export async function createChatRuntime(
         return;
       }
       const normalizedTarget = normalizePromptTarget(target);
+      const nextPaneId = resolveOpenTarget(normalizedTarget, openTarget);
       const currentTarget =
         paneLayout.panels.find((pane) => pane.panelId === nextPaneId)?.binding ?? null;
+      const existingController = surfaceControllers.get(normalizedTarget.surfacePiSessionId);
       if (
+        existingController &&
+        existingController.ownerPaneIds.length > 0 &&
         isPromptTarget(currentTarget) &&
         currentTarget.surfacePiSessionId === normalizedTarget.surfacePiSessionId
       ) {
         paneLayout = bindPane(paneLayout, nextPaneId, normalizedTarget);
-        surfaceControllers.get(normalizedTarget.surfacePiSessionId)?.attachPane(nextPaneId);
+        existingController.attachPane(nextPaneId);
         persistWorkspaceUiRestore();
         emit();
         recordFocusedSession();
         return;
       }
 
-      const existingController = surfaceControllers.get(normalizedTarget.surfacePiSessionId);
       if (existingController) {
         if (existingController.ownerPaneIds.length === 0) {
           const snapshot = await rpcClient.request.openSurface(
@@ -1723,7 +1759,7 @@ export async function createChatRuntime(
         return;
       }
 
-      clearPaneBinding(panelId);
+      removePaneForSurface(panelId);
       emit();
       recordFocusedSession();
       await releasePaneSurface(panelId, target);
@@ -1745,7 +1781,6 @@ export async function createChatRuntime(
       await refreshSessions();
     },
     forkSession: async (sessionId, title, openTarget, forkOptions) => {
-      const nextPaneId = resolveOpenTarget(openTarget);
       const snapshot = await rpcClient.request.forkSession(
         scoped({
           sessionId,
@@ -1753,6 +1788,7 @@ export async function createChatRuntime(
           messageTimestamp: forkOptions?.messageTimestamp,
         }),
       );
+      const nextPaneId = resolveOpenTarget(normalizePromptTarget(snapshot.target), openTarget);
       await bindPaneToSnapshot(nextPaneId, snapshot);
       await refreshSessions();
     },
@@ -1764,7 +1800,11 @@ export async function createChatRuntime(
         PRIMARY_CHAT_PANE_ID;
       const affectedPaneIds = new Set<string>();
       for (const pane of paneLayout.panels) {
-        if (pane.binding?.workspaceSessionId === sessionId) {
+        if (
+          pane.binding &&
+          "workspaceSessionId" in pane.binding &&
+          pane.binding.workspaceSessionId === sessionId
+        ) {
           affectedPaneIds.add(pane.panelId);
         }
       }
@@ -1772,7 +1812,7 @@ export async function createChatRuntime(
       await rpcClient.request.deleteSession(scoped({ sessionId }));
 
       for (const candidatePaneId of affectedPaneIds) {
-        clearPaneBinding(candidatePaneId);
+        removePaneForSurface(candidatePaneId);
       }
 
       for (const [surfacePiSessionId, controller] of surfaceControllers.entries()) {

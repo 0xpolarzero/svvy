@@ -289,7 +289,9 @@ describe("command palette shortcuts", () => {
       { shortcut: "Cmd+Enter", label: "Focused pane" },
     ]);
     expect(
-      getCommandActionPlacementHints(actions.find((action) => action.id === "pane.split-right")!),
+      getCommandActionPlacementHints(
+        actions.find((action) => action.id === "pane.duplicate-right")!,
+      ),
     ).toEqual([]);
     expect(
       getCommandActionPlacementHints(
@@ -341,7 +343,9 @@ describe("buildCommandRegistry", () => {
     expect(actions.map((action) => action.id)).toContain("session.dumb");
     expect(actions.map((action) => action.id)).toContain("settings.open");
     expect(actions.map((action) => action.id)).toContain("workflow-library.open");
-    expect(actions.map((action) => action.id)).toContain("pane.split-right");
+    expect(actions.map((action) => action.id)).not.toContain("pane.split-right");
+    expect(actions.map((action) => action.id)).not.toContain("pane.split-below");
+    expect(actions.map((action) => action.id)).toContain("pane.duplicate-right");
     expect(actions.map((action) => action.id)).toContain("pane.duplicate-below");
     expect(actions.map((action) => action.id)).toContain("project-ci.run");
     expect(actions.map((action) => action.id)).toContain("session.open.session-1");
@@ -361,6 +365,18 @@ describe("buildCommandRegistry", () => {
     expect(actions.find((action) => action.id === "session.pin.session-2")?.availability.kind).toBe(
       "disabled",
     );
+  });
+
+  it("keeps the workflow library action workspace-scoped", () => {
+    const action = buildCommandRegistry({
+      sessions: [],
+      focusedSessionId: undefined,
+    }).find((candidate) => candidate.id === "workflow-library.open");
+
+    expect(action).toMatchObject({
+      availability: { kind: "available" },
+      execute: { kind: "open-saved-workflow-library" },
+    });
   });
 
   it("matches exact and prefix results before fuzzy results", () => {
@@ -431,7 +447,7 @@ describe("executeCommandAction", () => {
 
     await executeCommandAction({
       runtime,
-      action: actions.find((action) => action.id === "pane.split-right")!,
+      action: actions.find((action) => action.id === "pane.duplicate-right")!,
       paneId: "focused-panel",
     });
     await executeCommandAction({
@@ -446,7 +462,7 @@ describe("executeCommandAction", () => {
     });
 
     expect(runtime.calls).toEqual([
-      "split:focused-panel:right:empty",
+      "split:focused-panel:right:duplicate",
       "focus:new-panel",
       "split:focused-panel:below:duplicate",
       "focus:new-panel",

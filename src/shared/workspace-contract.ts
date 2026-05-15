@@ -112,7 +112,6 @@ export interface WorkflowInspectorPaneTarget {
 }
 
 export interface SavedWorkflowLibraryPaneTarget {
-  workspaceSessionId: string;
   surface: "saved-workflow-library";
 }
 

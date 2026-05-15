@@ -1341,11 +1341,9 @@
     );
   }
 
-  function openSavedWorkflowLibrary(sessionId = activeSessionId): void {
-    if (!sessionId) return;
+  function openSavedWorkflowLibrary(): void {
     void runtime.openSurface(
       {
-        workspaceSessionId: sessionId,
         surface: "saved-workflow-library",
       },
       { kind: "split", panelId: focusedPanelId, direction: "right" },

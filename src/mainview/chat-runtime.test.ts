@@ -1710,7 +1710,7 @@ describe("createChatRuntime", () => {
 
     await runtime.closePaneSurface("secondary");
 
-    expect(runtime.getPane("secondary")?.target).toBeNull();
+    expect(runtime.getPane("secondary")).toBeUndefined();
     expect(runtime.getPaneController("tertiary")).toBe(tertiaryController);
     expect(runtime.getSurfaceController(threadTarget.surfacePiSessionId)).toBe(tertiaryController);
     expect(harness.closeRequests).toHaveLength(0);
@@ -1719,7 +1719,7 @@ describe("createChatRuntime", () => {
     await runtime.closePaneSurface("tertiary");
     await waitFor(() => runtime.getSurfaceController(threadTarget.surfacePiSessionId) === null);
 
-    expect(runtime.getPane("tertiary")?.target).toBeNull();
+    expect(runtime.getPane("tertiary")).toBeUndefined();
     expect(harness.closeRequests).toHaveLength(1);
     expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(0);
 
@@ -1750,7 +1750,7 @@ describe("createChatRuntime", () => {
 
     await runtime.closePaneSurface("secondary");
 
-    expect(runtime.getPane("secondary")?.target).toBeNull();
+    expect(runtime.getPane("secondary")).toBeUndefined();
     expect(harness.closeRequests).toHaveLength(1);
     expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(0);
     expect(runtime.getSurfaceController(threadTarget.surfacePiSessionId)?.promptStatus).toBe(
@@ -2707,7 +2707,7 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
-  it("preserves restored empty panes and keeps focus on the restored pane", async () => {
+  it("drops restored empty panes and focuses a restorable bound pane", async () => {
     const storage = createMemoryStorage();
     await storage.workspaceUiRestore.set(
       TEST_WORKSPACE_INFO.workspaceId,
@@ -2750,9 +2750,9 @@ describe("createChatRuntime", () => {
 
     const runtime = await createRuntime(harness, storage);
 
-    expect(runtime.paneLayout.panels).toHaveLength(2);
-    expect(runtime.paneLayout.focusedPanelId).toBe("primary");
-    expect(runtime.getPane("primary")?.target).toBeNull();
+    expect(runtime.paneLayout.panels).toHaveLength(1);
+    expect(runtime.paneLayout.focusedPanelId).toBe("secondary");
+    expect(runtime.getPane("primary")).toBeUndefined();
     expect(runtime.getPane("secondary")?.target).toEqual(createOrchestratorTarget("session-1"));
 
     runtime.dispose();
@@ -2781,8 +2781,8 @@ describe("createChatRuntime", () => {
 
     await runtime.switchWorkspaceLayout("B");
     expect(runtime.activeLayoutId).toBe("B");
-    expect(runtime.paneLayout.panels).toHaveLength(1);
-    expect(runtime.getPane("primary")?.target).toBeNull();
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.getPane("primary")).toBeUndefined();
     expect(runtime.layoutSlots).toEqual([
       expect.objectContaining({ id: "A", active: false, initialized: true }),
       expect.objectContaining({ id: "B", active: true, initialized: false }),
@@ -2790,6 +2790,7 @@ describe("createChatRuntime", () => {
     ]);
 
     await runtime.openSession("session-1", runtime.primaryPaneId);
+    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
     expect(runtime.layoutSlots.find((slot) => slot.id === "B")?.initialized).toBe(true);
 
     await runtime.switchWorkspaceLayout("A");
@@ -2862,7 +2863,11 @@ describe("createChatRuntime", () => {
     const controller = runtime.getPaneController(runtime.primaryPaneId);
     expect(runtime.sessions).toHaveLength(initialSessionCount);
     expect(runtime.paneLayout.panels).toHaveLength(initialPaneCount);
-    expect(focusedPane?.target?.workspaceSessionId).toBe("session-1");
+    expect(
+      focusedPane?.target && "workspaceSessionId" in focusedPane.target
+        ? focusedPane.target.workspaceSessionId
+        : undefined,
+    ).toBe("session-1");
     expect(controller?.sessionMode).toBe("dumb");
     expect(controller?.sessionAgentKey).toBe("dumbOrchestrator");
     expect(harness.getSurfaceSnapshot("session-1").sessionMode).toBe("dumb");
