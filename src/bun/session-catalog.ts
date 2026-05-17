@@ -94,8 +94,8 @@ import {
   buildPromptLibraryGeneratedEntries,
   buildSystemPrompt,
   createDefaultPromptLibraryState,
-  type SvvyActorKind,
 } from "./default-system-prompt";
+import type { SvvyActorKind } from "./actor-capabilities";
 import { createSmithersTools } from "./smithers-tools";
 import { createCxTools } from "./cx-tools";
 import { SmithersRuntimeManager } from "./smithers-runtime/manager";

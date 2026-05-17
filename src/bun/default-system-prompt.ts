@@ -1,4 +1,5 @@
 import { WORKFLOW_AUTHORING_CONTRACT_DECLARATION } from "../../generated/workflow-authoring-contract.generated";
+import type { SvvyActorKind } from "./actor-capabilities";
 import { buildExecuteTypescriptApiDeclaration } from "./execute-typescript-api-declaration";
 import {
   buildAlwaysLoadedPromptContext,
@@ -19,18 +20,23 @@ import type {
   PromptLibraryState,
 } from "../shared/prompt-library";
 
-export type SvvyActorKind = "orchestrator" | "handler" | "workflow-task";
-
-export function buildExecuteTypescriptPromptSection(webProvider?: WebProvider): string {
+export function buildExecuteTypescriptPromptSection(
+  actor: SvvyActorKind,
+  webProvider?: WebProvider,
+): string {
+  const compositionUses =
+    actor === "handler"
+      ? "batching, looping, filtering, aggregation, workflow discovery, bash-backed inspection, or artifact evidence"
+      : "batching, looping, filtering, aggregation, bash-backed inspection, or artifact evidence";
   return [
-    "Use execute_typescript only when a small TypeScript program is genuinely useful for batching, looping, filtering, aggregation, workflow discovery, bash-backed inspection, or artifact evidence.",
+    `Use execute_typescript only when a small TypeScript program is genuinely useful for ${compositionUses}.`,
     "When you call execute_typescript, write plain TypeScript against the injected `api` object and `console`.",
     "Do not import or assume Node.js built-ins such as `fs`, `path`, `process`, or `node:*` inside the snippet.",
-    "The injected `api` duplicates only selected direct tools: read, grep, find, ls, bash, artifact.*, workflow.*, web.* when a keyed web provider is ready, and the read-only cx.* subset.",
+    "The injected `api` duplicates only selected actor-local direct tools: read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, the read-only cx.* subset, and handler-only workflow.* discovery.",
     "Do not use execute_typescript for ordinary reads, edits, writes, or simple command runs; call the direct tools instead.",
     "The execute_typescript contract follows and is the source of truth for the snippet environment:",
     "```ts",
-    buildExecuteTypescriptApiDeclaration(webProvider),
+    buildExecuteTypescriptApiDeclaration(actor, webProvider),
     "```",
   ].join("\n");
 }
@@ -392,7 +398,7 @@ export function buildSystemPromptFromLibrary(
         sections.push(loadedContextPrompt);
       }
     } else if (generatedId === "execute-typescript") {
-      sections.push(buildExecuteTypescriptPromptSection(options.webProvider));
+      sections.push(buildExecuteTypescriptPromptSection(actor, options.webProvider));
     }
   }
   return sections.join("\n\n");
@@ -470,7 +476,7 @@ function buildPromptLibraryGeneratedEntry(
       title: "Execute Typescript",
       source: "generated/execute-typescript-api.generated.ts",
       sourcePath: "generated/execute-typescript-api.generated.ts",
-      content: buildExecuteTypescriptPromptSection(options.webProvider),
+      content: buildExecuteTypescriptPromptSection(actor, options.webProvider),
     };
   }
   return null;
@@ -500,7 +506,7 @@ export function buildSystemPrompt(
       sections.push(loadedContextPrompt);
     }
   }
-  sections.push(buildExecuteTypescriptPromptSection(options.webProvider));
+  sections.push(buildExecuteTypescriptPromptSection(actor, options.webProvider));
   return sections.join("\n\n");
 }
 

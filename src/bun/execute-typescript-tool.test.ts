@@ -127,6 +127,47 @@ function createRuntime(
   };
 }
 
+function createHandlerRuntime(
+  store: StructuredSessionStateStore,
+  sessionId: string,
+  promptText = "Inspect the repository with handler execute_typescript",
+): PromptExecutionRuntimeHandle {
+  const orchestratorTurn = store.startTurn({
+    sessionId,
+    surfacePiSessionId: sessionId,
+    requestSummary: "Delegate handler work",
+  });
+  const thread = store.createThread({
+    turnId: orchestratorTurn.id,
+    surfacePiSessionId: `${sessionId}-handler`,
+    title: "Handler work",
+    objective: promptText,
+  });
+  store.finishTurn({ turnId: orchestratorTurn.id, status: "completed" });
+  const handlerTurn = store.startTurn({
+    sessionId,
+    surfacePiSessionId: thread.surfacePiSessionId,
+    threadId: thread.id,
+    requestSummary: promptText,
+  });
+
+  return {
+    current: {
+      sessionId,
+      turnId: handlerTurn.id,
+      surfacePiSessionId: thread.surfacePiSessionId,
+      surfaceThreadId: thread.id,
+      surfaceKind: "handler",
+      defaultEpisodeKind: "change",
+      rootThreadId: thread.id,
+      promptText,
+      rootEpisodeKind: "change",
+      sessionWaitApplied: false,
+      threadWasTerminalAtStart: false,
+    },
+  };
+}
+
 describe("execute_typescript tool", () => {
   it("requires an active prompt runtime", async () => {
     const workspaceCwd = createWorkspaceRoot();
@@ -186,6 +227,44 @@ describe("execute_typescript tool", () => {
     expect(snapshot.episodes).toEqual([]);
   });
 
+  it("omits workflow APIs for orchestrator code mode at typecheck and runtime", async () => {
+    const workspaceCwd = createWorkspaceRoot();
+    writeWorkspaceFile(
+      workspaceCwd,
+      ".svvy/workflows/prompts/proof.mdx",
+      "---\ntitle: Proof prompt\nsummary: Prompt proof.\n---\n",
+    );
+    const store = createStore("session-orchestrator-workflow-denied", workspaceCwd);
+    const runtime = createRuntime(store, "session-orchestrator-workflow-denied");
+    const tool = createExecuteTypescriptTool({
+      cwd: workspaceCwd,
+      runtime,
+      store,
+      workflowLibrary: createWorkflowLibrary(workspaceCwd),
+    });
+
+    const typechecked = await tool.execute("tool-call-workflow-typecheck-denied", {
+      typescriptCode: 'return await api.workflow.list_assets({ scope: "saved" });',
+    });
+    expect(typechecked.details.success).toBe(false);
+    expect(typechecked.details.error?.stage).toBe("typecheck");
+    expect(typechecked.details.error?.message).toContain("workflow");
+
+    const dynamic = await tool.execute("tool-call-workflow-runtime-denied", {
+      typescriptCode:
+        'return await (api as unknown as { workflow: { list_assets(input?: unknown): Promise<unknown> } }).workflow.list_assets({ scope: "saved" });',
+    });
+    expect(dynamic.details.success).toBe(false);
+    expect(dynamic.details.error?.stage).toBe("runtime");
+    expect(dynamic.details.error?.message).toBe(
+      "execute_typescript api.workflow is not available for orchestrator actors.",
+    );
+    const snapshot = store.getSessionState("session-orchestrator-workflow-denied");
+    expect(snapshot.commands.map((command) => command.toolName)).not.toContain(
+      "workflow.list_assets",
+    );
+  });
+
   it("runs a typed composition through duplicated direct tools and records child commands", async () => {
     const workspaceCwd = createWorkspaceRoot();
     writeWorkspaceFile(workspaceCwd, "notes.txt", "alpha\nbeta\n");
@@ -197,7 +276,11 @@ describe("execute_typescript tool", () => {
     );
 
     const store = createStore("session-success", workspaceCwd);
-    const runtime = createRuntime(store, "session-success", "Inspect a file and persist a summary");
+    const runtime = createHandlerRuntime(
+      store,
+      "session-success",
+      "Inspect a file and persist a summary",
+    );
     const tool = createExecuteTypescriptTool({
       cwd: workspaceCwd,
       runtime,
@@ -230,7 +313,10 @@ describe("execute_typescript tool", () => {
     });
 
     const snapshot = store.getSessionState("session-success");
-    expect(snapshot.turns[0]?.turnDecision).toBe("execute_typescript");
+    expect(
+      snapshot.turns.find((turn) => turn.surfacePiSessionId === "session-success-handler")
+        ?.turnDecision,
+    ).toBe("execute_typescript");
     const [parentCommand, ...childCommands] = snapshot.commands;
     expect(parentCommand).toMatchObject({
       toolName: "execute_typescript",

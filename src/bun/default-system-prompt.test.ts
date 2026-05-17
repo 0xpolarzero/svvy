@@ -9,6 +9,10 @@ import {
 } from "./default-system-prompt";
 import { EXECUTE_TYPESCRIPT_API_DECLARATION } from "../../generated/execute-typescript-api.generated";
 import { WORKFLOW_AUTHORING_CONTRACT_DECLARATION } from "../../generated/workflow-authoring-contract.generated";
+import {
+  buildExecuteTypescriptApiDeclaration,
+  buildHandlerWorkflowDeclaration,
+} from "./execute-typescript-api-declaration";
 import { HANDLER_WORKFLOW_AUTHORING_APPENDIX } from "./smithers-runtime/workflow-authoring-guide";
 import { createWebProvider } from "./web-runtime/provider-registry";
 
@@ -34,7 +38,7 @@ describe("default system prompt", () => {
     }
   });
 
-  it("embeds the generated execute_typescript API contract", () => {
+  it("embeds the actor-scoped execute_typescript API contract", () => {
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "The execute_typescript contract follows and is the source of truth",
     );
@@ -42,9 +46,10 @@ describe("default system prompt", () => {
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("interface ActiveWebSearchInput");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("site?: string");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("interface SvvyApi");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("list_assets(");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("list_models(): Promise<ToolResult");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_assets(");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_models(): Promise<ToolResult");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("api.cx");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("handler-only workflow.* discovery");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("Selected Web Provider: none");
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "No `web.*` direct tools or `api.web` helpers are callable",
@@ -58,6 +63,12 @@ describe("default system prompt", () => {
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("providerModelSummary");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("toolsetSummary");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("subtype?: string");
+
+    expect(HANDLER_SYSTEM_PROMPT).toContain(buildHandlerWorkflowDeclaration());
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("list_assets(");
+    expect(buildExecuteTypescriptApiDeclaration("orchestrator")).not.toContain("list_assets(");
+    expect(buildExecuteTypescriptApiDeclaration("handler")).toContain("list_assets(");
+    expect(buildExecuteTypescriptApiDeclaration("workflow-task")).not.toContain("list_assets(");
   });
 
   it("explicitly steers snippets away from Node built-ins and toward duplicated direct tools", () => {
@@ -103,6 +114,7 @@ describe("default system prompt", () => {
     expect(HANDLER_SYSTEM_PROMPT).toContain(".svvy/artifacts/workflows/<artifact_workflow_id>/");
     expect(HANDLER_SYSTEM_PROMPT).toContain('request_context({ keys: ["ci"] })');
     expect(EXECUTE_TYPESCRIPT_API_DECLARATION).not.toContain("request_context");
+    expect(EXECUTE_TYPESCRIPT_API_DECLARATION).not.toContain("workflow:");
   });
 
   it("selects the active provider declaration for api.web", () => {

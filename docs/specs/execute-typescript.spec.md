@@ -2,11 +2,12 @@
 
 ## Product Contract
 
-svvy exposes native direct tools as the normal coding-agent interface. The direct tools are the canonical surface for semantic code navigation, reading files, searching, editing, writing, running shell commands, creating artifacts, discovering workflow assets, and using provider-backed web search and fetch.
+svvy exposes native direct tools as the normal coding-agent interface. The direct tools are the canonical surface for semantic code navigation, reading files, searching, editing, writing, running shell commands, creating artifacts, actor-owned workflow discovery, and using provider-backed web search and fetch.
 
-`execute_typescript` is a composition tool. It receives a bounded TypeScript snippet, injects a small `api` object, typechecks the snippet against a generated declaration, runs it, and records each nested `api` call as a child command. Agents use it when TypeScript control flow is useful: batching, looping, filtering, aggregation, workflow discovery, bash-backed inspection, or artifact evidence.
+`execute_typescript` is an actor-local composition tool. It receives a bounded TypeScript snippet, injects a small `api` object generated for the current actor, typechecks the snippet against that actor-specific declaration, runs it, and records each nested `api` call as a child command. Agents use it when TypeScript control flow is useful: batching, looping, filtering, aggregation, handler-owned workflow discovery, bash-backed inspection, or artifact evidence.
 
 Ordinary one-shot repository actions use direct tools. Code mode does not own general repository I/O.
+Code mode also does not widen actor authority: if an actor does not receive a direct tool or Smithers tool in its normal callable surface, it does not receive that capability through `execute_typescript`.
 
 ## Direct Tools
 
@@ -62,7 +63,7 @@ Artifacts are for durable byproducts and evidence: logs, reports, large outputs,
 
 ### Workflow Discovery Tools
 
-Handlers and task agents discover reusable workflow assets through direct workflow tools:
+Handler threads discover reusable workflow assets and workflow-authoring models through direct workflow tools:
 
 | Tool | Purpose |
 | --- | --- |
@@ -70,6 +71,10 @@ Handlers and task agents discover reusable workflow assets through direct workfl
 | `workflow.list_models` | List provider/model options available for workflow task-agent authoring. |
 
 Smithers runtime control remains on Smithers-native tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, and workflow wait/control tools. Workflow discovery tools only expose source-library metadata and model inventory.
+
+The orchestrator does not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow` through `execute_typescript`. When the orchestrator wants workflow action, it delegates by calling `thread.start`.
+
+Workflow task agents do not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow` through `execute_typescript`. Their workflow context comes from the Smithers task attempt and their task-local instructions, not from workflow-supervision APIs.
 
 ### Web Tools
 
@@ -88,15 +93,15 @@ Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
 ### Orchestrator
 
-The orchestrator receives cx tools, direct coding tools, direct artifact tools, `execute_typescript`, and orchestration tools such as `thread.start` and `wait`. It uses direct tools for local bounded work and starts handler threads for larger owned work.
+The orchestrator receives cx tools, direct coding tools, direct artifact tools, `execute_typescript`, and orchestration tools such as `thread.start` and `wait`. It uses direct tools for local bounded work and starts handler threads for larger owned work. It does not receive workflow discovery tools, Smithers tools, or `api.workflow`.
 
 ### Handler
 
-Handler threads receive cx tools, direct coding tools, direct artifact tools, direct workflow discovery tools, `execute_typescript`, `request_context`, `thread.handoff`, wait tools, and Smithers supervision tools. They can inspect, edit, author, run, and reconcile workflows without relying on code mode as the primary I/O mechanism.
+Handler threads receive cx tools, direct coding tools, direct artifact tools, direct workflow discovery tools, `execute_typescript`, `request_context`, `thread.handoff`, wait tools, and Smithers supervision tools. Their `execute_typescript` SDK includes `api.workflow` for typed composition over workflow asset discovery and workflow-authoring model lookup. They inspect, edit, author, run, and reconcile workflows through their handler-owned direct and Smithers-native tool surface without relying on code mode as the primary I/O mechanism.
 
 ### Workflow Task Agent
 
-Workflow task agents receive task-local cx tools, direct coding tools, direct artifact tools, and `execute_typescript`. Their working directory is the Smithers task root or assigned worktree. They do not receive handler/orchestrator control tools.
+Workflow task agents receive task-local cx tools, direct coding tools, direct artifact tools, and `execute_typescript`. Their working directory is the Smithers task root or assigned worktree. They do not receive handler/orchestrator control tools, workflow discovery tools, Smithers supervision tools, or `api.workflow`.
 
 ## `execute_typescript` Input
 
@@ -118,18 +123,19 @@ The snippet can `return` any JSON-serializable value or a small diagnostic objec
 
 ## Runtime Rules
 
-- The snippet is typechecked before execution against the generated `SvvyApi` declaration.
+- The snippet is typechecked before execution against the generated actor-specific `SvvyApi` declaration.
 - Node built-ins are not part of the snippet contract.
-- The injected `api` object is the only host capability.
+- The injected `api` object is the only host capability in the snippet contract, and its namespaces must be authorized by the current actor capability profile.
 - The injected `console` captures small log lines into the result.
 - Each nested `api` call creates a child command under the parent `execute_typescript` command.
 - Direct tools remain the preferred path for one-shot reads, edits, writes, and commands.
 - Code mode does not expose `edit` or `write`; file modification belongs to direct tools.
 - Code mode exposes only read-only cx operations.
+- Code mode does not expose Smithers runtime control. Handlers use direct `smithers.*` tools for Smithers supervision, not `api.smithers`.
 
 ## Injected API
 
-The source contract is generated from `src/bun/execute-typescript-api-contract.ts` into `generated/execute-typescript-api.generated.ts` and embedded in the system prompt.
+The source contract is generated from `src/bun/execute-typescript-api-contract.ts` into `generated/execute-typescript-api.generated.ts` and embedded in the system prompt. The generated declaration is actor-specific. `SvvyApi` means the current actor's API shape, not one universal interface shared by all actors.
 
 ```ts
 interface SvvyConsole {
@@ -155,7 +161,7 @@ interface ToolResult<TDetails = unknown> {
   details: TDetails;
 }
 
-interface SvvyApi {
+interface BaseSvvyApi {
   read(input: { path: string; offset?: number; limit?: number }): Promise<ToolResult>;
   grep(input: {
     pattern: string;
@@ -190,11 +196,23 @@ interface SvvyApi {
     }): Promise<ToolResult<ArtifactWriteResult>>;
     attach_file(input: { path: string; name?: string }): Promise<ToolResult<ArtifactWriteResult>>;
   };
+}
+
+type OrchestratorSvvyApi = BaseSvvyApi;
+
+type WorkflowTaskAgentSvvyApi = BaseSvvyApi;
+
+interface HandlerSvvyApi extends BaseSvvyApi {
   workflow: {
     list_assets(input?: WorkflowListAssetsInput): Promise<ToolResult<WorkflowListAssetsDetails>>;
     list_models(): Promise<ToolResult<WorkflowListModelsDetails>>;
   };
 }
+
+// The generated prompt declares one concrete alias for the current actor:
+// type SvvyApi = OrchestratorSvvyApi;
+// type SvvyApi = HandlerSvvyApi;
+// type SvvyApi = WorkflowTaskAgentSvvyApi;
 ```
 
 The code-mode API duplicates these direct tools only:
@@ -215,12 +233,14 @@ The code-mode API duplicates these direct tools only:
 | `api.artifact.write_text` | `artifact.write_text` |
 | `api.artifact.write_json` | `artifact.write_json` |
 | `api.artifact.attach_file` | `artifact.attach_file` |
-| `api.workflow.list_assets` | `workflow.list_assets` |
-| `api.workflow.list_models` | `workflow.list_models` |
+| `api.workflow.list_assets` | `workflow.list_assets`, handler only |
+| `api.workflow.list_models` | `workflow.list_models`, handler only |
 | `api.web.search` | `web.search`, only when a keyed web provider is ready |
 | `api.web.fetch` | `web.fetch`, only when a keyed web provider is ready |
 
 `edit`, `write`, `cx.lang.add`, `cx.lang.remove`, and `cx.cache.clean` are not duplicated inside code mode. Agents call those tools directly so modifications to repository or cx runtime state stay explicit in the transcript and command stream.
+
+`api.workflow` is generated only for handler-thread actors. It is a typed composition surface for workflow asset discovery and workflow-authoring model lookup. It is not a Smithers runtime-control surface, and it is absent for orchestrators and workflow task agents.
 
 `api.web` is an optional code-mode API block. It is generated only when the active Web Provider is selected and ready with its API key. Its concrete input and output types are generated from the active provider's checked-in direct-tool contracts. Changing providers or key state regenerates the `api.web` declaration before the next turn. It is meant for batching, filtering, aggregation, and artifact evidence over multiple independent searches or fetches. One-shot web lookups should use the direct `web.*` tools. `api.web.fetch` follows the same deterministic artifact-backed behavior as direct `web.fetch`: fetched page bodies are written to artifacts and the result returns artifact references. If no provider is ready, `api.web` is absent and snippets that reference it fail typecheck.
 
@@ -244,7 +264,9 @@ return {
 };
 ```
 
-### Workflow Discovery
+### Handler Workflow Discovery
+
+This example is valid only in a handler-thread `execute_typescript` turn.
 
 ```ts
 const prompts = await api.workflow.list_assets({ kind: "prompt", scope: "saved" });

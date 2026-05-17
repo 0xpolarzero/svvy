@@ -233,7 +233,7 @@ Direct tools cover:
 - running bounded shell commands
 - editing and writing files
 - provider-backed web search and web fetch through the active keyed `web.*` provider when configured
-- discovering workflow assets and workflow-authoring models
+- handler-owned discovery of workflow assets and workflow-authoring models
 - listing the currently callable actor-specific tool surface
 
 When a model needs several independent tool results, the prompt should tell it to issue those tool calls together so pi's parallel tool execution can run them concurrently. Sequential tool calls should be reserved for cases where the later call depends on the earlier result.
@@ -265,9 +265,13 @@ That includes:
 - filtering and aggregating search output
 - producing durable artifact evidence from composed results
 
-Inside `execute_typescript`, the runtime injects `api.*` as a host SDK.
+Inside `execute_typescript`, the runtime injects an actor-specific `api.*` host SDK.
 
-`api.*` duplicates only the selected direct tools that are useful inside TypeScript composition: `read`, `grep`, `find`, `ls`, `bash`, artifact creation, workflow discovery, provider-backed web search and fetch when configured, and read-only `cx` navigation.
+`api.*` duplicates only the selected direct tools that are useful inside TypeScript composition and callable by the current actor: `read`, `grep`, `find`, `ls`, `bash`, artifact creation, provider-backed web search and fetch when configured, and read-only `cx` navigation. Handler-thread actors also receive workflow discovery helpers in `api.workflow` for typed composition over workflow assets and workflow-authoring model lookup.
+
+The orchestrator does not receive workflow discovery, Smithers runtime control, or any `workflow` or `smithers` namespace through `execute_typescript`. Workflow action from the orchestrator goes through `thread.start` into a handler thread.
+
+Workflow task agents receive only task-local direct-tool APIs through `execute_typescript`. They do not receive workflow discovery, Smithers runtime control, handler/orchestrator control tools, or any `api.workflow` namespace.
 
 The `execute_typescript` `api.cx` subset is:
 

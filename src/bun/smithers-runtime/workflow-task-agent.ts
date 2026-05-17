@@ -480,6 +480,7 @@ function createWorkflowTaskExecuteTypescriptTool(input: {
         signal,
         typescriptCode: params.typescriptCode,
         context: {
+          actor: "workflow-task",
           surfacePiSessionId: projection.surfacePiSessionId,
           turnId: null,
           workflowTaskAttemptId: projection.workflowTaskAttemptId,

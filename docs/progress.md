@@ -45,6 +45,7 @@ Workflow-inspector UI work remains explicitly out of scope for this section and 
 - [x] Expose a minimal `execute_typescript` tool with the adopted input/output contract and injected `api.*` surface. Commit(s): `76cc8f3`
 - [x] Persist each attempted snippet as a file-backed artifact before execution, with SQLite metadata and path indexing. Commit(s): `76cc8f3`, `fff54d7`
 - [x] Generate the typed `api.*` declaration for the code-mode subset of direct tools. Commit(s): `76cc8f3`, `29d8452`
+- [ ] Generate and enforce actor-specific `execute_typescript` capability profiles so orchestrators do not receive workflow or Smithers control through code mode, handler threads receive the workflow discovery composition surface defined by their product contract, and workflow task agents receive only task-local code-mode APIs.
 - [x] Run a simple composed scripted task through `execute_typescript`. Commit(s): `76cc8f3`
 - [x] Build a POC artifact and tracing pipeline for code-mode execution. Commit(s): `76cc8f3`
 - [x] Capture code-mode logs and nested command traces as artifacts and structured command records. Commit(s): `76cc8f3`, `fe53a3b`, `59fc34e`
@@ -123,8 +124,8 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Persist every authored short-lived workflow under `.svvy/artifacts/workflows/<artifact_workflow_id>/` with `definitions/`, `prompts/`, `components/`, `entries/`, and `metadata.json`. Commit(s): `dc1da8c`
 - [x] Define the saved workflow library layout under `.svvy/workflows/definitions/`, `.svvy/workflows/prompts/`, `.svvy/workflows/components/`, and `.svvy/workflows/entries/`. Commit(s): `37afcb3`, `4515233`
 - [x] Define the discovery metadata contract compiled from JSDoc headers in `ts` or `tsx` files and frontmatter in `mdx` prompt files. Commit(s): `37afcb3`, `4515233`
-- [x] Expose `workflow.list_assets` directly and duplicate it as `api.workflow.list_assets(...)` for code-mode composition. Commit(s): `4515233`
-- [x] Expose `workflow.list_models` directly and duplicate it as `api.workflow.list_models()` for code-mode composition. Commit(s): `4515233`
+- [x] Expose handler-owned `workflow.list_assets` directly and duplicate it as handler-only `api.workflow.list_assets(...)` for code-mode composition. Commit(s): `4515233`
+- [x] Expose handler-owned `workflow.list_models` directly and duplicate it as handler-only `api.workflow.list_models()` for code-mode composition. Commit(s): `4515233`
 - [x] Build a POC saved definition plus saved entry that are reused by a new short-lived artifact entry with different prompts, workflow agents, or config bound at authoring time. Commit(s): `37afcb3`
 - [x] Keep authored workflows artifact-only by default until the handler explicitly writes reusable files into `.svvy/workflows/`. Commit(s): `0b2d1ff`
 - [x] Run automatic saved-workflow validation after direct `write` or `edit` operations under `.svvy/workflows/...`, surfacing diagnostics through structured command records. Commit(s): `0b2d1ff`

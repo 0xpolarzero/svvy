@@ -159,12 +159,13 @@ export interface WorkflowListModelsDetails {
 }
 
 /**
- * Host API injected as the `api` variable inside `execute_typescript`.
+ * Base host API injected as the `api` variable inside `execute_typescript`.
  *
  * These functions duplicate direct tools by name and input shape. Use direct
  * tools for ordinary reads, edits, writes, and commands; use this API only when
  * TypeScript control flow is the clearest way to compose several read/search,
- * bash, artifact, workflow-discovery, or read-only cx calls.
+ * bash, artifact, or read-only cx calls. Actor capability profiles add any
+ * actor-local extensions, such as handler-only workflow discovery.
  */
 export interface SvvyApi {
   read(input: {
@@ -217,10 +218,5 @@ export interface SvvyApi {
       pretty?: boolean;
     }): Promise<ToolResult<ArtifactWriteResult>>;
     attach_file(input: { path: string; name?: string }): Promise<ToolResult<ArtifactWriteResult>>;
-  };
-
-  workflow: {
-    list_assets(input?: WorkflowListAssetsInput): Promise<ToolResult<WorkflowListAssetsDetails>>;
-    list_models(): Promise<ToolResult<WorkflowListModelsDetails>>;
   };
 }

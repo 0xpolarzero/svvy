@@ -4,6 +4,12 @@ import type { Static } from "@sinclair/typebox";
 import { basename } from "node:path";
 import { inspect } from "node:util";
 import * as ts from "typescript";
+import {
+  canUseExecuteTypescriptApiNamespace,
+  getExecuteTypescriptActorCapabilityProfile,
+  type ExecuteTypescriptApiNamespace,
+  type SvvyActorKind,
+} from "./actor-capabilities";
 import { createCxTools } from "./cx-tools";
 import { buildExecuteTypescriptApiDeclaration } from "./execute-typescript-api-declaration";
 import type { SvvyApi, SvvyConsole } from "./execute-typescript-api-contract";
@@ -71,6 +77,7 @@ const WRAPPER_SUFFIX = "}";
 const WRAPPER_LINE_OFFSET = 1;
 
 type ExecuteTypescriptContext = {
+  actor: SvvyActorKind;
   turnId?: string | null;
   workflowTaskAttemptId?: string | null;
   surfacePiSessionId: string;
@@ -134,6 +141,10 @@ type ExecuteTypescriptToolOptions = {
 };
 
 type ExecuteTypescriptApi = SvvyApi & {
+  workflow?: {
+    list_assets(input?: unknown): Promise<unknown>;
+    list_models(): Promise<unknown>;
+  };
   web?: {
     search(input: unknown): Promise<unknown>;
     fetch(input: unknown): Promise<unknown>;
@@ -188,6 +199,7 @@ export function createExecuteTypescriptTool(
         typescriptCode: params.typescriptCode,
         context: {
           turnId: runtime.turnId,
+          actor: runtime.surfaceKind === "handler" ? "handler" : "orchestrator",
           surfacePiSessionId: runtime.surfacePiSessionId,
           threadId: runtime.surfaceKind === "handler" ? runtime.rootThreadId : null,
           executor: runtime.surfaceKind === "handler" ? "handler" : "orchestrator",
@@ -263,7 +275,11 @@ export async function runExecuteTypescript(input: {
     content: input.typescriptCode,
   });
 
-  const preflight = compileAndTypecheck(input.typescriptCode, input.webProvider);
+  const preflight = compileAndTypecheck(
+    input.typescriptCode,
+    input.context.actor,
+    input.webProvider,
+  );
   if (preflight.errors.length > 0) {
     const diagnosticsArtifact = input.store.createArtifact({
       workflowTaskAttemptId: input.context.workflowTaskAttemptId ?? null,
@@ -300,6 +316,7 @@ export async function runExecuteTypescript(input: {
   try {
     const api = createExecuteTypescriptApi({
       cwd: input.cwd,
+      actor: input.context.actor,
       store: input.store,
       surfacePiSessionId: input.context.surfacePiSessionId,
       turnId: input.context.turnId ?? null,
@@ -387,6 +404,7 @@ export async function runExecuteTypescript(input: {
 
 function compileAndTypecheck(
   typescriptCode: string,
+  actor: SvvyActorKind,
   webProvider?: WebProvider,
 ): {
   javascript: string;
@@ -406,7 +424,7 @@ function compileAndTypecheck(
   const defaultHost = ts.createCompilerHost(compilerOptions, true);
   const sourceFiles = new Map<string, string>([
     [SOURCE_FILE, wrappedSource],
-    [API_DECLARATIONS_FILE, buildExecuteTypescriptApiDeclaration(webProvider)],
+    [API_DECLARATIONS_FILE, buildExecuteTypescriptApiDeclaration(actor, webProvider)],
   ]);
 
   const host: ts.CompilerHost = {
@@ -543,6 +561,7 @@ function appendCapturedConsoleLine(
 
 function createExecuteTypescriptApi(input: {
   cwd: string;
+  actor: SvvyActorKind;
   store: ExecuteTypescriptCommandStore;
   surfacePiSessionId: string;
   turnId?: string | null;
@@ -556,6 +575,14 @@ function createExecuteTypescriptApi(input: {
   emitConsole: (level: CapturedConsoleLevel, ...args: unknown[]) => void;
   recordChildActivity: (activity: ExecuteTypescriptChildActivity) => void;
 }): ExecuteTypescriptApi {
+  const profile = getExecuteTypescriptActorCapabilityProfile(input.actor);
+  const assertNamespaceAllowed = (namespace: ExecuteTypescriptApiNamespace): void => {
+    if (!profile.executeTypescript.apiNamespaces[namespace]) {
+      throw new Error(
+        `execute_typescript api.${namespace} is not available for ${input.actor} actors.`,
+      );
+    }
+  };
   const call = async <T>(config: {
     toolName: string;
     title: string;
@@ -660,7 +687,9 @@ function createExecuteTypescriptApi(input: {
       ...cxTools,
       ...directTools.codingTools,
       ...directTools.artifactTools,
-      ...directTools.workflowTools,
+      ...(canUseExecuteTypescriptApiNamespace(input.actor, "workflow")
+        ? directTools.workflowTools
+        : []),
       ...directTools.webTools,
     ].map((tool) => [tool.name, tool] as const),
   );
@@ -802,7 +831,9 @@ function createExecuteTypescriptApi(input: {
           facts: (result) => readToolResultDetails(result),
         }),
     },
-    workflow: {
+  };
+  if (canUseExecuteTypescriptApiNamespace(input.actor, "workflow")) {
+    api.workflow = {
       list_assets: (params = {}) =>
         invokeTool({
           tool: getTool("workflow.list_assets"),
@@ -827,39 +858,72 @@ function createExecuteTypescriptApi(input: {
             return { modelCount: models.length };
           },
         }),
-    },
-  };
+    };
+  }
 
   const webSearchTool = toolByName.get("web.search");
   const webFetchTool = toolByName.get("web.fetch");
   if (!webSearchTool || !webFetchTool) {
-    return api;
+    return guardExecuteTypescriptApi(api, input.actor, assertNamespaceAllowed);
   }
 
-  return {
-    ...api,
-    web: {
-      search: (params: unknown) => {
-        return invokeTool({
-          tool: webSearchTool,
-          params,
-          title: "Web search",
-          summary: `Web search ${readUnknownProperty(params, "query")}`.trim(),
-          facts: (result) => readCommandFacts(result),
-        });
-      },
-      fetch: (params: unknown) => {
-        return invokeTool({
-          tool: webFetchTool,
-          params,
-          title: "Web fetch",
-          summary: `Web fetch ${readWebFetchSummary(params)}`.trim(),
-          visibility: "summary",
-          facts: (result) => readCommandFacts(result),
-        });
-      },
+  api.web = {
+    search: (params: unknown) => {
+      return invokeTool({
+        tool: webSearchTool,
+        params,
+        title: "Web search",
+        summary: `Web search ${readUnknownProperty(params, "query")}`.trim(),
+        facts: (result) => readCommandFacts(result),
+      });
+    },
+    fetch: (params: unknown) => {
+      return invokeTool({
+        tool: webFetchTool,
+        params,
+        title: "Web fetch",
+        summary: `Web fetch ${readWebFetchSummary(params)}`.trim(),
+        visibility: "summary",
+        facts: (result) => readCommandFacts(result),
+      });
     },
   };
+  return guardExecuteTypescriptApi(api, input.actor, assertNamespaceAllowed);
+}
+
+function guardExecuteTypescriptApi(
+  api: ExecuteTypescriptApi,
+  actor: SvvyActorKind,
+  assertNamespaceAllowed: (namespace: ExecuteTypescriptApiNamespace) => void,
+): ExecuteTypescriptApi {
+  return new Proxy(api, {
+    get(target, property, receiver) {
+      if (typeof property === "string" && isExecuteTypescriptApiNamespace(property)) {
+        assertNamespaceAllowed(property);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+    has(target, property) {
+      if (typeof property === "string" && isExecuteTypescriptApiNamespace(property)) {
+        return canUseExecuteTypescriptApiNamespace(actor, property) && property in target;
+      }
+      return property in target;
+    },
+  });
+}
+
+function isExecuteTypescriptApiNamespace(value: string): value is ExecuteTypescriptApiNamespace {
+  return (
+    value === "read" ||
+    value === "grep" ||
+    value === "find" ||
+    value === "ls" ||
+    value === "bash" ||
+    value === "cx" ||
+    value === "artifact" ||
+    value === "workflow" ||
+    value === "web"
+  );
 }
 
 function readUnknownProperty(value: unknown, key: string): string {
