@@ -18,7 +18,7 @@ The logs surface should answer:
 
 - what did the app try to do
 - what is currently failing or waiting
-- whether a provider, title-generation job, workflow, prompt, bridge, or saved workflow action needs attention
+- whether a provider, title-generation job, workflow, prompt, renderer/RPC path, or saved workflow action needs attention
 - where to inspect the related session, thread, workflow run, command, or artifact
 
 This is product observability, not a developer console dump. Logs should be concise, structured, redacted, filterable, and live.
@@ -43,7 +43,8 @@ Clicking `Logs` opens an app logs pane in the workspace shell. The pane is a den
 - Do not use app logs as the canonical source of Project CI, workflow, command, or session state.
 - Do not infer product status from logs.
 - Do not store raw prompts, API keys, OAuth tokens, auth headers, raw provider responses, full tool output, or full workflow logs in app logs.
-- Do not replace existing structured session state, command inspectors, workflow inspectors, artifacts, or the Electrobun browser tools bridge.
+- Do not replace existing structured session state, command inspectors, workflow inspectors, or artifacts.
+- Do not rely on `electrobun-browser-tools` for production observability. Browser-tools is a dev/e2e/manual-inspection lane only and is absent from the production path.
 - Do not create a second notification system yet. App logs are the prerequisite observability substrate.
 
 ## Log Model
@@ -190,11 +191,10 @@ The logger should:
 
 - append to the app log store
 - send live log updates to the renderer
-- optionally forward compatible telemetry to `electrobun-browser-tools`
 - normalize thrown errors into `{ name, message, stack }`
 - accept related ids without burying them inside opaque `details`
 
-Existing bridge instrumentation in `src/bun/index.ts` should not remain a separate hand-written path. `recordBridgeLog` and `recordBridgeError` may continue to feed external automation, but user-facing app logs should be emitted from the same call sites through the app logger.
+User-facing app logs should be emitted through the app logger from product call sites. Non-production `electrobun-browser-tools` instrumentation may feed external automation, but it is not part of the production app-log contract and must not be required for production observability.
 
 ## RPC And Live Updates
 
@@ -333,7 +333,7 @@ Empty states:
 - app startup completed
 - workspace cwd resolved
 - branch resolved
-- tool bridge mounted with app id and whether a bridge URL exists
+- renderer/RPC bridge initialized for the workspace runtime
 - workspace path index refresh started and completed with counts
 - session created, opened, forked, pinned, archived, unarchived, deleted
 - surface opened and closed
@@ -404,7 +404,7 @@ When more detail exists elsewhere, logs should link to the durable inspector or 
 2. Implement `src/bun/app-log-store.ts` with append, query, summary, seen-state, redaction, bounded retention, and live subscriptions.
 3. Instantiate the app logger in `src/bun/index.ts` and expose RPC handlers for `getAppLogs`, `getAppLogSummary`, and `markAppLogsSeen`.
 4. Wire logger live updates to `sendAppLogUpdate`.
-5. Route existing `recordBridgeLog` and `recordBridgeError` call sites through the app logger while preserving bridge telemetry.
+5. Route product runtime, renderer, and RPC log call sites through the app logger; keep any `electrobun-browser-tools` logging outside the production app-log contract.
 6. Add targeted logging to the required sources, starting with auth, namer/title generation, prompts, RPC errors, Smithers, saved workflow validation, direct tools, and artifacts.
 7. Add renderer app-log state to the chat runtime/bootstrap path.
 8. Add the sidebar `Logs` button with unread counts above `Workflows`.

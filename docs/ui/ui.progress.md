@@ -133,7 +133,7 @@ The workflow inspector remains tree-first. Replit artifact graph-oriented workfl
 ## 12. Visual Verification And Rollout
 
 - [x] Add a repeatable screenshot checklist for key production states: startup, normal session, active stream, waiting thread, failed command, split Dockview panels, workflow inspector, artifact panel, command palette, settings, and narrow shell.
-- [x] Use `electrobun-browser-tools` against a running svvy app for manual UI verification when product behavior or e2e failures need inspection.
+- [x] Use `electrobun-browser-tools` against a dev/e2e/manual-inspection svvy app for manual UI verification when product behavior or e2e failures need inspection, without making browser-tools part of production behavior.
 - [x] Store manually captured verification screenshots in `screenshots/`.
 - [x] Run focused unit tests for migrated render helpers, selectors, command palette behavior, Dockview layout behavior, and transcript projection.
 - [x] Run `bun run test:e2e` for end-to-end UI paths only through the OrbStack machine lane.

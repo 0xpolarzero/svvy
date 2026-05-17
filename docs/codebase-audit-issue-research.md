@@ -91,10 +91,15 @@ The source audits repeatedly called out these intentional product directions:
 - Keep Dockview as the renderer workbench/layout engine. The fix direction is stronger surface ownership and restoration, not a return to bespoke pane state.
 - Keep workflow-task agents using task-local direct tools with extension gating. The issue is aligning contracts and runtime behavior, not removing the separate task-agent layer.
 
-### Open Product Questions Preserved From Source Audits
+### Product Decisions And Open Questions Preserved From Source Audits
+
+Resolved product decisions:
+
+- The browser-tools bridge is dev/e2e/manual-inspection only. Shipped production builds must not mount browser-tools bridge behavior, and the dev/e2e/manual-inspection lane does not require an additional auth token.
+
+Open product questions:
 
 - Should duplicate same-cwd workspace tabs remain a shipped requirement now, or should the UI temporarily prevent duplicates until persistence is truly runtime-scoped?
-- Is the browser-tools bridge dev/e2e/manual-inspection only, or enabled in shipped user builds? If shipped, what is the required auth/token/redaction model?
 - Is `execute_typescript` meant to be a trusted full-process escape hatch, or a constrained API-only sandbox?
 - Should `execute_typescript` be available to the orchestrator at all, or only to handler/task-agent contexts?
 - Should workflow task-agent `toolSurface` be product-configurable, or should the contract define one fixed surface?
@@ -233,11 +238,13 @@ The declaration and runtime guard must use the same source of truth. Declaration
 
 **Confidence:** High. The top-level actor scoping and code-mode leak were both identified in source, and the orchestrator code-mode call was confirmed.
 
-### AUD-003 - Tool bridge is unauthenticated, broad, and logs the private URL
+### AUD-003 - Browser-tools bridge must stay out of production
 
-**Impact:** Critical local attack-surface and data-exposure issue.
+**Impact:** Critical local attack-surface and data-exposure issue if browser-tools behavior is present in production.
 
-**Precise issue:** The app mounts the `electrobun-browser-tools` bridge on a predictable local port derived from process id. The bridge exposes read and write inspection/control methods without server-side authentication. The app also records or prints the resolved bridge URL even though the app-log contract calls for redacted bridge logging.
+**Decision:** The `electrobun-browser-tools` bridge is only for development, OrbStack e2e, and manual inspection. The production app path must contain no browser-tools bridge behavior. Because the bridge is non-production-only, svvy does not require an additional dev auth token or bearer-token model for that lane.
+
+**Precise issue:** Current code mounts the `electrobun-browser-tools` bridge on a predictable local port derived from process id. The bridge exposes read and write inspection/control methods intended for automation and manual inspection. That is acceptable only in explicitly enabled dev/e2e/manual-inspection contexts, not in shipped production behavior. The app also records or prints the resolved bridge URL, which should remain limited to the non-production inspection lane and must not be treated as normal app-log observability.
 
 Relevant code:
 
@@ -246,28 +253,27 @@ Relevant code:
 - `node_modules/electrobun-browser-tools/dist/chunk-VKPXYR7I.js`: handles bridge GET/POST requests without bearer-token validation.
 - `src/bun/index.ts`: records bridge events/logs including the resolved bridge URL.
 
-**Why this matters:** Any local process that discovers the port can inspect and drive the app. Depending on browser loopback/private-network behavior, browser-origin access may also be relevant. The bridge state is not limited to harmless liveness information; it includes sensitive operational metadata and rendered UI state. Provider keys were not confirmed to be in the bridge state, but password input values can be read by DOM tools while a user is editing them.
+**Why this matters:** If browser-tools behavior is present in production, any local process that discovers the port can inspect and drive the app. Depending on browser loopback/private-network behavior, browser-origin access may also be relevant. The bridge state is not limited to harmless liveness information; it includes sensitive operational metadata and rendered UI state. Provider keys were not confirmed to be in the bridge state, but password input values can be read by DOM tools while a user is editing them.
 
 **Best fix:**
 
-1. Make the bridge disabled by default outside dev/e2e/manual-inspection modes, or require an explicit launch flag.
-2. Generate a high-entropy per-launch bearer token when the bridge is enabled.
-3. Enforce that token on every bridge request server-side.
-4. Never log the full bridge URL or token. Log only the `appId` and a boolean such as `hasBridgeUrl`.
-5. Reduce bridge state to the minimum needed for inspection. Replace raw prompt text and sensitive metadata with hashes, labels, or redacted summaries.
+1. Exclude browser-tools mounting, request handlers, state capture, and URL logging from shipped production builds.
+2. Keep browser-tools available only through explicit dev/e2e/manual-inspection launch paths.
+3. Do not add a bearer-token or dev-auth requirement for the non-production inspection lane.
+4. Keep browser-tools URL output and state capture scoped to non-production inspection workflows, not product app logs.
+5. Reduce non-production bridge state to the minimum needed for inspection. Replace raw prompt text and sensitive metadata with hashes, labels, or redacted summaries where inspection does not need the raw value.
 6. Mask password and token field values in DOM/state bridge output.
 
 **Verification required:**
 
-- Requests without the bearer token fail.
-- Requests with the bearer token succeed in dev/e2e mode.
-- Production/default launch does not expose the bridge unless explicitly enabled.
-- App logs and console output do not include the full bridge URL or token.
-- Bridge snapshots do not include raw system prompts or password/token input values.
+- Production/default launch does not mount browser-tools routes, request handlers, or state-capture behavior.
+- Dev/e2e/manual-inspection launch paths can still use `electrobun-browser-tools` without additional auth.
+- Product app logs do not include browser-tools URL output and do not treat browser-tools telemetry as normal production observability.
+- Non-production bridge snapshots do not include raw system prompts or password/token input values unless a specific inspection task intentionally requires that raw field and documents the exposure.
 
-**Documentation impact:** Update the app-log spec if the bridge event shape changes. Keep `AGENTS.md` guidance for manual inspection aligned with the new opt-in/token mechanism.
+**Documentation impact:** Keep the app-log spec clear that browser-tools telemetry is outside production observability. Keep `AGENTS.md` guidance for manual inspection aligned with the non-production-only bridge lane and no dev auth/token requirement.
 
-**Confidence:** High for unauthenticated local bridge and URL logging. Browser-origin reachability needs a targeted confirmation test.
+**Confidence:** High for unauthenticated local bridge and URL logging in the current inspection path. Browser-origin reachability matters only for the non-production lane once production excludes browser-tools behavior.
 
 ### AUD-004 - Artifact paths are not contained to the workspace artifact area
 

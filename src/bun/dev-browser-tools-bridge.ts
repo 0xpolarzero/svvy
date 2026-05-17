@@ -1,15 +1,15 @@
 import type { BrowserWindow } from "electrobun/bun";
 import { mountElectrobunToolBridge } from "electrobun-browser-tools/bridge";
+import type { AgentDefaults } from "../shared/agent-settings";
 import type {
   ProviderAuthInfo,
   WorkspaceInfoResponse,
   WorkspaceTabInfo,
 } from "../shared/workspace-contract";
-import type { AgentDefaults } from "../shared/agent-settings";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
 type ErrorKind = "app" | "rpc";
-type ToolBridgeInstance = {
+type DevBrowserToolsBridgeInstance = {
   appId: string;
   url?: string;
   recordEvent: (input: {
@@ -51,9 +51,32 @@ type WorkspaceSessionsState = {
   sessions: unknown[];
 };
 
-type ToolBridgeState = Record<string, Record<string, unknown>>;
+type DevBrowserToolsState = Record<string, Record<string, unknown>>;
 
-type CreateSvvyToolBridgeOptions = {
+export type DevBrowserToolsRecorder = {
+  recordError: (
+    kind: ErrorKind,
+    message: string,
+    source: string,
+    details?: Record<string, unknown>,
+    error?: unknown,
+  ) => void;
+  recordEvent: (eventName: string, payload?: Record<string, unknown>) => void;
+  recordLog: (
+    level: LogLevel,
+    message: string,
+    source: string,
+    context?: Record<string, unknown>,
+  ) => void;
+};
+
+export const noopDevBrowserToolsRecorder: DevBrowserToolsRecorder = {
+  recordError: () => {},
+  recordEvent: () => {},
+  recordLog: () => {},
+};
+
+type MountDevBrowserToolsBridgeOptions = {
   defaultSystemPrompt: string;
   getDefaultAgentSettings: () => AgentDefaults;
   getActiveWorkspace: () => WorkspaceInfoResponse | null;
@@ -63,17 +86,20 @@ type CreateSvvyToolBridgeOptions = {
   listProviderAuthSummaries: () => ProviderAuthInfo[];
   listOpenSurfaceSnapshots: () => Promise<OpenSurfaceSnapshot[]>;
   listWorkspaceSessions: () => Promise<WorkspaceSessionsState>;
+  mainWindow: BrowserWindow;
 };
 
-const TOOL_BRIDGE_PORT_BASE = 59_000;
-const TOOL_BRIDGE_PORT_RANGE = 1_000;
+const DEV_BROWSER_TOOLS_PORT_BASE = 59_000;
+const DEV_BROWSER_TOOLS_PORT_RANGE = 1_000;
 
-function getPreferredToolBridgePort(): number {
-  return TOOL_BRIDGE_PORT_BASE + (process.pid % TOOL_BRIDGE_PORT_RANGE);
+function getPreferredDevBrowserToolsPort(): number {
+  return DEV_BROWSER_TOOLS_PORT_BASE + (process.pid % DEV_BROWSER_TOOLS_PORT_RANGE);
 }
 
-export function createSvvyToolBridge(options: CreateSvvyToolBridgeOptions) {
-  let toolBridge: ToolBridgeInstance | null = null;
+export async function mountDevBrowserToolsBridge(
+  options: MountDevBrowserToolsBridgeOptions,
+): Promise<DevBrowserToolsRecorder & { appId: string; url?: string }> {
+  let browserToolsBridge: DevBrowserToolsBridgeInstance | null = null;
 
   function getBridgeContext(): { viewId?: number; windowId?: number } {
     const mainWindow = options.getMainWindow();
@@ -83,7 +109,7 @@ export function createSvvyToolBridge(options: CreateSvvyToolBridgeOptions) {
     };
   }
 
-  async function buildState(): Promise<ToolBridgeState> {
+  async function buildState(): Promise<DevBrowserToolsState> {
     const activeWorkspace = options.getActiveWorkspace();
     const defaults = options.getDefaultAgentSettings();
     const sessions = activeWorkspace ? await options.listWorkspaceSessions() : { sessions: [] };
@@ -131,27 +157,23 @@ export function createSvvyToolBridge(options: CreateSvvyToolBridgeOptions) {
     };
   }
 
+  browserToolsBridge = await mountElectrobunToolBridge({
+    mainWindow: options.mainWindow,
+    port: getPreferredDevBrowserToolsPort(),
+    state: buildState,
+  });
+
   return {
-    async mount(mainWindow: BrowserWindow): Promise<{ appId: string; url?: string }> {
-      const mountedToolBridge = await mountElectrobunToolBridge({
-        mainWindow,
-        port: getPreferredToolBridgePort(),
-        state: buildState,
-      });
-      toolBridge = mountedToolBridge;
-      return {
-        appId: mountedToolBridge.appId,
-        url: mountedToolBridge.url,
-      };
-    },
-    recordError(
+    appId: browserToolsBridge.appId,
+    url: browserToolsBridge.url,
+    recordError: (
       kind: ErrorKind,
       message: string,
       source: string,
       details?: Record<string, unknown>,
       error?: unknown,
-    ): void {
-      toolBridge?.recordError({
+    ): void => {
+      browserToolsBridge?.recordError({
         kind,
         message,
         source,
@@ -160,20 +182,20 @@ export function createSvvyToolBridge(options: CreateSvvyToolBridgeOptions) {
         ...getBridgeContext(),
       });
     },
-    recordEvent(eventName: string, payload?: Record<string, unknown>): void {
-      toolBridge?.recordEvent({
+    recordEvent: (eventName: string, payload?: Record<string, unknown>): void => {
+      browserToolsBridge?.recordEvent({
         eventName,
         payload,
         ...getBridgeContext(),
       });
     },
-    recordLog(
+    recordLog: (
       level: LogLevel,
       message: string,
       source: string,
       context?: Record<string, unknown>,
-    ): void {
-      toolBridge?.recordLog({
+    ): void => {
+      browserToolsBridge?.recordLog({
         level,
         message,
         source,

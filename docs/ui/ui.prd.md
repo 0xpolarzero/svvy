@@ -73,7 +73,7 @@ The saved workflow library has no direct Replit route. It uses the closest dense
 ## Verification Rules
 
 - After a UI change lands locally, drive the app itself, capture screenshots when relevant, and inspect those screenshots for correctness before marking work complete.
-- Use `electrobun-browser-tools` against a running svvy app when product behavior or e2e failures need inspection.
+- Use `electrobun-browser-tools` against a dev/e2e/manual-inspection svvy app when product behavior or e2e failures need inspection. Production builds must not depend on browser-tools behavior.
 - Run `bun run test:e2e` only for end-to-end UI paths and only through the OrbStack machine lane.
 - Do not run e2e for documentation-only work unless there is a product behavior change.
 - Store manually captured verification screenshots in repo-root `screenshots/`.

@@ -20,8 +20,8 @@ Use this checklist before marking UI rollout work complete. Capture manual verif
 
 ## Manual Inspection Steps
 
-1. Launch the app normally and record the printed `appId` or `bridgeUrl`.
-2. Run `electrobun-browser-tools doctor`, `status`, or `tree` against the running app before taking screenshots.
+1. Launch the app through the dev/e2e/manual-inspection lane that enables `electrobun-browser-tools`, and record the printed `appId` or inspection `bridgeUrl`.
+2. Run `electrobun-browser-tools doctor`, `status`, or `tree` against the inspection-enabled app before taking screenshots.
 3. Drive the real app with `electrobun-browser-tools page ...` commands for UI states that are already reachable.
 4. Capture screenshots with `electrobun-browser-tools capture screenshot --path screenshots/<state>.png`.
 5. Inspect each screenshot for horizontal overflow, clipped labels, overlapping controls, focus visibility, accessible names, color contrast, reduced-motion behavior, and screen-reader-critical state.

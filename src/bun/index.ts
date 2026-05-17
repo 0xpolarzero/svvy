@@ -55,7 +55,6 @@ import {
   deleteSavedWorkflowLibraryPath,
   readSavedWorkflowLibraryReadModel,
 } from "./smithers-runtime/workflow-library";
-import { createSvvyToolBridge } from "./tool-bridge";
 import { resolveWorkspaceCwd } from "./workspace-context";
 import { positionNativeTrafficLights } from "./native-window-controls";
 import { WorkspaceRuntimeRegistry, type WorkspaceRuntime } from "./workspace-runtime-registry";
@@ -157,6 +156,23 @@ function getRpcRequestTimeoutMs(): number {
   return Math.trunc(parsed);
 }
 
+type DevBrowserToolsRecorder = {
+  recordError: (
+    kind: "app" | "rpc",
+    message: string,
+    source: string,
+    details?: Record<string, unknown>,
+    error?: unknown,
+  ) => void;
+  recordEvent: (eventName: string, payload?: Record<string, unknown>) => void;
+  recordLog: (
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    source: string,
+    context?: Record<string, unknown>,
+  ) => void;
+};
+
 type DevServerMode = "auto" | "wait";
 
 function getDevServerMode(): DevServerMode {
@@ -195,8 +211,7 @@ function getApiKeyMissingError(provider: string): string {
   return `Missing ${envVar} for provider "${provider}". Add one in Provider settings.`;
 }
 
-async function getMainViewUrl(channelPromise: Promise<string>): Promise<string> {
-  const channel = await channelPromise;
+async function getMainViewUrl(channel: string): Promise<string> {
   if (channel === "dev") {
     const mode = getDevServerMode();
     const ready =
@@ -374,7 +389,7 @@ function switchWorkspaceBranch(
     workspaceId: runtime.workspaceId,
     branch: nextBranch,
   });
-  recordBridgeEvent("workspace.branch-switched", {
+  recordDevBrowserToolsEvent("workspace.branch-switched", {
     workspaceId: runtime.workspaceId,
     branch: nextBranch,
   });
@@ -587,35 +602,28 @@ function listProviderAuthSummaries(): ProviderAuthInfo[] {
   });
 }
 
-const svvyToolBridge = createSvvyToolBridge({
-  defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
-  getDefaultAgentSettings,
-  getMainWindow: () => mainWindow,
-  getActiveWorkspace: () => workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.getInfo() ?? null,
-  getOpenWorkspaces: () => workspaceRuntimeRegistry.listOpenWorkspaces(),
-  getWorkspaceBranch,
-  listProviderAuthSummaries,
-  listOpenSurfaceSnapshots: async () =>
-    (await workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.catalog.listOpenSurfaceSnapshots()) ??
-    [],
-  listWorkspaceSessions: async () =>
-    (await workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.catalog.listSessions()) ?? {
-      sessions: [],
-    },
-});
-const recordBridgeEvent = svvyToolBridge.recordEvent;
-const recordRawBridgeLog = svvyToolBridge.recordLog;
-const recordRawBridgeError = svvyToolBridge.recordError;
+let devBrowserToolsRecorder: DevBrowserToolsRecorder = {
+  recordError: () => {},
+  recordEvent: () => {},
+  recordLog: () => {},
+};
+
+const recordDevBrowserToolsEvent: DevBrowserToolsRecorder["recordEvent"] = (...args) =>
+  devBrowserToolsRecorder.recordEvent(...args);
+const recordDevBrowserToolsLog: DevBrowserToolsRecorder["recordLog"] = (...args) =>
+  devBrowserToolsRecorder.recordLog(...args);
+const recordDevBrowserToolsError: DevBrowserToolsRecorder["recordError"] = (...args) =>
+  devBrowserToolsRecorder.recordError(...args);
 
 const workspaceRuntimeRegistry = new WorkspaceRuntimeRegistry({
   initialCwd: startupWorkspaceCwd,
   openInitialWorkspace: !!process.env.SVVY_WORKSPACE_CWD,
   forwardBridgeLog: (level, message, source, details, error) => {
     if (level === "error") {
-      recordRawBridgeError("app", message, source, details, error);
+      recordDevBrowserToolsError("app", message, source, details, error);
       return;
     }
-    recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
+    recordDevBrowserToolsLog(level === "warning" ? "warn" : level, message, source, details);
   },
   onAppLogUpdate: (workspaceId, payload) => {
     rpc.send.sendAppLogUpdate({
@@ -631,7 +639,7 @@ const workspaceRuntimeRegistry = new WorkspaceRuntimeRegistry({
   },
 });
 
-function recordBridgeLog(
+function recordAppRuntimeLog(
   level: "info" | "warning",
   message: string,
   source: string,
@@ -639,13 +647,13 @@ function recordBridgeLog(
 ): void {
   const runtime = workspaceRuntimeRegistry.getActiveRuntimeOrNull();
   if (!runtime) {
-    recordRawBridgeLog(level === "warning" ? "warn" : level, message, source, details);
+    recordDevBrowserToolsLog(level === "warning" ? "warn" : level, message, source, details);
     return;
   }
-  runtime.appLog[level](mapBridgeSource(source), message, details);
+  runtime.appLog[level](mapRuntimeLogSource(source), message, details);
 }
 
-function recordBridgeError(
+function recordAppRuntimeError(
   kind: string,
   message: string,
   source: string,
@@ -654,20 +662,20 @@ function recordBridgeError(
 ): void {
   const runtime = workspaceRuntimeRegistry.getActiveRuntimeOrNull();
   if (!runtime) {
-    recordRawBridgeError(kind === "rpc" ? "rpc" : "app", message, source, details, error);
+    recordDevBrowserToolsError(kind === "rpc" ? "rpc" : "app", message, source, details, error);
     return;
   }
-  runtime.appLog.error(mapBridgeSource(source, kind), message, error, details);
+  runtime.appLog.error(mapRuntimeLogSource(source, kind), message, error, details);
 }
 
-function mapBridgeSource(source: string, kind?: string) {
+function mapRuntimeLogSource(source: string, kind?: string) {
   if (source.includes("auth") || source.includes("oauth")) return "auth.provider" as const;
   if (source.includes("sendPrompt")) return "prompt" as const;
   if (source.includes("session")) return "session" as const;
   if (source.includes("surface")) return "surface" as const;
   if (source.includes("workflow")) return "workflow.library" as const;
   if (source.includes("editor")) return "external-editor" as const;
-  if (source.includes("tool-bridge")) return "app.bridge" as const;
+  if (source.includes("dev-browser-tools")) return "app.bridge" as const;
   if (source.includes("settings")) return "settings" as const;
   if (kind === "rpc" || source.includes("rpc")) return "app.rpc" as const;
   return "app.lifecycle" as const;
@@ -814,7 +822,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         if (!selectedCwd) return { workspace: null };
         const runtime = workspaceRuntimeRegistry.openWorkspace(selectedCwd, { workspaceId });
         runtime.appLog.info("workspace", "Workspace opened.", { workspaceId: runtime.workspaceId });
-        recordBridgeEvent("workspace.opened", { workspaceId: runtime.workspaceId });
+        recordDevBrowserToolsEvent("workspace.opened", { workspaceId: runtime.workspaceId });
         return { workspace: addWorkspaceBranch(runtime.getInfo()) };
       },
       getOpenWorkspaces: async () => {
@@ -839,12 +847,12 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         runtime.appLog.info("workspace", "Active workspace changed.", {
           workspaceId: runtime.workspaceId,
         });
-        recordBridgeEvent("workspace.activated", { workspaceId: runtime.workspaceId });
+        recordDevBrowserToolsEvent("workspace.activated", { workspaceId: runtime.workspaceId });
         return { ok: true };
       },
       closeWorkspace: async ({ workspaceId }) => {
         const closed = await workspaceRuntimeRegistry.closeWorkspace(workspaceId);
-        recordBridgeEvent("workspace.closed", { workspaceId, closed });
+        recordDevBrowserToolsEvent("workspace.closed", { workspaceId, closed });
         return { ok: closed };
       },
       getWorkspaceInfo: (input) => {
@@ -1056,7 +1064,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           { title, parentSessionId, mode },
           getSessionDefaults(runtime, mode ?? "orchestrator"),
         );
-        recordBridgeEvent("session.created", {
+        recordDevBrowserToolsEvent("session.created", {
           parentSessionId: parentSessionId ?? null,
           sessionId: session.target.workspaceSessionId,
           title: title?.trim() || null,
@@ -1071,7 +1079,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const session = await runtime.catalog.openSession(sessionId, DEFAULT_SYSTEM_PROMPT);
-        recordBridgeEvent("session.opened", {
+        recordDevBrowserToolsEvent("session.opened", {
           sessionId,
         });
         runtime.appLog.info("session", "Workspace session opened.", {
@@ -1082,7 +1090,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       recordSessionOpened: async (input) => {
         getWorkspaceRuntime(input);
         const { sessionId } = input;
-        recordBridgeEvent("session.opened", {
+        recordDevBrowserToolsEvent("session.opened", {
           sessionId,
         });
         return { ok: true };
@@ -1091,7 +1099,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { target } = input;
         const session = await runtime.catalog.openSurface(target, DEFAULT_SYSTEM_PROMPT);
-        recordBridgeEvent("surface.opened", {
+        recordDevBrowserToolsEvent("surface.opened", {
           surface: target.surface,
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
@@ -1109,7 +1117,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { target } = input;
         const result = await runtime.catalog.closeSurface(target);
-        recordBridgeEvent("surface.closed", {
+        recordDevBrowserToolsEvent("surface.closed", {
           surface: target.surface,
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
@@ -1127,7 +1135,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId, title } = input;
         const result = await runtime.catalog.renameSession(sessionId, title);
-        recordBridgeEvent("session.renamed", {
+        recordDevBrowserToolsEvent("session.renamed", {
           sessionId,
           title,
         });
@@ -1146,7 +1154,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           getSessionDefaults(runtime, mode),
         );
         if (result.ok && result.snapshot) {
-          recordBridgeEvent("session.mode.changed", {
+          recordDevBrowserToolsEvent("session.mode.changed", {
             mode,
             sessionId: target.workspaceSessionId,
             surfacePiSessionId: target.surfacePiSessionId,
@@ -1167,7 +1175,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           { sessionId, title, messageTimestamp },
           getSessionDefaults(runtime),
         );
-        recordBridgeEvent("session.forked", {
+        recordDevBrowserToolsEvent("session.forked", {
           sessionId,
           targetSessionId: session.target.workspaceSessionId,
           messageTimestamp: messageTimestamp ?? null,
@@ -1179,7 +1187,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.deleteSession(sessionId);
-        recordBridgeEvent("session.deleted", { sessionId });
+        recordDevBrowserToolsEvent("session.deleted", { sessionId });
         runtime.appLog.info("session", "Workspace session deleted.", {
           workspaceSessionId: sessionId,
         });
@@ -1189,7 +1197,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.pinSession(sessionId);
-        recordBridgeEvent("session.pinned", { sessionId });
+        recordDevBrowserToolsEvent("session.pinned", { sessionId });
         runtime.appLog.info("session", "Workspace session pinned.", {
           workspaceSessionId: sessionId,
         });
@@ -1199,7 +1207,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.unpinSession(sessionId);
-        recordBridgeEvent("session.unpinned", { sessionId });
+        recordDevBrowserToolsEvent("session.unpinned", { sessionId });
         runtime.appLog.info("session", "Workspace session unpinned.", {
           workspaceSessionId: sessionId,
         });
@@ -1209,7 +1217,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.archiveSession(sessionId);
-        recordBridgeEvent("session.archived", { sessionId });
+        recordDevBrowserToolsEvent("session.archived", { sessionId });
         runtime.appLog.info("session", "Workspace session archived.", {
           workspaceSessionId: sessionId,
         });
@@ -1219,7 +1227,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.unarchiveSession(sessionId);
-        recordBridgeEvent("session.unarchived", { sessionId });
+        recordDevBrowserToolsEvent("session.unarchived", { sessionId });
         runtime.appLog.info("session", "Workspace session unarchived.", {
           workspaceSessionId: sessionId,
         });
@@ -1229,7 +1237,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.markSessionUnread(sessionId);
-        recordBridgeEvent("session.marked-unread", { sessionId });
+        recordDevBrowserToolsEvent("session.marked-unread", { sessionId });
         runtime.appLog.info("session", "Workspace session marked unread.", {
           workspaceSessionId: sessionId,
         });
@@ -1239,7 +1247,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
         const result = await runtime.catalog.markSessionRead(sessionId);
-        recordBridgeEvent("session.marked-read", { sessionId });
+        recordDevBrowserToolsEvent("session.marked-read", { sessionId });
         runtime.appLog.info("session", "Workspace session marked read.", {
           workspaceSessionId: sessionId,
         });
@@ -1253,7 +1261,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           surfacePiSessionId,
         });
         if (sessionId) {
-          recordBridgeEvent("session.focused", { sessionId });
+          recordDevBrowserToolsEvent("session.focused", { sessionId });
         }
         return result;
       },
@@ -1261,7 +1269,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { collapsed } = input;
         const result = await runtime.catalog.setArchivedGroupCollapsed({ collapsed });
-        recordBridgeEvent("session.archived-group.toggled", { collapsed });
+        recordDevBrowserToolsEvent("session.archived-group.toggled", { collapsed });
         return result;
       },
       setSessionNavigationSectionState: async (input) => {
@@ -1272,7 +1280,11 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           collapsed,
           sizePx,
         });
-        recordBridgeEvent("session.navigation-section.updated", { section, collapsed, sizePx });
+        recordDevBrowserToolsEvent("session.navigation-section.updated", {
+          section,
+          collapsed,
+          sizePx,
+        });
         return result;
       },
       sendPrompt: async (payload): Promise<SendPromptResponse> => {
@@ -1305,7 +1317,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         );
         let surfacePiSessionId = payload.target.surfacePiSessionId;
 
-        recordBridgeEvent("prompt.requested", {
+        recordDevBrowserToolsEvent("prompt.requested", {
           messageCount: payload.messages.length,
           model: model.id,
           provider: resolved.provider,
@@ -1332,7 +1344,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           queueOnly: payload.queueOnly ?? false,
           onEvent: (event) => {
             if (event.type === "start") {
-              recordBridgeEvent("prompt.started", {
+              recordDevBrowserToolsEvent("prompt.started", {
                 model: model.id,
                 provider: resolved.provider,
                 surfacePiSessionId,
@@ -1347,7 +1359,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
                 threadId: payload.target.threadId,
               });
             } else if (event.type === "done") {
-              recordBridgeEvent("prompt.finished", {
+              recordDevBrowserToolsEvent("prompt.finished", {
                 model: model.id,
                 provider: resolved.provider,
                 reason: event.reason,
@@ -1367,7 +1379,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
               const message =
                 event.error.content.find((block) => block.type === "text")?.text ||
                 "Prompt failed.";
-              recordBridgeEvent("prompt.failed", {
+              recordDevBrowserToolsEvent("prompt.failed", {
                 model: model.id,
                 provider: resolved.provider,
                 reason: event.reason,
@@ -1430,7 +1442,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           resolved.provider as Parameters<typeof getModel>[0],
           resolved.model as Parameters<typeof getModel>[1],
         );
-        recordBridgeEvent("prompt.steer.requested", {
+        recordDevBrowserToolsEvent("prompt.steer.requested", {
           messageCount: payload.messages.length,
           model: model.id,
           provider: resolved.provider,
@@ -1514,7 +1526,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const runtime = getWorkspaceRuntime(input);
         const { target } = input;
         await runtime.catalog.cancelPrompt(target);
-        recordBridgeEvent("prompt.cancel.requested", {
+        recordDevBrowserToolsEvent("prompt.cancel.requested", {
           surfacePiSessionId: target.surfacePiSessionId,
           threadId: target.threadId ?? null,
           workspaceSessionId: target.workspaceSessionId,
@@ -1531,7 +1543,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const { target, provider, model } = input;
         const result = await runtime.catalog.setSurfaceModel(target, provider, model);
         if (result.ok) {
-          recordBridgeEvent("surface.model.changed", {
+          recordDevBrowserToolsEvent("surface.model.changed", {
             model,
             surfacePiSessionId: target.surfacePiSessionId,
             threadId: target.threadId ?? null,
@@ -1561,7 +1573,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const { target, level } = input;
         const result = await runtime.catalog.setSurfaceThoughtLevel(target, level);
         if (result.ok) {
-          recordBridgeEvent("surface.reasoning.changed", {
+          recordDevBrowserToolsEvent("surface.reasoning.changed", {
             level,
             surfacePiSessionId: target.surfacePiSessionId,
             threadId: target.threadId ?? null,
@@ -1594,7 +1606,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         apiKey: string;
       }): Promise<{ ok: boolean }> => {
         storeApiKey(providerId, apiKey);
-        recordBridgeEvent("provider.auth.updated", {
+        recordDevBrowserToolsEvent("provider.auth.updated", {
           keyType: "apikey",
           providerId,
         });
@@ -1613,14 +1625,14 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       }): Promise<{ ok: boolean; error?: string }> => {
         try {
           await startOAuthLogin(providerId);
-          recordBridgeEvent("provider.oauth.started", { providerId });
+          recordDevBrowserToolsEvent("provider.oauth.started", { providerId });
           workspaceRuntimeRegistry
             .getActiveRuntimeOrNull()
             ?.appLog.info("auth.provider", "Provider OAuth started.", { providerId });
           return { ok: true };
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          recordBridgeError("rpc", message, "bun.oauth", { providerId }, error);
+          recordAppRuntimeError("rpc", message, "bun.oauth", { providerId }, error);
           return {
             ok: false,
             error: message,
@@ -1633,7 +1645,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         providerId: string;
       }): Promise<{ ok: boolean }> => {
         removeCredential(providerId);
-        recordBridgeEvent("provider.auth.removed", { providerId });
+        recordDevBrowserToolsEvent("provider.auth.removed", { providerId });
         workspaceRuntimeRegistry
           .getActiveRuntimeOrNull()
           ?.appLog.info("auth.provider", "Provider auth removed.", { providerId });
@@ -1713,7 +1725,8 @@ ApplicationMenu.on("application-menu-clicked", (event) => {
 
 loadRuntimeEnv(startupWorkspaceCwd);
 
-const url = await getMainViewUrl(localInfoChannelPromise);
+const appChannel = await localInfoChannelPromise;
+const url = await getMainViewUrl(appChannel);
 
 mainWindow = new BrowserWindow({
   title: "svvy",
@@ -1728,26 +1741,48 @@ mainWindow = new BrowserWindow({
   rpc,
 });
 
-const mountedToolBridge = await svvyToolBridge.mount(mainWindow);
+if (appChannel === "dev") {
+  const { mountDevBrowserToolsBridge } = await import("./dev-browser-tools-bridge");
+  const mountedDevBrowserToolsBridge = await mountDevBrowserToolsBridge({
+    defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
+    getDefaultAgentSettings,
+    getMainWindow: () => mainWindow,
+    getActiveWorkspace: () => workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.getInfo() ?? null,
+    getOpenWorkspaces: () => workspaceRuntimeRegistry.listOpenWorkspaces(),
+    getWorkspaceBranch,
+    listProviderAuthSummaries,
+    listOpenSurfaceSnapshots: async () =>
+      (await workspaceRuntimeRegistry
+        .getActiveRuntimeOrNull()
+        ?.catalog.listOpenSurfaceSnapshots()) ?? [],
+    listWorkspaceSessions: async () =>
+      (await workspaceRuntimeRegistry.getActiveRuntimeOrNull()?.catalog.listSessions()) ?? {
+        sessions: [],
+      },
+    mainWindow,
+  });
+  devBrowserToolsRecorder = mountedDevBrowserToolsBridge;
+
+  recordDevBrowserToolsEvent("app.ready", {
+    bridgeUrl: mountedDevBrowserToolsBridge.url ?? null,
+    url,
+    workspaceId: workspaceRuntimeRegistry.getActiveWorkspaceId(),
+  });
+  recordAppRuntimeLog("info", "svvy dev browser tools bridge mounted.", "dev-browser-tools", {
+    appId: mountedDevBrowserToolsBridge.appId,
+    bridgeUrl: mountedDevBrowserToolsBridge.url ?? null,
+  });
+  console.log(
+    `svvy bridge: ${JSON.stringify({
+      appId: mountedDevBrowserToolsBridge.appId,
+      bridgeUrl: mountedDevBrowserToolsBridge.url ?? null,
+    })}`,
+  );
+}
+
 mainWindow.webview.loadURL(url);
 positionNativeTrafficLights(mainWindow.ptr, NATIVE_TRAFFIC_LIGHT_POSITION);
 mainWindow.show();
-
-recordBridgeEvent("app.ready", {
-  bridgeUrl: mountedToolBridge.url ?? null,
-  url,
-  workspaceId: workspaceRuntimeRegistry.getActiveWorkspaceId(),
-});
-recordBridgeLog("info", "svvy tool bridge mounted.", "tool-bridge", {
-  appId: mountedToolBridge.appId,
-  bridgeUrl: mountedToolBridge.url ?? null,
-});
-console.log(
-  `svvy bridge: ${JSON.stringify({
-    appId: mountedToolBridge.appId,
-    bridgeUrl: mountedToolBridge.url ?? null,
-  })}`,
-);
 
 void mainWindow;
 
