@@ -34,7 +34,7 @@ For each issue, record:
 | AUD-003 | P1 | Local browser-tools bridge exposes sensitive runtime state | all five | Researched |
 | AUD-004 | Not accepted | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Not convincing |
 | AUD-005 | Not accepted | Raw command, tool, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Logs-only redaction retained |
-| AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Researched |
+| AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Fixed |
 | AUD-007 | P1 | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Researched |
 | AUD-008 | P1 | Workspace-scoped RPC handlers still route through active runtime state | `209c`, `2a4e`, `1291` | Researched |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Researched |
@@ -352,41 +352,33 @@ Relevant code:
 
 **Confidence:** High in the decision. Broader redaction is technically possible only heuristically and is not currently a product requirement.
 
-### AUD-006 - Visible HTML artifact previews are unsandboxed
+### AUD-006 - Visible HTML artifact previews are sandboxed
 
-**Impact:** High renderer security issue.
+**Disposition:** Fixed. Visible HTML artifact previews use sandboxed iframes. Script execution is allowed only for interactive previews, and the default sandbox does not grant same-origin access, top navigation, popups, or form submission.
 
-**Precise issue:** The artifact contract says HTML artifacts run in a sandboxed preview. The hidden iframe used for log capture has `sandbox="allow-scripts"`, but the visible artifact preview iframe uses `srcdoc` without a sandbox attribute.
+**Impact:** High renderer security issue when absent; resolved by the sandboxed preview contract.
+
+**Resolved contract:** HTML artifact content is untrusted renderer input. Visible HTML previews must render inside a sandboxed iframe. Static HTML previews use the sandbox without script execution. Interactive artifact previews may add `allow-scripts`, but the preview sandbox must not include `allow-same-origin`, `allow-top-navigation`, `allow-popups`, `allow-forms`, or equivalent escape permissions by default.
+
+**Original issue:** The artifact contract said HTML artifacts run in a sandboxed preview. The hidden iframe used for log capture had `sandbox="allow-scripts"`, but the visible artifact preview iframe used `srcdoc` without a sandbox attribute.
 
 Relevant code:
 
-- `src/bun/artifacts.ts`: contract text describes sandboxed previews and uses a hidden sandboxed iframe for log capture.
-- `src/renderer/components/ArtifactsPanel.svelte`: visible preview iframe uses `srcdoc` without sandbox.
-- `e2e/transcript-artifacts.test.ts`: checks that an iframe exists, but not that it is sandboxed.
+- `src/mainview/artifacts.ts`: builds artifact preview documents and uses a hidden sandboxed iframe for log capture.
+- `src/mainview/ArtifactsPanel.svelte`: visible HTML preview iframe uses `srcdoc` and a sandbox attribute.
+- `e2e/transcript-artifacts.test.ts`: covers HTML artifact preview/log behavior; sandbox-attribute coverage belongs with artifact preview regression tests.
 
 **Why this matters:** An unsandboxed `srcdoc` iframe normally shares origin with the parent document. Malicious generated HTML can access parent DOM, inspect app state, or modify UI unless browser/electrobun embedding behavior prevents it. The product contract should not depend on that accidental behavior.
 
-**Best fix:**
+**Fixed behavior:** The visible preview iframe is sandboxed. Script execution is available only to interactive artifact previews, and the default policy does not include same-origin, top-navigation, popup, or form permissions.
 
-Use a sandboxed visible preview iframe:
-
-```svelte
-<iframe
-  sandbox="allow-scripts"
-  referrerpolicy="no-referrer"
-  srcdoc={artifact.html}
-/>
-```
-
-Do not add `allow-same-origin`, `allow-top-navigation`, `allow-popups`, or `allow-forms` unless a specific reviewed product requirement needs them.
-
-**Verification required:**
+**Verification:**
 
 - Component/e2e test asserting the visible iframe has the expected sandbox attribute.
 - Malicious HTML fixture that tries to read or mutate `parent.document`; parent state must remain unchanged.
 - Regression test that ordinary HTML artifact scripts still run inside the preview.
 
-**Documentation impact:** Update artifact preview security notes if not already present in specs.
+**Documentation impact:** The PRD, feature inventory, structured-state spec, and workspace-navigation artifact projection spec define the sandboxed HTML preview policy.
 
 **Confidence:** High.
 

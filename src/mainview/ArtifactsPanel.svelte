@@ -106,7 +106,12 @@
 				{:else if activeView === "raw"}
 					<pre class="artifact-code">{activeArtifact.content}</pre>
 				{:else if activeKind === "html"}
-					<iframe class="artifact-preview html-preview" title={activeArtifact.filename} srcdoc={controller.getPreviewDocument(activeArtifact.filename)}></iframe>
+					<iframe
+						class="artifact-preview html-preview"
+						title={activeArtifact.filename}
+						sandbox="allow-scripts"
+						srcdoc={controller.getPreviewDocument(activeArtifact.filename)}
+					></iframe>
 					{#if snapshot.logsByFilename[activeArtifact.filename]}
 						<div class="artifact-logs">
 							<p>Runtime logs</p>

@@ -263,7 +263,9 @@ Workflow-run artifact groups should prefer this order:
 
 Clicking an artifact should open the existing artifact panel or inspector.
 
-Small text, JSON, log, and image artifacts may show inline previews or thumbnails, but Section 8 should not build a new full artifact viewer.
+Small text, JSON, log, image, and HTML artifacts may show inline previews or thumbnails, but Section 8 should not build a new full artifact viewer.
+
+Visible HTML previews must render inside sandboxed iframes. Static HTML previews use the sandbox without script execution. Interactive artifact previews may enable scripts with `allow-scripts`, but the sandbox must not grant same-origin access, top navigation, popups, forms, or other parent/app escape permissions by default.
 
 Missing artifact files should still render a stale artifact row using retained metadata. The row should show that the file is missing rather than disappearing silently.
 

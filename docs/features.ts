@@ -36,8 +36,13 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     id: "artifacts-panel",
     name: "Artifacts Projection",
     status: "shipped",
-    summary: "Presents generated artifacts in a docked preview panel.",
-    sourceSpecs: ["docs/prd.md", "docs/specs/structured-session-state.spec.md"],
+    summary:
+      "Presents generated artifacts in a docked preview panel, with visible HTML previews isolated in sandboxed iframes and script execution granted only to interactive artifact previews.",
+    sourceSpecs: [
+      "docs/prd.md",
+      "docs/specs/structured-session-state.spec.md",
+      "docs/specs/workspace-navigation-core-projection.spec.md",
+    ],
   },
   {
     id: "durable-artifact-storage",
