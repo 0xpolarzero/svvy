@@ -35,7 +35,7 @@ For each issue, record:
 | AUD-004 | Not accepted | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Not convincing |
 | AUD-005 | Not accepted | Raw command, tool, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Logs-only redaction retained |
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Fixed |
-| AUD-007 | P1 | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Researched |
+| AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
 | AUD-008 | P1 | Workspace-scoped RPC handlers still route through active runtime state | `209c`, `2a4e`, `1291` | Researched |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Researched |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Researched |
@@ -384,9 +384,11 @@ Relevant code:
 
 ### AUD-007 - Duplicate same-cwd workspace tabs share durable state
 
-**Impact:** High state-isolation issue. The PRD says each workspace tab has its own runtime and session catalog, but duplicate tabs for the same cwd share durable session state.
+**Disposition:** Not accepted as a bug. Duplicate tabs for the same cwd are intentionally multiple visual tabs over the same workspace runtime and durable workspace state. They should share sessions, pi session files, structured state, queues, thread state, workflow state, and other workspace-owned runtime data. They should not share visual/layout state such as Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and other per-tab view state.
 
-**Precise issue:** Runtime identity is per tab, but the durable session/catalog path is cwd-derived. Opening the same cwd in two tabs creates two live runtime identities and log DBs, but both use the same session directory, structured SQLite database, pi sessions, thread surfaces, queues, and catalog sessions.
+**Impact:** Documentation/contract clarification only. The issue is not that same-cwd tabs share durable state; the product rule is that only visual state is isolated per tab.
+
+**Original concern:** Runtime identity is per tab, but the durable session/catalog path is cwd-derived. Opening the same cwd in two tabs creates two tab entries, but both use the same session directory, structured SQLite database, pi sessions, thread surfaces, queues, and catalog sessions.
 
 Relevant code:
 
@@ -396,9 +398,9 @@ Relevant code:
 - `src/bun/structured-session-state.ts`: opens a cwd-derived structured DB and reuses workspace rows.
 - `src/bun/workspace-runtime-registry.test.ts`: currently expects sharing for duplicate cwd tabs.
 
-**Why this matters:** Duplicate tabs can leak or race session state across tabs. One tab's sessions, queues, prompt locks, managed surfaces, workflow runs, or thread state can appear in another tab that is supposed to be isolated. Live app logs and UI restore are per runtime, which makes the split especially confusing: some state is isolated and some is shared.
+**Why this was not accepted:** One tab's sessions, queues, prompt locks, managed surfaces, workflow runs, or thread state appearing in another same-cwd tab is intended. The only unacceptable sharing is view-local state, because duplicate tabs are separate visual workspaces over the same underlying cwd runtime.
 
-**Best fix:**
+**Rejected fix:**
 
 Make the durable session/state root runtime-scoped when the product opens duplicate workspace tabs:
 
@@ -407,18 +409,17 @@ Make the durable session/state root runtime-scoped when the product opens duplic
 3. Ensure the structured workspace row id matches the runtime workspace id.
 4. Invert the existing sharing test so duplicate same-cwd tabs get distinct DB paths and distinct session catalogs.
 
-If shared same-cwd durable state is actually desired, the PRD and features need to be rewritten. That would be a product-contract change, not an implementation fix.
+The product should not make durable session/state roots runtime-scoped for duplicate same-cwd tabs.
 
-**Verification required:**
+**Verification to preserve the intended contract:**
 
-- Open the same cwd twice and assert different structured DB paths.
-- Create session/thread/queue state in tab A and assert it is invisible in tab B.
-- Assert app logs, UI restore, and session catalog all agree on the same runtime identity.
-- Remove or rewrite tests that codify duplicate-tab sharing.
+- Open the same cwd twice and assert both tabs share the same durable sessions, structured workspace state, thread/workflow state, and prompt queues.
+- Assert visual state is tab-specific: Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and similar view-local state do not leak between duplicate tabs.
+- Keep or strengthen tests that codify duplicate-tab durable sharing.
 
-**Documentation impact:** None if fixed to match the current PRD. If sharing is retained, update `docs/prd.md` and `docs/features.ts`.
+**Documentation impact:** Update PRD/features/spec wording where needed so "duplicate same-cwd workspace tabs" means shared workspace runtime/state with isolated visual layout state.
 
-**Confidence:** High.
+**Confidence:** High in the product decision.
 
 ### AUD-008 - Workspace-scoped RPC paths still use the active runtime
 
