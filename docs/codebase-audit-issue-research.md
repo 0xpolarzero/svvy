@@ -33,7 +33,7 @@ For each issue, record:
 | AUD-002 | P1 | `execute_typescript` exposes workflow APIs across actor surfaces | `3eed`, `2a4e`, `34a6`, `1291` | Researched |
 | AUD-003 | P1 | Local browser-tools bridge exposes sensitive runtime state | all five | Researched |
 | AUD-004 | Not accepted | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Not convincing |
-| AUD-005 | P1 | Raw command, log, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Researched |
+| AUD-005 | Not accepted | Raw command, tool, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Logs-only redaction retained |
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Researched |
 | AUD-007 | P1 | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Researched |
 | AUD-008 | P1 | Workspace-scoped RPC handlers still route through active runtime state | `209c`, `2a4e`, `1291` | Researched |
@@ -316,7 +316,9 @@ Relevant code:
 
 ### AUD-005 - Redaction is app-log-specific and does not cover command, tool, artifact, and web records
 
-**Impact:** High confidentiality issue. Secrets can persist outside the app-log redaction pipeline.
+**Disposition:** Not accepted as a product issue for now. `svvy` redacts app logs because logs are designed to be copied and shared for support/debugging. Other durable records, such as commands, tool inputs/results, snippets, artifacts, and web outputs, are local product state whose value often depends on preserving exact content. A broad shared redaction policy would be unreliable and could corrupt the records users expect the app to retain.
+
+**Impact:** Accepted only for app logs. Broader persistence redaction is not currently required.
 
 **Precise issue:** The app has an app-log redactor, but command summaries, command facts, tool execution records, `execute_typescript` snippets/logs/errors, artifact content, and web fetch outputs are not consistently passed through a shared sensitive-data policy before persistence or display.
 
@@ -329,9 +331,9 @@ Relevant code:
 - `src/bun/svvy-direct-tools.ts`: writes artifact text/json content.
 - `src/bun/web-runtime/providers/shared.ts`: writes web bodies/metadata without the app-log redactor.
 
-**Why this matters:** Users can paste API keys, bearer tokens, provider responses, auth headers, or private data into commands and tool calls. Those values can land in SQLite, artifact files, inspectors, previews, exports, or bridge state even if app logs are redacted.
+**Why this was not accepted:** Users can paste API keys, bearer tokens, provider responses, auth headers, or private data into commands and tool calls. Those values can land in SQLite, artifact files, inspectors, previews, and exports. That is expected local app state unless the surface is specifically designed for sharing. App logs are the sharing-oriented surface and should stay redacted; applying heuristic redaction everywhere else is not reliable enough to justify the data loss.
 
-**Best fix:**
+**Rejected fix for now:**
 
 1. Extract a shared sensitive-data redaction module used by every persistence/display path that records tool input, tool output, command facts, command summaries, errors, web metadata, and automatic execution artifacts.
 2. Apply redaction before writing to SQLite and before emitting renderer-facing snapshots.
@@ -339,16 +341,16 @@ Relevant code:
 4. Redact common secret shapes, provider keys, auth headers, bearer tokens, cookies, private URLs with embedded credentials, and environment-variable style secrets.
 5. Make path redaction conservative: preserve useful file names/cwd context where safe, but redact secret-like path segments and credentials.
 
-**Verification required:**
+**Verification that would be required if reopened:**
 
 - Inject fake secrets into bash commands, tool args, tool output, command facts, `execute_typescript` console logs, thrown errors, artifact writes, and web metadata.
 - Assert persisted snapshots and renderer projections redact those secrets.
 - Assert intentional user-authored artifact content behavior is documented and tested.
 - Assert redaction does not corrupt non-secret structured fields required by inspectors.
 
-**Documentation impact:** Update structured-state, workspace-navigation, and app-log specs to say where redaction applies and where exact user-authored artifact bytes are intentionally preserved.
+**Documentation impact:** None for now unless specs imply all durable state is redacted. Keep app-log specs clear that app logs are the redacted support/debugging surface.
 
-**Confidence:** Medium-high. Coverage gaps are clear in code; exact artifact raw-content policy needs product decision.
+**Confidence:** High in the decision. Broader redaction is technically possible only heuristically and is not currently a product requirement.
 
 ### AUD-006 - Visible HTML artifact previews are unsandboxed
 
