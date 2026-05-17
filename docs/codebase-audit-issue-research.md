@@ -32,7 +32,7 @@ For each issue, record:
 | AUD-001 | Later | Host execution for `execute_typescript` and bash is not sandboxed | `3eed`, `2a4e`, `34a6` | Deferred |
 | AUD-002 | P1 | `execute_typescript` exposes workflow APIs across actor surfaces | `3eed`, `2a4e`, `34a6`, `1291` | Researched |
 | AUD-003 | P1 | Local browser-tools bridge exposes sensitive runtime state | all five | Researched |
-| AUD-004 | P1 | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Researched |
+| AUD-004 | Not accepted | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Not convincing |
 | AUD-005 | P1 | Raw command, log, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Researched |
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Researched |
 | AUD-007 | P1 | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Researched |
@@ -277,7 +277,9 @@ Relevant code:
 
 ### AUD-004 - Artifact paths are not contained to the workspace artifact area
 
-**Impact:** Critical local file disclosure risk through artifact preview and artifact reads.
+**Disposition:** Not accepted as currently argued. The concern that path-based artifact preview can read outside the workspace is real as a mechanism, but the audit does not yet establish why external file references are improper product behavior for a local coding app. The proposed managed-copy-only policy would change artifact semantics and may make legitimate references to files outside the workspace harder without proving a concrete product risk.
+
+**Impact:** Unproven. This may be a product-design question about whether artifacts are allowed to reference external local files, not a confirmed P1 bug.
 
 **Precise issue:** Artifact creation and preview paths can persist arbitrary absolute or process-relative paths. Inline artifact content is written under an artifact root, but attached path-based artifacts are stored and later read without canonical containment checks.
 
@@ -290,7 +292,7 @@ Relevant code:
 
 **Why this matters:** A tool call can point an artifact at an arbitrary file on disk. Later preview/read paths can expose that file as if it were a generated artifact. Relative paths are also dangerous because they resolve against process cwd rather than a declared artifact root.
 
-**Best fix:**
+**Rejected fix for now:**
 
 1. Centralize artifact path resolution in one module.
 2. Define the only allowed persisted artifact path roots, preferably `.svvy/artifacts/<session-id>/...` or the existing canonical artifact store.
@@ -300,7 +302,7 @@ Relevant code:
 6. Store the original source path only as redacted provenance metadata, not as the preview/read target.
 7. Make preview/read APIs refuse any stored artifact path that is outside the allowed root, even for legacy records.
 
-**Verification required:**
+**Verification that would be required if reopened:**
 
 - Absolute outside path is rejected.
 - `../` traversal is rejected.
@@ -308,9 +310,9 @@ Relevant code:
 - Valid attached files are copied into the managed artifact root and previewed from there.
 - A malicious pre-existing database record pointing outside the root is refused by preview/read code.
 
-**Documentation impact:** Update artifact/workspace-navigation specs to define managed artifact storage and source-file provenance.
+**Documentation impact:** None for now. Reopen only if a clearer product rule is adopted, such as "artifact previews must only read app-owned generated outputs" or "external file references must require an explicit user action."
 
-**Confidence:** High.
+**Confidence:** Low as a product issue. The code path exists, but the risk argument and intended artifact semantics need a better justification before implementation.
 
 ### AUD-005 - Redaction is app-log-specific and does not cover command, tool, artifact, and web records
 
