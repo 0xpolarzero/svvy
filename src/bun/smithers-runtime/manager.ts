@@ -400,15 +400,28 @@ export class SmithersRuntimeManager {
       throw new Error(parsedInput.error.issues.map((issue) => issue.message).join("; "));
     }
 
-    const existingRunId =
-      input.runId?.trim() ||
-      this.findNonterminalThreadRun(input.sessionId, input.threadId, input.workflowId)
-        ?.smithersRunId;
-    if (!existingRunId) {
-      await this.cancelSupersededThreadRuns(input.sessionId, input.threadId);
+    const requestedRunId = input.runId?.trim() || null;
+    if (requestedRunId) {
+      await this.requireExplicitResumeOwnership({
+        sessionId: input.sessionId,
+        threadId: input.threadId,
+        workflowId: input.workflowId,
+        runId: requestedRunId,
+      });
+    } else {
+      const conflictingRun = this.findNonterminalThreadRun(
+        input.sessionId,
+        input.threadId,
+        input.workflowId,
+      );
+      if (conflictingRun) {
+        throw new Error(
+          `Handler thread ${input.threadId} already owns nonterminal Smithers run ${conflictingRun.smithersRunId} for workflow ${input.workflowId}. Pass runId to resume that exact run, cancel it before launching a fresh run, or wait for it to finish before replacing this workflow.`,
+        );
+      }
     }
 
-    const runId = existingRunId ?? `smithers-${randomUUID()}`;
+    const runId = requestedRunId ?? `smithers-${randomUUID()}`;
     const existingStructuredRun = this.findStructuredWorkflowRun({
       sessionId: input.sessionId,
       threadId: input.threadId,
@@ -423,7 +436,7 @@ export class SmithersRuntimeManager {
           smithersStatus: "running",
           waitKind: null,
           pendingAttentionSeq: null,
-          summary: `${existingRunId ? "Resuming" : "Launching"} ${entry.label}.`,
+          summary: `${requestedRunId ? "Resuming" : "Launching"} ${entry.label}.`,
           heartbeatAt: null,
         })
       : this.options.store.recordWorkflow({
@@ -443,7 +456,7 @@ export class SmithersRuntimeManager {
           pendingAttentionSeq: null,
           lastAttentionSeq: null,
           heartbeatAt: null,
-          summary: `${existingRunId ? "Resuming" : "Launching"} ${entry.label}.`,
+          summary: `${requestedRunId ? "Resuming" : "Launching"} ${entry.label}.`,
         });
 
     this.options.store.updateThread({
@@ -489,7 +502,7 @@ export class SmithersRuntimeManager {
         ).toSorted(),
         launchInput: parsedInput.data as Record<string, unknown>,
         runId,
-        resumedRunId: existingRunId ?? null,
+        resumedRunId: requestedRunId,
         structuredWorkflowRunId: structuredWorkflowRun.id,
         status: structuredWorkflowRun.status,
         smithersStatus: existingActiveRun.status,
@@ -513,7 +526,7 @@ export class SmithersRuntimeManager {
       monitor,
       runId,
       input: parsedInput.data as Record<string, unknown>,
-      resume: Boolean(existingRunId),
+      resume: Boolean(requestedRunId),
     });
     this.trackActiveWorkflowPromise(runId, workflowPromise);
 
@@ -534,7 +547,7 @@ export class SmithersRuntimeManager {
       ).toSorted(),
       launchInput: parsedInput.data as Record<string, unknown>,
       runId,
-      resumedRunId: existingRunId ?? null,
+      resumedRunId: requestedRunId,
       structuredWorkflowRunId: structuredWorkflowRun.id,
       status: structuredWorkflowRun.status,
       smithersStatus: "running",
@@ -1870,20 +1883,6 @@ export class SmithersRuntimeManager {
     });
   }
 
-  private async cancelSupersededThreadRuns(sessionId: string, threadId: string) {
-    const snapshot = this.options.store.getSessionState(sessionId);
-    const activeRuns = snapshot.workflowRuns.filter(
-      (workflowRun) =>
-        workflowRun.threadId === threadId &&
-        (workflowRun.status === "running" || workflowRun.status === "waiting"),
-    );
-    for (const workflowRun of activeRuns) {
-      await this.db.requestRunCancel(workflowRun.smithersRunId, Date.now());
-      const monitor = this.monitorByRunId.get(workflowRun.smithersRunId);
-      monitor?.abortController.abort();
-    }
-  }
-
   private clearThreadOwnedSessionWait(sessionId: string, threadId: string) {
     const wait = this.options.store.getSessionState(sessionId).session.wait;
     if (wait?.owner.kind === "thread" && wait.owner.threadId === threadId) {
@@ -2061,6 +2060,48 @@ export class SmithersRuntimeManager {
             workflowRun.threadId === input.threadId && workflowRun.smithersRunId === input.runId,
         ) ?? null
     );
+  }
+
+  private async requireExplicitResumeOwnership(input: {
+    sessionId: string;
+    threadId: string;
+    workflowId: string;
+    runId: string;
+  }): Promise<void> {
+    const workflowRun = this.findStructuredWorkflowRunBySmithersRunId(input.runId);
+    if (!workflowRun) {
+      throw new Error(
+        `Smithers run ${input.runId} is not owned by a svvy handler thread; cannot resume it from smithers.run_workflow.`,
+      );
+    }
+    if (workflowRun.sessionId !== input.sessionId) {
+      throw new Error(
+        `Smithers run ${input.runId} belongs to session ${workflowRun.sessionId}, not ${input.sessionId}.`,
+      );
+    }
+    if (workflowRun.threadId !== input.threadId) {
+      throw new Error(
+        `Smithers run ${input.runId} belongs to handler thread ${workflowRun.threadId}, not ${input.threadId}.`,
+      );
+    }
+    if (
+      workflowRun.savedEntryId !== input.workflowId &&
+      workflowRun.workflowName !== input.workflowId
+    ) {
+      const actualWorkflowId = workflowRun.savedEntryId ?? workflowRun.workflowName;
+      throw new Error(
+        `Smithers run ${input.runId} belongs to workflow ${actualWorkflowId}, not ${input.workflowId}.`,
+      );
+    }
+    if (isTerminalWorkflowStatus(workflowRun.status)) {
+      throw new Error(
+        `Smithers run ${input.runId} is already ${workflowRun.status}; cannot resume a terminal workflow run.`,
+      );
+    }
+    const smithersRun = await this.db.getRun(input.runId);
+    if (!smithersRun) {
+      throw new Error(`Smithers run ${input.runId} was not found in the Smithers runtime.`);
+    }
   }
 
   private findNonterminalThreadRun(

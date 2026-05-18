@@ -1037,6 +1037,63 @@ describe("SmithersRuntimeManager", () => {
     );
   });
 
+  it("resumes exactly the supplied runId instead of inferring a run from workflowId", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createSlowWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch slow workflow",
+      title: "Run slow_resume",
+      summary: "Launch the slow_resume workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "slow_resume",
+      launchInput: { delayMs: 1_000, message: "explicit resume target" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("slow workflow running before explicit resume", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "running";
+    });
+
+    const resumeCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Resume slow workflow",
+      title: "Resume slow_resume",
+      summary: "Resume the slow_resume workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const resumed = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "slow_resume",
+      launchInput: { delayMs: 1_000, message: "explicit resume target" },
+      commandId: resumeCommand.commandId,
+      runId: launched.runId,
+    });
+
+    expect(resumed.runId).toBe(launched.runId);
+    expect(resumed.resumedRunId).toBe(launched.runId);
+    expect(resumed.structuredWorkflowRunId).toBe(launched.structuredWorkflowRunId);
+    expect(
+      store
+        .getSessionState(sessionId)
+        .workflowRuns.filter((entry) => entry.workflowName === "slow_resume"),
+    ).toHaveLength(1);
+  });
+
   it("refreshes structured workflow state from Smithers when getRun observes a finished run", async () => {
     const fixture = createWorkspaceFixture();
     const { manager, store, cwd, sessionId, threadId } = fixture;
@@ -1194,6 +1251,153 @@ describe("SmithersRuntimeManager", () => {
           status: "finished",
           sessionId: secondarySessionId,
           threadId: secondaryHandlerThread.id,
+        }),
+      ]),
+    );
+  });
+
+  it("rejects omitted runId when the same handler already owns a nonterminal run for that workflow", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const firstCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow",
+      title: "Run approval_gate",
+      summary: "Launch the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Approve the release?" },
+      commandId: firstCommand.commandId,
+    });
+
+    await waitFor("approval workflow to reach nonterminal wait", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-approval";
+      } catch {
+        return false;
+      }
+    });
+
+    const secondCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow again",
+      title: "Run approval_gate again",
+      summary: "Attempt a fresh approval_gate workflow launch.",
+      toolName: "smithers.run_workflow",
+    });
+    await expect(
+      manager.launchWorkflow({
+        sessionId,
+        threadId,
+        workflowId: "approval_gate",
+        launchInput: { title: "Launch another release approval?" },
+        commandId: secondCommand.commandId,
+      }),
+    ).rejects.toThrow(
+      `already owns nonterminal Smithers run ${launched.runId} for workflow approval_gate`,
+    );
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.filter((entry) => entry.workflowName === "approval_gate"),
+    ).toHaveLength(1);
+    expect(await manager.getRun(launched.runId)).toMatchObject({
+      runId: launched.runId,
+      status: "waiting-approval",
+    });
+  });
+
+  it("allows one handler to launch different workflowIds concurrently when runId is omitted", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+    registerWorkflow(manager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const approvalCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow",
+      title: "Run approval_gate",
+      summary: "Launch the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const approvalLaunch = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Approve alongside signal?" },
+      commandId: approvalCommand.commandId,
+    });
+
+    await waitFor("approval workflow to wait before concurrent launch", async () => {
+      try {
+        const run = await manager.getRun(approvalLaunch.runId);
+        return run.status === "waiting-approval";
+      } catch {
+        return false;
+      }
+    });
+
+    const signalCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch signal workflow",
+      title: "Run wait_for_signal",
+      summary: "Launch the wait_for_signal workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const signalLaunch = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_signal",
+      launchInput: { signalName: "deploy.completed" },
+      commandId: signalCommand.commandId,
+    });
+
+    expect(signalLaunch.runId).not.toBe(approvalLaunch.runId);
+    expect(signalLaunch.resumedRunId).toBeNull();
+
+    await waitFor("signal workflow to wait without cancelling approval workflow", async () => {
+      try {
+        const [approvalRun, signalRun] = await Promise.all([
+          manager.getRun(approvalLaunch.runId),
+          manager.getRun(signalLaunch.runId),
+        ]);
+        return approvalRun.status === "waiting-approval" && signalRun.status === "waiting-event";
+      } catch {
+        return false;
+      }
+    });
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(snapshot.workflowRuns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          smithersRunId: approvalLaunch.runId,
+          workflowName: "approval_gate",
+          status: "waiting",
+        }),
+        expect.objectContaining({
+          smithersRunId: signalLaunch.runId,
+          workflowName: "wait_for_signal",
+          status: "waiting",
         }),
       ]),
     );

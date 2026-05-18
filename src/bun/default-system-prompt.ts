@@ -134,7 +134,7 @@ const SMITHERS_HANDLER_CONTEXT_BODY = [
   "",
   "Handler threads supervise Smithers workflow runs through native `smithers.*` tools. Use direct tools for simple repository work, then saved runnable entries, then artifact workflow authoring when a workflow graph is the right unit of work.",
   "",
-  "Use `smithers.list_workflows` to discover runnable saved and artifact entries. Use `smithers.run_workflow({ workflowId, input, runId? })` to launch or resume a run after validating launch input against the returned contract.",
+  "Use `smithers.list_workflows` to discover runnable saved and artifact entries. Use `smithers.run_workflow({ workflowId, input })` for a fresh launch. Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run. Omitting `runId` never silently resumes; if this handler already owns a nonterminal run with the same `workflowId`, the call is rejected. Different `workflowId` values can run concurrently under the same handler thread.",
   "",
   "Use Smithers inspection and control tools for supervision: `smithers.get_run`, `smithers.watch_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, `smithers.get_chat_transcript`, `smithers.get_run_events`, `smithers.runs.cancel`, `smithers.signals.send`, `smithers.frames.list`, `smithers.getDevToolsSnapshot`, and `smithers.streamDevTools`.",
   "",

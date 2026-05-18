@@ -97,6 +97,16 @@ describe("default system prompt", () => {
       "Workflow waits, approvals, and resumes stay inside this handler thread.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain(
+      "Use `smithers.run_workflow({ workflowId, input })` for a fresh launch.",
+    );
+    expect(HANDLER_SYSTEM_PROMPT).toContain(
+      "Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
+    );
+    expect(HANDLER_SYSTEM_PROMPT).toContain("Omitting `runId` never silently resumes");
+    expect(HANDLER_SYSTEM_PROMPT).toContain(
+      "Different `workflowId` values can run concurrently under the same handler thread.",
+    );
+    expect(HANDLER_SYSTEM_PROMPT).toContain(
       "Do not call thread.start from this surface in the adopted supervision model.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain(".svvy/workflows/components/agents.ts");

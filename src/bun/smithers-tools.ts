@@ -538,7 +538,7 @@ function createRunWorkflowTool(options: CreateSmithersToolsOptions): AgentTool<a
     label: "Run Workflow",
     name: SMITHERS_RUN_WORKFLOW_TOOL_NAME,
     description:
-      "Launch or resume one runnable Smithers workflow entry under the current handler thread using a workflowId discovered through smithers.list_workflows.",
+      "Launch or explicitly resume one runnable Smithers workflow entry under the current handler thread using a workflowId discovered through smithers.list_workflows. Supplying runId resumes exactly that run. Omitting runId requests a fresh launch and never silently resumes; svvy rejects the call if this handler already owns a nonterminal run with the same workflowId.",
     parameters: runWorkflowParamsSchema,
     execute: async (_toolCallId, params) => {
       const runtime = requireActiveRuntime(options.runtime, SMITHERS_RUN_WORKFLOW_TOOL_NAME);
@@ -612,14 +612,52 @@ function createRunWorkflowTool(options: CreateSmithersToolsOptions): AgentTool<a
       const before = params.runId?.trim()
         ? await options.manager.getRun(params.runId.trim()).catch(() => null)
         : null;
-      const result = await options.manager.launchWorkflow({
-        sessionId: runtime.sessionId,
-        threadId: runtime.surfaceThreadId,
-        workflowId,
-        launchInput: preflight.launchInput,
-        commandId: command.id,
-        runId: params.runId?.trim() || undefined,
-      });
+      let result: Awaited<ReturnType<SmithersRuntimeManager["launchWorkflow"]>>;
+      try {
+        result = await options.manager.launchWorkflow({
+          sessionId: runtime.sessionId,
+          threadId: runtime.surfaceThreadId,
+          workflowId,
+          launchInput: preflight.launchInput,
+          commandId: command.id,
+          runId: params.runId?.trim() || undefined,
+        });
+      } catch (error) {
+        const summary = error instanceof Error ? error.message : String(error);
+        options.store.finishCommand({
+          commandId: command.id,
+          status: "failed",
+          summary,
+          facts: {
+            smithersToolName: SMITHERS_RUN_WORKFLOW_TOOL_NAME,
+            rawSmithersOperationName: "run_workflow",
+            transport: "embedded-runtime",
+            workflowId,
+            launchInput: preflight.launchInput,
+            requestedRunId: params.runId?.trim() || null,
+          },
+          error: summary,
+        });
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                success: false,
+                workflowId,
+                runId: params.runId?.trim() || null,
+                error: summary,
+              }),
+            },
+          ],
+          details: {
+            success: false,
+            workflowId,
+            runId: params.runId?.trim() || null,
+            error: summary,
+          },
+        };
+      }
       options.store.finishCommand({
         commandId: command.id,
         status: "succeeded",

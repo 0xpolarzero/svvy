@@ -116,7 +116,7 @@ The `svvy`-owned part is:
 - Workflow lifecycle state is write-driven. Live Smithers event attachment is one sanctioned lifecycle producer, and reconnect or bootstrap control-plane reads are another sanctioned lifecycle producer when they immediately project durable state.
 - There is no silent polling fallback for `svvy`-owned workflow supervision. Reconnect or bootstrap reads are explicit lifecycle writes, not background read-side repair.
 - One handler thread may supervise many workflow runs over its lifetime.
-- For this supervision slice, one handler thread should own at most one active Smithers run at a time.
+- A handler thread may own concurrent active Smithers runs when they have different `workflowId` values; a second nonterminal run with the same `workflowId` requires explicit resolution before a fresh launch.
 - Workflow task agents are a lower-level actor class inside Smithers tasks, not another `svvy` interactive surface.
 - `svvy` should derive active and latest workflow summaries from workflow-run records and recency rules rather than persisting a thread-level latest-workflow pointer.
 - Workflow attention must reacquire and target the owning handler surface by `surfacePiSessionId`, never a globally active surface or the currently focused Dockview panel.
@@ -306,7 +306,7 @@ The first adopted Smithers-native surface is:
 | Agent-visible tool                    | Product class                       | Purpose                                                                                                                                                             | Primary adopted Smithers contract                                                                                                           |
 | ------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | `smithers.list_workflows`             | required                            | List runnable workflow entries, support targeted lookup such as `workflowId` and `productKind`, and return each entry's full handler-visible workflow contract for deeper inspection. | Smithers semantic tool `list_workflows`, backed by the app-owned workflow registry plus Bun-side contract compilation.                      |
-| `smithers.run_workflow`               | required                            | Launch a discoverable workflow or resume the same run when Smithers still considers that run resumable, using `{ workflowId, input, runId? }`.                     | Smithers semantic tool `run_workflow`, backed by embedded `runWorkflow(...)`, `POST /v1/runs`, and `POST /v1/runs/:runId/resume` semantics. |
+| `smithers.run_workflow`               | required                            | Launch a discoverable workflow when `runId` is omitted, or resume exactly the supplied `runId`; omitted `runId` never silently resumes and is rejected when the same handler already owns a nonterminal run with the same `workflowId`. | Smithers semantic tool `run_workflow`, backed by embedded `runWorkflow(...)`, `POST /v1/runs`, and `POST /v1/runs/:runId/resume` semantics. |
 | `smithers.list_runs`                  | required                            | List recent runs and their compact summary state, while enriching each summary with svvy `sessionId` and `threadId` ownership when the run belongs to a recorded handler thread. | Smithers semantic tool `list_runs`, aligned with `GET /v1/runs` and Gateway `runs.list`, with svvy-side ownership projection layered on top. |
 | `smithers.get_run`                    | required                            | Return the main run summary the handler needs to reason.                                                                                                            | Smithers semantic tool `get_run`, aligned with `GET /v1/runs/:runId` and Gateway `runs.get`.                                                |
 | `smithers.watch_run`                  | bridge or UI                        | Watch a run until terminal or timeout.                                                                                                                              | Smithers semantic tool `watch_run`, backed by `onProgress` plus bridge-owned watch behavior.                                                |
@@ -333,7 +333,7 @@ The adopted contract pipeline is:
 - product-lane entries may also publish `productKind` and `resultSchema`
 - `svvy` compiles that launch schema into the handler-visible `launchInputSchema` when the workflow registry is loaded or refreshed
 - `smithers.list_workflows({ workflowId?, productKind?, sourceScope? })` returns each runnable entry's `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, `launchInputSchema`, and optional product metadata such as `productKind` and `resultSchema`
-- the Bun bridge exposes one stable `smithers.run_workflow({ workflowId, input, runId? })` tool for launch and resume
+- the Bun bridge exposes one stable `smithers.run_workflow({ workflowId, input, runId? })` tool for fresh launch and explicit same-run resume
 - the same launch Zod schema remains the runtime validation source when the tool is executed
 
 Project CI is the first adopted product-lane entry.
@@ -349,7 +349,10 @@ The handler-visible launch contract must preserve launch-side semantics:
 - optional fields stay optional
 - defaulted fields remain omittable and surface their defaults in the generated schema
 - `input` is the workflow-specific payload validated against `launchInputSchema`
-- `runId` is optional resume addressing and is not part of the workflow-specific `launchInputSchema`
+- omitted `runId` requests a fresh launch and never silently resumes an existing run
+- supplied `runId` is explicit resume addressing for that exact run and is not part of the workflow-specific `launchInputSchema`
+- if `runId` is omitted while the same handler thread already owns a nonterminal run with the same `workflowId`, `svvy` rejects the call and tells the handler to pass `runId`, cancel the old run, or choose a different `workflowId`
+- nonterminal runs with different `workflowId` values may run concurrently under one handler thread
 - runtime-only Smithers continuation plumbing does not appear in the handler-visible schema
 
 The shared Smithers runtime input table shape used inside the embedded runtime is not a public contract for handler agents.
@@ -516,9 +519,14 @@ The adopted rule is:
 - if the handler thread already has an active prompt, new workflow attention should be queued or coalesced rather than interrupting that active turn
 - if no pane currently shows that thread, the runtime may keep the wake-up background-only and should release any temporary surface ownership after the turn settles
 
-### Resume Versus Replacement Run
+### Launch Versus Resume
 
-The stable `smithers.run_workflow({ workflowId, input, runId? })` surface may resume an existing run only when Smithers still considers that same run resumable under the same workflow source and input lineage.
+The stable `smithers.run_workflow({ workflowId, input, runId? })` surface has an explicit split:
+
+- `runId` supplied means resume exactly that Smithers run after validating handler ownership, workflow identity, and Smithers resumability under the same workflow source and input lineage
+- `runId` omitted means start a fresh run
+- `runId` omitted is rejected when the same handler already owns a nonterminal run with the same `workflowId`, because that would make "fresh launch" ambiguous and likely orphan active workflow state
+- different `workflowId` values can run concurrently under one handler thread
 
 If the handler edits workflow source, changes workflow input, or hits a Smithers non-resumable condition, it must start a replacement run instead of trying to resume the same run.
 

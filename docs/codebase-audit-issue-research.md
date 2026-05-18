@@ -38,7 +38,7 @@ For each issue, record:
 | AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share workspace runtime and durable state while isolating only visual state | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
 | AUD-008 | P1 | Workspace-scoped RPC handlers must never route through active runtime state | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Fixed |
-| AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Researched |
+| AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Fixed |
 | AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Researched |
 | AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Researched |
 | AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Researched |
@@ -478,34 +478,34 @@ Waiting approval and signal runs restore their durable wait plus handler attenti
 
 **Impact:** High workflow correctness issue.
 
-**Precise issue:** The Smithers tool contract says a handler can resume a run by explicitly supplying `runId`. Current manager logic can substitute a resumable same-thread, same-workflow run when `runId` is omitted.
+**Disposition:** Fixed. `smithers.run_workflow` now has an explicit launch/resume split: supplied `runId` resumes exactly that owned run, while omitted `runId` requests a fresh launch and never silently selects a prior run.
+
+**Precise issue:** The Smithers tool contract says a handler can resume a run by explicitly supplying `runId`. The previous manager logic could substitute a resumable same-thread, same-workflow run when `runId` was omitted.
 
 Relevant code:
 
-- `src/bun/smithers-tools.ts`: `runId` is optional in `smithers.run_workflow`.
-- `src/bun/workflow-supervision/manager.ts`: launch logic substitutes a resumable run if one exists.
-- `src/bun/workflow-supervision/manager.ts`: selector chooses the newest same-thread same-workflow waiting/continued run.
+- `src/bun/smithers-tools.ts`: `smithers.run_workflow` describes the explicit launch/resume split and records failed launch attempts when the manager rejects an ambiguous call.
+- `src/bun/smithers-runtime/manager.ts`: omitted `runId` no longer falls back to the newest same-thread same-workflow run.
+- `src/bun/smithers-runtime/manager.ts`: omitted `runId` is rejected if the same handler thread already owns a nonterminal run with the same `workflowId`.
+- `src/bun/smithers-runtime/manager.ts`: explicit `runId` validates svvy ownership, session, handler thread, workflow identity, nonterminal state, and Smithers runtime existence before resuming.
 
 **Why this matters:** A handler call that appears to start a new workflow can instead resume stale state from an earlier run. This is especially dangerous after changed input, repair attempts, or unrelated workflow invocations with the same workflow id.
 
-**Best fix:**
+**Resolved behavior:**
 
-Remove implicit resume.
+- If `runId` is supplied, resume exactly that run after validating ownership, handler thread, workflow identity, nonterminal state, and Smithers runtime existence.
+- If `runId` is omitted and this handler has no nonterminal run with the same `workflowId`, start a fresh run.
+- If `runId` is omitted and this handler already owns a nonterminal run with the same `workflowId`, reject with a clear error that tells the handler to pass `runId`, cancel the old run, or wait for it to finish.
+- If `runId` is omitted and this handler owns nonterminal runs with different `workflowId` values, allow the fresh launch.
 
-Recommended behavior:
+**Verification:**
 
-- If `runId` is omitted, start a new run.
-- If an active same-thread workflow would make a new run ambiguous, reject with a clear error that tells the handler to pass `runId`, cancel the old run, or request an explicit replacement mode.
-- If `runId` is supplied, resume exactly that run after validating workflow identity, ownership, and input compatibility.
+- `src/bun/smithers-runtime/manager.test.ts` covers omitted `runId` rejection when the same handler already owns a nonterminal run for that workflow.
+- `src/bun/smithers-runtime/manager.test.ts` covers omitted `runId` allowing concurrent nonterminal runs with different workflow ids.
+- Existing explicit same-run resume and restart reattach tests continue to pass with explicit run ids.
+- Prompt/tool-description tests assert the handler-facing contract text.
 
-**Verification required:**
-
-- Omitted `runId` creates a new run or rejects due to active conflict; it never silently resumes.
-- Explicit `runId` resumes the intended run.
-- Mismatched workflow/input/source is rejected.
-- Existing recovery/resume tests updated to pass explicit run ids.
-
-**Documentation impact:** Smithers tool docs/spec should state the explicit resume rule.
+**Documentation impact:** `docs/prd.md`, `docs/features.ts`, `docs/specs/workflow-supervision.spec.md`, handler prompt context, and tool descriptions now state the explicit resume rule.
 
 **Confidence:** High.
 

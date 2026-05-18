@@ -1043,6 +1043,11 @@ describe("smithers.* tools", () => {
     expect(tools.find((tool) => tool.name === "smithers.run_workflow.hello_world")).toBeUndefined();
 
     const runWorkflowTool = getTool(tools, "smithers.run_workflow");
+    expect(runWorkflowTool.description).toContain("Supplying runId resumes exactly that run");
+    expect(runWorkflowTool.description).toContain("Omitting runId requests a fresh launch");
+    expect(runWorkflowTool.description).toContain(
+      "rejects the call if this handler already owns a nonterminal run with the same workflowId",
+    );
     expect((runWorkflowTool.parameters as Record<string, unknown>).type).toBe("object");
     expect(
       (runWorkflowTool.parameters as { properties?: Record<string, unknown> }).properties

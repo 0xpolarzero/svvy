@@ -34,6 +34,18 @@ describe("prompt contexts", () => {
       "cx.lang.add` when a relevant grammar is available but missing",
     );
     expect(buildAlwaysLoadedPromptContext("handler")).toContain("api.cx.*");
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain(
+      "Use `smithers.run_workflow({ workflowId, input })` for a fresh launch.",
+    );
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain(
+      "Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
+    );
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain(
+      "Omitting `runId` never silently resumes",
+    );
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain(
+      "Different `workflowId` values can run concurrently under the same handler thread.",
+    );
   });
 
   it("defines Project CI as optional handler-only guidance", () => {

@@ -349,7 +349,9 @@ Where:
 
 - `workflowId` selects a runnable entry returned by `smithers.list_workflows`
 - `input` is validated against that entry's `launchInputSchema`
-- `runId` is optional and is used only when the handler intends to resume the same Smithers run and Smithers still considers that run resumable
+- supplied `runId` is used only when the handler intends to resume that exact Smithers run and Smithers still considers the run resumable
+- omitted `runId` requests a fresh launch and never silently resumes an existing run
+- omitted `runId` is rejected when the same handler already owns a nonterminal run with the same `workflowId`; different `workflowId` values can run concurrently under one handler
 
 ## Saved Workflow Writes
 

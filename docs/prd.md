@@ -361,7 +361,7 @@ The intended use of the native control subset is:
 - a handler thread normally uses Smithers-native bridge tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, and `smithers.get_run_events` to supervise Smithers execution
 - any interactive surface may use `wait` when it needs user or external input
 
-`smithers.list_workflows` is the runnable-entry discovery surface and should expose each entry's `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `launchInputSchema`. Handlers launch or resume through the stable `smithers.run_workflow({ workflowId, input, runId? })` tool.
+`smithers.list_workflows` is the runnable-entry discovery surface and should expose each entry's `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `launchInputSchema`. Handlers launch or explicitly resume through the stable `smithers.run_workflow({ workflowId, input, runId? })` tool: supplied `runId` resumes exactly that run, omitted `runId` requests a fresh launch, omitted `runId` is rejected when the same handler already owns a nonterminal run with the same `workflowId`, and different `workflowId` values can run concurrently under one handler.
 
 Project CI is not a separate native control tool in the adopted model.
 
