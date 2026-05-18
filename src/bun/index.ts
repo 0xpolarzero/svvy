@@ -28,7 +28,6 @@ import type {
   SendPromptRequest,
   SendPromptResponse,
   SwitchWorkspaceBranchResponse,
-  WorkspaceScopedRequest,
 } from "../shared/workspace-contract";
 import {
   getShortcut,
@@ -60,6 +59,7 @@ import { positionNativeTrafficLights } from "./native-window-controls";
 import { WorkspaceRuntimeRegistry, type WorkspaceRuntime } from "./workspace-runtime-registry";
 import { createAppWorkspaceTabsStore } from "./app-workspace-tabs-store";
 import { createAppWorkspaceUiRestoreStore } from "./app-workspace-ui-restore-store";
+import { getWorkspaceRuntimeForRequest, stripWorkspaceId } from "./workspace-rpc-routing";
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -681,15 +681,8 @@ function mapRuntimeLogSource(source: string, kind?: string) {
   return "app.lifecycle" as const;
 }
 
-function getWorkspaceRuntime(input: WorkspaceScopedRequest): WorkspaceRuntime {
-  return workspaceRuntimeRegistry.getRuntime(input.workspaceId);
-}
-
-function stripWorkspaceId<T extends WorkspaceScopedRequest>(
-  input: T,
-): Omit<T, keyof WorkspaceScopedRequest> {
-  const { workspaceId: _workspaceId, ...rest } = input;
-  return rest;
+function getWorkspaceRuntime(input: Parameters<typeof getWorkspaceRuntimeForRequest>[1]) {
+  return getWorkspaceRuntimeForRequest(workspaceRuntimeRegistry, input);
 }
 
 function addWorkspaceBranch<T extends { cwd: string }>(info: T): T & { branch?: string } {
@@ -706,36 +699,41 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       getDefaults: async () => {
         return getDefaultAgentSettings();
       },
-      getAgentSettings: async () => {
-        return workspaceRuntimeRegistry.getActiveRuntime().agentSettingsStore.getState();
+      getAgentSettings: async (input) => {
+        return getWorkspaceRuntime(input).agentSettingsStore.getState();
       },
-      getPromptLibrary: async () => {
-        return workspaceRuntimeRegistry.getActiveRuntime().catalog.getPromptLibraryState();
+      getAppPreferences: async (input) => {
+        return getWorkspaceRuntime(input).agentSettingsStore.getState().appPreferences;
       },
-      getPromptLibraryDefaults: async () => {
-        return workspaceRuntimeRegistry.getActiveRuntime().catalog.getDefaultPromptLibraryState();
+      getPromptLibrary: async (input) => {
+        return getWorkspaceRuntime(input).catalog.getPromptLibraryState();
       },
-      updatePromptLibrary: async ({ state }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      getPromptLibraryDefaults: async (input) => {
+        return getWorkspaceRuntime(input).catalog.getDefaultPromptLibraryState();
+      },
+      updatePromptLibrary: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { state } = input;
         const next = runtime.catalog.updatePromptLibraryState(state);
         runtime.appLog.info("settings", "Prompt library updated.", {
           revision: next.revision,
         });
         return next;
       },
-      resetPromptLibrary: async () => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      resetPromptLibrary: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
         const next = runtime.catalog.resetPromptLibraryState();
         runtime.appLog.info("settings", "Prompt library reset.", {
           revision: next.revision,
         });
         return next;
       },
-      listPromptLibrarySnapshots: async () => {
-        return workspaceRuntimeRegistry.getActiveRuntime().catalog.listPromptLibrarySnapshots();
+      listPromptLibrarySnapshots: async (input) => {
+        return getWorkspaceRuntime(input).catalog.listPromptLibrarySnapshots();
       },
-      createPromptLibrarySnapshot: async ({ name }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      createPromptLibrarySnapshot: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { name } = input;
         const snapshot = runtime.catalog.createPromptLibrarySnapshot(name);
         runtime.appLog.info("settings", "Prompt library snapshot created.", {
           snapshotId: snapshot.id,
@@ -743,8 +741,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return snapshot;
       },
-      renamePromptLibrarySnapshot: async ({ snapshotId, name }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      renamePromptLibrarySnapshot: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { snapshotId, name } = input;
         const snapshot = runtime.catalog.renamePromptLibrarySnapshot(snapshotId, name);
         runtime.appLog.info("settings", "Prompt library snapshot renamed.", {
           snapshotId: snapshot.id,
@@ -752,8 +751,9 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return snapshot;
       },
-      restorePromptLibrarySnapshot: async ({ snapshotId }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      restorePromptLibrarySnapshot: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { snapshotId } = input;
         const next = runtime.catalog.restorePromptLibrarySnapshot(snapshotId);
         runtime.appLog.info("settings", "Prompt library snapshot loaded.", {
           snapshotId,
@@ -761,40 +761,37 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return next;
       },
-      getPromptLibraryGeneratedEntries: async () => {
-        return workspaceRuntimeRegistry
-          .getActiveRuntime()
-          .catalog.getPromptLibraryGeneratedEntries();
+      getPromptLibraryGeneratedEntries: async (input) => {
+        return getWorkspaceRuntime(input).catalog.getPromptLibraryGeneratedEntries();
       },
-      getPromptLibraryExternalSources: async () => {
-        return workspaceRuntimeRegistry
-          .getActiveRuntime()
-          .catalog.getPromptLibraryExternalSources();
+      getPromptLibraryExternalSources: async (input) => {
+        return getWorkspaceRuntime(input).catalog.getPromptLibraryExternalSources();
       },
-      updateSessionAgentDefault: async ({ key, settings }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      updateSessionAgentDefault: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { key, settings } = input;
         resolvedDefaults = null;
         runtime.appLog.info("settings", "Session agent defaults updated.", { key });
         return runtime.agentSettingsStore.setSessionAgentDefault(key, settings);
       },
-      updateWorkflowAgent: async ({ key, settings }) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      updateWorkflowAgent: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { key, settings } = input;
         runtime.appLog.info("settings", "Workflow agent settings updated.", { key });
         return runtime.agentSettingsStore.setWorkflowAgent(key, settings);
       },
-      updateAppPreferences: async (preferences) => {
-        const runtime = workspaceRuntimeRegistry.getActiveRuntime();
+      updateAppPreferences: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const preferences = stripWorkspaceId(input);
         runtime.appLog.info("settings", "App preferences updated.", {
           appAppearance: preferences.appAppearance,
           preferredExternalEditor: preferences.preferredExternalEditor,
         });
         return runtime.agentSettingsStore.setAppPreferences(preferences);
       },
-      ensureWorkflowAgentsComponent: async () => {
+      ensureWorkflowAgentsComponent: async (input) => {
         return {
-          path: workspaceRuntimeRegistry
-            .getActiveRuntime()
-            .agentSettingsStore.ensureWorkflowAgentsComponent(),
+          path: getWorkspaceRuntime(input).agentSettingsStore.ensureWorkflowAgentsComponent(),
         };
       },
       getProviderAuthState: async ({

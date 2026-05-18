@@ -253,7 +253,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
     });
     this.promptLibraryStore = createPromptLibraryStore({
-      agentDir: this.agentDir,
+      agentDir: this.sessionDir,
     });
     this.promptLibraryStore.getState();
     this.agentSettingsStore.ensureWorkflowAgentsComponent();

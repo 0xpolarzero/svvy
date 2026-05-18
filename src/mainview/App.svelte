@@ -123,9 +123,13 @@
 	}
 
 	async function refreshAppAppearance() {
+		if (!activeWorkspaceId) {
+			setAppAppearance("system");
+			return;
+		}
 		try {
-			const settings = await rpc.request.getAgentSettings();
-			setAppAppearance(settings.appPreferences.appAppearance);
+			const preferences = await rpc.request.getAppPreferences({ workspaceId: activeWorkspaceId });
+			setAppAppearance(preferences.appAppearance);
 		} catch (error) {
 			console.error("Failed to load app appearance:", error);
 			setAppAppearance("system");
@@ -385,6 +389,7 @@
 
 {#if showSettings}
 	<Settings
+		workspaceId={activeWorkspaceId}
 		onClose={() => (showSettings = false)}
 		onProviderAuthChanged={handleProviderAuthChanged}
 		onAppAppearanceChanged={setAppAppearance}

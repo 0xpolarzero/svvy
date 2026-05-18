@@ -1147,15 +1147,19 @@ export interface ChatRPCSchema {
         response: AgentDefaults;
       };
       getAgentSettings: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: AgentSettingsState;
       };
+      getAppPreferences: {
+        params: WorkspaceScopedRequest;
+        response: AppPreferences;
+      };
       getPromptLibrary: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: PromptLibraryState;
       };
       getPromptLibraryDefaults: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: PromptLibraryState;
       };
       updatePromptLibrary: {
@@ -1163,11 +1167,11 @@ export interface ChatRPCSchema {
         response: PromptLibraryState;
       };
       resetPromptLibrary: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: PromptLibraryState;
       };
       listPromptLibrarySnapshots: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: PromptLibrarySnapshotSummary[];
       };
       createPromptLibrarySnapshot: {
@@ -1183,27 +1187,27 @@ export interface ChatRPCSchema {
         response: PromptLibraryState;
       };
       getPromptLibraryGeneratedEntries: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>;
       };
       getPromptLibraryExternalSources: {
-        params: WorkspaceScoped<Record<string, never>>;
+        params: WorkspaceScopedRequest;
         response: PromptLibraryExternalSource[];
       };
       updateSessionAgentDefault: {
-        params: UpdateSessionAgentDefaultRequest;
+        params: WorkspaceScoped<UpdateSessionAgentDefaultRequest>;
         response: AgentSettingsState;
       };
       updateWorkflowAgent: {
-        params: UpdateWorkflowAgentRequest;
+        params: WorkspaceScoped<UpdateWorkflowAgentRequest>;
         response: AgentSettingsState;
       };
       updateAppPreferences: {
-        params: AppPreferences;
+        params: WorkspaceScoped<AppPreferences>;
         response: AgentSettingsState;
       };
       ensureWorkflowAgentsComponent: {
-        params: undefined;
+        params: WorkspaceScopedRequest;
         response: { path: string };
       };
       getProviderAuthState: {

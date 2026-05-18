@@ -180,6 +180,8 @@ Examples:
 
 Workflow agent files are ordinary component files that export values conforming to the generated `WorkflowTaskAgentConfig` contract. The conventional saved workflow agents live in `.svvy/workflows/components/agents.ts` and export `explorer`, `implementer`, and `reviewer`. App settings seed and synchronize those three conventional exports by writing the component file directly; workflow discovery and validation still treat it as a normal saved component asset. The renderer edits conventional workflow-agent settings through TanStack Form so provider/model/reasoning/prompt validation, dirty state, pending state, reset, and async save errors are local UI state before Bun-side validation writes the component file. Workflow definitions and entries use Smithers `AgentLike` values for adaptive task execution, with the workflow agent configuration describing the svvy task-agent model, prompt, reasoning, and task-local tool surface.
 
+Conventional workflow-agent settings are app-visible settings, but their component-file synchronization is workspace-affecting behavior. Any request that writes or validates `.svvy/workflows/components/agents.ts` must carry the target `workspaceId` and resolve that workspace's runtime from the request, not from the active workspace.
+
 A handler lists component assets and reads candidate component files before using their exported values.
 
 ### Entries
@@ -401,6 +403,12 @@ The desktop app should expose:
 The UI save affordance is a shortcut prompt to the handler thread.
 
 The Workflows library surface must not block on an in-app source editor. In-app editing, syntax highlighting, inline diagnostics, and file-tree integration are later editor-surface capabilities. Until those exist, this surface owns workflow-library discovery and inspection, while source editing happens through the configured external editor.
+
+### Workspace Routing
+
+The Workflows library is workspace-owned state. Reads, source previews, validation refreshes, delete actions, open-in-editor actions, artifact workflow grouping, save-shortcut routing, and conventional workflow-agent synchronization must carry explicit `workspaceId`. The backend must never infer the target workspace from the active workspace, focused tab, focused panel, or active runtime, because Workflows library operations can be issued for a background workspace while another workspace is focused.
+
+App-global settings such as provider credentials, web-provider selection, app appearance, preferred external editor, and app-wide session-agent defaults remain separate. Only settings that read or write workspace workflow files, generated workflow diagnostics, or workflow-library projection belong on the workspace-scoped lane.
 
 ## Handler Guidance
 

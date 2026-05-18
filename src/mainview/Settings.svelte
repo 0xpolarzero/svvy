@@ -28,6 +28,7 @@
 	import Input from "./ui/Input.svelte";
 
 	type Props = {
+		workspaceId: string | null;
 		onClose: () => void;
 		onProviderAuthChanged?: (providerId: string) => void | Promise<void>;
 		onAppAppearanceChanged?: (appearance: AppAppearance) => void;
@@ -59,11 +60,12 @@
 		{ value: "custom", label: "Custom command" },
 	];
 
-	let { onClose, onProviderAuthChanged, onAppAppearanceChanged }: Props = $props();
+	let { workspaceId, onClose, onProviderAuthChanged, onAppAppearanceChanged }: Props = $props();
 
 	let activeSection = $state<SettingsSection>("general");
 	let providers = $state<ProviderAuthInfo[]>([]);
 	let agentSettings = $state<AgentSettingsState | null>(null);
+	let appPreferences = $state<AppPreferences | null>(null);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let searchQuery = $state("");
@@ -105,7 +107,19 @@
 	}
 
 	async function refreshAgentSettings() {
-		agentSettings = await rpc.request.getAgentSettings();
+		if (!workspaceId) return;
+		agentSettings = await rpc.request.getAgentSettings({ workspaceId });
+		if (appPreferences) {
+			agentSettings.appPreferences = structuredClone(appPreferences);
+		}
+	}
+
+	async function refreshAppPreferences() {
+		if (!workspaceId) return;
+		appPreferences = await rpc.request.getAppPreferences({ workspaceId });
+		if (agentSettings) {
+			agentSettings.appPreferences = structuredClone(appPreferences);
+		}
 	}
 
 	async function notifyAuthChanged(providerId: string) {
@@ -212,13 +226,14 @@
 	});
 
 	onMount(async () => {
-		await Promise.all([refreshProviders(), refreshAgentSettings()]);
+		await Promise.all([refreshProviders(), refreshAppPreferences(), refreshAgentSettings()]);
 		loading = false;
 	});
 
 	async function saveSessionAgent(key: SessionAgentKey, settings: SessionAgentSettings) {
-		if (!agentSettings) return settings;
+		if (!agentSettings || !workspaceId) return settings;
 		const nextSettings = await rpc.request.updateSessionAgentDefault({
+			workspaceId,
 			key,
 			settings: structuredClone(settings),
 		});
@@ -227,8 +242,9 @@
 	}
 
 	async function saveWorkflowAgent(key: WorkflowAgentKey, settings: WorkflowAgentSettings) {
-		if (!agentSettings) return settings;
+		if (!agentSettings || !workspaceId) return settings;
 		const nextSettings = await rpc.request.updateWorkflowAgent({
+			workspaceId,
 			key,
 			settings: structuredClone(settings),
 		});
@@ -237,10 +253,18 @@
 	}
 
 	async function saveAppPreferences(preferences: AppPreferences) {
+		if (!workspaceId) return;
 		try {
 			preferencesSaveMessage = "Saving";
-			agentSettings = await rpc.request.updateAppPreferences(structuredClone(preferences));
-			onAppAppearanceChanged?.(agentSettings.appPreferences.appAppearance);
+			const nextSettings = await rpc.request.updateAppPreferences({
+				...structuredClone(preferences),
+				workspaceId,
+			});
+			appPreferences = structuredClone(nextSettings.appPreferences);
+			if (agentSettings) {
+				agentSettings.appPreferences = structuredClone(nextSettings.appPreferences);
+			}
+			onAppAppearanceChanged?.(nextSettings.appPreferences.appAppearance);
 			preferencesSaveMessage = "Saved";
 			setTimeout(() => {
 				if (preferencesSaveMessage === "Saved") {
@@ -253,31 +277,32 @@
 	}
 
 	async function setAppAppearance(appearance: AppAppearance) {
-		if (!agentSettings || agentSettings.appPreferences.appAppearance === appearance) return;
+		if (!appPreferences || appPreferences.appAppearance === appearance) return;
 		await saveAppPreferences({
-			...agentSettings.appPreferences,
+			...appPreferences,
 			appAppearance: appearance,
 		});
 	}
 
 	async function setPreferredExternalEditor(preferredExternalEditor: PreferredExternalEditor) {
-		if (!agentSettings || agentSettings.appPreferences.preferredExternalEditor === preferredExternalEditor) return;
+		if (!appPreferences || appPreferences.preferredExternalEditor === preferredExternalEditor) return;
 		await saveAppPreferences({
-			...agentSettings.appPreferences,
+			...appPreferences,
 			preferredExternalEditor,
 		});
 	}
 
 	async function setCustomExternalEditorCommand(customExternalEditorCommand: string) {
-		if (!agentSettings || agentSettings.appPreferences.customExternalEditorCommand === customExternalEditorCommand) return;
+		if (!appPreferences || appPreferences.customExternalEditorCommand === customExternalEditorCommand) return;
 		await saveAppPreferences({
-			...agentSettings.appPreferences,
+			...appPreferences,
 			customExternalEditorCommand,
 		});
 	}
 
 	async function seedWorkflowAgents() {
-		await rpc.request.ensureWorkflowAgentsComponent();
+		if (!workspaceId) return;
+		await rpc.request.ensureWorkflowAgentsComponent({ workspaceId });
 		await refreshAgentSettings();
 	}
 
@@ -348,7 +373,7 @@
 				onclick={() => (activeSection = "general")}
 			>
 				<span>General</span>
-				<span>{agentSettings?.appPreferences.appAppearance ?? "system"}</span>
+				<span>{appPreferences?.appAppearance ?? "system"}</span>
 			</button>
 			<button
 				class={`settings-nav-item ${activeSection === "providers" ? "active" : ""}`.trim()}
@@ -366,7 +391,7 @@
 				onclick={() => (activeSection = "web")}
 			>
 				<span>Web</span>
-				<span>{agentSettings?.appPreferences.webProvider ?? "none"}</span>
+				<span>{appPreferences?.webProvider ?? "none"}</span>
 			</button>
 			<button
 				class={`settings-nav-item ${activeSection === "agents" ? "active" : ""}`.trim()}
@@ -390,7 +415,7 @@
 
 		<section class="settings-pane">
 			{#if activeSection === "general"}
-				{#if loading || !agentSettings}
+				{#if loading || !appPreferences}
 					<p class="loading">Loading settings...</p>
 				{:else}
 					<div class="settings-row-stack">
@@ -398,7 +423,7 @@
 							<div class="provider-main general-main">
 								<div class="provider-heading">
 									<span class="provider-name">Appearance</span>
-									<span class="provider-status tone-info">{agentSettings.appPreferences.appAppearance}</span>
+									<span class="provider-status tone-info">{appPreferences.appAppearance}</span>
 									{#if preferencesSaveMessage}
 										<span class="provider-status">{preferencesSaveMessage}</span>
 									{/if}
@@ -407,12 +432,12 @@
 							</div>
 							<div class="appearance-options" role="radiogroup" aria-label="Appearance">
 								{#each APPEARANCE_OPTIONS as option (option.value)}
-									<label class={`appearance-option ${agentSettings.appPreferences.appAppearance === option.value ? "selected" : ""}`.trim()}>
+									<label class={`appearance-option ${appPreferences.appAppearance === option.value ? "selected" : ""}`.trim()}>
 										<input
 											type="radio"
 											name="appAppearance"
 											value={option.value}
-											checked={agentSettings.appPreferences.appAppearance === option.value}
+											checked={appPreferences.appAppearance === option.value}
 											disabled={preferencesSaveMessage === "Saving"}
 											onchange={() => void setAppAppearance(option.value)}
 										/>
@@ -426,7 +451,7 @@
 							<div class="provider-main general-main">
 								<div class="provider-heading">
 									<span class="provider-name">External Editor</span>
-									<span class="provider-status tone-info">{agentSettings.appPreferences.preferredExternalEditor}</span>
+									<span class="provider-status tone-info">{appPreferences.preferredExternalEditor}</span>
 									{#if preferencesSaveMessage}
 										<span class="provider-status">{preferencesSaveMessage}</span>
 									{/if}
@@ -437,7 +462,7 @@
 								<label class="settings-field">
 									<span>Editor</span>
 									<select
-										value={agentSettings.appPreferences.preferredExternalEditor}
+										value={appPreferences.preferredExternalEditor}
 										disabled={preferencesSaveMessage === "Saving"}
 										onchange={(event) => void setPreferredExternalEditor(event.currentTarget.value as PreferredExternalEditor)}
 									>
@@ -449,9 +474,9 @@
 								<label class="settings-field">
 									<span>Custom command</span>
 									<input
-										value={agentSettings.appPreferences.customExternalEditorCommand}
+										value={appPreferences.customExternalEditorCommand}
 										placeholder="editor-command --reuse-window"
-										disabled={agentSettings.appPreferences.preferredExternalEditor !== "custom" || preferencesSaveMessage === "Saving"}
+										disabled={appPreferences.preferredExternalEditor !== "custom" || preferencesSaveMessage === "Saving"}
 										onchange={(event) => void setCustomExternalEditorCommand(event.currentTarget.value)}
 									/>
 								</label>
@@ -575,7 +600,7 @@
 					</div>
 				{/if}
 			{/if}
-			{#if activeSection === "web" && agentSettings}
+			{#if activeSection === "web" && appPreferences}
 				<div class="settings-section-note">
 					<ShieldIcon aria-hidden="true" size={15} strokeWidth={1.8} />
 					<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web helpers.</p>
@@ -590,15 +615,15 @@
 									<input
 										type="radio"
 										name="web-provider"
-										checked={agentSettings.appPreferences.webProvider === option.id}
+										checked={appPreferences.webProvider === option.id}
 										onchange={() => {
-											agentSettings.appPreferences.webProvider = option.id;
-											void saveAppPreferences(agentSettings.appPreferences);
+											appPreferences.webProvider = option.id;
+											void saveAppPreferences(appPreferences);
 										}}
 									/>
 									<span class="provider-name">{option.label}</span>
 									<span class={`provider-status tone-${readiness.tone}`.trim()}>{readiness.text}</span>
-									{#if agentSettings.appPreferences.webProvider === option.id}
+									{#if appPreferences.webProvider === option.id}
 										<span class="provider-status tone-info">Active</span>
 									{/if}
 								</div>

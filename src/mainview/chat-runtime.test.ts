@@ -884,27 +884,27 @@ function createFakeRpc(input: {
         }),
         restorePromptLibrarySnapshot: async () => structuredClone(promptLibraryState),
         getOpenWorkspaces: async () => [structuredClone(TEST_WORKSPACE_INFO)],
-        updateSessionAgentDefault: async ({ key, settings }) => {
+        updateSessionAgentDefault: async ({ key, settings, workspaceId }) => {
           return {
-            ...(await harness.client.request.getAgentSettings()),
+            ...(await harness.client.request.getAgentSettings({ workspaceId })),
             sessionAgents: {
-              ...(await harness.client.request.getAgentSettings()).sessionAgents,
+              ...(await harness.client.request.getAgentSettings({ workspaceId })).sessionAgents,
               [key]: settings,
             },
           };
         },
-        updateWorkflowAgent: async ({ key, settings }) => {
+        updateWorkflowAgent: async ({ key, settings, workspaceId }) => {
           return {
-            ...(await harness.client.request.getAgentSettings()),
+            ...(await harness.client.request.getAgentSettings({ workspaceId })),
             workflowAgents: {
-              ...(await harness.client.request.getAgentSettings()).workflowAgents,
+              ...(await harness.client.request.getAgentSettings({ workspaceId })).workflowAgents,
               [key]: settings,
             },
           };
         },
-        updateAppPreferences: async (preferences) => {
+        updateAppPreferences: async ({ workspaceId, ...preferences }) => {
           return {
-            ...(await harness.client.request.getAgentSettings()),
+            ...(await harness.client.request.getAgentSettings({ workspaceId })),
             appPreferences: preferences,
           };
         },

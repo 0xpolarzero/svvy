@@ -36,7 +36,7 @@ For each issue, record:
 | AUD-005 | Not accepted | Raw command, tool, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Logs-only redaction retained |
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Fixed |
 | AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share workspace runtime and durable state while isolating only visual state | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
-| AUD-008 | P1 | Workspace-scoped RPC handlers still route through active runtime state | `209c`, `2a4e`, `1291` | Researched |
+| AUD-008 | P1 | Workspace-scoped RPC handlers must never route through active runtime state | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Researched |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Researched |
 | AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Researched |
@@ -408,39 +408,45 @@ Relevant product surfaces:
 
 **Confidence:** High in the product decision.
 
-### AUD-008 - Workspace-scoped RPC paths still use the active runtime
+### AUD-008 - Workspace-scoped RPC must not use the active runtime
 
 **Impact:** High multi-workspace correctness issue.
 
-**Precise issue:** Some backend handlers receive workspace-scoped requests but resolve the active runtime instead of the request's workspace id. Prompt-library calls are the clearest confirmed case. Some settings/workflow-agent paths are also active-runtime based and need classification into app-global versus workspace-affecting behavior.
+**Disposition:** Fixed. Workspace-scoped backend handlers and renderer call sites now carry and honor explicit `workspaceId` for workspace-affecting operations, and regression coverage verifies that a request targeting workspace A still mutates workspace A while workspace B is active.
+
+**Accepted contract:** Workspace-scoped RPC must never route through the active workspace, active runtime, focused tab, or focused panel. Background work can continue while another workspace tab is focused, so every read or mutation of workspace state must resolve the target runtime from an explicit `workspaceId` carried by the request. App-global settings are separate and must not pretend to be workspace-scoped. Workspace-affecting settings and prompt/workflow-library operations must carry explicit `workspaceId` because they read workspace-local prompt projection, generated context, workflow assets, or write files such as `.svvy/workflows/components/agents.ts`.
+
+**Original issue:** Some backend handlers received workspace-scoped requests but resolved the active runtime instead of the request's workspace id. Prompt-library calls were the clearest confirmed case. Some settings/workflow-agent paths were also active-runtime based and needed classification into app-global versus workspace-affecting behavior.
 
 Relevant code:
 
-- `src/bun/workspace-contract.ts`: defines workspace-scoped prompt-library methods.
-- `src/renderer/runtime/chat-runtime.ts`: sends scoped prompt-library requests.
-- `src/bun/index.ts`: prompt-library handlers use `getActiveRuntime()`.
-- `src/bun/index.ts`: several settings/workflow-agent handlers also use active runtime.
-- `src/renderer/components/Settings.svelte`: calls settings methods without a workspace id.
+- `src/shared/workspace-contract.ts`: requires `workspaceId` on workspace-affecting prompt-library and settings requests.
+- `src/mainview/Settings.svelte`: passes the active workspace tab id into workspace-affecting settings calls instead of relying on backend focus.
+- `src/bun/index.ts`: routes workspace-affecting handlers through `getWorkspaceRuntime(input)` rather than `getActiveRuntime()`.
+- `src/bun/workspace-rpc-routing.ts`: centralizes request-based runtime lookup and workspace-id stripping.
+- `src/bun/workspace-runtime-registry.test.ts`: covers requests targeting workspace A while workspace B is active.
 
-**Why this matters:** In a multi-workspace app, a non-active workspace request can mutate or read the active workspace. Prompt libraries, generated/external sources, workflow-agent generated files, and settings that write workspace files can land in the wrong cwd.
+**Why this matters:** In a multi-workspace app, a non-active workspace request can mutate or read the active workspace. Prompt libraries, generated/external sources, workflow-agent generated files, and settings that write workspace files can land in the wrong cwd. The focused workspace is view state, not a routing authority.
 
-**Best fix:**
+**Fixed behavior:**
 
-1. Route every `WorkspaceScopedRequest` through `getWorkspaceRuntime(input)` or equivalent.
-2. Split settings APIs into app-global settings and workspace-affecting settings.
-3. Require workspace id for any setting that writes workspace files, syncs workflow-agent components, or reads workspace-local prompt/library state.
-4. Update renderer settings surfaces to carry the target workspace id explicitly.
+1. Workspace-scoped RPC routes through `getWorkspaceRuntime(input)` or equivalent request-based lookup.
+2. Workspace-affecting settings and prompt/workflow-library operations require `workspaceId`.
+3. Renderer settings calls carry the target workspace id explicitly.
+4. Active-runtime lookup remains only for focus-owned or inspection-oriented behavior such as app lifecycle fallback logging, open-workspace dialog defaults, unscoped app-log query fallback, provider-auth logging, and dev browser-tools active workspace inspection.
 
-**Verification required:**
+**Verification:**
 
-- Open workspace A and B, make B active, send prompt-library update scoped to A, and assert only A changes.
-- Repeat for prompt-library reads, snapshots, and generated/external sources.
-- For workflow-agent component sync, assert the generated file is written to the requested workspace, not the active workspace.
+- Open workspace A and B, make B active, send a workspace-scoped settings/session mutation to A, and assert only A changes.
+- Prompt-library reads, writes, snapshots, generated entries, and external sources route through the requested `workspaceId`.
+- Workflow-agent component sync writes to the requested workspace, not the active workspace.
+- For Workflows library reads, deletes, open-in-editor, validation refreshes, and save-shortcut routing, assert the requested workspace is used even when another workspace is focused.
+- For app-global settings such as provider credentials, web provider selection, app appearance, external editor, and app-wide session-agent defaults, assert no active-workspace runtime lookup is required.
 - Renderer tests proving scoped calls retain workspace id.
 
-**Documentation impact:** Update settings/workspace specs if the app-global versus workspace-local settings split is formalized.
+**Documentation impact:** PRD, feature inventory, prompt-library spec, workflow-library spec, multi-session runtime spec, and progress docs state the explicit `workspaceId` routing contract and the app-global versus workspace-affecting settings split.
 
-**Confidence:** High for prompt-library misuse. Medium-high for settings until each handler is classified.
+**Confidence:** High.
 
 ### AUD-009 - Nonterminal Smithers runs are not reattached after restart
 

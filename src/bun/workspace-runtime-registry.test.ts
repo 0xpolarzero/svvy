@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { WorkspaceRuntimeRegistry } from "./workspace-runtime-registry";
+import { getWorkspaceRuntimeForRequest } from "./workspace-rpc-routing";
 import { getSvvySessionDir } from "./session-catalog";
 import type { AppLogUpdateMessage } from "../shared/workspace-contract";
 
@@ -181,6 +182,32 @@ describe("WorkspaceRuntimeRegistry", () => {
     expect(
       updates.every((update) => update.payload.entries[0]?.message === "Shared runtime log."),
     ).toBeTrue();
+  });
+
+  it("resolves workspace-scoped RPC work through the requested workspace instead of the active one", async () => {
+    const firstCwd = tempWorkspace("targeted-routing-first");
+    const secondCwd = tempWorkspace("targeted-routing-second");
+    const registry = createRegistry(firstCwd);
+    const first = registry.openWorkspace(firstCwd);
+    const second = registry.openWorkspace(secondCwd);
+
+    expect(registry.getActiveWorkspaceId()).toBe(second.workspaceId);
+
+    const targeted = getWorkspaceRuntimeForRequest(registry, { workspaceId: first.workspaceId });
+    await targeted.catalog.createSession(
+      { title: "Targeted A" },
+      {
+        provider: "openai",
+        model: "gpt-4o",
+        thinkingLevel: "medium",
+        systemPrompt: "Test prompt",
+      },
+    );
+
+    expect((await first.catalog.listSessions()).sessions.map((session) => session.title)).toEqual([
+      "Targeted A",
+    ]);
+    expect((await second.catalog.listSessions()).sessions).toEqual([]);
   });
 });
 

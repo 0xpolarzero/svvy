@@ -208,6 +208,8 @@ If no pane currently owns that handler surface, the runtime may acquire a tempor
 
 The adopted runtime contract is split into workspace-scoped reads and surface-scoped reads or mutations.
 
+Workspace routing is explicit. A workspace-scoped request must carry `workspaceId` and resolve the target runtime from that id. It must not route through the active workspace, active runtime, focused Dockview panel, or current tab. Background orchestrator, handler, workflow, prompt-library, and settings work can continue while the user focuses another workspace, so the focused workspace is view state only.
+
 ### Workspace-Scoped Operations
 
 Workspace-scoped operations read or mutate durable workspace state.
@@ -219,8 +221,13 @@ Examples:
 - inspect a command
 - inspect workflow summaries
 - update session title metadata
+- read or edit Context Library state and generated prompt context for a target workspace
+- inspect, validate, delete, or open saved workflow-library assets for a target workspace
+- synchronize conventional workflow-agent settings into `.svvy/workflows/components/agents.ts` for a target workspace
 
-These operations target `workspaceSessionId` and must work whether or not the relevant surfaces are currently open.
+These operations target `workspaceId` plus any narrower id they need, such as `workspaceSessionId`, `threadId`, `workflowRunId`, or asset path. They must work whether or not the relevant surfaces are currently open.
+
+App-global settings are not workspace-scoped operations. Provider credentials, app-wide provider preferences, app appearance, preferred external editor, and app-wide session-agent defaults may be served by app-global settings APIs. Any setting that reads or writes workspace files, workspace prompt projection, generated context, or workflow-library state must use the workspace-scoped lane instead.
 
 ### Surface-Scoped Operations
 

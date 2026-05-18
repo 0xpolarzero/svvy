@@ -858,6 +858,14 @@ Prompt bindings are structured session state because they describe what a sessio
 
 Prompt revisions are durable app state. They must survive app restart and must be available when a historical session is inspected.
 
+### Workspace Routing
+
+Context Library requests that evaluate or mutate workspace-affecting state must carry the target `workspaceId` explicitly. This includes instruction and context-pack edits, scope changes, actor aggregate reads, generated-context previews, runtime standards projection, snapshot creation and loading, prompt freshness checks, and update-for-next-turn actions when the result depends on workspace-scoped activation or workspace-derived generated parts.
+
+The backend must resolve these requests from the supplied `workspaceId`, not from the active workspace, focused tab, focused Dockview panel, or active runtime. A background handler or orchestrator surface may keep running in one workspace while another workspace is focused, so active workspace state is not a valid routing key.
+
+The app may keep Context Library records as app-owned settings with workspace-scoped activation metadata, but workspace-specific projection of those records is a workspace-scoped operation. The renderer must preserve `workspaceId` through debounced text autosaves, immediate checkbox/chip/scope persistence, reset actions, delete actions, snapshot actions, actor aggregate reads, and generated-context/open-in-editor actions.
+
 ## Relationship To Session-Agent Settings
 
 Session-agent settings continue to own:
