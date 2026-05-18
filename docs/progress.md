@@ -116,7 +116,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Bootstrap workflow supervision from durable run state on session restore, rebuilding runtime ownership from workflow-run records and replaying only undelivered handler attention. Commit(s): `2f874a7`
 - [x] Keep `thread.handoff`, Smithers read APIs, selectors, and renderer reads free of lifecycle repair writes. Commit(s): `2f874a7`
 - [x] Guarantee that a workflow-run failure or cancellation moves the handler thread into troubleshooting before any later user-directed closure or handoff. Commit(s): `a02bd48`
-- [x] Derive workflow-run execution status, wait kind, heartbeat, finished timestamp, and summary from Smithers durable run state for runtime policy, handler tools, and workspace read models, while keeping `workflow_run` as the svvy ownership, cursor, attention, and product-link binding row. Commit(s): pending current landing commit
+- [x] Derive workflow-run execution status, wait kind, heartbeat, finished timestamp, and summary from Smithers durable run state for runtime policy, handler tools, and workspace read models, while keeping `workflow_run` as the svvy ownership, cursor, attention, and product-link binding row. Commit(s): 59d7daf01f
 
 ## 6. Workflow Authoring And Saved Workflow Files
 
