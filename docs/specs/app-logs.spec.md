@@ -177,7 +177,7 @@ Do not log full prompt text by default. Use a summary such as message count, cha
 
 ## Logger API
 
-Create one app logger per backend workspace runtime and route product logs through the runtime that owns the action.
+Create one app logger per backend workspace runtime and route product logs through the runtime that owns the action. Duplicate same-cwd workspace tabs share that backend workspace runtime and therefore share the same workspace app log stream; visual tab identity may be included as context when useful, but it must not create an isolated log store.
 
 Suggested API:
 

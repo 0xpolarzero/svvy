@@ -330,7 +330,7 @@ It must not infer Project CI status from arbitrary command names, logs, transcri
 
 The product should restore as much app and workspace UI state as is useful and stable.
 
-Restart restore is a product contract, not a best-effort UI convenience. On startup the app shell restores open workspace chrome tabs first. Each workspace tab then rebuilds restorable Dockview panel bindings from that workspace's durable UI state, opens referenced live surfaces through that workspace's Bun runtime, and lets that runtime bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
+Restart restore is a product contract, not a best-effort UI convenience. On startup the app shell restores open workspace chrome tabs first. Each workspace tab then rebuilds restorable Dockview panel bindings from that tab's durable view-local UI state, opens referenced live surfaces through the shared Bun workspace runtime for the tab's canonical cwd, and lets that runtime bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Duplicate same-cwd tabs restore separate layouts, opened panels, focus, scroll, and inspector selections while sharing the same sessions, pi surfaces, queues, threads, workflow runs, app logs, and durable workspace read models. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
 
 ### Restore Targets
 

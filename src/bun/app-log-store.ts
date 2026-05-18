@@ -236,6 +236,7 @@ class SqliteAppLogStore implements AppLogStore {
            ON CONFLICT(id) DO UPDATE SET seen_seq = excluded.seen_seq, updated_at = excluded.updated_at`,
         )
         .run(this.seenSeq, this.now());
+      this.emit([]);
     }
     return this.summary();
   }

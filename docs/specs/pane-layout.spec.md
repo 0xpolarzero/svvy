@@ -95,9 +95,9 @@ On restart, restoring a panel binding uses the same product open path used by an
 
 ## Stored Shape
 
-Each open workspace chrome tab has three fixed layout slots: `A`, `B`, and `C`. These slots are not user-renamable layouts. They are quick workspace arrangements for the same repository context and render as compact selectable controls pinned at the far right of the workspace chrome. Empty slots are visually muted, not disabled.
+Each open workspace chrome tab has three fixed layout slots: `A`, `B`, and `C`. These slots are not user-renamable layouts. They are quick visual arrangements for the tab and render as compact selectable controls pinned at the far right of the workspace chrome. Empty slots are visually muted, not disabled. Duplicate same-cwd workspace tabs have independent layout slots and panel-local state while sharing the same backend workspace runtime, durable sessions, live surface registry, queues, threads, workflow runs, app logs, and workspace read models.
 
-The persisted workspace UI restore state is keyed by explicit `workspaceId` and owns that workspace's active slot plus each slot's layout snapshot:
+The persisted workspace UI restore state is keyed by an explicit workspace tab or view id, with a reference to the shared `workspaceId` for the canonical cwd runtime. It owns that visual tab's active slot plus each slot's layout snapshot:
 
 ```ts
 type WorkspaceLayoutSlotId = "A" | "B" | "C";
@@ -109,7 +109,7 @@ type WorkspaceUiRestoreState = {
 };
 ```
 
-The workspace layout snapshot inside each slot is durable workspace UI state:
+The workspace layout snapshot inside each slot is durable view-local workspace UI state:
 
 ```ts
 type WorkspaceDockviewLayoutState = {
@@ -246,7 +246,7 @@ type PaneLocalState = {
 };
 ```
 
-Panel-local state is durable workspace UI state. Scroll, inspector selection, and display preferences should persist per panel and restore when their referenced targets still exist.
+Panel-local state is durable view-local workspace UI state. Scroll, inspector selection, and display preferences should persist per panel and restore when their referenced targets still exist. Duplicate same-cwd workspace tabs must not share panel-local state unless they are showing the same visual tab restore record.
 
 ## State Ownership
 
@@ -732,7 +732,7 @@ Dockview layout is restored from the active workspace tab's active `A`/`B`/`C` s
 
 Persistence should debounce high-frequency layout updates such as splitter movement and floating resize.
 
-The persisted snapshot must include the workspace id, active slot id, and that slot's Dockview JSON and svvy panel metadata in one logical workspace UI update so layout and bindings do not drift across workspace tabs.
+The persisted snapshot must include the workspace tab or view id, the shared runtime `workspaceId`, active slot id, and that slot's Dockview JSON and svvy panel metadata in one logical workspace UI update so layout and bindings do not drift across visual tabs.
 
 ## Sidebar Indicators And Focus Highlight
 
@@ -837,7 +837,7 @@ Requirements:
 ## Invariants
 
 - Dockview is the canonical layout interaction engine.
-- Dockview serialized layout plus svvy panel metadata is the durable workspace UI layout state inside fixed slots `A`, `B`, and `C`.
+- Dockview serialized layout plus svvy panel metadata is durable view-local workspace UI layout state inside fixed per-tab slots `A`, `B`, and `C`.
 - Panel metadata is separate from durable session/workflow state.
 - Panel metadata is separate from live surface runtime state.
 - Live runtime controllers are keyed by `surfacePiSessionId`.

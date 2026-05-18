@@ -59,6 +59,13 @@ type RuntimeRecord = WorkspaceRuntime & {
 
 export class WorkspaceRuntimeRegistry {
   private readonly runtimes = new Map<string, RuntimeRecord>();
+  private readonly sharedAppLogStores = new Map<
+    string,
+    {
+      store: AppLogStore;
+      refCount: number;
+    }
+  >();
   private readonly agentDir: string;
   private activeWorkspaceId: string | null = null;
 
@@ -139,11 +146,6 @@ export class WorkspaceRuntimeRegistry {
 
   private createRuntime(workspaceId: string, cwd: string): RuntimeRecord {
     const label = basename(cwd) || "workspace";
-    const runtimeDir = join(
-      this.agentDir,
-      "workspace-runtimes",
-      sanitizeWorkspaceRuntimeId(workspaceId),
-    );
     const sessionDir = getSvvySessionDir(cwd, this.agentDir);
     const catalog = new WorkspaceSessionCatalog(
       cwd,
@@ -157,9 +159,7 @@ export class WorkspaceRuntimeRegistry {
       cwd,
       agentDir: this.agentDir,
     });
-    const appLogStore = createAppLogStore({
-      databasePath: join(runtimeDir, "app-logs-v1.sqlite"),
-    });
+    const appLogStore = this.acquireAppLogStore(cwd);
     const appLog = createAppLogger({
       store: appLogStore,
       forwardBridgeLog: (level, message, source, details, error) => {
@@ -211,15 +211,46 @@ export class WorkspaceRuntimeRegistry {
         catalog.setSurfaceSyncListener(null);
         catalog.setTitleGenerationLogListener(null);
         await catalog.dispose();
-        appLogStore.close();
+        this.releaseAppLogStore(cwd);
       },
     };
     return runtime;
   }
+
+  private acquireAppLogStore(cwd: string): AppLogStore {
+    const existing = this.sharedAppLogStores.get(cwd);
+    if (existing) {
+      existing.refCount += 1;
+      return existing.store;
+    }
+
+    const runtimeDir = join(
+      this.agentDir,
+      "workspace-runtimes",
+      sanitizeWorkspaceRuntimeStorageKey(cwd),
+    );
+    const store = createAppLogStore({
+      databasePath: join(runtimeDir, "app-logs-v1.sqlite"),
+    });
+    this.sharedAppLogStores.set(cwd, {
+      store,
+      refCount: 1,
+    });
+    return store;
+  }
+
+  private releaseAppLogStore(cwd: string): void {
+    const existing = this.sharedAppLogStores.get(cwd);
+    if (!existing) return;
+    existing.refCount -= 1;
+    if (existing.refCount > 0) return;
+    this.sharedAppLogStores.delete(cwd);
+    existing.store.close();
+  }
 }
 
-function sanitizeWorkspaceRuntimeId(workspaceId: string): string {
-  return workspaceId.replace(/^[/\\]/, "").replace(/[/\\:#]/g, "-");
+function sanitizeWorkspaceRuntimeStorageKey(value: string): string {
+  return value.replace(/^[/\\]/, "").replace(/[/\\:#]/g, "-");
 }
 
 function normalizeWorkspaceRuntimeId(cwd: string, workspaceId?: string): string {

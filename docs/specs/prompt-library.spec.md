@@ -447,7 +447,7 @@ The combobox supports:
 - search
 - retaining selections while disabled
 
-The stored workspace value is the workspace `cwd`, not the runtime `workspaceId`, because runtime workspace ids are per-open-instance identifiers. The app persists a known-workspaces list from opened workspace tabs so closed-but-previously-opened workspaces remain selectable.
+The stored workspace value is the workspace `cwd`, not a workspace tab or view id, because duplicate same-cwd tabs are visual views over the same workspace runtime and durable workspace state. The app persists a known-workspaces list from opened workspace tabs so closed-but-previously-opened workspaces remain selectable.
 
 ### Inactive Workspace-Scoped Blocks
 

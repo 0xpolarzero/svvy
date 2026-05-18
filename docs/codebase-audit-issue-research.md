@@ -35,7 +35,7 @@ For each issue, record:
 | AUD-004 | Not accepted | Artifact file attachment and preview can escape workspace/artifact roots | `3eed`, `209c`, `1291` | Not convincing |
 | AUD-005 | Not accepted | Raw command, tool, and artifact persistence can retain secrets without a unified redaction policy | `3eed`, `34a6`, `1291` | Logs-only redaction retained |
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Fixed |
-| AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share durable session state while owning separate live runtimes | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
+| AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share workspace runtime and durable state while isolating only visual state | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
 | AUD-008 | P1 | Workspace-scoped RPC handlers still route through active runtime state | `209c`, `2a4e`, `1291` | Researched |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Researched |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Researched |
@@ -96,10 +96,10 @@ The source audits repeatedly called out these intentional product directions:
 Resolved product decisions:
 
 - The browser-tools bridge is dev/e2e/manual-inspection only. Shipped production builds must not mount browser-tools bridge behavior, and the dev/e2e/manual-inspection lane does not require an additional auth token.
+- Duplicate same-cwd workspace tabs remain a shipped requirement as separate visual views over the same workspace runtime and durable workspace state. The UI must not prevent duplicates just to manufacture independent runtimes or isolated durable state.
 
 Open product questions:
 
-- Should duplicate same-cwd workspace tabs remain a shipped requirement now, or should the UI temporarily prevent duplicates until persistence is truly runtime-scoped?
 - Is `execute_typescript` meant to be a trusted full-process escape hatch, or a constrained API-only sandbox?
 - Should `execute_typescript` be available to the orchestrator at all, or only to handler/task-agent contexts?
 - Should workflow task-agent `toolSurface` be product-configurable, or should the contract define one fixed surface?
@@ -382,38 +382,25 @@ Relevant code:
 
 **Confidence:** High.
 
-### AUD-007 - Duplicate same-cwd workspace tabs share durable state
+### AUD-007 - Duplicate same-cwd workspace tabs share runtime and durable state
 
 **Disposition:** Not accepted as a bug. Duplicate tabs for the same cwd are intentionally multiple visual tabs over the same workspace runtime and durable workspace state. They should share sessions, pi session files, structured state, queues, thread state, workflow state, and other workspace-owned runtime data. They should not share visual/layout state such as Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and other per-tab view state.
 
 **Impact:** Documentation/contract clarification only. The issue is not that same-cwd tabs share durable state; the product rule is that only visual state is isolated per tab.
 
-**Original concern:** Runtime identity is per tab, but the durable session/catalog path is cwd-derived. Opening the same cwd in two tabs creates two tab entries, but both use the same session directory, structured SQLite database, pi sessions, thread surfaces, queues, and catalog sessions.
+**Current contract:** Opening the same cwd in two tabs creates two visual tab entries over one workspace runtime identity. Both tabs use the same session directory, structured SQLite database, pi sessions, thread surfaces, queues, catalog sessions, workflow state, and app log stream. The visual tab entry owns only view-local state.
 
-Relevant code:
+Relevant product surfaces:
 
-- `src/bun/workspace-runtime-registry.ts`: creates a unique runtime id per opened workspace tab and per-runtime app logs.
-- `src/bun/workspace-runtime-registry.ts`: passes `sessionDir = getSvvySessionDir(cwd, agentDir)` into the session catalog.
-- `src/bun/session-catalog.ts`: uses that session dir for structured DB and thread sessions.
-- `src/bun/structured-session-state.ts`: opens a cwd-derived structured DB and reuses workspace rows.
-- `src/bun/workspace-runtime-registry.test.ts`: currently expects sharing for duplicate cwd tabs.
+- Workspace shell: duplicate same-cwd tabs are separate visual entries and restore separate tab order, active layout slot, Dockview layout, opened panels, panel-local scroll, focus, and inspector selections.
+- Workspace runtime: duplicate same-cwd tabs share the runtime identity, session catalog, live surface registry, app logs, pi sessions, structured state, queues, threads, workflow runs, and workspace read models.
+- Workspace-scoped RPC: user work routes through the shared runtime `workspaceId`; view-local updates also carry a tab or view id.
 
 **Why this was not accepted:** One tab's sessions, queues, prompt locks, managed surfaces, workflow runs, or thread state appearing in another same-cwd tab is intended. The only unacceptable sharing is view-local state, because duplicate tabs are separate visual workspaces over the same underlying cwd runtime.
 
-**Rejected fix:**
-
-Make the durable session/state root runtime-scoped when the product opens duplicate workspace tabs:
-
-1. Use `workspaceId` as part of the session root, such as `agentDir/workspace-runtimes/<workspaceId>/sessions`.
-2. Pass that runtime-scoped session root into the catalog.
-3. Ensure the structured workspace row id matches the runtime workspace id.
-4. Invert the existing sharing test so duplicate same-cwd tabs get distinct DB paths and distinct session catalogs.
-
-The product should not make durable session/state roots runtime-scoped for duplicate same-cwd tabs.
-
 **Verification to preserve the intended contract:**
 
-- Open the same cwd twice and assert both tabs share the same durable sessions, structured workspace state, thread/workflow state, and prompt queues.
+- Open the same cwd twice and assert both tabs share the same backend workspace runtime, durable sessions, structured workspace state, live surface registry, thread/workflow state, prompt queues, and app logs.
 - Assert visual state is tab-specific: Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and similar view-local state do not leak between duplicate tabs.
 - Keep or strengthen tests that codify duplicate-tab durable sharing.
 

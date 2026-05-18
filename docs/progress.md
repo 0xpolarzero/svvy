@@ -170,7 +170,7 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Render thread- and workflow-run-linked artifacts before relying on transcript reconstruction. Commit(s): `3855fe4`
 - [x] Render the latest Project CI summary block for the focused surface or inspected thread. Commit(s): `3855fe4`
 - [x] Restore focused panel, panel-to-surface bindings, and inspector selection after restart. Commit(s): `3855fe4`
-- [ ] Keep open workspaces as left-aligned, horizontally scrollable, draggable app-chrome tabs backed by one backend workspace runtime per tab, with durable user-defined tab order, same-cwd duplicate tabs, compact icon controls, >0-only colored status count badges, and startup and new-tab flows using a workspace picker.
+- [ ] Keep open workspaces as left-aligned, horizontally scrollable, draggable app-chrome tabs with durable user-defined tab order, compact icon controls, >0-only colored status count badges, and startup and new-tab flows using a workspace picker; duplicate same-cwd tabs are separate visual views over the same backend workspace runtime, session catalog, durable workspace state, live surface registry, queues, threads, workflow runs, and app logs, with only view-local layout, opened panels, scroll, focus, and inspector state isolated per tab.
 - [ ] Route all workspace-scoped backend requests and renderer sync events through explicit `workspaceId` instead of process-global cwd.
 
 ## 9. Command Palette And Quick Open

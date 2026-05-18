@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("app workspace UI restore store", () => {
-  test("persists restore state by stable workspace id", () => {
+  test("persists view-local restore state by workspace tab id", () => {
     const agentDir = tempAgentDir();
     const workspaceId = "/repo/app#workspace-1";
     const state = {
@@ -38,10 +38,11 @@ describe("app workspace UI restore store", () => {
     expect(reloaded.getState(workspaceId)).toEqual(state);
   });
 
-  test("keeps states for different workspace runtime ids separate", () => {
+  test("keeps view-local states for duplicate same-cwd tabs separate", () => {
     const store = createAppWorkspaceUiRestoreStore({ agentDir: tempAgentDir() });
-    const first = "/repo/app#first";
-    const second = "/repo/app#second";
+    const cwd = "/repo/app";
+    const first = `${cwd}#first`;
+    const second = `${cwd}#second`;
 
     store.setState(first, {
       version: 4,
