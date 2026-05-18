@@ -7,6 +7,7 @@
   import { onDestroy } from "svelte";
   import { flip } from "svelte/animate";
   import type { QueuedPrompt } from "./chat-runtime";
+  import { queuedMessageOrderChanged, reorderQueuedMessageItems } from "./queued-message-order";
   import Tooltip from "./ui/Tooltip.svelte";
 
   type Props = {
@@ -34,6 +35,9 @@
 
   const queuedCountLabel = $derived(
     queuedMessages.length === 1 ? "1 queued message" : `${queuedMessages.length} queued messages`,
+  );
+  const displayedQueuedMessages = $derived.by(() =>
+    reorderQueuedMessageItems(queuedMessages, draggedPromptId, dropBeforePromptId),
   );
 
   function isLocked(prompt: QueuedPrompt): boolean {
@@ -97,12 +101,10 @@
     if (!promptDrag.didMove) {
       draggedPromptId = promptDrag.promptId;
     }
-    const promptId = promptDrag.promptId;
     promptDrag = { ...promptDrag, didMove: true };
     const beforePromptId = getDropTarget(clientY);
     if (beforePromptId !== dropBeforePromptId) {
       dropBeforePromptId = beforePromptId;
-      onReorder(promptId, beforePromptId);
     }
   }
 
@@ -136,6 +138,9 @@
 
     const completedDrag = promptDrag.didMove;
     const promptId = promptDrag.promptId;
+    const beforePromptId = dropBeforePromptId;
+    const shouldCommitReorder =
+      completedDrag && queuedMessageOrderChanged(queuedMessages, promptId, beforePromptId);
     promptDrag = null;
     draggedPromptId = null;
     dropBeforePromptId = null;
@@ -152,6 +157,9 @@
         }
       });
       event.preventDefault();
+    }
+    if (shouldCommitReorder) {
+      onReorder(promptId, beforePromptId);
     }
   }
 
@@ -171,7 +179,7 @@
       <small>runs after the current turn</small>
     </div>
     <div class="queued-strip-scroll" role="list" bind:this={stripElement}>
-      {#each queuedMessages as prompt, index (prompt.id)}
+      {#each displayedQueuedMessages as prompt, index (prompt.id)}
         <article
           class={`queued-message ${prompt.id === draggedPromptId ? "dragging" : ""} ${isLocked(prompt) ? "locked" : ""}`.trim()}
           data-prompt-id={prompt.id}

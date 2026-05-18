@@ -181,7 +181,7 @@ Projection should make clear:
 - whether the current surface is running, waiting, or ready
 - whether a message is queued for normal follow-up or has been selected for steering
 
-Queued rows render as a compact vertical list directly above attachment chips and the textarea. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `queued` rows expose drag reorder, `Steer`, edit, and delete. Locked `steering` or `dispatching` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, steered again, or reordered.
+Queued rows render as a compact vertical list directly above attachment chips and the textarea. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `queued` rows expose drag reorder, `Steer`, edit, and delete. Drag-hover reorder previews are local renderer state; the durable queue order changes only when the user drops a row into a final changed position. Locked `steering` or `dispatching` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, steered again, or reordered.
 
 Sidebar rows may show a compact queued-count badge for an open surface, but queued messages do not change the row's lifecycle status to running or waiting by themselves.
 

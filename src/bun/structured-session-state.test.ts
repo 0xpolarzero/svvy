@@ -680,6 +680,56 @@ describe("structured session state write API", () => {
     ).toEqual([[second.id, "queued"]]);
   });
 
+  it("skips no-op queued message reorders and records only committed order changes", () => {
+    const store = createStore();
+    seedSession(store, "session-queue-reorder");
+
+    const first = store.enqueueSurfaceMessage({
+      sessionId: "session-queue-reorder",
+      surfacePiSessionId: "surface-queue-reorder",
+      messageJson: JSON.stringify({ role: "user", content: "First queued prompt" }),
+      requestSummary: "First queued prompt",
+    });
+    const second = store.enqueueSurfaceMessage({
+      sessionId: "session-queue-reorder",
+      surfacePiSessionId: "surface-queue-reorder",
+      messageJson: JSON.stringify({ role: "user", content: "Second queued prompt" }),
+      requestSummary: "Second queued prompt",
+    });
+    const third = store.enqueueSurfaceMessage({
+      sessionId: "session-queue-reorder",
+      surfacePiSessionId: "surface-queue-reorder",
+      messageJson: JSON.stringify({ role: "user", content: "Third queued prompt" }),
+      requestSummary: "Third queued prompt",
+    });
+
+    store.reorderSurfaceMessage({
+      surfacePiSessionId: "surface-queue-reorder",
+      id: second.id,
+      beforeId: third.id,
+    });
+    expect(
+      store
+        .getSessionState("session-queue-reorder")
+        .events.filter((event) => event.kind === "surfaceMessage.reordered"),
+    ).toHaveLength(0);
+
+    store.reorderSurfaceMessage({
+      surfacePiSessionId: "surface-queue-reorder",
+      id: third.id,
+      beforeId: first.id,
+    });
+    const snapshot = store.getSessionState("session-queue-reorder");
+    expect(snapshot.queuedMessages?.map((message) => [message.id, message.position])).toEqual([
+      [third.id, 1],
+      [first.id, 2],
+      [second.id, 3],
+    ]);
+    expect(
+      snapshot.events.filter((event) => event.kind === "surfaceMessage.reordered"),
+    ).toHaveLength(1);
+  });
+
   it("loads thread context idempotently and records Project CI results by workflow run", () => {
     const store = createStore();
     seedSession(store, "session-project-ci");

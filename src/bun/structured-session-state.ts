@@ -3077,9 +3077,16 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     }
 
     const reordered = [...remaining.slice(0, beforeIndex), moving, ...remaining.slice(beforeIndex)];
+    if (reordered.every((row, index) => row.id === rows[index]?.id)) {
+      return rows.map((row) => this.mapSurfaceQueuedMessage(row));
+    }
+
     const timestamp = this.now();
     const updatePositions = this.db.transaction((nextRows: SurfaceQueuedMessageRow[]) => {
       nextRows.forEach((row, index) => {
+        if (row.position === index + 1) {
+          return;
+        }
         this.db
           .query(
             `UPDATE surface_message_queue

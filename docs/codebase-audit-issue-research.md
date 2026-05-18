@@ -41,8 +41,8 @@ For each issue, record:
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Fixed |
 | AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Fixed |
 | AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Fixed |
-| AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Researched |
-| AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Researched |
+| AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Fixed |
+| AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Fixed |
 | AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Researched |
 | AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Researched |
 | AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Researched |
@@ -673,13 +673,15 @@ Relevant code:
 
 ### AUD-014 - Queue reorder persists continuously during drag hover
 
+**Disposition:** Fixed. Drag-hover reordering now updates only local renderer preview state; the backend reorder RPC is called only for a final dropped order, and the durable store ignores no-op reorder submissions.
+
 **Impact:** Medium performance and durability issue.
 
 **Precise issue:** The queued-message strip persists reorder changes while drag movement is still in progress, not only when the user drops the item.
 
 Relevant code:
 
-- `src/renderer/components/QueuedMessagesStrip.svelte`: calls `onReorder` during drag movement.
+- `src/mainview/QueuedMessagesStrip.svelte`: previously called `onReorder` during drag movement.
 - `src/bun/session-catalog.ts`: exposes reorder RPC.
 - `src/bun/structured-session-state.ts`: rewrites positions and emits queue events.
 
@@ -691,6 +693,12 @@ Relevant code:
 2. Call the backend reorder RPC exactly once on pointer-up/drop.
 3. Add backend no-op detection so identical order submissions do not write rows or emit events.
 4. Update only changed rows instead of rewriting the full queue where practical.
+
+**Implemented resolution:**
+
+- `QueuedMessagesStrip` derives a drag preview order locally and commits `onReorder` only from pointer-up/drop when the final order differs from the current queue.
+- `reorderSurfaceMessage` returns without writing or emitting a reorder event when the submitted order is identical.
+- Durable reorder writes now skip rows whose persisted position already matches the final order.
 
 **Verification required:**
 
