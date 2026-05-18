@@ -19,10 +19,16 @@ Starting a Smithers run is not enough.
 The product also needs to:
 
 - keep the run attached to the supervising handler thread
-- project workflow state into durable `svvy` state while the run is alive
+- project workflow state into durable `svvy` product facts while the run is alive
 - wake the handler thread back up when the workflow needs another decision
 - recover cleanly after app restart or stream interruption
 - clean up only the affected run without disturbing other delegated work
+
+The storage boundary is strict:
+
+- Smithers owns execution facts.
+- `svvy` owns ownership/product binding, attention cursors, product projections, UI facts, and thread facts.
+- `svvy` must re-read Smithers durable state when an event says execution facts changed instead of copying Smithers' run ledger into its own schema.
 
 ## Product Fit
 
@@ -141,6 +147,7 @@ It owns:
 - node execution
 - retries and pauses
 - terminal workflow outcome
+- run, node, iteration, attempt, wait, approval, output, timer, signal, and event facts
 
 ### `svvy` Workflow-Run Record
 
@@ -153,12 +160,48 @@ It exists so `svvy` can reason about:
 - what the UI should show
 - what should happen after restart
 
+It stores product binding and projection fields only:
+
+- local `workflowRunId`
+- workspace id and workspace session id
+- owning handler `threadId`
+- owning handler `surfacePiSessionId`
+- Smithers `runId`
+- `workflowId`
+- workflow source scope and runnable entry path
+- optional saved-entry or artifact-workflow references
+- product projection state used by the sidebar and handler wake-up scheduler
+- current product attention state
+- last applied Smithers event sequence or snapshot cursor used to know where to re-read from next
+- pending handler-attention cursor
+- delivered handler-attention cursor
+- lineage pointer or continuation reference when Smithers reports a continued run
+- product summary text shown in `svvy`
+- related `svvy` artifact ids, command ids, Project CI ids, and UI links
+- created and updated timestamps
+
+It must not store Smithers execution state as `svvy`-owned truth. In particular, it must not persist its own copies of Smithers:
+
+- run tables or run lifecycle ledger
+- node state
+- task attempt state
+- retry attempt state
+- wait state
+- approval request or approval decision state
+- timer state
+- signal delivery state
+- node output, final output, partial output, or validated result payload
+- raw event history
+- workflow task-agent transcript as the execution transcript of record
+
+Those facts stay in Smithers. `svvy` may store foreign keys, display summaries, projection failures, product links, and redacted artifact or command projections that explain what the product should show.
+
 ### Workflow Monitor
 
 A workflow monitor is the Bun-side runtime helper that:
 
 - attaches to the Smithers event stream for one workflow run
-- contributes normalized workflow lifecycle writes into the durable `workflow-run` record
+- contributes normalized workflow product-projection writes into the durable `workflow-run` record
 - handles live attachment, reconnect, and teardown around that durable state
 
 The monitor is runtime state, not transcript state and not the durable lifecycle source of truth.
@@ -183,7 +226,7 @@ Smithers owns the task agent's:
 
 `svvy` owns only the higher-level product projection and the surrounding handler-thread supervision.
 
-That projection should treat the Smithers task attempt as a real durable product record, not as transcript-only internal noise.
+That projection should treat the Smithers task attempt as a real product row addressable from the UI, not as transcript-only internal noise. It is still not the execution attempt record of truth. Smithers owns the attempt identity, attempt lifecycle, retry state, output validation, approval waits, timer waits, usage, and task-agent transcript. `svvy` stores the Smithers attempt address plus product links and projection metadata so the handler, inspector, and UI can re-read Smithers detail by exact `runId`, `nodeId`, `iteration`, and `attempt`.
 
 ### Handler Attention
 
@@ -208,8 +251,8 @@ The adopted flow is:
 4. `svvy` launches or resumes the Smithers run and obtains the concrete Smithers run id.
 5. `svvy` persists or updates the workflow-run record immediately.
 6. `svvy` records the workflow-run state needed for later reconnect and wake-up dedupe.
-7. `svvy` attaches or restores the runtime helper for that workflow run and uses it to emit write-driven lifecycle projection into durable `svvy` state.
-8. When Smithers task attempts exist under that run, `svvy` projects first-class workflow-task-attempt records keyed by `runId`, `nodeId`, `iteration`, and `attempt`, plus durable nested transcript, command, and artifact traces for task-agent work.
+7. `svvy` attaches or restores the runtime helper for that workflow run and uses it to emit write-driven product projection into durable `svvy` state.
+8. When Smithers task attempts exist under that run, `svvy` projects workflow-task-attempt UI rows keyed by `runId`, `nodeId`, `iteration`, and `attempt`, plus `svvy` product links to related commands and artifacts. The authoritative attempt status, output, approval, wait, retry, usage, and transcript details are re-read from Smithers by those exact identifiers.
 9. The Bun side emits explicit workspace updates and surface updates whenever those durable projections change visible workspace state or the live handler surface state.
 10. If the workflow reaches a state that needs another handler decision, `svvy` opens a synthetic background turn on that same handler thread.
 11. The handler thread uses `thread.current` to identify active workflow run ids, uses Smithers-native tools for detailed workflow state, and decides whether to inspect, repair, resume, ask the user, or hand control back with `thread.handoff`.
@@ -221,7 +264,7 @@ The shipped desktop app should run Smithers as an embedded product runtime, not 
 The packaged-app contract is:
 
 - bundle the product-owned Smithers bridge and supporting runtime assets with the app
-- let the Bun side own the Smithers bridge, DB location, run lifecycle, and event projection for product workflows
+- let the Bun side own the Smithers bridge integration, packaged DB location configuration, and `svvy` product projection for product workflows while Smithers owns run lifecycle facts
 - use embedded `smithers-orchestrator` APIs for lifecycle control rather than source-checkout-relative CLI paths
 - let pi-facing tools talk to the Bun-owned bridge; they must not spawn `smithers` directly
 - discover normal product workflows only from configured saved entries under `.svvy/workflows/entries/` and artifact entries under `.svvy/artifacts/workflows/`; test and POC workflow definitions are registered only by tests or fixture harnesses
@@ -242,7 +285,7 @@ The adopted direction is:
 - configure that task agent with a `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
 - expose only task-local cx tools, direct tools, and `execute_typescript` to that actor
 - the default adopted task-agent tool surface is task-local cx semantic navigation, direct tools, and code mode for typed composition
-- project each Smithers task attempt into a durable `svvy` workflow-task-attempt record and attach any task-agent commands and artifacts to that attempt instead of leaving them in a local ephemeral trace
+- project each Smithers task attempt into a `svvy` workflow-task-attempt UI row with exact Smithers identifiers and attach any `svvy` command or artifact projections to that row instead of leaving product navigation in a local ephemeral trace
 - do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents
 - do not load ambient pi built-in tools or workspace-discovered extension tools into the task agent runtime
 - execute the task agent and its task-local tools from Smithers' current task root or worktree, while leaving Smithers runtime DB ownership and `svvy` workflow projection workspace-scoped
@@ -342,7 +385,7 @@ For entries declaring `productKind = "project-ci"`, the bridge must preserve eno
 
 No Smithers supervision path may classify a workflow run as Project CI from entry labels, command names, logs, node outputs, or final prose.
 
-Project CI projection is an event-triggered reconciliation over durable Smithers and `svvy` workflow facts. Live terminal events may start the reconciliation, but process-local terminal-output memory is not authoritative. Restart recovery, monitor reconnect, and terminal bootstrap reads must be able to re-run the same idempotent derivation from durable run/result state. If the durable terminal result for a declared Project CI entry is missing or fails the entry's result schema, supervision records a durable projection failure/troubleshooting state instead of silently skipping CI projection or inferring results from logs.
+Project CI projection is an event-triggered reconciliation over durable Smithers result facts plus `svvy` workflow ownership facts. Live terminal events may start the reconciliation, but process-local terminal-output memory and copied `svvy` output fields are not authoritative. Restart recovery, monitor reconnect, and terminal bootstrap reads must be able to re-run the same idempotent derivation by reading Smithers durable run/result state and the `svvy` workflow-run binding. If the durable terminal result for a declared Project CI entry is missing from Smithers or fails the entry's result schema, supervision records a durable projection failure/troubleshooting state instead of silently skipping CI projection or inferring results from logs.
 
 The handler-visible launch contract must preserve launch-side semantics:
 
@@ -440,15 +483,47 @@ Workflow projection writes belong to the supervision bridge.
 
 The bridge is responsible for updating:
 
-- workflow-run status
-- workflow-run summary
-- thread wait state when the workflow enters a durable wait
-- lifecycle events and artifacts that explain meaningful workflow transitions
+- workflow-run product status
+- workflow-run product summary
+- thread attention state when Smithers enters a durable wait that needs handler action
+- `svvy` lifecycle projection events and artifact links that explain meaningful workflow transitions
 - Project CI reconciliation state when a declared CI workflow reaches or is recovered in a terminal state
 
 The bridge must not rely on transcript parsing or read-side repair loops to keep workflow state current.
 
-For Project CI specifically, the bridge must not rely on unrecoverable process memory to keep CI state current. In-memory terminal buffers, live monitors, and renderer state can trigger projection, but the durable read model must derive from Smithers result facts, workflow-run facts, and `ci_run` or `ci_check_result` records. Missing or invalid terminal result data is itself durable troubleshooting state.
+The bridge also must not make `svvy` the owner of Smithers execution state. Its writes are product projections derived from Smithers durable state:
+
+- Smithers events say what changed.
+- The monitor records the last applied cursor and any product attention that must be delivered.
+- When product projection needs run, node, attempt, wait, approval, timer, output, or event details, it reads those facts from Smithers durable state.
+- `svvy` stores only the derived product facts needed for ownership, navigation, handler wake-up, UI badges, troubleshooting summaries, and product lanes.
+
+For Project CI specifically, the bridge must not rely on unrecoverable process memory to keep CI state current. In-memory terminal buffers, live monitors, and renderer state can trigger projection, but the durable read model must derive from Smithers result facts plus `svvy` workflow ownership facts and `ci_run` or `ci_check_result` records. Missing or invalid terminal result data is itself durable troubleshooting state.
+
+### Execution State Boundary
+
+Smithers-only execution facts include:
+
+- run status transitions and raw run event history
+- node status transitions
+- node attempts, task attempts, retries, and loop iterations
+- approval requests and approval decisions
+- wait records, wait reasons, signal subscriptions, signal deliveries, and timer state
+- task-agent prompt execution, transcript, tool steps, usage, output validation, schema repair, and hijack continuation
+- node output, partial output, final output, validated output, artifacts, and frames as produced by the workflow engine
+
+`svvy`-owned facts include:
+
+- workspace ownership and product binding for a Smithers run
+- handler thread ownership and `surfacePiSessionId`
+- runnable entry and product-lane binding, such as Project CI entry identity
+- attention cursors that dedupe handler wake-ups
+- product statuses such as `running-workflow`, `waiting`, `troubleshooting`, and compact sidebar states
+- UI read-model rows, panel targets, unread or attention badges, inspector selection, and related-link projections
+- Project CI `ci_run` and `ci_check_result` rows derived from a declared CI entry's durable Smithers terminal result
+- app logs and redacted product diagnostics
+
+`svvy` must not cache or denormalize raw Smithers execution status for product decisions, display, filtering, or debugging. Any operation that needs current execution detail must re-read Smithers durable state by Smithers identifiers.
 
 ### Thread Status Semantics During Supervision
 
@@ -499,7 +574,7 @@ The synthetic handler-resume prompt should include:
 - thread id and objective
 - workflow-run id and Smithers run id
 - workflow name
-- normalized workflow status plus raw Smithers status
+- product workflow projection state derived from Smithers status at read or projection time
 - current workflow summary
 - relevant wait kind, blocker diagnosis, lineage detail, or failure detail
 - any important artifact or lifecycle references needed to act confidently
@@ -544,7 +619,7 @@ If the handler edits workflow source, changes workflow input, or hits a Smithers
 - `waiting-timer` runs are terminalized immediately with Smithers' timer cleanup: the waiting timer attempt and node become `cancelled`, a `TimerCancelled` event is written, then the run receives `RunCancelled`
 - `waiting-event` is not direct-terminalized because Smithers server cancellation does not do that; it remains a signal-mediated wait unless Smithers adds native direct cancellation for that state
 
-After any direct paused-run terminalization, `svvy` must flush Smithers events into the structured workflow run, clear thread and session waits, move the owning handler thread into `troubleshooting`, and request handler attention for the cancellation.
+After any direct paused-run terminalization, `svvy` must read the resulting Smithers events and run state, update the structured workflow-run projection cursor, clear product thread and session attention state as appropriate, move the owning handler thread into `troubleshooting`, and request handler attention for the cancellation.
 
 ## Recovery And Restart
 
@@ -564,6 +639,21 @@ It must not:
 - reopen unrelated threads
 - cancel unrelated workflow runs
 - assume the orchestrator should reconcile anything automatically
+- rebuild Smithers run, node, attempt, wait, approval, timer, output, or event state from `svvy` projection rows
+
+### Event-Triggered Re-Reads
+
+Smithers events are triggers, not a second source of execution truth inside `svvy`.
+
+When the monitor receives a Smithers event, reconnects after a gap, resumes from app restart, or handles a Smithers-native tool result, it should:
+
+1. apply the event cursor or snapshot cursor to the `svvy` workflow-run projection;
+2. decide which product projections are affected, such as handler attention, thread status, Project CI, inspector rows, logs, or related artifacts;
+3. re-read the necessary durable Smithers run, node, attempt, wait, approval, timer, output, artifact, or event detail by Smithers id;
+4. write only the `svvy` product projection rows needed for ownership, UI, attention, and product lanes;
+5. emit workspace and surface updates from those product rows.
+
+The same rule applies after `smithers.run_workflow`, `smithers.runs.cancel`, `smithers.resolve_approval`, `smithers.signals.send`, terminal bootstrap reads, and app restart recovery. The tool result can identify what changed, but authoritative execution state is read back from Smithers.
 
 ## Cleanup And Isolation
 

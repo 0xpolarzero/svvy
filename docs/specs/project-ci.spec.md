@@ -25,7 +25,7 @@ Use these terms consistently:
 - **CI status surface**: the UI surface or panel that renders the CI lane. It may route user requests into normal handler threads, but it is not a separate setup launcher or runtime.
 - **CI prompt context**: the optional context loaded by `thread.start({ context: ["ci"] })` or by a handler calling `request_context({ keys: ["ci"] })`.
 - **CI entry**: a normal Smithers runnable saved workflow entry that declares `productKind = "project-ci"`.
-- **CI run**: one Smithers workflow run launched from a CI entry and recorded as Project CI state.
+- **CI run**: one `svvy` product projection row for a Smithers workflow run launched from a CI entry.
 - **CI check result**: one structured check inside a CI run, such as typecheck, test, lint, build, integration, or manual check.
 
 Do not use `verification` as the product model name.
@@ -323,9 +323,9 @@ The result schema does.
 
 ## Result Contract
 
-Project CI records come only from terminal product output or an equivalent declared result payload that validates against the CI entry's `resultSchema`.
+Project CI records come only from terminal Smithers result output or an equivalent Smithers-owned declared result payload that validates against the CI entry's `resultSchema`.
 
-That output is a durable workflow fact, not process-local memory. The runtime may observe it through a live Smithers completion event, a terminal Smithers snapshot, a persisted Smithers run/result record, or a durable `svvy` workflow-run projection, but once observed it must be recoverable enough for idempotent Project CI reconciliation after restart.
+That output is a durable Smithers workflow fact, not process-local memory and not a `svvy`-owned output copy. The runtime may observe that the output changed through a live Smithers completion event, a terminal Smithers snapshot, or a persisted Smithers run/result record, but Project CI reconciliation must read the authoritative terminal result from Smithers durable state. The `svvy` workflow-run record supplies ownership and product binding only.
 
 Recommended default result schema:
 
@@ -380,7 +380,7 @@ The runtime records Project CI state only when all of these are true:
 
 1. The Smithers run was launched from a runnable entry that declares `productKind = "project-ci"`.
 2. The run reaches a terminal Smithers state.
-3. The terminal product output is directly available from the entry's declared durable result output.
+3. The terminal product output is directly available from Smithers' declared durable result output.
 4. The terminal product output validates against the entry's `resultSchema`.
 
 If any condition is false, the runtime must not synthesize Project CI records.
@@ -389,29 +389,29 @@ Invalid or missing CI output is a durable CI projection failure and workflow tro
 
 It is not an invitation to parse logs, read node text, inspect final prose, or guess partial results.
 
-The runtime must record enough troubleshooting detail to explain why CI projection failed, such as missing terminal result, schema validation failure, mismatched product kind, or missing entry metadata. It must not silently skip a declared CI run just because the result was missing from process memory.
+The runtime must record enough `svvy` troubleshooting detail to explain why CI projection failed, such as missing Smithers terminal result, schema validation failure, mismatched product kind, or missing entry metadata. It must not silently skip a declared CI run just because the result was missing from process memory.
 
 ## Reconciliation Model
 
-Project CI is an event-triggered reconciliation over durable Smithers facts and durable `svvy` workflow facts.
+Project CI is an event-triggered reconciliation over durable Smithers execution facts and durable `svvy` product-binding facts.
 
 The sanctioned triggers are:
 
 - CI workflow launch, resume, completion, cancellation, or failure events
 - workflow monitor reconnect or terminal bootstrap reads
 - app restart recovery for nonterminal or terminal workflow runs whose CI projection has not been reconciled
-- durable Smithers result or workflow-run projection writes that affect a declared Project CI entry
+- durable Smithers result writes or `svvy` workflow-run ownership/projection writes that affect a declared Project CI entry
 
 Each trigger should run the same idempotent derivation:
 
-1. Load the durable workflow-run record and owning handler/thread/session facts.
+1. Load the durable `svvy` workflow-run record and owning handler/thread/session facts.
 2. Confirm the runnable entry still resolves as `productKind = "project-ci"`.
-3. Load the durable terminal result payload from Smithers or the persisted `svvy` workflow projection.
+3. Load the durable terminal result payload from Smithers.
 4. Validate that payload against the entry's `resultSchema`.
 5. Upsert exactly one `ci_run` for the workflow run and stable `ci_check_result` rows by `checkId`.
 6. If the durable result is missing or invalid, record a projection failure or troubleshooting state instead of creating partial CI records.
 
-In-memory maps, live monitors, UI state, and transcript text are not authoritative. They may trigger reconciliation or carry live progress, but the UI/read models must derive from durable `ci_run`, `ci_check_result`, workflow-run, and Smithers facts.
+In-memory maps, live monitors, UI state, transcript text, and copied `svvy` output fields are not authoritative. They may trigger reconciliation or carry live progress, but the UI/read models must derive from durable `ci_run`, `ci_check_result`, `svvy` workflow-run binding, and Smithers result facts.
 
 ## Durable State
 
@@ -421,6 +421,8 @@ Project CI state belongs in structured session state as:
 - `ci_check_result`
 
 The exact database table names should match those concepts.
+
+These are `svvy` product projection rows. They do not replace or copy Smithers run, node, attempt, wait, approval, timer, output, artifact, or event tables. They store the Project CI view that `svvy` needs for routing and UI, with foreign keys back to the owning Smithers run and `svvy` workflow-run record.
 
 `ci_run` should store:
 
@@ -585,7 +587,7 @@ This keeps Project CI compatible with Smithers entry discovery and launch while 
 
 ## Relationship To Workflow Supervision
 
-Workflow supervision remains the source of truth for:
+Smithers remains the source of truth for workflow execution facts:
 
 - run lifecycle
 - waits
@@ -596,7 +598,9 @@ Workflow supervision remains the source of truth for:
 - transcripts
 - events
 
-Project CI state is a product projection produced after a CI entry reaches a terminal result and validates the result schema.
+Workflow supervision owns the `svvy` binding and projection around those Smithers facts: handler ownership, attention cursors, thread status, UI links, troubleshooting summaries, and product lanes such as Project CI.
+
+Project CI state is a `svvy` product projection produced after a CI entry reaches a terminal Smithers result and validates the result schema.
 
 The CI projection does not replace workflow-run records.
 

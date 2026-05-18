@@ -78,6 +78,11 @@ type ToolThreadRow = {
   latestHandoff: ToolHandoffSummary | null;
 };
 
+type ListUnresolvedWorkflowRuns = (input: {
+  sessionId: string;
+  threadId: string;
+}) => Promise<Array<{ smithersRunId: string }>>;
+
 type ThreadCurrentDetails = ToolThreadRow & {
   loadedContextKeys: string[];
 };
@@ -122,6 +127,7 @@ export function createRuntimeCurrentTool(options: {
 export function createThreadCurrentTool(options: {
   runtime: PromptExecutionRuntimeHandle;
   store: StructuredSessionStateStore;
+  listUnresolvedWorkflowRuns?: ListUnresolvedWorkflowRuns;
 }): AgentTool<typeof emptyParamsSchema, ThreadCurrentDetails> {
   return {
     label: "Thread Current",
@@ -137,7 +143,9 @@ export function createThreadCurrentTool(options: {
 
       const snapshot = options.store.getSessionState(runtime.sessionId);
       const thread = findThread(snapshot, runtime.surfaceThreadId, THREAD_CURRENT_TOOL_NAME);
-      return jsonToolResult(buildThreadCurrentDetails(snapshot, thread));
+      return jsonToolResult(
+        await buildThreadCurrentDetails(snapshot, thread, options.listUnresolvedWorkflowRuns),
+      );
     },
   };
 }
@@ -145,6 +153,7 @@ export function createThreadCurrentTool(options: {
 export function createThreadListTool(options: {
   runtime: PromptExecutionRuntimeHandle;
   store: StructuredSessionStateStore;
+  listUnresolvedWorkflowRuns?: ListUnresolvedWorkflowRuns;
 }): AgentTool<typeof threadListParamsSchema, ThreadListDetails> {
   return {
     label: "Thread List",
@@ -157,11 +166,13 @@ export function createThreadListTool(options: {
       const snapshot = options.store.getSessionState(runtime.sessionId);
       const statusFilter = params.status ? new Set(params.status) : null;
       const limit = clampLimit(params.limit, 20, 100);
-      const threads = snapshot.threads
-        .filter((thread) => !statusFilter || statusFilter.has(thread.status))
-        .toSorted(compareThreadsByAttention)
-        .slice(0, limit)
-        .map((thread) => buildThreadRow(snapshot, thread));
+      const threads = await Promise.all(
+        snapshot.threads
+          .filter((thread) => !statusFilter || statusFilter.has(thread.status))
+          .toSorted(compareThreadsByAttention)
+          .slice(0, limit)
+          .map((thread) => buildThreadRow(snapshot, thread, options.listUnresolvedWorkflowRuns)),
+      );
       return jsonToolResult({ threads });
     },
   };
@@ -227,27 +238,33 @@ function findThread(
   return thread;
 }
 
-function buildThreadCurrentDetails(
+async function buildThreadCurrentDetails(
   snapshot: StructuredSessionSnapshot,
   thread: StructuredThreadRecord,
-): ThreadCurrentDetails {
+  listUnresolvedWorkflowRuns?: ListUnresolvedWorkflowRuns,
+): Promise<ThreadCurrentDetails> {
   return {
-    ...buildThreadRow(snapshot, thread),
+    ...(await buildThreadRow(snapshot, thread, listUnresolvedWorkflowRuns)),
     loadedContextKeys: thread.loadedContextKeys.slice(),
   };
 }
 
-function buildThreadRow(
+async function buildThreadRow(
   snapshot: StructuredSessionSnapshot,
   thread: StructuredThreadRecord,
-): ToolThreadRow {
+  listUnresolvedWorkflowRuns?: ListUnresolvedWorkflowRuns,
+): Promise<ToolThreadRow> {
   return {
     id: thread.id,
     title: thread.title,
     objective: thread.objective,
     status: thread.status,
     wait: normalizeWait(thread.wait),
-    activeWorkflowRunIds: getActiveWorkflowRunIds(snapshot, thread.id),
+    activeWorkflowRunIds: await getActiveWorkflowRunIds(
+      snapshot,
+      thread.id,
+      listUnresolvedWorkflowRuns,
+    ),
     latestHandoff: buildLatestHandoffSummary(snapshot, thread.id),
   };
 }
@@ -263,7 +280,20 @@ function normalizeWait(wait: StructuredWaitState | null): ToolWait | null {
   };
 }
 
-function getActiveWorkflowRunIds(snapshot: StructuredSessionSnapshot, threadId: string): string[] {
+async function getActiveWorkflowRunIds(
+  snapshot: StructuredSessionSnapshot,
+  threadId: string,
+  listUnresolvedWorkflowRuns?: ListUnresolvedWorkflowRuns,
+): Promise<string[]> {
+  if (listUnresolvedWorkflowRuns) {
+    return (
+      await listUnresolvedWorkflowRuns({
+        sessionId: snapshot.session.id,
+        threadId,
+      })
+    ).map((run) => run.smithersRunId);
+  }
+
   return snapshot.workflowRuns
     .filter((run) => run.threadId === threadId)
     .filter((run) => run.status === "running" || run.status === "waiting")

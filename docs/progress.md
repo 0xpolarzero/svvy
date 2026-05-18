@@ -100,7 +100,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Define the packaged-app Smithers runtime boundary so shipped product workflows are configured saved or artifact entries under `.svvy/` rather than repo-root `workflows/` authoring assets. Commit(s): `a02bd48`
 - [x] Build handler-thread supervision for Smithers runs started from explicit runnable entries, with deterministic test workflows registered only inside tests. Commit(s): `a02bd48`
 - [x] Define the workflow-run request envelope from a handler thread to Smithers. Commit(s): `f53c9b8`
-- [x] Persist workflow-run supervision metadata, including raw Smithers status, wait kind, reconnect cursor, handler-attention delivery state, heartbeat freshness, and lineage, as soon as the supervising handler thread has a concrete Smithers run id. Commit(s): `a02bd48`
+- [x] Persist workflow-run supervision metadata for svvy product binding and projection, including Smithers run id, product attention kind, reconnect cursor, handler-attention delivery state, and lineage reference, as soon as the supervising handler thread has a concrete Smithers run id. Commit(s): `a02bd48`
 - [x] Build a POC one-task workflow under a handler thread that returns to the thread and then emits a handoff episode. Commit(s): `f8557d9`
 - [x] Let handler threads call the generated per-workflow Smithers run-launch surface through the Bun bridge for both new and resumed runs. Commit(s): `4674e67`
 - [x] Extend the Smithers-native supervision surface beyond the shipped Step 5 handler-thread/runtime coverage for blocker diagnosis, approvals, signals, cancellation, node detail, artifacts, transcripts, event history, frames, and DevTools inspection, focusing on the remaining operator-only and richer troubleshooting controls. Commit(s): `f8557d9`
@@ -116,6 +116,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Bootstrap workflow supervision from durable run state on session restore, rebuilding runtime ownership from workflow-run records and replaying only undelivered handler attention. Commit(s): `2f874a7`
 - [x] Keep `thread.handoff`, Smithers read APIs, selectors, and renderer reads free of lifecycle repair writes. Commit(s): `2f874a7`
 - [x] Guarantee that a workflow-run failure or cancellation moves the handler thread into troubleshooting before any later user-directed closure or handoff. Commit(s): `a02bd48`
+- [x] Derive workflow-run execution status, wait kind, heartbeat, finished timestamp, and summary from Smithers durable run state for runtime policy, handler tools, and workspace read models, while keeping `workflow_run` as the svvy ownership, cursor, attention, and product-link binding row. Commit(s): pending current landing commit
 
 ## 6. Workflow Authoring And Saved Workflow Files
 
@@ -144,8 +145,8 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Persist `ci_run` and `ci_check_result` records only from terminal Smithers runs launched from declared Project CI entries. Commit(s): `2a5dbbe`
 - [x] Record CI check results with stable check ids, kind, status, required flag, command, exit code, summary, timestamps, and linked artifacts. Commit(s): `2a5dbbe`
 - [x] Treat invalid CI result output as a CI workflow troubleshooting state instead of parsing logs, node outputs, final prose, or command names. Commit(s): `2a5dbbe`
-- [x] Derive Project CI run/check read models through idempotent reconciliation over durable Smithers result facts and durable `svvy` workflow facts, with terminal events, monitor reconnect, and app restart recovery all triggering the same derivation instead of relying on process-local terminal output memory. Commit(s): a82abd62bc
-- [x] Record missing durable terminal result output for a declared Project CI entry as a durable projection failure or troubleshooting state instead of silently skipping CI projection. Commit(s): a82abd62bc
+- [x] Derive Project CI run/check read models through idempotent reconciliation over durable Smithers result facts and durable `svvy` workflow ownership facts, with terminal events, monitor reconnect, and app restart recovery all triggering the same derivation instead of relying on process-local terminal output memory or copied svvy output fields. Commit(s): a82abd62bc
+- [x] Record missing durable Smithers terminal result output for a declared Project CI entry as a durable svvy projection failure or troubleshooting state instead of silently skipping CI projection. Commit(s): a82abd62bc
 - [x] Let normal handler threads discover and run configured Project CI entries without loading the `ci` prompt context, while using `request_context({ keys: ["ci"] })` before configuring or modifying CI. Commit(s): `2a5dbbe`
 - [x] Render `not configured`, `configured`, `running`, `passed`, `failed`, `blocked`, and `cancelled` Project CI states in a dedicated CI status surface or panel. Commit(s): `ee850fd`
 - [x] Surface the latest Project CI outcome as routing input for orchestrator and handler decisions without making CI a native control tool. Commit(s): `2a5dbbe`

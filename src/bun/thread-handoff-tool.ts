@@ -5,7 +5,6 @@ import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type {
   StructuredEpisodeKind,
   StructuredSessionStateStore,
-  StructuredWorkflowRunRecord,
 } from "./structured-session-state";
 
 export const THREAD_HANDOFF_TOOL_NAME = "thread.handoff";
@@ -38,6 +37,13 @@ const THREAD_HANDOFF_DESCRIPTION = [
 export function createThreadHandoffTool(options: {
   runtime: PromptExecutionRuntimeHandle;
   store: StructuredSessionStateStore;
+  listUnresolvedWorkflowRuns?: (input: { sessionId: string; threadId: string }) => Promise<
+    Array<{
+      workflowId: string;
+      smithersRunId: string;
+      status: string;
+    }>
+  >;
 }): AgentTool<typeof threadHandoffParamsSchema, Record<string, unknown>> {
   return {
     label: "Thread Handoff",
@@ -67,7 +73,12 @@ export function createThreadHandoffTool(options: {
       options.store.startCommand(command.id);
 
       try {
-        assertNoActiveWorkflowRuns(options.store, runtime.sessionId, threadId);
+        await assertNoUnresolvedWorkflowRuns({
+          store: options.store,
+          sessionId: runtime.sessionId,
+          threadId,
+          listUnresolvedWorkflowRuns: options.listUnresolvedWorkflowRuns,
+        });
 
         options.store.updateThread({
           threadId,
@@ -182,30 +193,53 @@ function normalizeEpisodeKind(
   return kind ?? fallback;
 }
 
-function assertNoActiveWorkflowRuns(
-  store: StructuredSessionStateStore,
-  sessionId: string,
-  threadId: string,
-): void {
-  const activeWorkflowRuns = store
-    .getSessionState(sessionId)
-    .workflowRuns.filter(
-      (workflowRun) =>
-        workflowRun.threadId === threadId &&
-        (workflowRun.status === "running" || workflowRun.status === "waiting"),
-    );
-  if (activeWorkflowRuns.length === 0) {
+async function assertNoUnresolvedWorkflowRuns(input: {
+  store: StructuredSessionStateStore;
+  sessionId: string;
+  threadId: string;
+  listUnresolvedWorkflowRuns?: (input: { sessionId: string; threadId: string }) => Promise<
+    Array<{
+      workflowId: string;
+      smithersRunId: string;
+      status: string;
+    }>
+  >;
+}): Promise<void> {
+  const unresolvedWorkflowRuns = input.listUnresolvedWorkflowRuns
+    ? await input.listUnresolvedWorkflowRuns({
+        sessionId: input.sessionId,
+        threadId: input.threadId,
+      })
+    : input.store
+        .getSessionState(input.sessionId)
+        .workflowRuns.filter(
+          (workflowRun) =>
+            workflowRun.threadId === input.threadId &&
+            (workflowRun.status === "running" || workflowRun.status === "waiting"),
+        )
+        .map((workflowRun) => ({
+          workflowId: workflowRun.savedEntryId ?? workflowRun.workflowName,
+          smithersRunId: workflowRun.smithersRunId,
+          status: workflowRun.status,
+        }));
+  if (unresolvedWorkflowRuns.length === 0) {
     return;
   }
 
-  throw new Error(buildActiveWorkflowHandoffError(activeWorkflowRuns));
+  throw new Error(buildActiveWorkflowHandoffError(unresolvedWorkflowRuns));
 }
 
-function buildActiveWorkflowHandoffError(workflowRuns: StructuredWorkflowRunRecord[]): string {
+function buildActiveWorkflowHandoffError(
+  workflowRuns: Array<{
+    workflowId: string;
+    smithersRunId: string;
+    status: string;
+  }>,
+): string {
   const details = workflowRuns
     .map(
       (workflowRun) =>
-        `${workflowRun.savedEntryId ?? workflowRun.workflowName} (${workflowRun.smithersRunId}, ${workflowRun.status})`,
+        `${workflowRun.workflowId} (${workflowRun.smithersRunId}, ${workflowRun.status})`,
     )
     .join(", ");
   return `thread.handoff cannot complete the current objective span while unresolved workflow runs still exist: ${details}. The handler keeps ownership until those runs are resolved inside the thread. Resume, repair, cancel, or explicitly close the workflow state before handing control back.`;

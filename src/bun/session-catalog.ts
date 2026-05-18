@@ -540,11 +540,11 @@ export class WorkspaceSessionCatalog {
       }
       const orchestratorSurface = this.managedSurfaces.get(info.id);
       if (orchestratorSurface) {
-        summaries.set(info.id, this.buildSummaryFromManagedSession(orchestratorSurface));
+        summaries.set(info.id, await this.buildSummaryFromManagedSession(orchestratorSurface));
         continue;
       }
 
-      summaries.set(info.id, this.buildSummaryFromSessionInfo(info));
+      summaries.set(info.id, await this.buildSummaryFromSessionInfo(info));
     }
 
     for (const surface of this.managedSurfaces.values()) {
@@ -554,7 +554,7 @@ export class WorkspaceSessionCatalog {
       if (surface.actorKind !== "orchestrator" || summaries.has(surface.sessionId)) {
         continue;
       }
-      summaries.set(surface.sessionId, this.buildSummaryFromManagedSession(surface));
+      summaries.set(surface.sessionId, await this.buildSummaryFromManagedSession(surface));
     }
 
     return summaries;
@@ -599,7 +599,7 @@ export class WorkspaceSessionCatalog {
     sessionId: string;
     commandId: string;
   }): Promise<WorkspaceCommandInspector> {
-    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const snapshot = await this.getDerivedStructuredSnapshot(input.sessionId);
     if (!snapshot) {
       throw new Error(`Structured session not found: ${input.sessionId}`);
     }
@@ -613,7 +613,7 @@ export class WorkspaceSessionCatalog {
   }
 
   async listHandlerThreads(input: { sessionId: string }): Promise<WorkspaceHandlerThreadSummary[]> {
-    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const snapshot = await this.getDerivedStructuredSnapshot(input.sessionId);
     if (!snapshot) {
       throw new Error(`Structured session not found: ${input.sessionId}`);
     }
@@ -625,7 +625,7 @@ export class WorkspaceSessionCatalog {
     sessionId: string;
     threadId: string;
   }): Promise<WorkspaceHandlerThreadInspector> {
-    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const snapshot = await this.getDerivedStructuredSnapshot(input.sessionId);
     if (!snapshot) {
       throw new Error(`Structured session not found: ${input.sessionId}`);
     }
@@ -642,7 +642,7 @@ export class WorkspaceSessionCatalog {
     sessionId: string;
     workflowTaskAttemptId: string;
   }): Promise<WorkspaceWorkflowTaskAttemptInspector> {
-    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const snapshot = await this.getDerivedStructuredSnapshot(input.sessionId);
     if (!snapshot) {
       throw new Error(`Structured session not found: ${input.sessionId}`);
     }
@@ -667,7 +667,7 @@ export class WorkspaceSessionCatalog {
     searchQuery?: string;
     mode?: WorkspaceWorkflowInspectorMode;
   }): Promise<WorkspaceWorkflowInspectorReadModel> {
-    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const snapshot = await this.getDerivedStructuredSnapshot(input.sessionId);
     if (!snapshot) {
       throw new Error(`Structured session not found: ${input.sessionId}`);
     }
@@ -814,7 +814,7 @@ export class WorkspaceSessionCatalog {
       }));
 
     return buildStructuredProjectCiStatusPanel({
-      session: this.getStructuredSnapshot(input.sessionId),
+      session: await this.getDerivedStructuredSnapshot(input.sessionId),
       entries,
     });
   }
@@ -1630,8 +1630,10 @@ export class WorkspaceSessionCatalog {
     });
   }
 
-  private buildSummaryFromManagedSession(session: ManagedSession): WorkspaceSessionSummary {
-    return this.decorateSummaryWithStructuredProjection(
+  private async buildSummaryFromManagedSession(
+    session: ManagedSession,
+  ): Promise<WorkspaceSessionSummary> {
+    return await this.decorateSummaryWithStructuredProjection(
       this.buildLiveSummaryFromManagedSession(session),
     );
   }
@@ -2036,8 +2038,12 @@ export class WorkspaceSessionCatalog {
     }
   }
 
-  private buildSummaryFromSessionInfo(info: WorkspaceSessionInfo): WorkspaceSessionSummary {
-    return this.decorateSummaryWithStructuredProjection(this.projectSummaryFromSessionInfo(info));
+  private async buildSummaryFromSessionInfo(
+    info: WorkspaceSessionInfo,
+  ): Promise<WorkspaceSessionSummary> {
+    return await this.decorateSummaryWithStructuredProjection(
+      this.projectSummaryFromSessionInfo(info),
+    );
   }
 
   private projectSummaryFromSessionInfo(info: WorkspaceSessionInfo): WorkspaceSessionSummary {
@@ -2235,10 +2241,20 @@ export class WorkspaceSessionCatalog {
     }
   }
 
-  private decorateSummaryWithStructuredProjection(
+  private async getDerivedStructuredSnapshot(
+    sessionId: string,
+  ): Promise<StructuredSessionSnapshot | null> {
+    try {
+      return await this.smithersRuntimeManager.getDerivedSessionSnapshot(sessionId);
+    } catch {
+      return null;
+    }
+  }
+
+  private async decorateSummaryWithStructuredProjection(
     summary: WorkspaceSessionSummary,
-  ): WorkspaceSessionSummary {
-    const snapshot = this.getStructuredSnapshot(summary.id);
+  ): Promise<WorkspaceSessionSummary> {
+    const snapshot = await this.getDerivedStructuredSnapshot(summary.id);
     if (!snapshot) {
       return summary;
     }
@@ -3417,9 +3433,12 @@ async function createManagedSession(
   const runtimeCurrentTool = createRuntimeCurrentTool({
     runtime: promptExecutionRuntime,
   });
+  const listUnresolvedWorkflowRuns = (input: { sessionId: string; threadId: string }) =>
+    options.smithersRuntimeManager.listUnresolvedWorkflowRunsForThread(input);
   const threadListTool = createThreadListTool({
     runtime: promptExecutionRuntime,
     store: options.structuredSessionStore,
+    listUnresolvedWorkflowRuns,
   });
   const threadHandoffsTool = createThreadHandoffsTool({
     runtime: promptExecutionRuntime,
@@ -3428,6 +3447,7 @@ async function createManagedSession(
   const threadCurrentTool = createThreadCurrentTool({
     runtime: promptExecutionRuntime,
     store: options.structuredSessionStore,
+    listUnresolvedWorkflowRuns,
   });
   const sharedWorkTools = [
     createListToolsTool({
@@ -3449,6 +3469,7 @@ async function createManagedSession(
   const threadHandoffTool = createThreadHandoffTool({
     runtime: promptExecutionRuntime,
     store: options.structuredSessionStore,
+    listUnresolvedWorkflowRuns,
   });
   const requestContextTool = createRequestContextTool({
     runtime: promptExecutionRuntime,

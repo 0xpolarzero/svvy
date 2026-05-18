@@ -61,6 +61,16 @@ type WorkflowOwnership = {
   commandId: string;
 };
 
+type WorkflowExecutionProjection = {
+  status: StructuredWorkflowStatus;
+  smithersStatus: RunStatus;
+  waitKind: StructuredWorkflowWaitKind | null;
+  heartbeatAt: string | null;
+  finishedAt: string | null;
+  summary: string;
+  projectCiProjection: ProjectCiProjection | null;
+};
+
 type ProjectionSource = "launch" | "progress" | "control" | "bootstrap" | "failure" | "query";
 
 type SmithersRuntimeManagerOptions = {
@@ -407,7 +417,7 @@ export class SmithersRuntimeManager {
         runId: requestedRunId,
       });
     } else {
-      const conflictingRun = this.findNonterminalThreadRun(
+      const conflictingRun = await this.findNonterminalThreadRun(
         input.sessionId,
         input.threadId,
         input.workflowId,
@@ -430,12 +440,7 @@ export class SmithersRuntimeManager {
       ? this.options.store.updateWorkflow({
           workflowId: existingStructuredRun.id,
           commandId: input.commandId,
-          status: "running",
-          smithersStatus: "running",
-          waitKind: null,
           pendingAttentionSeq: null,
-          summary: `${requestedRunId ? "Resuming" : "Launching"} ${entry.label}.`,
-          heartbeatAt: null,
         })
       : this.options.store.recordWorkflow({
           threadId: input.threadId,
@@ -446,8 +451,6 @@ export class SmithersRuntimeManager {
           entryPath: entry.entryPath,
           savedEntryId: entry.sourceScope === "saved" ? entry.workflowId : null,
           status: "running",
-          smithersStatus: "running",
-          waitKind: null,
           continuedFromRunIds: [],
           activeDescendantRunId: null,
           lastEventSeq: null,
@@ -470,8 +473,6 @@ export class SmithersRuntimeManager {
       data: {
         source: "launch",
         smithersRunId: runId,
-        status: structuredWorkflowRun.status,
-        smithersStatus: structuredWorkflowRun.smithersStatus,
       },
     });
     this.ownershipByRunId.set(runId, {
@@ -502,9 +503,9 @@ export class SmithersRuntimeManager {
         runId,
         resumedRunId: requestedRunId,
         structuredWorkflowRunId: structuredWorkflowRun.id,
-        status: structuredWorkflowRun.status,
+        status: mapRunStatusToWorkflowStatus(existingActiveRun.status),
         smithersStatus: existingActiveRun.status,
-        summary: structuredWorkflowRun.summary,
+        summary: await this.buildRunSummary(existingActiveRun),
       };
     }
 
@@ -547,7 +548,7 @@ export class SmithersRuntimeManager {
       runId,
       resumedRunId: requestedRunId,
       structuredWorkflowRunId: structuredWorkflowRun.id,
-      status: structuredWorkflowRun.status,
+      status: "running",
       smithersStatus: "running",
       summary: structuredWorkflowRun.summary,
     };
@@ -612,6 +613,11 @@ export class SmithersRuntimeManager {
       throw new Error(`Smithers run not found: ${runId}`);
     }
     const workflowRun = this.findStructuredWorkflowRunBySmithersRunId(runId);
+    const ownership = workflowRun ? this.ownershipFromWorkflowRun(workflowRun) : null;
+    const executionProjection =
+      workflowRun && ownership
+        ? await this.buildWorkflowExecutionProjection({ run, workflowRun, ownership })
+        : null;
     return {
       runId: run.runId,
       workflowName: workflowRun?.workflowName ?? run.workflowName,
@@ -624,12 +630,12 @@ export class SmithersRuntimeManager {
       startedAt: toIso(run.startedAtMs),
       finishedAt: toIso(run.finishedAtMs),
       heartbeatAt: toIso(run.heartbeatAtMs),
-      summary: workflowRun?.summary ?? (await this.buildRunSummary(run)),
+      summary: executionProjection?.summary ?? (await this.buildRunSummary(run)),
       structuredWorkflowRunId: workflowRun?.id ?? null,
       threadId: workflowRun?.threadId ?? null,
       continuedFromRunIds: workflowRun?.continuedFromRunIds ?? [],
       activeDescendantRunId: workflowRun?.activeDescendantRunId ?? null,
-      waitKind: workflowRun?.waitKind ?? mapRunStatusToWaitKind(run.status),
+      waitKind: executionProjection?.waitKind ?? mapRunStatusToWaitKind(run.status),
       lastEventSeq: workflowRun?.lastEventSeq ?? null,
       pendingAttentionSeq: workflowRun?.pendingAttentionSeq ?? null,
       lastAttentionSeq: workflowRun?.lastAttentionSeq ?? null,
@@ -1128,6 +1134,62 @@ export class SmithersRuntimeManager {
     };
   }
 
+  async listUnresolvedWorkflowRunsForThread(input: {
+    sessionId: string;
+    threadId: string;
+  }): Promise<
+    Array<{
+      workflowRunId: string;
+      smithersRunId: string;
+      workflowId: string;
+      status: string;
+    }>
+  > {
+    const snapshot = this.options.store.getSessionState(input.sessionId);
+    const unresolved: Array<{
+      workflowRunId: string;
+      smithersRunId: string;
+      workflowId: string;
+      status: string;
+    }> = [];
+    for (const workflowRun of snapshot.workflowRuns.filter(
+      (entry) => entry.threadId === input.threadId,
+    )) {
+      const run = await this.db.getRun(workflowRun.smithersRunId);
+      if (run && !isTerminalRunStatus(run.status)) {
+        unresolved.push({
+          workflowRunId: workflowRun.id,
+          smithersRunId: workflowRun.smithersRunId,
+          workflowId: workflowRun.savedEntryId ?? workflowRun.workflowName,
+          status: run.status,
+        });
+      }
+    }
+    return unresolved;
+  }
+
+  async getDerivedSessionSnapshot(sessionId: string) {
+    const snapshot = this.options.store.getSessionState(sessionId);
+    const workflowRuns = await Promise.all(
+      snapshot.workflowRuns.map(async (workflowRun) => {
+        const run = await this.db.getRun(workflowRun.smithersRunId);
+        if (!run) {
+          return workflowRun;
+        }
+        const projection = await this.buildWorkflowExecutionProjection({
+          run,
+          workflowRun,
+          ownership: this.ownershipFromWorkflowRun(workflowRun),
+        });
+        return withWorkflowExecutionProjection(workflowRun, projection);
+      }),
+    );
+    return {
+      ...snapshot,
+      workflowRuns,
+    };
+  }
+
   private async cancelPausedRun(
     runId: string,
     status: Extract<RunStatus, "waiting-approval" | "waiting-timer">,
@@ -1201,11 +1263,7 @@ export class SmithersRuntimeManager {
     const snapshot = this.options.store.getSessionState(sessionId);
     this.hydrateRunOwnershipForSession(sessionId);
 
-    const candidateRuns = snapshot.workflowRuns.filter(
-      (workflowRun) =>
-        !isTerminalWorkflowStatus(workflowRun.status) || workflowRun.pendingAttentionSeq !== null,
-    );
-    for (const workflowRun of candidateRuns) {
+    for (const workflowRun of snapshot.workflowRuns) {
       await this.flushRunEvents(workflowRun.smithersRunId, {
         emitAttention: false,
         source: "bootstrap",
@@ -1334,7 +1392,7 @@ export class SmithersRuntimeManager {
       ownership.sessionId,
       ownership.structuredWorkflowId,
     );
-    if (!workflowRun || isTerminalWorkflowStatus(workflowRun.status)) {
+    if (!workflowRun) {
       return;
     }
     const entry = this.workflowEntriesById.get(ownership.workflowId);
@@ -1402,8 +1460,6 @@ export class SmithersRuntimeManager {
       entryPath: parentWorkflowRun?.entryPath ?? null,
       savedEntryId: parentWorkflowRun?.savedEntryId ?? null,
       status: "running",
-      smithersStatus: "running",
-      waitKind: null,
       continuedFromRunIds: [
         ...(parentWorkflowRun?.continuedFromRunIds ?? []),
         parentOwnership.structuredWorkflowId,
@@ -1418,11 +1474,8 @@ export class SmithersRuntimeManager {
     this.options.store.updateWorkflow({
       workflowId: parentOwnership.structuredWorkflowId,
       commandId: parentOwnership.commandId,
-      status: "continued",
-      smithersStatus: "continued",
       activeDescendantRunId: childStructuredRun.id,
       pendingAttentionSeq: null,
-      summary: `Smithers continued this workflow as run ${input.childRunId}.`,
     });
     this.ownershipByRunId.set(input.childRunId, {
       ...parentOwnership,
@@ -1535,17 +1588,14 @@ export class SmithersRuntimeManager {
       ownership.sessionId,
       ownership.structuredWorkflowId,
     );
-    const diagnosis = run.status === "waiting-event" ? await this.getRunDiagnosis(runId) : null;
-    const waitKind = mapRunStatusToWaitKind(run.status);
-    const projectCiProjection = await this.resolveProjectCiProjection({
-      runId,
+    if (!currentWorkflowRun) {
+      return;
+    }
+    const executionProjection = await this.buildWorkflowExecutionProjection({
+      run,
+      workflowRun: currentWorkflowRun,
       ownership,
-      runStatus: run.status,
     });
-    const status = projectCiProjection?.workflowStatus ?? mapRunStatusToWorkflowStatus(run.status);
-    const summary =
-      projectCiProjection?.summary ?? diagnosis?.summary ?? (await this.buildRunSummary(run));
-    const heartbeatAt = toIso(run.heartbeatAtMs);
     const currentPendingAttentionSeq = currentWorkflowRun?.pendingAttentionSeq ?? null;
     const currentDeliveredAttentionSeq = currentWorkflowRun?.lastAttentionSeq ?? null;
     const nextPendingAttentionSeq =
@@ -1557,14 +1607,9 @@ export class SmithersRuntimeManager {
     const nextWorkflowRun = this.options.store.updateWorkflow({
       workflowId: ownership.structuredWorkflowId,
       commandId: ownership.commandId,
-      status,
-      smithersStatus: run.status,
-      waitKind,
       lastEventSeq: input.lastEventSeq,
       pendingAttentionSeq: nextPendingAttentionSeq,
       lastAttentionSeq: currentDeliveredAttentionSeq,
-      heartbeatAt,
-      summary,
     });
     this.recordBridgeLifecycleEvent({
       sessionId: ownership.sessionId,
@@ -1576,8 +1621,6 @@ export class SmithersRuntimeManager {
         lastEventSeq: input.lastEventSeq,
         pendingAttentionSeq: nextPendingAttentionSeq,
         lastAttentionSeq: currentDeliveredAttentionSeq,
-        status: nextWorkflowRun.status,
-        smithersStatus: nextWorkflowRun.smithersStatus,
       },
     });
     if (
@@ -1597,16 +1640,21 @@ export class SmithersRuntimeManager {
     }
 
     await this.projectWorkflowTaskAttempts(runId, ownership);
+    const projectedWorkflowRun = withWorkflowExecutionProjection(
+      nextWorkflowRun,
+      executionProjection,
+    );
+    const projectCiProjection = executionProjection.projectCiProjection;
     if (projectCiProjection?.workflowStatus === "completed" && projectCiProjection.result) {
       const entry = this.workflowEntriesById.get(ownership.workflowId);
       this.options.store.recordProjectCiResult({
-        workflowRunId: nextWorkflowRun.id,
+        workflowRunId: projectedWorkflowRun.id,
         workflowId: ownership.workflowId,
-        entryPath: entry?.entryPath ?? nextWorkflowRun.entryPath ?? "",
+        entryPath: entry?.entryPath ?? projectedWorkflowRun.entryPath ?? "",
         status: projectCiProjection.result.status as StructuredProjectCiStatus,
         summary: projectCiProjection.result.summary,
-        startedAt: projectCiProjection.result.startedAt ?? nextWorkflowRun.startedAt,
-        finishedAt: projectCiProjection.result.finishedAt ?? nextWorkflowRun.finishedAt,
+        startedAt: projectCiProjection.result.startedAt ?? projectedWorkflowRun.startedAt,
+        finishedAt: projectCiProjection.result.finishedAt ?? projectedWorkflowRun.finishedAt,
         checks: projectCiProjection.result.checks.map((check) => ({
           checkId: check.checkId,
           label: check.label,
@@ -1625,7 +1673,7 @@ export class SmithersRuntimeManager {
     this.applyThreadProjection({
       sessionId: ownership.sessionId,
       threadId: ownership.threadId,
-      workflowRun: nextWorkflowRun,
+      workflowRun: projectedWorkflowRun,
     });
     await this.emitStructuredStateChanged(ownership.sessionId);
 
@@ -1635,20 +1683,20 @@ export class SmithersRuntimeManager {
         .threads.find((thread) => thread.id === ownership.threadId) ?? null;
     const isReplayedTerminalStateAfterHandoff = isTerminalWorkflowReplayAfterThreadCompletion(
       currentThread?.status ?? null,
-      nextWorkflowRun.status,
+      projectedWorkflowRun.status,
     );
 
     if (
       options.emitAttention &&
       !isReplayedTerminalStateAfterHandoff &&
-      nextWorkflowRun.pendingAttentionSeq !== null &&
-      nextWorkflowRun.pendingAttentionSeq !== nextWorkflowRun.lastAttentionSeq
+      projectedWorkflowRun.pendingAttentionSeq !== null &&
+      projectedWorkflowRun.pendingAttentionSeq !== projectedWorkflowRun.lastAttentionSeq
     ) {
       await this.tryDeliverPendingHandlerAttention(runId, {
         source: options.source,
-        summary,
+        summary: executionProjection.summary,
         reason:
-          input.observedAttentionSeq === nextWorkflowRun.pendingAttentionSeq
+          input.observedAttentionSeq === projectedWorkflowRun.pendingAttentionSeq
             ? input.observedAttentionReason
             : null,
       });
@@ -1829,12 +1877,13 @@ export class SmithersRuntimeManager {
 
     const rows: unknown[] = [];
     for (const node of nodes.toSorted(compareDurableOutputNodes)) {
-      const rawOutput = await this.db.getRawNodeOutputForIteration(
-        "output",
-        runId,
-        node.nodeId!,
-        node.iteration,
-      );
+      const rawOutput =
+        (await this.db.getRawNodeOutputForIteration(
+          "output",
+          runId,
+          node.nodeId!,
+          node.iteration,
+        )) ?? readRawNodeOutputForIteration(this.db, "output", runId, node.nodeId!, node.iteration);
       if (!rawOutput) {
         continue;
       }
@@ -1958,16 +2007,11 @@ export class SmithersRuntimeManager {
     const nextWorkflowRun = this.options.store.updateWorkflow({
       workflowId: ownership.structuredWorkflowId,
       commandId: ownership.commandId,
-      status: "failed",
-      smithersStatus: "failed",
-      waitKind: null,
       continuedFromRunIds: currentWorkflowRun?.continuedFromRunIds,
       activeDescendantRunId: currentWorkflowRun?.activeDescendantRunId ?? null,
       lastEventSeq: currentWorkflowRun?.lastEventSeq ?? null,
       pendingAttentionSeq: nextPendingAttentionSeq,
       lastAttentionSeq: currentWorkflowRun?.lastAttentionSeq ?? null,
-      heartbeatAt: currentWorkflowRun?.heartbeatAt ?? null,
-      summary: message,
     });
     this.recordBridgeLifecycleEvent({
       sessionId: ownership.sessionId,
@@ -1979,8 +2023,6 @@ export class SmithersRuntimeManager {
         lastEventSeq: nextWorkflowRun.lastEventSeq,
         pendingAttentionSeq: nextWorkflowRun.pendingAttentionSeq,
         lastAttentionSeq: nextWorkflowRun.lastAttentionSeq,
-        status: nextWorkflowRun.status,
-        smithersStatus: nextWorkflowRun.smithersStatus,
       },
     });
     this.recordBridgeLifecycleEvent({
@@ -1996,7 +2038,15 @@ export class SmithersRuntimeManager {
     this.applyThreadProjection({
       sessionId: ownership.sessionId,
       threadId: ownership.threadId,
-      workflowRun: nextWorkflowRun,
+      workflowRun: withWorkflowExecutionProjection(nextWorkflowRun, {
+        status: "failed",
+        smithersStatus: "failed",
+        waitKind: null,
+        heartbeatAt: null,
+        finishedAt: new Date().toISOString(),
+        summary: message,
+        projectCiProjection: null,
+      }),
     });
     await this.emitStructuredStateChanged(ownership.sessionId);
     await this.tryDeliverPendingHandlerAttention(runId, {
@@ -2059,6 +2109,11 @@ export class SmithersRuntimeManager {
       ownership.sessionId,
       ownership.structuredWorkflowId,
     );
+    const run = await this.db.getRun(runId);
+    const executionProjection =
+      workflowRun && run
+        ? await this.buildWorkflowExecutionProjection({ run, workflowRun, ownership })
+        : null;
     if (
       !workflowRun ||
       workflowRun.pendingAttentionSeq === null ||
@@ -2071,7 +2126,12 @@ export class SmithersRuntimeManager {
       this.options.store
         .getSessionState(ownership.sessionId)
         .threads.find((entry) => entry.id === ownership.threadId) ?? null;
-    if (isTerminalWorkflowReplayAfterThreadCompletion(thread?.status ?? null, workflowRun.status)) {
+    if (
+      isTerminalWorkflowReplayAfterThreadCompletion(
+        thread?.status ?? null,
+        executionProjection?.status ?? workflowRun.status,
+      )
+    ) {
       return false;
     }
 
@@ -2085,7 +2145,7 @@ export class SmithersRuntimeManager {
           workflowRunId: workflowRun.id,
           smithersRunId: runId,
           workflowId: ownership.workflowId,
-          summary: input.summary ?? workflowRun.summary,
+          summary: input.summary ?? executionProjection?.summary ?? workflowRun.summary,
           reason:
             input.reason ??
             (await this.readPendingAttentionReason(runId, workflowRun.pendingAttentionSeq)) ??
@@ -2101,16 +2161,11 @@ export class SmithersRuntimeManager {
     this.options.store.updateWorkflow({
       workflowId: workflowRun.id,
       commandId: workflowRun.commandId,
-      status: workflowRun.status,
-      smithersStatus: workflowRun.smithersStatus,
-      waitKind: workflowRun.waitKind,
       continuedFromRunIds: workflowRun.continuedFromRunIds,
       activeDescendantRunId: workflowRun.activeDescendantRunId,
       lastEventSeq: workflowRun.lastEventSeq,
       pendingAttentionSeq: null,
       lastAttentionSeq: workflowRun.pendingAttentionSeq,
-      heartbeatAt: workflowRun.heartbeatAt,
-      summary: workflowRun.summary,
     });
     this.recordBridgeLifecycleEvent({
       sessionId: ownership.sessionId,
@@ -2216,33 +2271,38 @@ export class SmithersRuntimeManager {
         `Smithers run ${input.runId} belongs to workflow ${actualWorkflowId}, not ${input.workflowId}.`,
       );
     }
-    if (isTerminalWorkflowStatus(workflowRun.status)) {
-      throw new Error(
-        `Smithers run ${input.runId} is already ${workflowRun.status}; cannot resume a terminal workflow run.`,
-      );
-    }
     const smithersRun = await this.db.getRun(input.runId);
     if (!smithersRun) {
       throw new Error(`Smithers run ${input.runId} was not found in the Smithers runtime.`);
     }
+    if (isTerminalRunStatus(smithersRun.status)) {
+      throw new Error(
+        `Smithers run ${input.runId} is already ${smithersRun.status}; cannot resume a terminal workflow run.`,
+      );
+    }
   }
 
-  private findNonterminalThreadRun(
+  private async findNonterminalThreadRun(
     sessionId: string,
     threadId: string,
     workflowId: string,
-  ): StructuredWorkflowRunRecord | null {
-    return (
-      this.options.store
-        .getSessionState(sessionId)
-        .workflowRuns.filter(
-          (workflowRun) =>
-            workflowRun.threadId === threadId &&
-            (workflowRun.savedEntryId === workflowId || workflowRun.workflowName === workflowId) &&
-            !isTerminalWorkflowStatus(workflowRun.status),
-        )
-        .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null
-    );
+  ): Promise<StructuredWorkflowRunRecord | null> {
+    const candidates = this.options.store
+      .getSessionState(sessionId)
+      .workflowRuns.filter(
+        (workflowRun) =>
+          workflowRun.threadId === threadId &&
+          (workflowRun.savedEntryId === workflowId || workflowRun.workflowName === workflowId),
+      )
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+    for (const workflowRun of candidates) {
+      const smithersRun = await this.db.getRun(workflowRun.smithersRunId);
+      if (smithersRun && !isTerminalRunStatus(smithersRun.status)) {
+        return workflowRun;
+      }
+    }
+    return null;
   }
 
   private findStructuredWorkflowRunBySmithersRunId(
@@ -2289,6 +2349,42 @@ export class SmithersRuntimeManager {
     return workflowRunsBySmithersRunId;
   }
 
+  private ownershipFromWorkflowRun(workflowRun: StructuredWorkflowRunRecord): WorkflowOwnership {
+    return {
+      sessionId: workflowRun.sessionId,
+      threadId: workflowRun.threadId,
+      workflowId: workflowRun.savedEntryId ?? workflowRun.workflowName,
+      structuredWorkflowId: workflowRun.id,
+      commandId: workflowRun.commandId,
+    };
+  }
+
+  private async buildWorkflowExecutionProjection(input: {
+    run: any;
+    workflowRun: StructuredWorkflowRunRecord;
+    ownership: WorkflowOwnership;
+  }): Promise<WorkflowExecutionProjection> {
+    const projectCiProjection = await this.resolveProjectCiProjection({
+      runId: input.run.runId,
+      ownership: input.ownership,
+      runStatus: input.run.status,
+    });
+    const diagnosis =
+      input.run.status === "waiting-event" ? await this.getRunDiagnosis(input.run.runId) : null;
+    return {
+      status: projectCiProjection?.workflowStatus ?? mapRunStatusToWorkflowStatus(input.run.status),
+      smithersStatus: input.run.status,
+      waitKind: mapRunStatusToWaitKind(input.run.status),
+      heartbeatAt: toIso(input.run.heartbeatAtMs),
+      finishedAt: toIso(input.run.finishedAtMs),
+      summary:
+        projectCiProjection?.summary ??
+        diagnosis?.summary ??
+        (await this.buildRunSummary(input.run)),
+      projectCiProjection,
+    };
+  }
+
   private async buildRunSummary(run: any): Promise<string> {
     const nodeCounts = await this.db.countNodesByState(run.runId);
     const countsText = nodeCounts.map((entry: any) => `${entry.count} ${entry.state}`).join(", ");
@@ -2317,6 +2413,21 @@ function mapRunStatusToWorkflowStatus(status: RunStatus): StructuredWorkflowStat
     case "cancelled":
       return "cancelled";
   }
+}
+
+function withWorkflowExecutionProjection(
+  workflowRun: StructuredWorkflowRunRecord,
+  projection: WorkflowExecutionProjection,
+): StructuredWorkflowRunRecord {
+  return {
+    ...workflowRun,
+    status: projection.status,
+    smithersStatus: projection.smithersStatus,
+    waitKind: projection.waitKind,
+    heartbeatAt: projection.heartbeatAt,
+    summary: projection.summary,
+    finishedAt: projection.finishedAt,
+  };
 }
 
 function isSmithersRunHeartbeatFresh(run: {
@@ -2593,6 +2704,31 @@ function compareDurableOutputNodes(
     return nodeDelta;
   }
   return left.iteration - right.iteration;
+}
+
+function readRawNodeOutputForIteration(
+  db: SmithersDb,
+  tableName: string,
+  runId: string,
+  nodeId: string,
+  iteration: number,
+): Record<string, unknown> | null {
+  try {
+    const sqlite = (db as unknown as { db?: Database }).db;
+    if (!sqlite) {
+      return null;
+    }
+    const escaped = tableName.replaceAll(`"`, `""`);
+    return (
+      (sqlite
+        .query(
+          `SELECT * FROM "${escaped}" WHERE run_id = ? AND node_id = ? AND iteration = ? LIMIT 1`,
+        )
+        .get(runId, nodeId, iteration) as Record<string, unknown> | undefined) ?? null
+    );
+  } catch {
+    return null;
+  }
 }
 
 function normalizeDurableSmithersOutputRow(row: Record<string, unknown>): Record<string, unknown> {

@@ -109,7 +109,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workflow Task Agents",
     status: "in-progress",
     summary:
-      "Defines lower-level Smithers workflow task agents as a separate actor class beneath handler threads, using a PI-backed svvy task configuration with a task-local direct-tool callable surface including cx semantic navigation, `list_tools`, plus `execute_typescript`, no ambient pi built-ins or extension-tool leakage, task-root or worktree execution aligned to the active Smithers attempt, first-class durable workflow-task-attempt records keyed by Smithers attempt identity before task-local tool calls run, message-native retry and hijack continuation, live task-agent activity streaming, and projected nested transcript, command, artifact, and usage traces, while keeping approval and hijack as Smithers runtime controls rather than ordinary task-agent tools.",
+      "Defines lower-level Smithers workflow task agents as a separate actor class beneath handler threads, using a PI-backed svvy task configuration with a task-local direct-tool callable surface including cx semantic navigation, `list_tools`, plus `execute_typescript`, no ambient pi built-ins or extension-tool leakage, task-root or worktree execution aligned to the active Smithers attempt, first-class svvy workflow-task-attempt UI projection rows keyed by exact Smithers attempt identity before task-local tool calls run, Smithers-owned message-native retry and hijack continuation, live task-agent activity streaming, and svvy command/artifact/usage projections linked to the Smithers attempt, while keeping attempt lifecycle, approval, wait, output, transcript, and hijack execution facts in Smithers and outside ordinary task-agent tools.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/workflow-supervision.spec.md",
@@ -236,7 +236,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Structured Session State Overlay",
     status: "in-progress",
     summary:
-      "Adds a workspace-scoped svvy-owned state layer above pi and Smithers with durable session, turn, thread, workflow-run, workflow-task-attempt, command, episode, artifact, Project CI run/check result, wait, and lifecycle event records, explicit surface-target identity (`workspaceSessionId`, `surfacePiSessionId`, `threadId`), workflow-task-attempt binding bootstrapped by exact persisted Smithers resume-handle lookup instead of heuristic attempt-table scans or transcript-derived repair, workspace-level metadata projection that survives reload, and live-surface transcript updates kept separate from durable workspace read models.",
+      "Adds a workspace-scoped svvy-owned product state layer above pi and Smithers with durable session, turn, handler thread, workflow-run binding/projection, workflow-task-attempt UI projection, command, episode, artifact, Project CI run/check result, attention, and lifecycle projection records, explicit surface-target identity (`workspaceSessionId`, `surfacePiSessionId`, `threadId`), exact Smithers identifiers for workflow/task projection rows, and workspace-level metadata projection that survives reload, while leaving Smithers execution facts such as run/node/attempt/wait/output/approval/timer/event state in Smithers and live-surface transcript updates separate from durable workspace read models.",
     sourceSpecs: ["docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -268,7 +268,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Project CI Lane",
     status: "in-progress",
     summary:
-      'Provides Project CI status and result projection over normal saved Smithers entries under `.svvy/workflows/.../ci/`, records CI run and CI check result state only from entries declaring `productKind = "project-ci"` whose durable terminal result validates against the declared result schema, derives UI/read models from durable Smithers and svvy facts rather than process memory, treats terminal events, reconnect, and restart recovery as idempotent reconciliation triggers, records missing or invalid terminal results as durable projection failure or troubleshooting state, exposes latest CI status in specialized UI, and delivers CI authoring guidance only through the optional `ci` prompt context loaded by `thread.start({ context: ["ci"] })` or handler-side `request_context({ keys: ["ci"] })`, without a setup launcher, CI-specific orchestrator, or shipped placeholder CI entry.',
+      'Provides Project CI status and result projection over normal saved Smithers entries under `.svvy/workflows/.../ci/`, records svvy-owned CI run and CI check result rows only from entries declaring `productKind = "project-ci"` whose durable Smithers terminal result validates against the declared result schema, derives UI/read models from Smithers result facts plus svvy ownership/product-binding facts rather than process memory or copied svvy output fields, treats terminal events, reconnect, and restart recovery as idempotent triggers to re-read Smithers durable state, records missing or invalid Smithers terminal results as durable svvy projection failure or troubleshooting state, exposes latest CI status in specialized UI, and delivers CI authoring guidance only through the optional `ci` prompt context loaded by `thread.start({ context: ["ci"] })` or handler-side `request_context({ keys: ["ci"] })`, without a setup launcher, CI-specific orchestrator, or shipped placeholder CI entry.',
     sourceSpecs: [
       "docs/specs/project-ci.spec.md",
       "docs/specs/prompt-contexts.spec.md",
@@ -283,7 +283,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Delegated Workflow Run Records",
     status: "in-progress",
     summary:
-      "Stores one svvy-side record for each Smithers workflow run under a handler thread, including run identity, workflow source, runnable entry path plus saved-entry linkage when relevant, normalized status, raw Smithers status, wait kind, reconnect cursor, pending-versus-delivered handler-attention cursors, heartbeat freshness, lineage, summary, timestamps, and related artifacts and command history, with lifecycle projection owned by explicit bridge-event writes, Smithers tool-boundary writes, and reconnect or bootstrap control-plane writes, plus idempotent terminal replay handling so duplicate terminal snapshots do not reopen a completed thread or redeliver handler attention.",
+      "Stores one svvy-owned product-binding record for each Smithers workflow run under a handler thread, including workspace/session/thread/surface ownership, Smithers run id, workflow id, workflow source, runnable entry path plus saved-entry linkage when relevant, reconnect or snapshot cursor, pending-versus-delivered handler-attention cursors, lineage reference, product summary, timestamps, and related svvy artifact, command, Project CI, and UI links; it does not store Smithers run, node, attempt, wait, approval, timer, output, status, heartbeat, or event state, and lifecycle events or tool results trigger re-reads of Smithers durable state before svvy projection rows are updated.",
     sourceSpecs: ["docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -291,7 +291,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Session And Thread Wait State",
     status: "in-progress",
     summary:
-      "Represents handler-owned and workflow-owned blocking conditions explicitly through surface-local wait state and whole-session frontier wait state, preserving whether a wait came from user input, approval, signal, timer, or other external dependency without inventing wait episodes or relying on transcript inference.",
+      "Represents handler-owned blocking conditions and Smithers-derived workflow attention explicitly through surface-local wait or attention state and whole-session frontier state, preserving the product meaning of user input, approval, signal, timer, or other external dependency while leaving the authoritative Smithers wait, approval, signal, and timer records in Smithers and re-reading them by Smithers id when detail is needed.",
     sourceSpecs: ["docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -310,7 +310,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workflow Inspector Surface",
     status: "shipped",
     summary:
-      "Provides a durable tree-first Dockview panel surface for Smithers runs, modeled after React DevTools and the Smithers GUI live-run tree, with searchable expandable rows, selected and expanded node state, normalized svvy status beside raw Smithers status, launch arguments and props, Smithers DevTools snapshot and event-cursor streaming, historical frame inspection, selected-node status, output, partial output, artifact, workflow-agent, task-attempt, command, worktree, timing, wait-reason, output/diff/log/transcript/command/event/raw detail, Project CI check rows only for declared CI entries, and related handler-thread, task-agent, command, CI check, and artifact Dockview targets without forcing the orchestrator to absorb raw workflow history.",
+      "Provides a durable tree-first Dockview panel surface for Smithers runs, modeled after React DevTools and the Smithers GUI live-run tree, with searchable expandable rows, selected and expanded node state, svvy product projection beside current Smithers status read from Smithers, launch arguments and props, Smithers DevTools snapshot and event-cursor streaming, historical frame inspection, selected-node status, output, partial output, artifact, workflow-agent, task-attempt, command, worktree, timing, wait-reason, output/diff/log/transcript/command/event/raw detail, Project CI check rows only for declared CI entries, and related handler-thread, task-agent, command, CI check, and artifact Dockview targets without forcing the orchestrator to absorb raw workflow history.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/workflow-supervision.spec.md",

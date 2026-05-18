@@ -969,13 +969,9 @@ describe("SmithersRuntimeManager", () => {
 
     await waitFor("invalid Project CI failure projection", async () => {
       const run = await manager.getRun(invalidCiRun.runId);
-      const workflowRun = store
-        .getSessionState(sessionId)
-        .workflowRuns.find((entry) => entry.smithersRunId === invalidCiRun.runId);
       return (
         run.status === "finished" &&
-        workflowRun?.status === "failed" &&
-        workflowRun.summary.includes("did not validate against the entry result schema")
+        run.summary.includes("did not validate against the entry result schema")
       );
     });
     const afterInvalidSnapshot = store.getSessionState(sessionId);
@@ -1044,8 +1040,13 @@ describe("SmithersRuntimeManager", () => {
 
     const snapshot = store.getSessionState(sessionId);
     expect(snapshot.workflowRuns.find((entry) => entry.id === structuredRun.id)).toMatchObject({
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
+      summary: "Recovering Project CI.",
+    });
+    expect(await restoredManager.getRun(runId)).toMatchObject({
+      runId,
+      status: "finished",
       summary: "Project CI full checks passed.",
     });
     expect(snapshot.ciRuns).toHaveLength(1);
@@ -1089,15 +1090,12 @@ describe("SmithersRuntimeManager", () => {
     await waitFor("missing Project CI output troubleshooting projection", async () => {
       const run = await manager.getRun(launched.runId);
       const snapshot = store.getSessionState(sessionId);
-      const workflowRun = snapshot.workflowRuns.find(
-        (entry) => entry.smithersRunId === launched.runId,
-      );
       const thread = snapshot.threads.find((entry) => entry.id === threadId);
       return (
         run.status === "finished" &&
-        workflowRun?.status === "failed" &&
+        run.summary.includes("finished without durable terminal output") &&
         thread?.status === "troubleshooting" &&
-        workflowRun.summary.includes("finished without durable terminal output")
+        snapshot.workflowRuns.some((entry) => entry.smithersRunId === launched.runId)
       );
     });
 
@@ -1175,11 +1173,10 @@ describe("SmithersRuntimeManager", () => {
       workflowSource: "saved",
       entryPath: ".svvy/workflows/entries/hello-world.tsx",
       savedEntryId: "hello_world",
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
-    expect(workflowRun?.summary).toContain("svvy-hello-world is completed");
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
       id: threadId,
       status: "running-handler",
@@ -1298,8 +1295,8 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "cancelled",
-      smithersStatus: "cancelled",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
@@ -1368,8 +1365,8 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "cancelled",
-      smithersStatus: "cancelled",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
   });
@@ -1466,7 +1463,7 @@ describe("SmithersRuntimeManager", () => {
     ).toHaveLength(1);
   });
 
-  it("refreshes structured workflow state from Smithers when getRun observes a finished run", async () => {
+  it("derives finished run output from Smithers even when structured execution fields are stale", async () => {
     const fixture = createWorkspaceFixture();
     const { manager, store, cwd, sessionId, threadId } = fixture;
 
@@ -1493,11 +1490,9 @@ describe("SmithersRuntimeManager", () => {
       commandId: workflowCommand.commandId,
     });
 
-    await waitFor("hello_world structured completion", () => {
-      const workflowRun = store
-        .getSessionState(sessionId)
-        .workflowRuns.find((run) => run.smithersRunId === launched.runId);
-      return workflowRun?.status === "completed";
+    await waitFor("hello_world Smithers completion", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "finished";
     });
 
     const completedWorkflowRun = store
@@ -1510,17 +1505,24 @@ describe("SmithersRuntimeManager", () => {
       commandId: completedWorkflowRun!.commandId,
       status: "running",
       smithersStatus: "running",
+      waitKind: "approval",
+      heartbeatAt: "2001-01-01T00:00:00.000Z",
       summary: "Stale structured state before getRun sync.",
     });
 
     const run = await manager.getRun(launched.runId);
     expect(run.status).toBe("finished");
+    expect(run.waitKind).toBeNull();
+    expect(run.heartbeatAt).not.toBe("2001-01-01T00:00:00.000Z");
+    expect(run.summary).toContain("svvy-hello-world is completed");
 
     const refreshedWorkflowRun = store
       .getSessionState(sessionId)
       .workflowRuns.find((entry) => entry.id === completedWorkflowRun!.id);
-    expect(refreshedWorkflowRun?.status).toBe("completed");
-    expect(refreshedWorkflowRun?.smithersStatus).toBe("finished");
+    expect(refreshedWorkflowRun?.status).toBe("running");
+    expect(refreshedWorkflowRun?.smithersStatus).toBe("running");
+    expect(refreshedWorkflowRun?.waitKind).toBe("approval");
+    expect(refreshedWorkflowRun?.summary).toBe("Stale structured state before getRun sync.");
   });
 
   it("lists workspace-global runs with svvy session and thread ownership metadata", async () => {
@@ -1764,12 +1766,10 @@ describe("SmithersRuntimeManager", () => {
         expect.objectContaining({
           smithersRunId: approvalLaunch.runId,
           workflowName: "approval_gate",
-          status: "waiting",
         }),
         expect.objectContaining({
           smithersRunId: signalLaunch.runId,
           workflowName: "wait_for_signal",
-          status: "waiting",
         }),
       ]),
     );
@@ -1867,7 +1867,6 @@ describe("SmithersRuntimeManager", () => {
     let snapshot = store.getSessionState(sessionId);
     let workflowRun = snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId);
     expect(workflowRun).toMatchObject({
-      status: "completed",
       pendingAttentionSeq: expect.any(Number),
       lastAttentionSeq: null,
     });
@@ -1932,7 +1931,6 @@ describe("SmithersRuntimeManager", () => {
     );
     expect(handlerAttentions).toHaveLength(1);
     expect(workflowRun).toMatchObject({
-      status: "completed",
       pendingAttentionSeq: null,
       lastAttentionSeq: expect.any(Number),
     });
@@ -2098,8 +2096,10 @@ describe("SmithersRuntimeManager", () => {
     expect(workflowRuns).toHaveLength(1);
     expect(workflowRuns[0]).toMatchObject({
       id: launched.structuredWorkflowRunId,
-      status: "completed",
-      smithersStatus: "finished",
+    });
+    expect(await restoredManager.getRun(launched.runId)).toMatchObject({
+      status: "finished",
+      structuredWorkflowRunId: launched.structuredWorkflowRunId,
     });
 
     shouldDeliverAttention = false;
@@ -2207,8 +2207,11 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
+    });
+    expect(await restoredManager.getRun(launched.runId)).toMatchObject({
+      status: "finished",
     });
 
     shouldDeliverAttention = false;
@@ -2313,8 +2316,12 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
+      waitKind: null,
+    });
+    expect(await restoredManager.getRun(launched.runId)).toMatchObject({
+      status: "finished",
       waitKind: null,
     });
   });
@@ -2379,8 +2386,8 @@ describe("SmithersRuntimeManager", () => {
         .workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
       id: launched.structuredWorkflowRunId,
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
     });
   });
 
@@ -2419,9 +2426,9 @@ describe("SmithersRuntimeManager", () => {
     let snapshot = store.getSessionState(sessionId);
     let workflowRun = snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId);
     expect(workflowRun).toMatchObject({
-      status: "waiting",
-      smithersStatus: "waiting-approval",
-      waitKind: "approval",
+      status: "running",
+      smithersStatus: "running",
+      waitKind: null,
     });
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
       id: threadId,
@@ -2502,8 +2509,8 @@ describe("SmithersRuntimeManager", () => {
     snapshot = store.getSessionState(sessionId);
     workflowRun = snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId);
     expect(workflowRun).toMatchObject({
-      status: "completed",
-      smithersStatus: "finished",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
@@ -2601,8 +2608,8 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "cancelled",
-      smithersStatus: "cancelled",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
@@ -2691,8 +2698,8 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "cancelled",
-      smithersStatus: "cancelled",
+      status: "running",
+      smithersStatus: "running",
       waitKind: null,
     });
     expect(snapshot.session.wait).toBeNull();
@@ -2821,18 +2828,23 @@ describe("SmithersRuntimeManager", () => {
       commandId: launchCommand.commandId,
     });
 
-    await waitFor("continued child run and final completion", () => {
+    await waitFor("continued child run and final completion", async () => {
       const runs = store
         .getSessionState(sessionId)
         .workflowRuns.filter((entry) => entry.savedEntryId === "continue_once");
-      return runs.length === 2 && runs.some((entry) => entry.status === "completed");
+      const child = runs.find((entry) => entry.continuedFromRunIds.length > 0);
+      if (!child) {
+        return false;
+      }
+      const childRun = await manager.getRun(child.smithersRunId);
+      return runs.length === 2 && childRun.status === "finished";
     });
 
     const snapshot = store.getSessionState(sessionId);
     const runs = snapshot.workflowRuns.filter((entry) => entry.savedEntryId === "continue_once");
     expect(runs).toHaveLength(2);
-    const parent = runs.find((entry) => entry.status === "continued");
-    const child = runs.find((entry) => entry.status === "completed");
+    const parent = runs.find((entry) => entry.activeDescendantRunId !== null);
+    const child = runs.find((entry) => entry.continuedFromRunIds.length > 0);
     expect(parent).toBeDefined();
     expect(child).toBeDefined();
     expect(parent?.activeDescendantRunId).toBe(child?.id);
@@ -2924,9 +2936,9 @@ describe("SmithersRuntimeManager", () => {
     expect(
       snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
     ).toMatchObject({
-      status: "waiting",
-      smithersStatus: "waiting-event",
-      waitKind: "event",
+      status: "running",
+      smithersStatus: "running",
+      waitKind: null,
     });
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
       id: threadId,
@@ -3454,8 +3466,8 @@ describe("SmithersRuntimeManager", () => {
         workflowSource: "saved",
         entryPath: ".svvy/workflows/entries/execute-typescript-task.tsx",
         savedEntryId: "execute_typescript_task",
-        status: "completed",
-        smithersStatus: "finished",
+        status: "running",
+        smithersStatus: "running",
       });
       expect(snapshot.threads.find((thread) => thread.id === handlerThread.id)).toMatchObject({
         id: handlerThread.id,

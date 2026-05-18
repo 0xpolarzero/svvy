@@ -648,7 +648,7 @@ export interface StructuredSessionStateStore {
   updateWorkflow(input: {
     workflowId: string;
     commandId?: string;
-    status: StructuredWorkflowStatus;
+    status?: StructuredWorkflowStatus;
     smithersStatus?: string;
     waitKind?: StructuredWorkflowWaitKind | null;
     continuedFromRunIds?: string[];
@@ -657,7 +657,7 @@ export interface StructuredSessionStateStore {
     pendingAttentionSeq?: number | null;
     lastAttentionSeq?: number | null;
     heartbeatAt?: string | null;
-    summary: string;
+    summary?: string;
   }): StructuredWorkflowRunRecord;
   enqueueSurfaceMessage(input: {
     sessionId: string;
@@ -2819,7 +2819,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   updateWorkflow(input: {
     workflowId: string;
     commandId?: string;
-    status: StructuredWorkflowStatus;
+    status?: StructuredWorkflowStatus;
     smithersStatus?: string;
     waitKind?: StructuredWorkflowWaitKind | null;
     continuedFromRunIds?: string[];
@@ -2828,13 +2828,14 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     pendingAttentionSeq?: number | null;
     lastAttentionSeq?: number | null;
     heartbeatAt?: string | null;
-    summary: string;
+    summary?: string;
   }): StructuredWorkflowRunRecord {
     const existing = this.mustFindWorkflowRunRow(input.workflowId);
     if (input.commandId) {
       this.mustFindCommandRow(input.commandId);
     }
     const timestamp = this.now();
+    const nextStatus = input.status ?? existing.status;
     this.db
       .query(
         `UPDATE workflow_run
@@ -2855,7 +2856,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       )
       .run(
         input.commandId ?? existing.command_id,
-        input.status,
+        nextStatus,
         input.smithersStatus ?? existing.smithers_status,
         input.waitKind === undefined ? existing.wait_kind : input.waitKind,
         input.continuedFromRunIds === undefined
@@ -2870,9 +2871,13 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
           : input.pendingAttentionSeq,
         input.lastAttentionSeq === undefined ? existing.last_attention_seq : input.lastAttentionSeq,
         input.heartbeatAt === undefined ? existing.heartbeat_at : (input.heartbeatAt ?? null),
-        input.summary,
+        input.summary ?? existing.summary,
         timestamp,
-        isTerminalWorkflowStatus(input.status) ? timestamp : null,
+        input.status === undefined
+          ? existing.finished_at
+          : isTerminalWorkflowStatus(nextStatus)
+            ? timestamp
+            : null,
         input.workflowId,
       );
 

@@ -135,6 +135,31 @@ These are not AUD-011 regressions. They are adjacent places where `svvy` may sti
 - **Task-attempt identity:** Workflow task-attempt records should bind to exact Smithers run, node, iteration, and attempt identity rather than recency-style resume-handle lookup. This belongs with AUD-020/AUD-033.
 - **DevTools streaming:** `smithers.streamDevTools` should be checked against Smithers' intended streaming surface instead of a bounded collector if handlers or UI depend on live DevTools behavior. This overlaps AUD-026/AUD-033.
 
+### Resolved Design Boundary For Smithers Execution Facts
+
+This is the adopted implementation boundary for Smithers execution facts.
+
+Smithers execution facts stay in Smithers only. That includes:
+
+- run lifecycle and raw run event history
+- node state
+- iteration and attempt state
+- workflow task-agent attempt lifecycle, retry state, transcript, usage, tool steps, output validation, schema repair, and hijack continuation
+- waits, signals, approvals, approval decisions, and timers
+- node output, partial output, final output, validated output, artifacts, frames, and event detail
+
+`svvy` stores product facts around those Smithers facts:
+
+- workspace/session/thread/surface ownership
+- Smithers run id and exact Smithers node/iteration/attempt identifiers for UI projection rows
+- runnable-entry and product-lane binding, including Project CI entry identity
+- handler-attention cursors and delivery state
+- product statuses, troubleshooting summaries, sidebar badges, panel targets, related links, and inspector selection
+- command/artifact projections created by svvy direct tools
+- Project CI `ci_run` and `ci_check_result` rows derived from declared CI entries after reading durable Smithers terminal result output
+
+Smithers events, monitor reconnects, app restart recovery, and Smithers-native tool results are triggers for `svvy` projection work. They must cause targeted re-reads of Smithers durable state by Smithers identifiers before `svvy` updates product projection rows. `svvy` must not rebuild or authoritatively persist Smithers run, node, attempt, wait, approval, timer, output, or event state from its own projection rows.
+
 ### Source Provenance And Commands
 
 The cross-check used these local transcript files as source material:
@@ -542,7 +567,7 @@ Relevant code:
 1. Inspect the current Smithers run status.
 2. Directly terminalize `waiting-approval` and write `RunCancelled`.
 3. Directly terminalize `waiting-timer` by cancelling waiting timer attempt/node rows, writing `TimerCancelled`, then writing `RunCancelled`.
-4. Flush/project terminal state into structured session records, clear waits, and deliver handler attention.
+4. Read the terminal Smithers state, project the product status into structured session records, clear `svvy` product wait or attention summaries, and deliver handler attention.
 5. Keep live `running` runs on the request-and-abort path.
 6. Reject `waiting-event` direct cancellation because Smithers server cancellation does not terminalize that state.
 
@@ -560,7 +585,7 @@ Relevant code:
 
 ### AUD-012 - Project CI projection depends on in-memory terminal output
 
-**Disposition:** Fixed. Project CI projection now derives from durable Smithers output and durable `svvy` workflow facts instead of process-local terminal output memory.
+**Disposition:** Fixed for the restart/output-memory issue. Project CI projection now derives from durable Smithers output and durable `svvy` workflow ownership facts instead of process-local terminal output memory. The broader Smithers execution-state storage boundary is tracked above as a resolved design follow-up.
 
 **Impact:** High durability issue for Project CI status.
 
@@ -577,9 +602,9 @@ Relevant code:
 
 **Resolved design / best fix:**
 
-Project CI is event-triggered reconciliation over durable Smithers facts and durable `svvy` workflow facts. Terminal events, monitor callbacks, and restart recovery may trigger derivation, but memory is not authoritative and the UI/read models derive from durable facts.
+Project CI is event-triggered reconciliation over durable Smithers result facts and durable `svvy` workflow ownership facts. Terminal events, monitor callbacks, and restart recovery may trigger derivation, but memory and copied `svvy` output fields are not authoritative.
 
-1. Persist terminal workflow output needed for CI projection, or re-read it from Smithers durable state during terminal projection.
+1. Re-read terminal workflow output needed for CI projection from Smithers durable state during terminal projection.
 2. Validate the durable output against `resultSchema` before recording CI.
 3. Keep CI upserts idempotent so recovery can safely run after restart.
 4. Run the same derivation after terminal events, monitor reconnect, and app restart recovery.
