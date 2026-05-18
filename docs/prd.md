@@ -39,7 +39,7 @@ The intended feel is closer to Slate than to stock pi:
 The shipped product must let a user:
 
 - open a local repository in a native desktop app and work in long-lived coding sessions
-- keep important sessions visible through pinning and move old sessions into a single collapsed archive without deleting their history
+- keep important sessions visible through pinning, move old sessions into a single collapsed archive without deleting their history, and expose a confirmed hard-delete action only from the session row context menu
 - understand what the system is doing without reconstructing state from raw logs
 - inspect structured app logs with unread counts, filters, virtualized long-scroll browsing, explicit Live/Frozen tail behavior, redacted details, normalized errors, and related product links when app behavior needs attention
 - inspect durable outputs from each meaningful unit of work

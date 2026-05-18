@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -66,6 +74,7 @@ type PromptableSession = {
   };
   sessionManager: {
     appendMessage(message: Message): void;
+    getSessionFile(): string;
   };
 };
 
@@ -515,6 +524,241 @@ describe("WorkspaceSessionCatalog", () => {
         result.sessions.some((session) => session.id === created.target.workspaceSessionId),
       ).toBe(true);
       expect("activeSessionId" in (result as unknown as Record<string, unknown>)).toBe(false);
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("deletes the pi files and structured state so hard-deleted sessions do not reappear", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const fakeBin = join(mkdtempSync(join(tmpdir(), "svvy-trash-bin-")));
+    tempDirs.push(fakeBin);
+    const fakeTrashPath = join(fakeBin, "trash");
+    writeFileSync(
+      fakeTrashPath,
+      [
+        "#!/bin/sh",
+        "# Simulate a trash command that reports success but leaves the file behind.",
+        "exit 0",
+      ].join("\n"),
+    );
+    chmodSync(fakeTrashPath, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${previousPath ?? ""}`;
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Delete Me" }, DEFAULTS);
+      const sessionId = created.target.workspaceSessionId;
+      const sessionFile = getManagedSurface(
+        catalog,
+        sessionId,
+      ).session.sessionManager.getSessionFile();
+
+      expect(existsSync(sessionFile)).toBe(true);
+      expect(getStructuredSessionStore(catalog).getSessionState(sessionId).session.id).toBe(
+        sessionId,
+      );
+
+      await catalog.deleteSession(sessionId);
+
+      expect(existsSync(sessionFile)).toBe(false);
+      expect(() => getStructuredSessionStore(catalog).getSessionState(sessionId)).toThrow(
+        `Structured session not found: ${sessionId}`,
+      );
+      expect(
+        (await catalog.listSessions()).sessions.some((session) => session.id === sessionId),
+      ).toBe(false);
+
+      await catalog.recordFocusedSession({
+        sessionId,
+        surfacePiSessionId: sessionId,
+      });
+
+      expect(() => getStructuredSessionStore(catalog).getSessionState(sessionId)).toThrow(
+        `Structured session not found: ${sessionId}`,
+      );
+      expect(
+        (await catalog.listSessions()).sessions.some((session) => session.id === sessionId),
+      ).toBe(false);
+    } finally {
+      process.env.PATH = previousPath;
+      await catalog.dispose();
+    }
+  });
+
+  it("does not clear archive metadata unless the pi file is actually removed", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const fakeBin = join(mkdtempSync(join(tmpdir(), "svvy-trash-bin-")));
+    tempDirs.push(fakeBin);
+    const fakeTrashPath = join(fakeBin, "trash");
+    writeFileSync(
+      fakeTrashPath,
+      [
+        "#!/bin/sh",
+        "# Simulate a trash command that reports success but leaves the file behind.",
+        "exit 0",
+      ].join("\n"),
+    );
+    chmodSync(fakeTrashPath, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${previousPath ?? ""}`;
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Archived Delete Me" }, DEFAULTS);
+      const sessionId = created.target.workspaceSessionId;
+      const sessionFile = getManagedSurface(
+        catalog,
+        sessionId,
+      ).session.sessionManager.getSessionFile();
+
+      await catalog.archiveSession(sessionId);
+      const archived = (await catalog.listSessions()).sessions.find(
+        (session) => session.id === sessionId,
+      );
+      expect(archived?.isArchived).toBe(true);
+
+      await catalog.deleteSession(sessionId);
+
+      expect(existsSync(sessionFile)).toBe(false);
+      expect(
+        (await catalog.listSessions()).sessions.some((session) => session.id === sessionId),
+      ).toBe(false);
+    } finally {
+      process.env.PATH = previousPath;
+      await catalog.dispose();
+    }
+  });
+
+  it("keeps hard-deleted sessions tombstoned across repeated create/delete and stale mutations", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const fakeBin = join(mkdtempSync(join(tmpdir(), "svvy-trash-bin-")));
+    tempDirs.push(fakeBin);
+    const fakeTrashPath = join(fakeBin, "trash");
+    writeFileSync(
+      fakeTrashPath,
+      [
+        "#!/bin/sh",
+        "# Simulate a trash command that reports success but leaves the file behind.",
+        "exit 0",
+      ].join("\n"),
+    );
+    chmodSync(fakeTrashPath, 0o755);
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${fakeBin}:${previousPath ?? ""}`;
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const deletedSessionIds: string[] = [];
+
+      for (let index = 0; index < 12; index++) {
+        const created = await catalog.createSession({ title: `Delete Stress ${index}` }, DEFAULTS);
+        const sessionId = created.target.workspaceSessionId;
+        const sessionFile = getManagedSurface(
+          catalog,
+          sessionId,
+        ).session.sessionManager.getSessionFile();
+
+        if (index % 3 === 0) {
+          await catalog.archiveSession(sessionId);
+        } else if (index % 3 === 1) {
+          await catalog.pinSession(sessionId);
+        }
+
+        await catalog.deleteSession(sessionId);
+        deletedSessionIds.push(sessionId);
+
+        expect(existsSync(sessionFile)).toBe(false);
+        expect(getStructuredSessionStore(catalog).isSessionDeleted(sessionId)).toBe(true);
+
+        await catalog.recordFocusedSession({ sessionId, surfacePiSessionId: sessionId });
+        await catalog.markSessionRead(sessionId);
+        await catalog.markSessionUnread(sessionId);
+        await catalog.archiveSession(sessionId);
+        await catalog.unarchiveSession(sessionId);
+        await catalog.pinSession(sessionId);
+        await catalog.unpinSession(sessionId);
+        await catalog.renameSession(sessionId, `Stale Rename ${index}`);
+
+        expect(() => getStructuredSessionStore(catalog).getSessionState(sessionId)).toThrow();
+        expect(
+          (await catalog.listSessions()).sessions.some((session) => session.id === sessionId),
+        ).toBe(false);
+      }
+
+      const listedIds = new Set(
+        (await catalog.listSessions()).sessions.map((session) => session.id),
+      );
+      for (const sessionId of deletedSessionIds) {
+        expect(listedIds.has(sessionId)).toBe(false);
+      }
+    } finally {
+      process.env.PATH = previousPath;
+      await catalog.dispose();
+    }
+  });
+
+  it("aborts an active prompt before hard-deleting the session", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Streaming Delete" }, DEFAULTS);
+      const sessionId = created.target.workspaceSessionId;
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const sessionFile = managed.session.sessionManager.getSessionFile();
+      const promptGate = createDeferred<void>();
+      const sessionPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string): Promise<void>;
+        abort(): Promise<void>;
+      };
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(
+        async function (this: PromptableSession) {
+          const surface = findManagedSurfaceBySession(catalog, this);
+          if (surface?.sessionId !== created.target.surfacePiSessionId) {
+            appendMessagesToSession(this, [
+              userMessage("Name the session."),
+              assistantMessage("Streaming delete"),
+            ]);
+            return;
+          }
+          await promptGate.promise;
+        },
+      );
+      const abortSpy = spyOn(sessionPrototype, "abort").mockImplementation(
+        async function (this: PromptableSession) {
+          const surface = findManagedSurfaceBySession(catalog, this);
+          if (surface?.sessionId === created.target.surfacePiSessionId) {
+            promptGate.resolve();
+          }
+        },
+      );
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Keep streaming.")],
+          onEvent: () => {},
+        });
+        await waitFor(
+          () => getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+
+        await catalog.deleteSession(sessionId);
+
+        expect(abortSpy).toHaveBeenCalled();
+        expect(existsSync(sessionFile)).toBe(false);
+        expect(getStructuredSessionStore(catalog).isSessionDeleted(sessionId)).toBe(true);
+        expect(
+          (await catalog.listSessions()).sessions.some((session) => session.id === sessionId),
+        ).toBe(false);
+      } finally {
+        promptGate.resolve();
+        promptSpy.mockRestore();
+        abortSpy.mockRestore();
+      }
     } finally {
       await catalog.dispose();
     }

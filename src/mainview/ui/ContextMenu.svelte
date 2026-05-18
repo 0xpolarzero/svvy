@@ -3,6 +3,7 @@
     id: string;
     label: string;
     disabled?: boolean;
+    tone?: "default" | "danger";
   };
 
   type Props = {
@@ -41,6 +42,7 @@
     <button
       type="button"
       role="menuitem"
+      class:tone-danger={item.tone === "danger"}
       disabled={item.disabled}
       onclick={() => selectItem(item)}
     >
@@ -94,6 +96,16 @@
     outline: none;
     background: var(--ui-surface-subtle);
     color: var(--ui-text-primary);
+  }
+
+  .context-menu button.tone-danger {
+    color: var(--ui-danger);
+  }
+
+  .context-menu button.tone-danger:hover,
+  .context-menu button.tone-danger:focus-visible {
+    background: color-mix(in oklab, var(--ui-danger) 12%, transparent);
+    color: var(--ui-danger);
   }
 
   .context-menu button:disabled {

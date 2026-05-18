@@ -149,8 +149,9 @@ Right-clicking or keyboard-opening a session row context menu should expose:
 - Pin or Unpin
 - Rename
 - Archive or Unarchive
+- Delete
 
-Existing destructive session actions, such as delete, may remain available where they already exist, but archive is not delete. Archiving must not remove pi session data, structured state, artifacts, threads, workflow runs, or episodes.
+Delete must be available only from the row context menu and must require confirmation before any session file is removed. It should follow pi's deletion behavior: move session files to the system Trash when available, then fall back to direct file deletion when Trash is unavailable, fails, or reports success without removing the file. Deleting a streaming session aborts the active prompt, waits for that prompt lifecycle to settle, and then removes the session; delete must not show a separate "cannot delete while streaming" alert. Hard-deleted sessions remain tombstoned in structured state so delayed focus, read, title, archive, pin, or list syncs cannot recreate the deleted row. Deleting the final session leaves the workspace with no session pane instead of automatically creating a replacement session. Archive is not delete. Archiving must not remove pi session data, structured state, artifacts, threads, workflow runs, or episodes.
 
 ### Sidebar Read Model
 

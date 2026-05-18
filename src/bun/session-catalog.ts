@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -131,6 +132,23 @@ const ZERO_USAGE: AssistantMessage["usage"] = {
 
 const STRUCTURED_SESSION_DB_FILENAME = "structured-session-state-v5.sqlite";
 
+function deleteSessionFileLikePi(sessionPath: string): void {
+  if (!existsSync(sessionPath)) {
+    return;
+  }
+
+  const trashArgs = sessionPath.startsWith("-") ? ["--", sessionPath] : [sessionPath];
+  spawnSync("trash", trashArgs, { encoding: "utf-8" });
+  if (!existsSync(sessionPath)) {
+    return;
+  }
+
+  unlinkSync(sessionPath);
+  if (existsSync(sessionPath)) {
+    throw new Error(`Failed to delete session file: ${sessionPath}`);
+  }
+}
+
 const byTimestampDesc = (
   left: string | null | undefined,
   right: string | null | undefined,
@@ -153,6 +171,7 @@ interface ManagedSession {
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   activePrompt: boolean;
+  activePromptDone: Promise<void> | null;
   pendingUserMessage: { turnId: string; message: Message } | null;
   activeStreamMessage: AssistantMessage | null;
   recreateOnNextPrompt: boolean;
@@ -451,6 +470,9 @@ export class WorkspaceSessionCatalog {
     const summaries = new Map<string, WorkspaceSessionSummary>();
 
     for (const info of infos) {
+      if (this.structuredSessionStore.isSessionDeleted(info.id)) {
+        continue;
+      }
       const orchestratorSurface = this.managedSurfaces.get(info.id);
       if (orchestratorSurface) {
         summaries.set(info.id, this.buildSummaryFromManagedSession(orchestratorSurface));
@@ -461,6 +483,9 @@ export class WorkspaceSessionCatalog {
     }
 
     for (const surface of this.managedSurfaces.values()) {
+      if (this.structuredSessionStore.isSessionDeleted(surface.sessionId)) {
+        continue;
+      }
       if (surface.actorKind !== "orchestrator" || summaries.has(surface.sessionId)) {
         continue;
       }
@@ -765,42 +790,48 @@ export class WorkspaceSessionCatalog {
   }
 
   async pinSession(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.setSessionPinned({ sessionId, pinned: true });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
 
   async unpinSession(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.setSessionPinned({ sessionId, pinned: false });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
 
   async archiveSession(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.setSessionArchived({ sessionId, archived: true });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
 
   async unarchiveSession(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.setSessionArchived({ sessionId, archived: false });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
 
   async markSessionUnread(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.markSessionUnread({ sessionId, reason: "manual" });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
 
   async markSessionRead(sessionId: string): Promise<WorkspaceMutationResponse> {
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) return { ok: true };
     this.structuredSessionStore.markSessionRead({ sessionId });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
@@ -816,7 +847,10 @@ export class WorkspaceSessionCatalog {
       return { ok: true };
     }
 
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) {
+      return { ok: true };
+    }
     this.structuredSessionStore.markSessionRead({ sessionId });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
@@ -923,6 +957,10 @@ export class WorkspaceSessionCatalog {
     if (titleStatus === "pending" || titleStatus === "running") {
       throw new Error("Session title is being generated. Rename is temporarily locked.");
     }
+    const exists = await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
+    if (!exists) {
+      return { ok: true };
+    }
 
     const activeOrchestrator = this.managedSurfaces.get(sessionId) ?? null;
 
@@ -932,7 +970,6 @@ export class WorkspaceSessionCatalog {
       const sessionFile = await this.getSessionFileForId(sessionId);
       SessionManager.open(sessionFile!, this.sessionDir).appendSessionInfo(trimmedTitle);
     }
-    await this.syncStructuredPiSessionFromWorkspaceSession(sessionId);
     this.structuredSessionStore.markManualTitleOverride({ sessionId, title: trimmedTitle });
     await this.emitWorkspaceSync("workspace.updated");
 
@@ -983,8 +1020,8 @@ export class WorkspaceSessionCatalog {
         sessionId
       );
     });
-    if (managedSurfaces.some((surface) => surface.activePrompt)) {
-      throw new Error("Cannot delete a session while one of its surfaces is streaming.");
+    for (const surface of managedSurfaces) {
+      await this.abortManagedSurfaceForDelete(surface);
     }
 
     const sessionFile = await this.getSessionFileForId(sessionId, false);
@@ -999,14 +1036,16 @@ export class WorkspaceSessionCatalog {
     }
 
     if (sessionFile && existsSync(sessionFile)) {
-      unlinkSync(sessionFile);
+      deleteSessionFileLikePi(sessionFile);
     }
     for (const thread of structuredSnapshot?.threads ?? []) {
       const threadSessionFile = await this.getSessionFileForId(thread.surfacePiSessionId, false);
       if (threadSessionFile && existsSync(threadSessionFile)) {
-        unlinkSync(threadSessionFile);
+        deleteSessionFileLikePi(threadSessionFile);
       }
     }
+    this.titleGenerationJobs.delete(sessionId);
+    this.structuredSessionStore.deleteSessionState(sessionId);
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
   }
@@ -1029,6 +1068,18 @@ export class WorkspaceSessionCatalog {
     const promptExecution = this.createPromptExecutionContext(session, options);
     session.abortRequested = false;
     session.activePrompt = true;
+    session.activePromptDone = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        void (async () => {
+          await this.runAgentPrompt(session, options, promptExecution);
+          await this.resumeOrchestratorAfterHandlerHandoff(promptExecution);
+        })()
+          .catch((error) => {
+            console.error("Failed to continue orchestrator control after prompt execution:", error);
+          })
+          .finally(resolve);
+      }, 0);
+    });
     session.activeStreamMessage = null;
     this.setPendingUserMessage(session, promptExecution, getLatestUserMessage(options.messages));
     if (options.target.surface === "orchestrator") {
@@ -1040,15 +1091,6 @@ export class WorkspaceSessionCatalog {
       target: options.target,
     });
     await this.emitWorkspaceSync("workspace.updated");
-
-    setTimeout(() => {
-      void (async () => {
-        await this.runAgentPrompt(session, options, promptExecution);
-        await this.resumeOrchestratorAfterHandlerHandoff(promptExecution);
-      })().catch((error) => {
-        console.error("Failed to continue orchestrator control after prompt execution:", error);
-      });
-    }, 0);
 
     return {
       target: structuredClone(options.target),
@@ -1184,6 +1226,22 @@ export class WorkspaceSessionCatalog {
     this.restorePiQueuedMessagesToSurface(session, target);
     await this.emitQueuedSurfaceUpdate(target);
     await session.session.abort();
+  }
+
+  private async abortManagedSurfaceForDelete(session: ManagedSession): Promise<void> {
+    if (!session.activePrompt) {
+      return;
+    }
+
+    const target = this.resolvePromptTargetForSurfacePiSessionId(session.sessionId);
+    const activePromptDone = session.activePromptDone;
+    session.abortRequested = true;
+    this.restorePiQueuedMessagesToSurface(session, target);
+    await this.emitQueuedSurfaceUpdate(target);
+    await session.session.abort();
+    await activePromptDone?.catch((error) => {
+      console.error("Failed to settle prompt before deleting session:", error);
+    });
   }
 
   async setSurfaceModel(
@@ -1905,6 +1963,10 @@ export class WorkspaceSessionCatalog {
   }
 
   private syncStructuredPiSessionFromSummary(summary: WorkspaceSessionSummary): void {
+    if (this.structuredSessionStore.isSessionDeleted(summary.id)) {
+      return;
+    }
+
     try {
       const snapshot = this.getStructuredSnapshot(summary.id);
       this.structuredSessionStore.upsertPiSession({
@@ -1935,6 +1997,10 @@ export class WorkspaceSessionCatalog {
   }
 
   private syncStructuredPiSessionFromOrchestratorSession(session: ManagedSession): void {
+    if (this.structuredSessionStore.isSessionDeleted(session.sessionId)) {
+      return;
+    }
+
     this.syncStructuredPiSessionFromSummary(this.buildLiveSummaryFromManagedSession(session));
     const summary = this.buildLiveSummaryFromManagedSession(session);
     const state = this.agentSettingsStore.getState();
@@ -1958,24 +2024,30 @@ export class WorkspaceSessionCatalog {
 
   private async syncStructuredPiSessionFromWorkspaceSession(
     workspaceSessionId: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (this.structuredSessionStore.isSessionDeleted(workspaceSessionId)) {
+      return false;
+    }
+
     const orchestratorSurface = this.managedSurfaces.get(workspaceSessionId);
     if (orchestratorSurface) {
       this.syncStructuredPiSessionFromOrchestratorSession(orchestratorSurface);
-      return;
+      return true;
     }
 
     const infos = await SessionManager.list(this.cwd, this.sessionDir);
     const info = infos.find((candidate) => candidate.id === workspaceSessionId);
     if (info) {
       this.syncStructuredPiSessionFromSummary(this.projectSummaryFromSessionInfo(info));
-      return;
+      return true;
     }
 
     const snapshot = this.getStructuredSnapshot(workspaceSessionId);
     if (snapshot) {
       this.syncStructuredPiSessionFromSummary(this.projectSummaryFromStructuredSnapshot(snapshot));
+      return true;
     }
+    return false;
   }
 
   private setPendingUserMessage(
@@ -2425,6 +2497,9 @@ export class WorkspaceSessionCatalog {
       if (this.closed) {
         return;
       }
+      if (!this.getStructuredSnapshot(sessionId)) {
+        return;
+      }
       const completed = this.structuredSessionStore.completeTitleGeneration({ sessionId, title });
       const activeOrchestrator = this.managedSurfaces.get(sessionId);
       if (activeOrchestrator) {
@@ -2446,6 +2521,9 @@ export class WorkspaceSessionCatalog {
       }
     } catch (error) {
       if (this.closed) {
+        return;
+      }
+      if (!this.getStructuredSnapshot(sessionId)) {
         return;
       }
       const message = error instanceof Error ? error.message : "Title generation failed.";
@@ -2763,6 +2841,7 @@ export class WorkspaceSessionCatalog {
         const suppressQueuedDrain = session.abortRequested;
         session.abortRequested = false;
         session.activePrompt = false;
+        session.activePromptDone = null;
         session.pendingUserMessage = null;
         session.activeStreamMessage = null;
         this.syncManagedState(session);
@@ -3379,6 +3458,7 @@ async function createManagedSession(
     authStorage,
     modelRegistry,
     activePrompt: false,
+    activePromptDone: null,
     pendingUserMessage: null,
     activeStreamMessage: null,
     recreateOnNextPrompt: false,

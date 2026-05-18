@@ -65,6 +65,7 @@
     onUnpinSession: (session: WorkspaceSessionSummary) => void;
     onArchiveSession: (session: WorkspaceSessionSummary) => void;
     onUnarchiveSession: (session: WorkspaceSessionSummary) => void;
+    onDeleteSession: (session: WorkspaceSessionSummary) => void;
     onMarkSessionUnread: (session: WorkspaceSessionSummary) => void;
     onMarkSessionRead: (session: WorkspaceSessionSummary) => void;
     onToggleArchivedGroup: (collapsed: boolean) => void;
@@ -105,6 +106,7 @@
     onUnpinSession,
     onArchiveSession,
     onUnarchiveSession,
+    onDeleteSession,
     onMarkSessionUnread,
     onMarkSessionRead,
     onToggleArchivedGroup,
@@ -328,6 +330,11 @@
         id: "archive-state",
         label: session.isArchived ? "Unarchive" : "Archive",
       },
+      {
+        id: "delete",
+        label: "Delete",
+        tone: "danger",
+      },
     ];
   }
 
@@ -352,6 +359,10 @@
       runSessionContextAction(() =>
         session.isArchived ? onUnarchiveSession(session) : onArchiveSession(session),
       );
+      return;
+    }
+    if (item.id === "delete") {
+      runSessionContextAction(() => onDeleteSession(session));
     }
   }
 

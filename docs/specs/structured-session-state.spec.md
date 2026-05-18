@@ -388,6 +388,8 @@ Structured session state is durable workspace state.
 
 It is not the live transcript cache for every open surface and it is not Dockview layout state.
 
+Hard-deleted workspace sessions leave a durable tombstone outside the normal session row graph. The tombstone is not rendered as a session, but every structured-state write path and pi-session sync path must treat it as authoritative so stale focus, read, archive, pin, title-generation, or list refresh work cannot recreate a deleted session row.
+
 The adopted runtime split is:
 
 - workspace updates carry structured session summaries, thread summaries, workflow summaries, command rollups, wait state, and other metadata-first read models keyed by `workspaceSessionId`

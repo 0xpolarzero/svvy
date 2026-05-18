@@ -1944,6 +1944,29 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("deletes the final session without creating a replacement session", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Only Session", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+
+    await runtime.deleteSession("session-1", runtime.primaryPaneId);
+
+    expect(runtime.sessions).toEqual([]);
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.paneLayout.focusedPanelId).toBeNull();
+    expect(harness.client.request.listSessions).toBeDefined();
+
+    runtime.dispose();
+  });
+
   it("keeps prompt dispatch independent across concurrent surfaces", async () => {
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
     const orchestratorGate = createDeferred<void>();

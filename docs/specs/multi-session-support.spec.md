@@ -40,6 +40,7 @@ This spec defines the adopted steady-state architecture for that behavior.
 - Route workflow attention to the owning handler surface, never to whichever panel is focused.
 - Emit workspace-level updates independently from surface-level transcript and runtime updates.
 - Keep the session sidebar to active sessions, pinned active sessions, and one Archived group; arbitrary user-created session folders are out of scope.
+- Keep hard session deletion separate from archive: deletion is exposed only through the session row context menu, requires confirmation, and removes the backing pi session history using pi's trash-first behavior.
 
 ## State Layers
 

@@ -206,6 +206,7 @@
   let sendingPrompt = $state(false);
   let renameTarget = $state<WorkspaceSessionSummary | null>(null);
   let renameValue = $state("");
+  let deleteTarget = $state<WorkspaceSessionSummary | null>(null);
   let sidebarResizeHandle = $state<HTMLDivElement | null>(null);
   let artifactSyncSessionId: string | undefined = undefined;
   let artifactSyncMessageCount = 0;
@@ -976,6 +977,10 @@
     renameValue = session.title;
   }
 
+  function handleDeleteSession(session: WorkspaceSessionSummary) {
+    deleteTarget = session;
+  }
+
   async function confirmRename() {
     if (!renameTarget) return;
     const target = renameTarget;
@@ -989,6 +994,15 @@
       await runtime.renameSession(target.id, nextTitle);
       renameTarget = null;
       renameValue = "";
+    });
+  }
+
+  async function confirmDeleteSession() {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    await runSessionMutation(async () => {
+      await runtime.deleteSession(target.id);
+      deleteTarget = null;
     });
   }
 
@@ -2233,6 +2247,7 @@
           onUnpinSession={handleUnpinSession}
           onArchiveSession={handleArchiveSession}
           onUnarchiveSession={handleUnarchiveSession}
+          onDeleteSession={handleDeleteSession}
           onMarkSessionUnread={handleMarkSessionUnread}
           onMarkSessionRead={handleMarkSessionRead}
           onToggleArchivedGroup={handleToggleArchivedGroup}
@@ -2360,6 +2375,34 @@
         </Button>
         <Button variant="primary" size="sm" onclick={() => void confirmRename()} disabled={mutatingSession}>
           Save
+        </Button>
+      </div>
+    </div>
+  </Dialog>
+{/if}
+
+{#if deleteTarget}
+  <Dialog
+    eyebrow="Session"
+    title="Delete Session"
+    description={`Delete "${deleteTarget.title}" from this workspace. This removes the pi session history instead of moving it to Archived.`}
+    width="md"
+    onClose={() => {
+      deleteTarget = null;
+    }}
+  >
+    <div class="session-dialog">
+      <p class="session-dialog-warning">
+        This action cannot be undone from svvy. If the system Trash is available, the session file is moved there first; otherwise it is deleted from disk.
+      </p>
+      <div class="session-dialog-actions">
+        <Button variant="ghost" size="sm" onclick={() => {
+          deleteTarget = null;
+        }}>
+          Cancel
+        </Button>
+        <Button variant="danger" size="sm" onclick={() => void confirmDeleteSession()} disabled={mutatingSession}>
+          Delete
         </Button>
       </div>
     </div>
@@ -3959,6 +4002,13 @@
   .session-dialog {
     display: grid;
     gap: 0.9rem;
+  }
+
+  .session-dialog-warning {
+    margin: 0;
+    color: var(--ui-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.45;
   }
 
   .session-dialog-actions {

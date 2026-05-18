@@ -449,6 +449,7 @@ export interface CreateStructuredSessionStateStoreOptions {
 
 export interface StructuredSessionStateStore {
   upsertPiSession(pi: StructuredPiSessionRecord): void;
+  isSessionDeleted(sessionId: string): boolean;
   startTurn(input: {
     sessionId: string;
     surfacePiSessionId: string;
@@ -688,6 +689,7 @@ export interface StructuredSessionStateStore {
   }): StructuredSurfaceQueuedMessageRecord[];
   getSessionState(sessionId: string): StructuredSessionSnapshot;
   listSessionStates(): StructuredSessionSnapshot[];
+  deleteSessionState(sessionId: string): void;
   getThreadDetail(threadId: string): StructuredThreadDetail;
   close(): void;
   queueTitleGeneration(sessionId: string): StructuredPiSessionRecord | null;
@@ -1115,6 +1117,10 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   }
 
   upsertPiSession(pi: StructuredPiSessionRecord): void {
+    if (this.isSessionDeleted(pi.sessionId)) {
+      return;
+    }
+
     const existing = this.getSessionRow(pi.sessionId);
     this.db
       .query(
@@ -1199,6 +1205,13 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         existing?.wait_resume_when ?? null,
         existing?.wait_since ?? null,
       );
+  }
+
+  isSessionDeleted(sessionId: string): boolean {
+    const row = this.db
+      .query(`SELECT session_id FROM deleted_session WHERE session_id = ?`)
+      .get(sessionId);
+    return Boolean(row);
   }
 
   queueTitleGeneration(sessionId: string): StructuredPiSessionRecord | null {
@@ -3107,6 +3120,37 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return rows.map((row) => this.getSessionState(row.session_id));
   }
 
+  deleteSessionState(sessionId: string): void {
+    const deleteRows = this.db.transaction((targetSessionId: string) => {
+      const timestamp = this.now();
+      for (const table of [
+        "surface_message_queue",
+        "event",
+        "artifact",
+        "workflow_task_message",
+        "workflow_task_attempt",
+        "ci_check_result",
+        "ci_run",
+        "workflow_run",
+        "episode",
+        "command",
+        "thread_context",
+        "thread",
+        "turn",
+        "session",
+      ]) {
+        this.db.query(`DELETE FROM ${table} WHERE session_id = ?`).run(targetSessionId);
+      }
+      this.db
+        .query(
+          `INSERT OR REPLACE INTO deleted_session (session_id, deleted_at)
+           VALUES (?, ?)`,
+        )
+        .run(targetSessionId, timestamp);
+    });
+    deleteRows(sessionId);
+  }
+
   getThreadDetail(threadId: string): StructuredThreadDetail {
     const thread = this.mustFindThreadRecord(threadId);
     const workflowRuns = this.queryWorkflowRunRecordsForThread(threadId);
@@ -3142,6 +3186,10 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   }
 
   private ensureSessionRow(sessionId: string): SessionRow {
+    if (this.isSessionDeleted(sessionId)) {
+      throw new Error(`Structured session was deleted: ${sessionId}`);
+    }
+
     const existing = this.getSessionRow(sessionId);
     if (existing) {
       return existing;
@@ -4125,6 +4173,11 @@ function initializeSchema(db: Database): void {
       wait_reason TEXT,
       wait_resume_when TEXT,
       wait_since TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS deleted_session (
+      session_id TEXT PRIMARY KEY,
+      deleted_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS workspace_sidebar_state (

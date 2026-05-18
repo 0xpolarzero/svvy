@@ -2048,11 +2048,9 @@ export async function createChatRuntime(
           await runtime.openSession(nextSession.id, fallbackPaneId);
           return;
         }
-
-        await runtime.createSession({}, fallbackPaneId);
-        return;
       }
 
+      recordFocusedSession();
       emit();
     },
     pinSession: async (sessionId) => {

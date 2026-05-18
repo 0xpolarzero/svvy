@@ -159,7 +159,7 @@ Current product decisions for this section are specified in `docs/specs/workspac
 - [x] Render archived sessions inside one Archived group in the session sidebar. Commit(s): `3855fe4`
 - [x] Persist the Archived group collapsed state per workspace. Commit(s): `3855fe4`
 - [x] Add session row actions for pin, unpin, archive, and unarchive. Commit(s): `3855fe4`
-- [ ] Keep durable unread state session-level with sidebar timestamp dots, focus-to-read clearing, and session row context-menu actions for mark read or unread, pin, rename, and archive; pane unread treatment, when present, reads from the same session metadata.
+- [ ] Keep durable unread state session-level with sidebar timestamp dots, focus-to-read clearing, and session row context-menu actions for mark read or unread, pin, rename, archive, and confirmed delete; pane unread treatment, when present, reads from the same session metadata.
 - [x] Join session summaries, focused panel, and panel-to-surface bindings in one workspace-shell read model without depending on a global active surface. Commit(s): `9a21f87`, `b0ee858`
 - [x] Split workspace-summary updates from live surface transcript updates in the renderer runtime. Commit(s): `9a21f87`, `b0ee858`
 - [x] Manage open live surfaces in a shared registry keyed by `surfacePiSessionId`. Commit(s): `9a21f87`, `b0ee858`
