@@ -46,13 +46,18 @@
 
   function getStatusLabel(prompt: QueuedPrompt): string {
     if (prompt.status === "steering") return "Steering";
-    if (prompt.status === "dispatching") return "Sending";
+    if (prompt.status === "dispatching") {
+      return prompt.kind === "prompt_refresh" ? "Updating" : "Sending";
+    }
     if (prompt.kind === "handler_handoff") return "Handoff";
+    if (prompt.kind === "prompt_refresh") return "Context";
     return "Queued";
   }
 
   function getItemTitle(prompt: QueuedPrompt): string {
-    return prompt.kind === "handler_handoff" && prompt.summary ? prompt.summary : prompt.text;
+    if (prompt.kind === "handler_handoff" && prompt.summary) return prompt.summary;
+    if (prompt.kind === "prompt_refresh") return "Update instructions before next turn";
+    return prompt.text;
   }
 
   function getDropTarget(clientY: number): string | null {
@@ -186,7 +191,7 @@
     <div class="queued-strip-scroll" role="list" bind:this={stripElement}>
       {#each displayedQueuedMessages as prompt, index (prompt.id)}
         <article
-          class={`queued-message ${prompt.id === draggedPromptId ? "dragging" : ""} ${isLocked(prompt) ? "locked" : ""} ${prompt.kind === "handler_handoff" ? "handoff" : ""}`.trim()}
+          class={`queued-message ${prompt.id === draggedPromptId ? "dragging" : ""} ${isLocked(prompt) ? "locked" : ""} ${prompt.kind === "handler_handoff" ? "handoff" : ""} ${prompt.kind === "prompt_refresh" ? "prompt-refresh" : ""}`.trim()}
           data-prompt-id={prompt.id}
           data-reorderable={isLocked(prompt) ? "false" : "true"}
           role="listitem"
@@ -211,6 +216,8 @@
           <span class="queued-copy" title={getItemTitle(prompt)}>
             {#if prompt.kind === "handler_handoff"}
               <span class="queued-kind">Handoff</span>
+            {:else if prompt.kind === "prompt_refresh"}
+              <span class="queued-kind">Context</span>
             {/if}
             {getItemTitle(prompt)}
           </span>
@@ -221,12 +228,14 @@
             </div>
           {:else}
             <div class="queued-actions">
-              <Tooltip label="Steer at next safe boundary">
-                <button class="queued-steer-button" type="button" aria-label="Steer queued message" onclick={() => steer(prompt.id)}>
-                  <CornerUpRightIcon size={12} aria-hidden="true" />
-                  <span>Steer</span>
-                </button>
-              </Tooltip>
+              {#if prompt.kind !== "prompt_refresh"}
+                <Tooltip label="Steer at next safe boundary">
+                  <button class="queued-steer-button" type="button" aria-label="Steer queued message" onclick={() => steer(prompt.id)}>
+                    <CornerUpRightIcon size={12} aria-hidden="true" />
+                    <span>Steer</span>
+                  </button>
+                </Tooltip>
+              {/if}
               {#if prompt.kind === "user_message"}
                 <Tooltip label="Edit">
                   <button class="queued-icon-button" type="button" aria-label="Edit queued message" onclick={() => onEdit(prompt.id)}>
@@ -238,10 +247,16 @@
                     <Trash2Icon size={12} aria-hidden="true" />
                   </button>
                 </Tooltip>
-              {:else}
+              {:else if prompt.kind === "handler_handoff"}
                 <Tooltip label="Reject handoff">
                   <button class="queued-reject-button" type="button" aria-label="Reject handoff" onclick={() => onDelete(prompt.id)}>
                     Reject
+                  </button>
+                </Tooltip>
+              {:else}
+                <Tooltip label="Cancel context update">
+                  <button class="queued-reject-button" type="button" aria-label="Cancel context update" onclick={() => onDelete(prompt.id)}>
+                    Cancel
                   </button>
                 </Tooltip>
               {/if}
@@ -337,6 +352,11 @@
   .queued-message.handoff {
     border-color: color-mix(in oklab, var(--ui-accent) 30%, var(--ui-border-soft));
     background: color-mix(in oklab, var(--ui-accent) 8%, var(--ui-surface-subtle));
+  }
+
+  .queued-message.prompt-refresh {
+    border-color: color-mix(in oklab, var(--ui-warning-border, var(--ui-border-soft)) 42%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-warning-surface, var(--ui-surface-subtle)) 20%, var(--ui-surface-subtle));
   }
 
   .queued-drag-handle,

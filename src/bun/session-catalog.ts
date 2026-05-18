@@ -220,6 +220,11 @@ interface HandlerHandoffQueuePayload {
   kind: StructuredEpisodeKind;
 }
 
+interface PromptRefreshQueuePayload {
+  requestedRevision: number;
+  requestedAt: string;
+}
+
 type PendingThreadHandoff = {
   resolve: (acceptance: ThreadHandoffAcceptance) => void;
   reject: (error: Error) => void;
@@ -439,11 +444,15 @@ export class WorkspaceSessionCatalog {
   }
 
   updatePromptLibraryState(state: PromptLibraryState): PromptLibraryState {
-    return this.promptLibraryStore.updateState(state);
+    const next = this.promptLibraryStore.updateState(state);
+    void this.emitOpenSurfacePromptBindingUpdates();
+    return next;
   }
 
   resetPromptLibraryState(): PromptLibraryState {
-    return this.promptLibraryStore.resetState();
+    const next = this.promptLibraryStore.resetState();
+    void this.emitOpenSurfacePromptBindingUpdates();
+    return next;
   }
 
   listPromptLibrarySnapshots(): PromptLibrarySnapshotSummary[] {
@@ -459,7 +468,9 @@ export class WorkspaceSessionCatalog {
   }
 
   restorePromptLibrarySnapshot(snapshotId: string): PromptLibraryState {
-    return this.promptLibraryStore.restoreSnapshot(snapshotId);
+    const next = this.promptLibraryStore.restoreSnapshot(snapshotId);
+    void this.emitOpenSurfacePromptBindingUpdates();
+    return next;
   }
 
   getPromptLibraryGeneratedEntries() {
@@ -1142,7 +1153,11 @@ export class WorkspaceSessionCatalog {
   async sendPrompt(options: SendAgentPromptOptions): Promise<SendAgentPromptResult> {
     this.assertValidPromptTarget(options.target);
     const session = await this.ensureManagedSurfaceForPrompt(options);
-    if (options.queueOnly || session.activePrompt) {
+    const hasQueuedSurfaceWork =
+      this.structuredSessionStore.listQueuedSurfaceMessages({
+        surfacePiSessionId: options.target.surfacePiSessionId,
+      }).length > 0;
+    if (options.queueOnly || session.activePrompt || hasQueuedSurfaceWork) {
       const queued = this.enqueuePendingSurfacePrompt(options);
       const snapshot = await this.buildSurfaceSnapshot(session, options.target);
       await this.emitSurfaceSync({
@@ -1151,6 +1166,9 @@ export class WorkspaceSessionCatalog {
         target: options.target,
       });
       await this.emitWorkspaceSync("structured.updated");
+      if (!session.activePrompt) {
+        this.wakeSurfaceQueue(options.target);
+      }
       return { target: structuredClone(queued.target), queued: true, snapshot };
     }
 
@@ -1228,6 +1246,41 @@ export class WorkspaceSessionCatalog {
     return { ok: true, target: structuredClone(input.target), snapshot };
   }
 
+  async queuePromptRefresh(input: {
+    target: PromptTarget;
+  }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
+    this.assertValidPromptTarget(input.target);
+    const session = await this.retainManagedSurface(input.target);
+    try {
+      const existing = this.structuredSessionStore
+        .listQueuedSurfaceMessages({ surfacePiSessionId: input.target.surfacePiSessionId })
+        .find((message) => message.kind === "prompt_refresh");
+      if (!existing) {
+        this.structuredSessionStore.enqueueSurfaceMessage({
+          sessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId ?? null,
+          kind: "prompt_refresh",
+          messageJson: "{}",
+          payloadJson: JSON.stringify({
+            requestedRevision: this.promptLibraryStore.getState().revision,
+            requestedAt: new Date().toISOString(),
+          } satisfies PromptRefreshQueuePayload),
+          requestSummary: "Update context before the next turn",
+          position: "front",
+        });
+      }
+
+      const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
+      if (!session.activePrompt) {
+        this.wakeSurfaceQueue(input.target);
+      }
+      return { ok: true, target: structuredClone(input.target), snapshot };
+    } finally {
+      await this.releaseManagedSurface(input.target.surfacePiSessionId);
+    }
+  }
+
   async editQueuedSurfaceMessage(input: {
     target: PromptTarget;
     queuedMessageId: string;
@@ -1268,6 +1321,9 @@ export class WorkspaceSessionCatalog {
   }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
     const queued = this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
+    if (queued.kind === "prompt_refresh") {
+      throw new Error("Queued context updates cannot be steered.");
+    }
     const text =
       queued.kind === "handler_handoff"
         ? this.buildHandlerHandoffQueuedPrompt(queued)
@@ -1579,6 +1635,7 @@ export class WorkspaceSessionCatalog {
         | "model"
         | "thinkingLevel"
         | "systemPrompt"
+        | "promptLibraryRevision"
         | "sessionMode"
         | "sessionAgentKey"
       >
@@ -1590,6 +1647,7 @@ export class WorkspaceSessionCatalog {
     const model = overrides.model ?? session.model;
     const thinkingLevel = overrides.thinkingLevel ?? session.thinkingLevel;
     const systemPrompt = overrides.systemPrompt ?? session.systemPrompt;
+    const promptLibraryRevision = overrides.promptLibraryRevision ?? session.promptLibraryRevision;
     const sessionMode = overrides.sessionMode ?? session.sessionMode;
     const sessionAgentKey = overrides.sessionAgentKey ?? session.sessionAgentKey;
 
@@ -1601,10 +1659,7 @@ export class WorkspaceSessionCatalog {
       model,
       thinkingLevel,
       systemPrompt,
-      promptLibraryRevision:
-        overrides.systemPrompt && overrides.systemPrompt !== session.systemPrompt
-          ? this.promptLibraryStore.getState().revision
-          : session.promptLibraryRevision,
+      promptLibraryRevision,
       sessionMode,
       sessionAgentKey,
       agentDir: this.agentDir,
@@ -1616,6 +1671,24 @@ export class WorkspaceSessionCatalog {
     nextSession.retainCount = session.retainCount;
     this.managedSurfaces.set(nextSession.sessionId, nextSession);
     return nextSession;
+  }
+
+  private async refreshManagedSurfacePromptBinding(
+    session: ManagedSession,
+    target: PromptTarget,
+  ): Promise<ManagedSession> {
+    const refreshed = await this.recreateManagedSurface(session, {
+      actorKind: getActorKindForTarget(target),
+      systemPrompt: this.buildSystemPromptForTarget(target),
+      promptLibraryRevision: this.promptLibraryStore.getState().revision,
+    });
+    refreshed.recreateOnNextPrompt = false;
+    this.syncManagedState(refreshed);
+    if (target.surface === "orchestrator") {
+      this.syncStructuredPiSessionFromOrchestratorSession(refreshed);
+    }
+    this.persistManagedSessionSnapshot(refreshed);
+    return refreshed;
   }
 
   private async createManagedSurfaceRecord(
@@ -1749,14 +1822,20 @@ export class WorkspaceSessionCatalog {
       .map((message) => {
         const payload =
           message.kind === "handler_handoff" ? this.parseHandlerHandoffQueuePayload(message) : null;
+        const promptRefreshPayload =
+          message.kind === "prompt_refresh" ? this.parsePromptRefreshQueuePayload(message) : null;
         return {
           id: message.id,
           kind: message.kind,
-          text: payload
-            ? `Handler handoff: ${payload.summary}`
-            : this.getQueuedMessageText(message.messageJson),
+          text: promptRefreshPayload
+            ? "Update instructions before next turn"
+            : payload
+              ? `Handler handoff: ${payload.summary}`
+              : this.getQueuedMessageText(message.messageJson),
           title: payload?.title,
-          summary: payload?.summary,
+          summary: promptRefreshPayload
+            ? `Context revision ${promptRefreshPayload.requestedRevision}`
+            : payload?.summary,
           threadId: payload?.threadId,
           sourceCommandId: payload?.sourceCommandId,
           status:
@@ -1786,6 +1865,26 @@ export class WorkspaceSessionCatalog {
         typeof payload.title !== "string" ||
         typeof payload.summary !== "string" ||
         typeof payload.body !== "string"
+      ) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  private parsePromptRefreshQueuePayload(
+    message: StructuredSurfaceQueuedMessageRecord,
+  ): PromptRefreshQueuePayload | null {
+    if (!message.payloadJson) {
+      return null;
+    }
+    try {
+      const payload = JSON.parse(message.payloadJson) as PromptRefreshQueuePayload;
+      if (
+        typeof payload.requestedRevision !== "number" ||
+        typeof payload.requestedAt !== "string"
       ) {
         return null;
       }
@@ -1890,6 +1989,19 @@ export class WorkspaceSessionCatalog {
     });
     await this.emitWorkspaceSync("structured.updated");
     return this.buildSurfaceSnapshot(session, target);
+  }
+
+  private async emitOpenSurfacePromptBindingUpdates(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    for (const session of this.managedSurfaces.values()) {
+      await this.emitSurfaceSync({
+        session,
+        reason: "surface.updated",
+        target: this.resolvePromptTargetForSurfacePiSessionId(session.sessionId),
+      });
+    }
   }
 
   private async emitSurfaceSync(input: {
@@ -3230,6 +3342,29 @@ export class WorkspaceSessionCatalog {
     if (!queued) {
       await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
       return false;
+    }
+
+    if (queued.kind === "prompt_refresh") {
+      try {
+        const refreshed = await this.refreshManagedSurfacePromptBinding(session, currentTarget);
+        this.structuredSessionStore.markSurfaceMessageDelivered({ id: queued.id });
+        await this.emitSurfaceSync({
+          session: refreshed,
+          reason: "surface.updated",
+          target: currentTarget,
+        });
+        await this.emitWorkspaceSync("structured.updated");
+        return true;
+      } catch (error) {
+        this.structuredSessionStore.markSurfaceMessageQueued({
+          id: queued.id,
+          position: "front",
+        });
+        await this.emitQueuedSurfaceUpdate(currentTarget);
+        throw error;
+      } finally {
+        await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+      }
     }
 
     let message: Message;

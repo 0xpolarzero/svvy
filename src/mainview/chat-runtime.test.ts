@@ -1545,6 +1545,41 @@ function createFakeRpc(input: {
             snapshot: structuredClone(record.snapshot),
           };
         },
+        queuePromptRefresh: async ({ target }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          const existing = record.snapshot.queuedMessages.find(
+            (message) => message.kind === "prompt_refresh",
+          );
+          if (!existing) {
+            record.snapshot = {
+              ...record.snapshot,
+              queuedMessages: [
+                {
+                  id: `queued-${record.snapshot.queuedMessages.length + 1}`,
+                  kind: "prompt_refresh",
+                  text: "Update instructions before next turn",
+                  summary: "Context revision 2",
+                  status: "queued",
+                  createdAt: "2026-04-10T10:12:00.000Z",
+                  updatedAt: "2026-04-10T10:12:00.000Z",
+                },
+                ...record.snapshot.queuedMessages,
+              ],
+            };
+          }
+          queueMicrotask(() =>
+            emitSurfaceSync({
+              reason: "surface.updated",
+              target: cloneTarget(target),
+              snapshot: structuredClone(record.snapshot),
+            }),
+          );
+          return {
+            ok: true,
+            target: cloneTarget(target),
+            snapshot: structuredClone(record.snapshot),
+          };
+        },
         setSurfaceModel: async ({ target, provider, model }) => {
           modelUpdates.push({ target: cloneTarget(target), model });
           const record = getSurfaceRecord(target.surfacePiSessionId);
@@ -2227,6 +2262,37 @@ describe("createChatRuntime", () => {
 
     activeTurn.resolve({ assistantText: "Active turn done" });
     await activePrompt;
+
+    runtime.dispose();
+  });
+
+  it("queues and cancels prompt refresh control items through the surface controller", async () => {
+    const session = createSummary("session-1", "Parser", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [userMessage("Initial"), assistantMessage("Ready")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    expect(await controller.queuePromptRefresh()).toBe(true);
+    expect(controller.queuedPrompts.map((prompt) => [prompt.kind, prompt.text])).toEqual([
+      ["prompt_refresh", "Update instructions before next turn"],
+    ]);
+    const refresh = controller.queuedPrompts[0];
+    expect(refresh).toBeDefined();
+    if (!refresh) return;
+
+    expect(await controller.deleteQueuedPrompt(refresh.id)).toBe(true);
+    expect(controller.queuedPrompts).toEqual([]);
 
     runtime.dispose();
   });

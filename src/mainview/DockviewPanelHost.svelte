@@ -69,6 +69,9 @@
       ? streamMessage
       : undefined,
   );
+  const queuedPromptRefresh = $derived(
+    queuedMessages.find((message) => message.kind === "prompt_refresh") ?? null,
+  );
 
   function syncSurfaceState() {
     if (!controller) {
@@ -178,7 +181,20 @@
   <section class="dockview-chat-panel" class:has-prompt-banner={controller.promptBinding?.stale} data-testid="workspace-pane">
     {#if controller.promptBinding?.stale}
       <div class="prompt-stale-banner" role="status">
-        This session is using older instructions than the current Context settings.
+        <span>
+          {queuedPromptRefresh
+            ? "Context update queued for this surface."
+            : "This surface is using older instructions than the current Context settings."}
+        </span>
+        {#if queuedPromptRefresh}
+          <button type="button" onclick={() => void controller.deleteQueuedPrompt(queuedPromptRefresh.id)}>
+            Cancel update
+          </button>
+        {:else}
+          <button type="button" onclick={() => void controller.queuePromptRefresh()}>
+            Update for next turn
+          </button>
+        {/if}
       </div>
     {/if}
     <ChatTranscript
@@ -243,11 +259,35 @@
   }
 
   .prompt-stale-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     padding: 0.45rem 0.75rem;
     border-bottom: 1px solid color-mix(in oklab, var(--ui-warning-border, var(--ui-border-soft)) 84%, transparent);
     background: color-mix(in oklab, var(--ui-warning-surface, var(--ui-surface-subtle)) 88%, transparent);
     color: var(--ui-text-secondary);
     font-size: var(--text-xs);
+  }
+
+  .prompt-stale-banner span {
+    min-width: 0;
+  }
+
+  .prompt-stale-banner button {
+    flex: 0 0 auto;
+    border: 1px solid color-mix(in oklab, var(--ui-warning-border, var(--ui-border-soft)) 82%, transparent);
+    border-radius: 0.25rem;
+    background: var(--ui-surface);
+    color: var(--ui-text-primary);
+    font: inherit;
+    font-weight: 700;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .prompt-stale-banner button:hover {
+    border-color: var(--ui-border-strong);
+    background: var(--ui-surface-hover);
   }
 
   .dockview-empty-panel {

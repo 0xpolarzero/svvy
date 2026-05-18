@@ -177,7 +177,7 @@ export interface SendPromptResponse {
 }
 
 export type QueuedSurfaceMessageStatus = "queued" | "steering" | "dispatching";
-export type QueuedSurfaceMessageKind = "user_message" | "handler_handoff";
+export type QueuedSurfaceMessageKind = "user_message" | "handler_handoff" | "prompt_refresh";
 
 export interface QueuedSurfaceMessage {
   id: string;
@@ -196,6 +196,10 @@ export interface QueuedSurfaceMessage {
 export interface QueuedSurfaceMessageRequest {
   target: PromptTarget;
   queuedMessageId: string;
+}
+
+export interface QueuePromptRefreshRequest {
+  target: PromptTarget;
 }
 
 export interface ReorderQueuedSurfaceMessageRequest extends QueuedSurfaceMessageRequest {
@@ -1481,6 +1485,10 @@ export interface ChatRPCSchema {
       };
       steerQueuedSurfaceMessage: {
         params: WorkspaceScoped<QueuedSurfaceMessageRequest>;
+        response: SurfaceMutationResponse;
+      };
+      queuePromptRefresh: {
+        params: WorkspaceScoped<QueuePromptRefreshRequest>;
         response: SurfaceMutationResponse;
       };
       setSurfaceModel: {

@@ -794,14 +794,33 @@ The semantic diff should group changes by:
 
 ## Update For Next Turn
 
-`Update for next turn` binds the surface to the latest prompt revision.
+`Update for next turn` binds the surface to the latest prompt revision through the same durable
+surface queue used for user follow-up messages and handler handoffs.
+
+The queued item kind is `prompt_refresh`.
+
+`prompt_refresh` is a surface-local control item:
+
+- it belongs to one `surfacePiSessionId`
+- it is ordered with other surface queue items
+- it does not send text to pi
+- it does not create transcript content
+- it does not write prompt history
+- delivery means the prompt binding was applied
 
 Rules:
 
 - if the surface has an active prompt, the update is queued and applies after the active turn completes
-- the next user turn uses the latest context library composition
+- if the surface is idle, the same queue runner claims and applies the update before later queue work
+- if user messages or handler handoffs are already queued, `prompt_refresh` runs in its queue order before later prompt-bearing items
+- the next user turn or handler handoff delivered after the refresh uses the latest context library composition
 - the update records a structured lifecycle event
 - the UI warning clears after the binding update if the resolved prompt hash also matches
+
+The visible surface identity, transcript, structured turns, thread state, workflow state, and queued
+items stay attached to the same `surfacePiSessionId`. If pi requires a fresh internal managed session
+to load a new `systemPrompt`, `svvy` recreates and rebinds that managed runtime behind the same
+product surface.
 
 Lifecycle event:
 
@@ -822,6 +841,10 @@ The event may render as collapsible metadata:
 ```text
 Context settings updated from rev A to rev B.
 ```
+
+While a `prompt_refresh` item is queued, the stale-context warning remains sticky at the top of the
+surface and changes its action from `Update for next turn` to `Cancel update`. Cancelling the queued
+refresh leaves the stale binding intact and shows the warning again.
 
 ## Keep Current
 

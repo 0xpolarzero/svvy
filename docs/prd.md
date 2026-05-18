@@ -612,7 +612,7 @@ request. A surface may keep streaming with zero, one, or many attached panels, a
 mid-stream renders the committed transcript, pending user message, and current assistant stream from
 the surface snapshot.
 
-Queued follow-up messages are structured product state, not committed transcript history until they are delivered as the next real user message for the same `surfacePiSessionId`. If the user submits from a composer while the target surface is already running, `svvy` queues that message for the same surface, keeps the active turn undisturbed, and starts the next normal turn only after the current turn settles or is cancelled. Ordinary composer submit is follow-up queueing; the explicit queued-row `Steer` action is the separate control for pi/Codex-style steering at the next safe active-turn boundary. A steered row remains visible in a locked state until pi accepts it into the active turn or `svvy` restores it after rejection. The queued message survives panel changes and duplicated panel views because it belongs to the surface, not to a Dockview panel.
+Queued surface work is structured product state, not committed transcript history until a prompt-bearing item is delivered as the next real user message for the same `surfacePiSessionId`. If the user submits from a composer while the target surface is already running, `svvy` queues that message for the same surface, keeps the active turn undisturbed, and starts the next normal turn only after the current turn settles or is cancelled. Ordinary composer submit is follow-up queueing; the explicit queued-row `Steer` action is the separate control for pi/Codex-style steering at the next safe active-turn boundary. A steered row remains visible in a locked state until pi accepts it into the active turn or `svvy` restores it after rejection. Handler handoffs and prompt-refresh control work use the same surface queue so they are ordered with user messages. A `prompt_refresh` row updates the surface's prompt binding before later prompt-bearing items run, without creating transcript content or prompt history. Queued work survives panel changes and duplicated panel views because it belongs to the surface, not to a Dockview panel.
 
 ### Dockview Panel And Layout State
 
@@ -706,7 +706,7 @@ The Context pane appears in the sidebar below `Logs` and `Workflows`. It has `In
 
 All shipped prompt blocks are editable but not deletable. A shipped block that still matches its shipped snapshot is marked `builtin`; once its text or state differs, it is marked `edited`. These badges are compact, muted metadata rather than prominent status labels. Reset actions are scoped to the selected block, require confirmation, and restore that one block's shipped content, enabled state, scope, and actor settings without removing other records. The Context pane does not expose global reset-all controls for instructions or context packs. User-created custom blocks are deletable.
 
-New top-level sessions, handler threads, and workflow task agents always use the latest Context Library revision and current pi-discovered runtime standards. Existing surfaces keep their bound revision and bound standards content, and show a compact warning when the current Context Library, runtime standards hashes, or generated prompt output differs. The warning offers `View changes`, `Update for next turn`, and `Keep current`.
+New top-level sessions, handler threads, and workflow task agents always use the latest Context Library revision and current pi-discovered runtime standards. Existing surfaces keep their bound revision and bound standards content, and show a compact warning when the current Context Library, runtime standards hashes, or generated prompt output differs. The warning offers `View changes`, `Update for next turn`, and `Keep current`. `Update for next turn` creates a surface-local `prompt_refresh` queue item. If the surface is active, it waits behind active work; if the surface is idle, the queue runner applies it before later queued messages or handoffs. The visible surface identity and transcript stay continuous even if the internal managed pi runtime must be recreated to load the fresh `systemPrompt`.
 
 Top-level session titles are generated through an explicit durable title-generation flow. When the first real user turn starts in a top-level session, the app records a pending title-generation job and runs the configured `namer` agent concurrently with the orchestrator turn. The orchestrator must not wait for the namer, and the namer must not wait for the orchestrator response. The namer settings prompt is the title-generation instruction; the one-shot user prompt sent to that agent contains only the first user message context to title, not another naming instruction or extracted keyword list. While that job is pending or running, manual session rename is blocked for that session so the generated title and a user rename cannot race. The generated title is persisted once, auto-title generation stops after that first successful generation, and a manual rename permanently freezes future auto-titling for the session. Handler-thread titles are generated by the same configured `namer` agent from the orchestrator-supplied `thread.start` objective; the orchestrator does not receive or supply a separate handler title field. Workflow runs do not have a separate title concept and use workflow identity or entry metadata for labels.
 
@@ -883,15 +883,16 @@ Every user request that can start immediately goes through one orchestrator-cont
 
 1. load current workspace, session, thread, workflow-run, episode, artifact, Project CI, and wait context
 2. identify the target surface of the message
-3. compose that surface's actor prompt from its bound Context Library revision, generated prompt parts, pi-discovered runtime standards, and surface-specific prompt binding, then load it into pi's true `systemPrompt` channel before sending the new user message
-4. open a new turn for that surface
-5. let that surface choose and persist its top-level turn decision, then decide its next tool call or direct response
-6. execute tools through the correct runtime handler
-7. record commands, events, workflow-run state, artifacts, and wait state
-8. update structured state
-9. emit explicit workspace-state updates whenever durable summaries or read models change
-10. emit explicit surface-state updates whenever one live surface transcript or runtime snapshot changes
-11. render updated workspace and Dockview panel surfaces by joining those updates with panel bindings
+3. drain any earlier queued `prompt_refresh` control item for the target surface, refreshing the surface prompt binding before prompt-bearing work
+4. compose that surface's actor prompt from its bound Context Library revision, generated prompt parts, pi-discovered runtime standards, and surface-specific prompt binding, then load it into pi's true `systemPrompt` channel before sending the new user message
+5. open a new turn for that surface
+6. let that surface choose and persist its top-level turn decision, then decide its next tool call or direct response
+7. execute tools through the correct runtime handler
+8. record commands, events, workflow-run state, artifacts, and wait state
+9. update structured state
+10. emit explicit workspace-state updates whenever durable summaries or read models change
+11. emit explicit surface-state updates whenever one live surface transcript or runtime snapshot changes
+12. render updated workspace and Dockview panel surfaces by joining those updates with panel bindings
 
 Read APIs and renderer code must not compensate for missing lifecycle writes with polling, transcript parsing, or inferred repair logic.
 

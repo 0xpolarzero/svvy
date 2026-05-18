@@ -189,6 +189,7 @@ export interface ChatSurfaceController {
   deleteQueuedPrompt: (promptId: string) => Promise<boolean>;
   reorderQueuedPrompt: (promptId: string, beforePromptId: string | null) => Promise<boolean>;
   steerQueuedPrompt: (promptId: string) => Promise<boolean>;
+  queuePromptRefresh: () => Promise<boolean>;
   abort: () => Promise<void>;
   subscribe: (listener: ChatRuntimeListener) => () => void;
 }
@@ -269,6 +270,7 @@ export interface ChatRuntimeRpcClient {
     editQueuedSurfaceMessage: typeof rpc.request.editQueuedSurfaceMessage;
     reorderQueuedSurfaceMessage: typeof rpc.request.reorderQueuedSurfaceMessage;
     steerQueuedSurfaceMessage: typeof rpc.request.steerQueuedSurfaceMessage;
+    queuePromptRefresh: typeof rpc.request.queuePromptRefresh;
     setSurfaceModel: typeof rpc.request.setSurfaceModel;
     setSurfaceThoughtLevel: typeof rpc.request.setSurfaceThoughtLevel;
     cancelPrompt: typeof rpc.request.cancelPrompt;
@@ -729,6 +731,17 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       workspaceId: this.workspaceId,
       target: this.target,
       queuedMessageId: promptId,
+    });
+    if (response.snapshot) {
+      this.applySnapshot(response.snapshot);
+    }
+    return response.ok;
+  }
+
+  async queuePromptRefresh(): Promise<boolean> {
+    const response = await this.rpcClient.request.queuePromptRefresh({
+      workspaceId: this.workspaceId,
+      target: this.target,
     });
     if (response.snapshot) {
       this.applySnapshot(response.snapshot);

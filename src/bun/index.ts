@@ -1528,6 +1528,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return result;
       },
+      queuePromptRefresh: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const result = await runtime.catalog.queuePromptRefresh(input);
+        runtime.appLog.info("prompt", "Queued surface context update.", {
+          workspaceSessionId: input.target.workspaceSessionId,
+          surfacePiSessionId: input.target.surfacePiSessionId,
+          threadId: input.target.threadId,
+        });
+        return result;
+      },
       cancelPrompt: async (input): Promise<{ ok: boolean }> => {
         const runtime = getWorkspaceRuntime(input);
         const { target } = input;

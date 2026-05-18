@@ -336,6 +336,26 @@ function findManagedSurfaceBySession(
   return null;
 }
 
+function appendPromptLibraryMarker(catalog: WorkspaceSessionCatalog, marker: string): void {
+  const state = catalog.getPromptLibraryState();
+  const block = Object.values(state.instructionBlocks)[0];
+  if (!block) {
+    throw new Error("Expected default prompt library instruction block.");
+  }
+  catalog.updatePromptLibraryState({
+    ...state,
+    revision: state.revision + 1,
+    updatedAt: new Date().toISOString(),
+    instructionBlocks: {
+      ...state.instructionBlocks,
+      [block.id]: {
+        ...block,
+        body: `${block.body}\n\n${marker}`,
+      },
+    },
+  });
+}
+
 async function closeSurface(catalog: WorkspaceSessionCatalog, target: PromptTarget): Promise<void> {
   const closeSurfaceFn = (
     catalog as unknown as {
@@ -1387,6 +1407,139 @@ describe("WorkspaceSessionCatalog", () => {
         reopened.promptBinding?.currentExternalSourceHashes,
       );
       expect(reopened.externalContextSources[0]?.content).toContain("Initial.");
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("keeps a stale surface on its bound prompt until the user queues a context update", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Keep Stale Prompt" }, DEFAULTS);
+      const oldPrompt = getManagedSurface(catalog, created.target.surfacePiSessionId).systemPrompt;
+      const freshMarker = "Fresh prompt marker for explicit refresh.";
+      appendPromptLibraryMarker(catalog, freshMarker);
+
+      const reopened = await catalog.openSurface(created.target);
+      expect(reopened.promptBinding?.stale).toBe(true);
+
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string): Promise<void>;
+      };
+      const systemPromptsSeen: string[] = [];
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText !== "Use the existing prompt.") {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("")]);
+          return;
+        }
+        systemPromptsSeen.push(this.agent.state.systemPrompt ?? "");
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Done.")]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Use the existing prompt.")],
+          onEvent: () => {},
+        });
+
+        await waitFor(
+          () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+        expect(systemPromptsSeen.at(-1)).toContain(oldPrompt);
+        expect(systemPromptsSeen.at(-1)).not.toContain(freshMarker);
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("queues a prompt refresh and applies it before the next queued user message", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Queued Prompt Refresh" }, DEFAULTS);
+      const freshMarker = "Fresh prompt marker for queued refresh.";
+      appendPromptLibraryMarker(catalog, freshMarker);
+
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string): Promise<void>;
+      };
+      const firstPromptGate = createDeferred<void>();
+      const systemPromptsSeen: string[] = [];
+      let orchestratorPromptCount = 0;
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        if (promptText !== "Keep working." && promptText !== "Run after refresh.") {
+          appendMessagesToSession(this, [userMessage(promptText), assistantMessage("")]);
+          return;
+        }
+        orchestratorPromptCount += 1;
+        systemPromptsSeen.push(this.agent.state.systemPrompt ?? "");
+        if (orchestratorPromptCount === 1) {
+          await firstPromptGate.promise;
+        }
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Done.")]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Keep working.")],
+          onEvent: () => {},
+        });
+        await waitFor(
+          () =>
+            orchestratorPromptCount === 1 &&
+            getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+
+        const refresh = await catalog.queuePromptRefresh({ target: created.target });
+        expect(refresh.snapshot?.queuedMessages.map((message) => message.kind)).toEqual([
+          "prompt_refresh",
+        ]);
+
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Run after refresh.")],
+          onEvent: () => {},
+        });
+        expect(
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.map((message) => message.kind),
+        ).toEqual(["prompt_refresh", "user_message"]);
+
+        firstPromptGate.resolve();
+        await waitFor(() => orchestratorPromptCount === 2);
+        await waitFor(
+          () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+
+        expect(systemPromptsSeen[0]).not.toContain(freshMarker);
+        expect(systemPromptsSeen[1]).toContain(freshMarker);
+        const refreshed = await catalog.openSurface(created.target);
+        expect(refreshed.promptBinding?.stale).toBe(false);
+        expect(refreshed.queuedMessages).toEqual([]);
+      } finally {
+        firstPromptGate.resolve();
+        promptSpy.mockRestore();
+      }
     } finally {
       await catalog.dispose();
     }

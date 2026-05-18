@@ -271,6 +271,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
 - [x] Represent handler handoffs as typed orchestrator surface queue items, block `thread.handoff` until accept/reject, and return explicit handler tool errors for rejected handoffs. Commit(s): 7739c2c824
+- [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): pending current landing commit
 
 ## 14. Context Library And Context Packs
 
@@ -286,7 +287,7 @@ Current product decisions for this section are specified in `docs/specs/prompt-l
 - [x] Seed editable shipped context packs for code navigation, Smithers routing, Smithers supervision, workflow task boundary, and Project CI, with default-loaded actor switches, enable state, non-deletable builtin rows, app-global scope, and per-block reset behavior. Commit(s): `118fd39c9f`
 - [x] Render actor aggregate recipes for orchestrator, handler, and workflow task-agent prompts, linking instruction and context-pack rows back to their editable blocks and showing generated rows as scrollable code previews with editor links to generated context files. Commit(s): `118fd39c9f`
 - [ ] Store user-named Context Library snapshots plus durable surface bindings with resolved prompt hashes and runtime standards hashes so historical sessions, handler threads, and workflow task-agent attempts remain inspectable after app restart.
-- [ ] Add stale-prompt diff and action controls for existing orchestrator and handler-thread surfaces, including grouped semantic diff, raw text diff, update-for-next-turn, and keep-current actions.
+- [ ] Add stale-prompt diff and remaining action controls for existing orchestrator and handler-thread surfaces, including grouped semantic diff, raw text diff, and keep-current dismissal.
 - [ ] Route `thread.start({ context })` and handler-side `request_context({ keys })` through requestable Context Library context packs while preserving durable loaded context keys on handler threads.
 
 ## 15. Dedicated Workflow Inspector

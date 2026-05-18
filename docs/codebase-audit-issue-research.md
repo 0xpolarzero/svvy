@@ -45,7 +45,7 @@ For each issue, record:
 | AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Fixed |
 | AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Fixed |
 | AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Fixed |
-| AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Researched |
+| AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Fixed |
 | AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Researched |
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Researched |
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Researched |
@@ -796,9 +796,11 @@ Better change:
 
 ### AUD-017 - Prompt freshness is detected but not enforceably applied
 
+**Disposition:** Fixed. Stale prompt updates are now explicit queued surface work. The sticky stale-context warning creates a `prompt_refresh` queue item, the row is visible and cancellable, and the shared surface queue runner applies the fresh prompt binding before later user messages or handler handoffs run.
+
 **Impact:** High prompt correctness issue.
 
-**Precise issue:** Surfaces can detect stale prompt bindings and show a warning, but there is no complete path to apply an updated prompt binding before the next user turn. Existing managed-session recreation checks actor/provider/model/recreate flags, but not prompt drift. The UI banner is informational and lacks working `Update for next turn` behavior.
+**Precise issue:** Surfaces could detect stale prompt bindings and show a warning, but there was no complete path to apply an updated prompt binding before the next user turn. Existing managed-session recreation checked actor/provider/model/recreate flags, but not prompt drift. The UI banner was informational and lacked working `Update for next turn` behavior.
 
 Relevant code:
 
@@ -810,14 +812,14 @@ Relevant code:
 
 **Why this matters:** Users can see that a session prompt is stale, choose or expect freshness, and still send the next turn with the old prompt. This breaks prompt-library, runtime standards, generated tool/schema blocks, and actor instruction updates.
 
-**Best fix:**
+**Implemented resolution:**
 
-1. Persist prompt binding metadata per surface: source ids, revision ids, standards hashes, resolved prompt hash, and resolved text snapshot.
-2. Add an explicit surface prompt-binding update API.
-3. If a surface is idle, recreate or update the managed pi session before the next user turn.
-4. If a surface is active, queue the update for the next turn and display that state.
-5. Emit surface snapshots when prompt-library/runtime-standard changes affect stale status.
-6. Make dispatch refuse to silently use an old prompt after the user has requested an update.
+1. Added `prompt_refresh` as a typed surface queue item alongside `user_message` and `handler_handoff`.
+2. Added a backend `queuePromptRefresh` action used by the stale-context warning.
+3. The queue runner claims `prompt_refresh`, rebuilds the actor prompt from backend source of truth, recreates/rebinds the managed pi session behind the same product surface, marks the item delivered, and continues draining later queued work.
+4. Normal sends respect existing queued surface work, so a direct send cannot jump ahead of a queued prompt refresh.
+5. Prompt-library changes emit open-surface snapshots so stale status updates without reopening the pane.
+6. The renderer shows a sticky stale-context strip with `Update for next turn`, switches to `Cancel update` while the refresh item is queued, and renders the queued context update as a visible cancellable row.
 
 **Verification required:**
 

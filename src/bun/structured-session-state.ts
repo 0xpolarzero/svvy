@@ -373,7 +373,7 @@ export type StructuredSurfaceQueuedMessageStatus =
   | "delivered"
   | "cancelled";
 
-export type StructuredSurfaceQueueItemKind = "user_message" | "handler_handoff";
+export type StructuredSurfaceQueueItemKind = "user_message" | "handler_handoff" | "prompt_refresh";
 
 export interface StructuredSurfaceQueuedMessageRecord {
   id: string;
