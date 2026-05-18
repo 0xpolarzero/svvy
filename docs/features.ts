@@ -34,6 +34,14 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     sourceSpecs: ["docs/prd.md", "docs/specs/prompt-library.spec.md"],
   },
   {
+    id: "ambient-agent-resources",
+    name: "Ambient Agent Resources",
+    status: "in-progress",
+    summary:
+      "Defines provider-neutral ambient coding-agent resource categories for callable capabilities, executable extensions and packages, skills, prompt templates, commands, hooks, UI resources, provider/model adapters, credentials, execution policy, and runtime state; preserves plain runtime standards such as `AGENTS.md` and `CLAUDE.md` as visible prompt context while keeping behavior-changing ambient resources disabled by default; and requires users to opt in by settings-scoped host, workspace, actor class, category, and source before those resources can affect prompts, generated API declarations, command routing, UI, provider/auth behavior, or execution policy.",
+    sourceSpecs: ["docs/prd.md", "docs/specs/ambient-agent-resources.spec.md"],
+  },
+  {
     id: "artifacts-panel",
     name: "Artifacts Projection",
     status: "shipped",

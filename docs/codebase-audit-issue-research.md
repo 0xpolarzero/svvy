@@ -47,7 +47,7 @@ For each issue, record:
 | AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Fixed |
 | AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Fixed |
 | AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Fixed |
-| AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Researched |
+| AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Adopted |
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Researched |
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Researched |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Researched |
@@ -871,32 +871,36 @@ Relevant code:
 
 ### AUD-019 - Ambient pi extension tools can leak into orchestrator and handler sessions
 
+**Decision:** Adopted for implementation as a provider-neutral Ambient Agent Resources feature. The product should not simply delete all native host resources; behavior-changing ambient resources are disabled by default and can be explicitly enabled through settings by host, workspace, actor class, category, and source. See `docs/specs/ambient-agent-resources.spec.md`.
+
 **Impact:** High capability-isolation and determinism issue.
 
-**Precise issue:** Workflow task agents disable pi extension discovery, but orchestrator and handler resource loaders do not pass `noExtensions: true`. The custom tool list suppresses built-ins, but ambient workspace/user pi extensions can still be discovered by pi.
+**Precise issue:** Workflow task agents disable pi extension discovery, but orchestrator and handler resource loaders do not pass `noExtensions: true`. The custom tool list suppresses built-ins, but ambient workspace/user pi extensions can still be discovered by pi. The broader issue is not limited to extension tools: pi and other coding-agent hosts can discover skills, prompt templates, commands, hooks, themes, packages, provider adapters, credentials, and execution-policy settings that can change the actor's effective prompt, callable surface, command behavior, UI behavior, provider behavior, auth path, or runtime policy.
 
 Relevant code:
 
-- `src/bun/session-catalog.ts`: orchestrator and handler sessions use `DefaultResourceLoader` with prompt overrides and custom tools, but without `noExtensions: true`.
-- `src/bun/workflow-task-agent.ts`: task agents already pass `noExtensions: true` and have regression coverage.
-- pi reference behavior: default resource loading can discover `.pi/extensions`.
+- `src/bun/session-catalog.ts`: orchestrator and handler sessions use `DefaultResourceLoader` with prompt overrides and custom tools, but without `noExtensions`, `noSkills`, `noPromptTemplates`, or `noThemes`.
+- `src/bun/workflow-task-agent.ts`: task agents already pass `noExtensions: true` and have regression coverage, but still need the broader default-off policy for skills, prompt templates, themes, and equivalent future host resources.
+- pi reference behavior: default resource loading can discover `.pi/extensions`, `.pi/skills`, `.agents/skills`, `.pi/prompts`, `.pi/themes`, package resources, global agent-dir resources, and settings-provided resource paths.
 
-**Why this matters:** The actor contract says svvy actors receive the generated callable API, not arbitrary ambient pi extensions. Extension leakage weakens capability isolation and makes behavior dependent on local user/workspace files.
+**Why this matters:** The actor contract says svvy actors receive the generated callable API and prompt context selected by svvy, not arbitrary ambient host resources. Ambient resource leakage weakens capability isolation and makes behavior dependent on local user/workspace/global host files.
 
 **Best fix:**
 
-1. Pass `noExtensions: true` for orchestrator and handler resource loaders.
-2. Keep explicit svvy tool registration as the only source of actor tools.
-3. Add active-tool assertions for orchestrator, handler, and task-agent sessions.
+1. Add provider-neutral Ambient Agent Resources settings with all behavior-changing ambient resource categories disabled by default.
+2. Preserve pi-discovered `AGENTS.md` and `CLAUDE.md` runtime standards as visible prompt context, with source paths and hashes.
+3. Continue ignoring pi `SYSTEM.md` and `APPEND_SYSTEM.md` prompt replacement/append files in favor of svvy's Context Library and generated prompt parts.
+4. For pi, pass `noExtensions`, `noSkills`, `noPromptTemplates`, and `noThemes` by default for orchestrator, handler-thread, and workflow task-agent loaders, then opt in only the enabled category/source/actor set through explicit loader paths or filters.
+5. Keep generated actor-specific declarations as the only way callable ambient resources become visible to an actor.
 
 **Verification required:**
 
-- Create a fixture `.pi/extensions/leak.ts` tool.
-- Create/open orchestrator and handler sessions; assert leaked extension is absent.
-- Assert active tool names exactly match the generated/allowed svvy tool set.
-- Preserve existing task-agent no-extension regression test.
+- Create fixtures for `.pi/extensions`, `.pi/skills`, `.agents/skills`, `.pi/prompts`, `.pi/themes`, package resources, and settings-provided resource paths.
+- Create/open orchestrator, handler, and workflow task-agent sessions with default settings; assert ambient resources do not affect active tools, generated prompt previews, command routing, UI resources, provider/auth behavior, or execution policy.
+- Enable a specific resource category/source/actor and assert it appears only in the selected actor scope.
+- Assert active tool names exactly match the generated/allowed svvy tool set plus explicitly enabled ambient callable resources.
 
-**Documentation impact:** None if implementing current actor-surface contract.
+**Documentation impact:** Added `docs/specs/ambient-agent-resources.spec.md`; update PRD, feature inventory, and progress tracker with the adopted settings-gated design.
 
 **Confidence:** High from source and pi behavior. Dynamic reproduction was not run in the audit.
 

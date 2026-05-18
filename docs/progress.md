@@ -290,6 +290,14 @@ Current product decisions for this section are specified in `docs/specs/prompt-l
 - [ ] Add stale-prompt diff and remaining action controls for existing orchestrator and handler-thread surfaces, including grouped semantic diff, raw text diff, and keep-current dismissal.
 - [ ] Route `thread.start({ context })` and handler-side `request_context({ keys })` through requestable Context Library context packs while preserving durable loaded context keys on handler threads.
 
+## 14A. Ambient Agent Resources
+
+Current product decisions for this section are specified in `docs/specs/ambient-agent-resources.spec.md`.
+
+- [ ] Add provider-neutral Ambient Agent Resources settings that default behavior-changing coding-agent host resources off, preserve visible runtime standards, and let the user opt in by host, workspace, actor class, category, and source for extensions/packages, skills, prompt templates, commands, hooks, UI resources, provider/model adapters, credentials, and execution-policy resources.
+- [ ] Implement the pi adapter so orchestrator, handler-thread, and workflow task-agent loaders preserve `AGENTS.md`/`CLAUDE.md`, ignore `SYSTEM.md`/`APPEND_SYSTEM.md`, and load extensions, skills, prompt templates, themes, package resources, slash commands, hooks, provider adapters, and related settings only when enabled for the exact actor/category/source.
+- [ ] Reflect enabled ambient callable resources in actor-specific generated API declarations, enabled prompt-affecting resources in prompt previews and prompt freshness hashes, and enabled command resources in product command routing without hidden tools or invisible prompt mutation.
+
 ## 15. Dedicated Workflow Inspector
 
 Current product decisions for this section are specified in `docs/specs/workflow-inspector.spec.md`.

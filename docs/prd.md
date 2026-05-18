@@ -95,6 +95,8 @@ Before any target surface runs a turn through pi:
 - each surface must receive only the generated tool declarations and SDK blocks that are callable from that surface
 - each surface may receive compact knowledge about what another surface can do, but it must not receive that other surface's full callable API block just for awareness
 
+Ambient coding-agent resources are default-off unless explicitly enabled through `svvy` settings. This applies to pi resources such as extensions, skills, prompt templates, themes, packages, slash commands, hooks, provider adapters, credentials, and execution-policy settings, and to equivalent resources exposed by other coding-agent hosts. `svvy` preserves plain runtime standards such as pi-discovered `AGENTS.md` and `CLAUDE.md` as visible prompt context, but behavior-changing ambient resources must be enabled by category, source, host, workspace, and actor class before they can affect prompts, tools, commands, UI, provider behavior, auth, or execution policy. Enabled callable resources must still appear in the actor-specific generated API block for the exact actor that may call them.
+
 The Context Library is the user-facing source of reusable prompt material. It contains editable instruction blocks, editable context packs, actor recipes, generated prompt-part references, and app-global or workspace-scoped activation rules. The Context pane also shows pi-discovered runtime standards sources in actor generated-context previews so users can see the `AGENTS.md` and `CLAUDE.md` content that reached the agent. New sessions, handler threads, and workflow task agents bind to the latest Context Library revision and current runtime standards hashes. Existing surfaces keep their bound revision and bound standards content until the user explicitly updates them for a later turn.
 
 The actor-specific capability split is:
@@ -103,7 +105,7 @@ The actor-specific capability split is:
 - a handler-thread prompt receives `smithers.*`, `request_context`, `thread.handoff`, `thread.current`, `wait`, direct tools, and `execute_typescript` for typed composition, but it does not receive `thread.start` in the default adopted model
 - orchestrator and handler prompts receive `runtime.current`, `thread.list`, and `thread.handoffs` so runtime binding, delegated-thread state, and durable handoff episodes are read through focused tools instead of prompt stuffing
 - a workflow-task-agent prompt receives only task-local instructions and task-local callable declarations; in the default adopted model it receives task-local direct tools plus `execute_typescript`, and not `thread.start`, `thread.handoff`, `wait`, or `smithers.*`
-- a workflow-task-agent runtime must not load ambient pi built-in tools or workspace-discovered extension tools that would widen that callable surface beyond the explicit task-local tool set
+- a workflow-task-agent runtime must not load ambient pi built-in tools, extensions, skills, prompt templates, themes, commands, hooks, provider adapters, or equivalent host resources that would widen that callable or prompt surface beyond the explicit task-local contract unless the user enables that exact resource category and source for workflow task agents
 - if `svvy` later adopts nested delegation or additional actor classes, those capabilities must be added explicitly rather than leaked through one shared global prompt surface
 
 ### 3. Handler Threads Are The Delegation Unit
