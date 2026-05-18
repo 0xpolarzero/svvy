@@ -16,6 +16,7 @@
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
   import PromptLibrarySnapshotControls from "./PromptLibrarySnapshotControls.svelte";
   import type { ChatRuntime } from "./chat-runtime";
+  import type { WorkspaceTabInfo } from "../shared/workspace-contract";
   import type { WorkspaceDockviewPanelState } from "./pane-layout";
   import { getSurfaceDisplayTitle } from "./surface-title";
 
@@ -29,8 +30,13 @@
     dockviewLayout: SerializedDockview | null;
     focusedPanelId: string | null;
     layoutEpoch?: number;
+    openingWorkspace?: boolean;
+    openWorkspaceError?: string | null;
+    recentWorkspaces?: WorkspaceTabInfo[];
     onFocusPanel: (panelId: string) => void;
     onOpenModelPicker: (panelId: string) => void;
+    onOpenWorkspace?: () => void;
+    onOpenWorkspaceInNewTab?: () => void;
     onPersistDockview: (dockview: SerializedDockview | null, focusedPanelId: string | null) => void;
   };
 
@@ -40,8 +46,13 @@
     dockviewLayout,
     focusedPanelId,
     layoutEpoch = 0,
+    openingWorkspace = false,
+    openWorkspaceError = null,
+    recentWorkspaces = [],
     onFocusPanel,
     onOpenModelPicker,
+    onOpenWorkspace,
+    onOpenWorkspaceInNewTab,
     onPersistDockview,
   }: Props = $props();
   let hostElement = $state<HTMLDivElement | null>(null);
@@ -73,6 +84,11 @@
           runtime,
           panelId: this.panelId,
           onOpenModelPicker,
+          openingWorkspace,
+          openWorkspaceError,
+          recentWorkspaces,
+          onOpenWorkspace,
+          onOpenWorkspaceInNewTab,
         },
       }) as Record<string, unknown>;
     }
@@ -86,6 +102,11 @@
           runtime,
           panelId: this.panelId,
           onOpenModelPicker,
+          openingWorkspace,
+          openWorkspaceError,
+          recentWorkspaces,
+          onOpenWorkspace,
+          onOpenWorkspaceInNewTab,
         },
       }) as Record<string, unknown>;
     }
@@ -201,6 +222,7 @@
       case "saved-workflow-library":
       case "prompt-library":
       case "app-logs":
+      case "open-workspace":
         return null;
       case "command":
         return "command";

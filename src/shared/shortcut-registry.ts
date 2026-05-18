@@ -5,6 +5,9 @@ export type ShortcutInputPolicy = "suppress-while-typing" | "allow-while-typing"
 export type ShortcutActionId =
   | "commandPalette.open"
   | "quickOpen.open"
+  | "workspace.open"
+  | "workspace.newTab"
+  | "workspace.openInNewTab"
   | "session.new"
   | "session.dumb"
   | "sidebar.toggle"
@@ -20,6 +23,9 @@ export type AppMenuAction = Extract<
   ShortcutActionId,
   | "commandPalette.open"
   | "quickOpen.open"
+  | "workspace.open"
+  | "workspace.newTab"
+  | "workspace.openInNewTab"
   | "session.new"
   | "session.dumb"
   | "sidebar.toggle"
@@ -62,6 +68,39 @@ export const SHORTCUTS = {
     scope: "global",
     inputPolicy: "allow-while-typing",
     commandActionId: "quickOpen.open",
+  },
+  "workspace.open": {
+    id: "workspace.open",
+    label: "Open Workspace...",
+    hotkey: "Mod+O",
+    readableShortcut: "Cmd+O",
+    compactShortcut: "⌘O",
+    accelerator: "CommandOrControl+O",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+    commandActionId: "workspace.open",
+  },
+  "workspace.newTab": {
+    id: "workspace.newTab",
+    label: "New Tab",
+    hotkey: "Mod+T",
+    readableShortcut: "Cmd+T",
+    compactShortcut: "⌘T",
+    accelerator: "CommandOrControl+T",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+    commandActionId: "workspace.newTab",
+  },
+  "workspace.openInNewTab": {
+    id: "workspace.openInNewTab",
+    label: "Open Workspace in New Tab...",
+    hotkey: "Mod+Shift+O",
+    readableShortcut: "Cmd+Shift+O",
+    compactShortcut: "⌘⇧O",
+    accelerator: "CommandOrControl+Shift+O",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+    commandActionId: "workspace.openInNewTab",
   },
   "session.new": {
     id: "session.new",

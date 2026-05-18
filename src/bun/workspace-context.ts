@@ -1,5 +1,5 @@
-import { realpathSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, realpathSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 export function resolveWorkspaceCwd(): string {
   return canonicalizeWorkspaceCwd(
@@ -14,4 +14,10 @@ export function canonicalizeWorkspaceCwd(cwd: string): string {
     throw new Error(`Workspace path is not a directory: ${cwd}`);
   }
   return realpathSync.native(resolved);
+}
+
+export function getDefaultWorkspaceCwd(appDataDir: string): string {
+  const defaultWorkspaceDir = join(appDataDir, "default-workspace");
+  mkdirSync(defaultWorkspaceDir, { recursive: true });
+  return canonicalizeWorkspaceCwd(defaultWorkspaceDir);
 }

@@ -24,6 +24,7 @@ import {
   getShortcut,
   getShortcutHotkey,
   getShortcutReadable,
+  isAppMenuAction,
   shouldShortcutIgnoreInputs,
 } from "../shared/shortcut-registry";
 
@@ -185,6 +186,33 @@ describe("command palette shortcuts", () => {
     expect(getShortcutHotkey("quickOpen.open")).toBe("Mod+P");
     expect(getShortcutReadable("quickOpen.open")).toBe("Cmd+P");
     expect(getShortcut("quickOpen.open").inputPolicy).toBe("allow-while-typing");
+    expect(getShortcutHotkey("workspace.open")).toBe("Mod+O");
+    expect(getShortcutReadable("workspace.open")).toBe("Cmd+O");
+    expect(getShortcut("workspace.open")).toMatchObject({
+      label: "Open Workspace...",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+      accelerator: "CommandOrControl+O",
+      commandActionId: "workspace.open",
+    });
+    expect(getShortcutHotkey("workspace.newTab")).toBe("Mod+T");
+    expect(getShortcutReadable("workspace.newTab")).toBe("Cmd+T");
+    expect(getShortcut("workspace.newTab")).toMatchObject({
+      label: "New Tab",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+      accelerator: "CommandOrControl+T",
+      commandActionId: "workspace.newTab",
+    });
+    expect(getShortcutHotkey("workspace.openInNewTab")).toBe("Mod+Shift+O");
+    expect(getShortcutReadable("workspace.openInNewTab")).toBe("Cmd+Shift+O");
+    expect(getShortcut("workspace.openInNewTab")).toMatchObject({
+      label: "Open Workspace in New Tab...",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+      accelerator: "CommandOrControl+Shift+O",
+      commandActionId: "workspace.openInNewTab",
+    });
     expect(getShortcutHotkey("surface.logs.open")).toBe("Mod+Shift+1");
     expect(getShortcutReadable("surface.workflows.open")).toBe("Cmd+Shift+2");
     expect(getShortcut("surface.context.open")).toMatchObject({
@@ -196,12 +224,21 @@ describe("command palette shortcuts", () => {
   it("keeps app launcher and shell command chords active while text inputs are focused", () => {
     expect(shouldShortcutIgnoreInputs("commandPalette.open")).toBe(false);
     expect(shouldShortcutIgnoreInputs("quickOpen.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("workspace.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("workspace.newTab")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("workspace.openInNewTab")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.new")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.dumb")).toBe(false);
     expect(shouldShortcutIgnoreInputs("sidebar.toggle")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.logs.open")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.workflows.open")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.context.open")).toBe(false);
+  });
+
+  it("exposes workspace actions through the typed app menu action path", () => {
+    expect(isAppMenuAction("workspace.open")).toBe(true);
+    expect(isAppMenuAction("workspace.newTab")).toBe(true);
+    expect(isAppMenuAction("workspace.openInNewTab")).toBe(true);
   });
 
   it("uses the VS Code-style command prefix to derive live palette mode", () => {
@@ -270,8 +307,9 @@ describe("command palette shortcuts", () => {
     const groups = groupCommandActions(actions);
 
     expect(getCommandActionCategoryLabel("project-ci")).toBe("Project CI");
-    expect(actions[0]?.id).toBe("session.new");
+    expect(actions[0]?.id).toBe("workspace.open");
     expect(groups.map((group) => group.category)).toEqual([
+      "workspace",
       "session",
       "workflow-library",
       "project-ci",
@@ -349,6 +387,9 @@ describe("buildCommandRegistry", () => {
     });
 
     expect(actions.map((action) => action.id)).toContain("session.new");
+    expect(actions.map((action) => action.id)).toContain("workspace.open");
+    expect(actions.map((action) => action.id)).toContain("workspace.newTab");
+    expect(actions.map((action) => action.id)).toContain("workspace.openInNewTab");
     expect(actions.map((action) => action.id)).toContain("session.dumb");
     expect(actions.map((action) => action.id)).toContain("settings.open");
     expect(actions.map((action) => action.id)).toContain("workflow-library.open");
@@ -373,6 +414,11 @@ describe("buildCommandRegistry", () => {
     ).toBe("Workflow Task-Agent");
     expect(actions.find((action) => action.id === "session.pin.session-2")?.availability.kind).toBe(
       "disabled",
+    );
+    expect(actions.find((action) => action.id === "workspace.open")?.shortcut).toBe("Cmd+O");
+    expect(actions.find((action) => action.id === "workspace.newTab")?.shortcut).toBe("Cmd+T");
+    expect(actions.find((action) => action.id === "workspace.openInNewTab")?.shortcut).toBe(
+      "Cmd+Shift+O",
     );
   });
 
@@ -445,6 +491,43 @@ describe("executeCommandAction", () => {
       "create:pane-d",
     ]);
     expect(runtime.createRequests.at(-1)).toEqual({ mode: "dumb" });
+  });
+
+  it("routes workspace command actions through shell callbacks", async () => {
+    const runtime = createRuntime();
+    const shellActions: string[] = [];
+    const actions = buildCommandRegistry({
+      sessions: [],
+      focusedSessionId: undefined,
+    });
+
+    await executeCommandAction({
+      runtime,
+      action: actions.find((action) => action.id === "workspace.open")!,
+      paneId: "pane-a",
+      onWorkspaceAction: (action) => {
+        shellActions.push(action);
+      },
+    });
+    await executeCommandAction({
+      runtime,
+      action: actions.find((action) => action.id === "workspace.newTab")!,
+      paneId: "pane-a",
+      onWorkspaceAction: (action) => {
+        shellActions.push(action);
+      },
+    });
+    await executeCommandAction({
+      runtime,
+      action: actions.find((action) => action.id === "workspace.openInNewTab")!,
+      paneId: "pane-a",
+      onWorkspaceAction: (action) => {
+        shellActions.push(action);
+      },
+    });
+
+    expect(shellActions).toEqual(["open", "new-tab", "open-in-new-tab"]);
+    expect(runtime.calls).toEqual([]);
   });
 
   it("routes pane actions to focused pane layout operations", async () => {

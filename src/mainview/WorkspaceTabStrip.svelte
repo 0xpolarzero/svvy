@@ -18,34 +18,34 @@
 
   type Props = {
     tabs: WorkspaceTabStripItem[];
-    activeWorkspaceId: string | null;
+    activeWorkspaceTabId: string | null;
     openingWorkspace?: boolean;
-    onSelectWorkspace: (workspaceId: string) => void;
-    onCloseWorkspace: (workspaceId: string) => void;
-    onOpenWorkspace: () => void;
-    onReorderWorkspace?: (workspaceId: string, beforeWorkspaceId: string | null) => void;
+    onSelectWorkspace: (workspaceTabId: string) => void;
+    onCloseWorkspace: (workspaceTabId: string) => void;
+    onNewWorkspaceTab: () => void;
+    onReorderWorkspace?: (workspaceTabId: string, beforeWorkspaceTabId: string | null) => void;
   };
 
   let {
     tabs,
-    activeWorkspaceId,
+    activeWorkspaceTabId,
     openingWorkspace = false,
     onSelectWorkspace,
     onCloseWorkspace,
-    onOpenWorkspace,
+    onNewWorkspaceTab,
     onReorderWorkspace,
   }: Props = $props();
 
   let tabsElement = $state<HTMLElement | null>(null);
   let tabDrag = $state<{
-    workspaceId: string;
+    workspaceTabId: string;
     pointerId: number;
     startX: number;
     didMove: boolean;
   } | null>(null);
-  let suppressClickWorkspaceId: string | null = null;
-  let draggedWorkspaceId = $state<string | null>(null);
-  let dropBeforeWorkspaceId = $state<string | null>(null);
+  let suppressClickWorkspaceTabId: string | null = null;
+  let draggedWorkspaceTabId = $state<string | null>(null);
+  let dropBeforeWorkspaceTabId = $state<string | null>(null);
   let pendingDragClientX: number | null = null;
   let dragAnimationFrame: number | null = null;
 
@@ -56,16 +56,16 @@
     if (!tabsElement) return null;
 
     const tabElements = Array.from(
-      tabsElement.querySelectorAll<HTMLElement>("[data-workspace-id]"),
+      tabsElement.querySelectorAll<HTMLElement>("[data-workspace-tab-id]"),
     );
     for (const tabElement of tabElements) {
-      if (tabElement.dataset.workspaceId === draggedWorkspaceId) {
+      if (tabElement.dataset.workspaceTabId === draggedWorkspaceTabId) {
         continue;
       }
 
       const bounds = tabElement.getBoundingClientRect();
       if (clientX < bounds.left + bounds.width / 2) {
-        return tabElement.dataset.workspaceId ?? null;
+        return tabElement.dataset.workspaceTabId ?? null;
       }
     }
 
@@ -81,17 +81,17 @@
 
   onDestroy(clearDragFrame);
 
-  function handlePointerDown(event: PointerEvent, workspaceId: string) {
+  function handlePointerDown(event: PointerEvent, workspaceTabId: string) {
     if (event.button !== 0 || !event.isPrimary) return;
     clearDragFrame();
     tabDrag = {
-      workspaceId,
+      workspaceTabId,
       pointerId: event.pointerId,
       startX: event.clientX,
       didMove: false,
     };
-    draggedWorkspaceId = null;
-    dropBeforeWorkspaceId = null;
+    draggedWorkspaceTabId = null;
+    dropBeforeWorkspaceTabId = null;
     (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId);
   }
 
@@ -102,14 +102,14 @@
     if (!didMove) return;
 
     if (!tabDrag.didMove) {
-      draggedWorkspaceId = tabDrag.workspaceId;
+      draggedWorkspaceTabId = tabDrag.workspaceTabId;
     }
-    const workspaceId = tabDrag.workspaceId;
+    const workspaceTabId = tabDrag.workspaceTabId;
     tabDrag = { ...tabDrag, didMove: true };
-    const beforeWorkspaceId = getDropTarget(clientX);
-    if (beforeWorkspaceId !== dropBeforeWorkspaceId) {
-      dropBeforeWorkspaceId = beforeWorkspaceId;
-      onReorderWorkspace?.(workspaceId, beforeWorkspaceId);
+    const beforeWorkspaceTabId = getDropTarget(clientX);
+    if (beforeWorkspaceTabId !== dropBeforeWorkspaceTabId) {
+      dropBeforeWorkspaceTabId = beforeWorkspaceTabId;
+      onReorderWorkspace?.(workspaceTabId, beforeWorkspaceTabId);
     }
   }
 
@@ -142,54 +142,54 @@
     clearDragFrame();
 
     const completedDrag = tabDrag.didMove;
-    const workspaceId = tabDrag.workspaceId;
+    const workspaceTabId = tabDrag.workspaceTabId;
     tabDrag = null;
-    draggedWorkspaceId = null;
-    dropBeforeWorkspaceId = null;
+    draggedWorkspaceTabId = null;
+    dropBeforeWorkspaceTabId = null;
     const target = event.currentTarget as HTMLButtonElement;
     if (target.hasPointerCapture(event.pointerId)) {
       target.releasePointerCapture(event.pointerId);
     }
 
     if (suppressClick && completedDrag) {
-      suppressClickWorkspaceId = workspaceId;
+      suppressClickWorkspaceTabId = workspaceTabId;
       window.setTimeout(() => {
-        if (suppressClickWorkspaceId === workspaceId) {
-          suppressClickWorkspaceId = null;
+        if (suppressClickWorkspaceTabId === workspaceTabId) {
+          suppressClickWorkspaceTabId = null;
         }
       });
       event.preventDefault();
     }
   }
 
-  function handleSelectWorkspace(workspaceId: string) {
-    if (suppressClickWorkspaceId === workspaceId) {
-      suppressClickWorkspaceId = null;
+  function handleSelectWorkspace(workspaceTabId: string) {
+    if (suppressClickWorkspaceTabId === workspaceTabId) {
+      suppressClickWorkspaceTabId = null;
       return;
     }
-    onSelectWorkspace(workspaceId);
+    onSelectWorkspace(workspaceTabId);
   }
 </script>
 
 <div class="workspace-tabs-strip electrobun-webkit-app-region-no-drag" aria-label="Workspace tabs">
   <div class="workspace-tabs-scroll electrobun-webkit-app-region-no-drag" role="list" bind:this={tabsElement}>
-    {#each tabs as tab (tab.workspace.workspaceId)}
+    {#each tabs as tab (tab.workspace.workspaceTabId)}
       <div
-        class={`workspace-tab electrobun-webkit-app-region-no-drag ${tab.workspace.workspaceId === activeWorkspaceId ? "active" : ""} ${tab.workspace.workspaceId === draggedWorkspaceId ? "dragging" : ""}`.trim()}
-        data-workspace-id={tab.workspace.workspaceId}
+        class={`workspace-tab electrobun-webkit-app-region-no-drag ${tab.workspace.workspaceTabId === activeWorkspaceTabId ? "active" : ""} ${tab.workspace.workspaceTabId === draggedWorkspaceTabId ? "dragging" : ""}`.trim()}
+        data-workspace-tab-id={tab.workspace.workspaceTabId}
         role="listitem"
         animate:flip={{ duration: 170 }}
       >
         <button
           class="workspace-tab-main electrobun-webkit-app-region-no-drag"
           type="button"
-          aria-current={tab.workspace.workspaceId === activeWorkspaceId ? "page" : undefined}
+          aria-current={tab.workspace.workspaceTabId === activeWorkspaceTabId ? "page" : undefined}
           aria-label={workspaceTabLabel(tab)}
-          onpointerdown={(event) => handlePointerDown(event, tab.workspace.workspaceId)}
+          onpointerdown={(event) => handlePointerDown(event, tab.workspace.workspaceTabId)}
           onpointermove={handlePointerMove}
           onpointerup={(event) => finishPointerDrag(event, true)}
           onpointercancel={(event) => finishPointerDrag(event, false)}
-          onclick={() => handleSelectWorkspace(tab.workspace.workspaceId)}
+          onclick={() => handleSelectWorkspace(tab.workspace.workspaceTabId)}
         >
           <span class="workspace-tab-label">{tab.workspace.workspaceLabel}</span>
           <span class="workspace-tab-counts" aria-label="Workspace status counts">
@@ -207,7 +207,7 @@
             class="workspace-tab-close electrobun-webkit-app-region-no-drag"
             type="button"
             aria-label={`Close ${tab.workspace.workspaceLabel}`}
-            onclick={() => onCloseWorkspace(tab.workspace.workspaceId)}
+            onclick={() => onCloseWorkspace(tab.workspace.workspaceTabId)}
           >
             <XIcon size={12} strokeWidth={2} aria-hidden="true" />
           </button>
@@ -215,13 +215,13 @@
       </div>
     {/each}
   </div>
-  <Tooltip class="electrobun-webkit-app-region-no-drag" label="Open workspace">
+  <Tooltip class="electrobun-webkit-app-region-no-drag" label="New tab">
     <button
       class="workspace-tab-add electrobun-webkit-app-region-no-drag"
       type="button"
-      aria-label="Open workspace"
+      aria-label="New tab"
       disabled={openingWorkspace}
-      onclick={onOpenWorkspace}
+      onclick={onNewWorkspaceTab}
     >
       <PlusIcon size={14} strokeWidth={2} aria-hidden="true" />
     </button>

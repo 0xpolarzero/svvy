@@ -4,6 +4,7 @@
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
   import AppLogsPane from "./AppLogsPane.svelte";
+  import OpenWorkspacePanel from "./OpenWorkspacePanel.svelte";
   import PromptLibraryPane from "./PromptLibraryPane.svelte";
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
@@ -14,6 +15,7 @@
   import type { ChatRuntime } from "./chat-runtime";
   import type { ChatSurfaceController } from "./chat-runtime";
   import type { QueuedPrompt } from "./chat-runtime";
+  import type { WorkspaceTabInfo } from "../shared/workspace-contract";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import { onDestroy, onMount } from "svelte";
   import { listModelComboboxOptions } from "./model-options";
@@ -22,9 +24,23 @@
     runtime: ChatRuntime;
     panelId: string;
     onOpenModelPicker: (panelId: string) => void;
+    openingWorkspace?: boolean;
+    openWorkspaceError?: string | null;
+    recentWorkspaces?: WorkspaceTabInfo[];
+    onOpenWorkspace?: () => void;
+    onOpenWorkspaceInNewTab?: () => void;
   };
 
-  let { runtime, panelId, onOpenModelPicker }: Props = $props();
+  let {
+    runtime,
+    panelId,
+    onOpenModelPicker,
+    openingWorkspace = false,
+    openWorkspaceError = null,
+    recentWorkspaces = [],
+    onOpenWorkspace,
+    onOpenWorkspaceInNewTab,
+  }: Props = $props();
   let controller = $state<ChatSurfaceController | null>(null);
   let pane = $state<ReturnType<ChatRuntime["getPane"]> | null>(null);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
@@ -148,6 +164,14 @@
   <PromptLibraryPane {runtime} {panelId} />
 {:else if pane?.target?.surface === "saved-workflow-library"}
   <SavedWorkflowLibraryPane {runtime} />
+{:else if pane?.target?.surface === "open-workspace"}
+  <OpenWorkspacePanel
+    {openingWorkspace}
+    errorMessage={openWorkspaceError}
+    {recentWorkspaces}
+    onOpenWorkspace={() => onOpenWorkspace?.()}
+    onOpenWorkspaceInNewTab={onOpenWorkspaceInNewTab ? () => onOpenWorkspaceInNewTab?.() : undefined}
+  />
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}
   <RelatedInspectorPane {runtime} target={pane.target} />
 {:else if controller}

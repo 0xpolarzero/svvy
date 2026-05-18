@@ -136,6 +136,10 @@ export interface AppLogsPaneTarget {
   surface: "app-logs";
 }
 
+export interface OpenWorkspacePaneTarget {
+  surface: "open-workspace";
+}
+
 export type StaticInspectorPaneTarget =
   | { workspaceSessionId: string; surface: "command"; commandId: string }
   | {
@@ -152,6 +156,7 @@ export type WorkspacePaneSurfaceTarget =
   | SavedWorkflowLibraryPaneTarget
   | PromptLibraryPaneTarget
   | AppLogsPaneTarget
+  | OpenWorkspacePaneTarget
   | StaticInspectorPaneTarget;
 
 export interface SendPromptRequest {
@@ -242,10 +247,13 @@ export interface AuthStateResponse {
   message?: string;
 }
 
+export type WorkspaceKind = "default" | "user";
+
 export interface WorkspaceInfoResponse {
   workspaceId: string;
   cwd: string;
   workspaceLabel: string;
+  kind: WorkspaceKind;
   branch?: string;
 }
 
@@ -270,12 +278,14 @@ export interface SwitchWorkspaceBranchResponse {
 }
 
 export interface WorkspaceTabInfo extends WorkspaceInfoResponse {
+  workspaceTabId: string;
   openedAt: string;
+  activeLayoutId?: WorkspaceLayoutSlotId;
 }
 
 export interface AppWorkspaceTabsState {
-  version: 3;
-  activeWorkspaceId: string | null;
+  version: 4;
+  activeWorkspaceTabId: string | null;
   tabs: WorkspaceTabInfo[];
   knownWorkspaces: WorkspaceTabInfo[];
 }
@@ -289,12 +299,16 @@ export interface AppWorkspaceUiRestoreState {
 }
 
 export interface SetWorkspaceUiRestoreRequest extends WorkspaceScopedRequest {
+  workspaceTabId?: string;
   state: AppWorkspaceUiRestoreState;
 }
 
+export type OpenWorkspacePlacement = "current-tab" | "new-tab";
+
 export interface OpenWorkspaceRequest {
   cwd?: string;
-  workspaceId?: string;
+  workspaceTabId?: string;
+  placement?: OpenWorkspacePlacement;
 }
 
 export interface OpenWorkspaceResponse {
@@ -1222,6 +1236,10 @@ export interface ChatRPCSchema {
         params: undefined;
         response: WorkspaceTabInfo[];
       };
+      getDefaultWorkspace: {
+        params: undefined;
+        response: WorkspaceInfoResponse;
+      };
       getAppWorkspaceTabs: {
         params: undefined;
         response: AppWorkspaceTabsState | null;
@@ -1231,7 +1249,7 @@ export interface ChatRPCSchema {
         response: WorkspaceMutationResponse;
       };
       getWorkspaceUiRestore: {
-        params: WorkspaceScopedRequest;
+        params: WorkspaceScopedRequest & { workspaceTabId?: string };
         response: AppWorkspaceUiRestoreState | null;
       };
       setWorkspaceUiRestore: {

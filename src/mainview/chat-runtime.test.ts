@@ -50,9 +50,11 @@ mock.module("electrobun/view", () => {
 
 type ReasoningEffort = ConversationSurfaceSnapshot["reasoningEffort"];
 const TEST_WORKSPACE_INFO: WorkspaceTabInfo = {
+  workspaceTabId: "workspace-tab-1",
   workspaceId: "/tmp/svvy#runtime-1",
   cwd: "/tmp/svvy",
   workspaceLabel: "svvy",
+  kind: "user",
   branch: "main",
   openedAt: "2026-04-10T10:00:00.000Z",
 };

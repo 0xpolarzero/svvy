@@ -1,9 +1,10 @@
 import { basename, join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type {
   AppLogUpdateMessage,
   SurfaceSyncMessage,
   WorkspaceInfoResponse,
+  WorkspaceKind,
   WorkspaceSyncMessage,
   WorkspaceTabInfo,
 } from "../shared/workspace-contract";
@@ -13,16 +14,18 @@ import { createSessionAgentSettingsStore } from "./session-agent-settings";
 import {
   getSvvySessionDir,
   getSvvyAgentDir,
+  getSvvyDataDir,
   WorkspaceSessionCatalog,
   type TitleGenerationLogEvent,
 } from "./session-catalog";
-import { canonicalizeWorkspaceCwd } from "./workspace-context";
+import { canonicalizeWorkspaceCwd, getDefaultWorkspaceCwd } from "./workspace-context";
 import { WorkspacePathIndex } from "./workspace-path-index";
 
 type WorkspaceRuntimeRegistryOptions = {
   initialCwd: string;
   openInitialWorkspace?: boolean;
   agentDir?: string;
+  appDataDir?: string;
   forwardBridgeLog?: (
     level: BridgeLogLevel,
     message: string,
@@ -36,13 +39,14 @@ type WorkspaceRuntimeRegistryOptions = {
 };
 
 type OpenWorkspaceOptions = {
-  workspaceId?: string;
+  kind?: WorkspaceKind;
 };
 
 export type WorkspaceRuntime = {
   workspaceId: string;
   cwd: string;
   label: string;
+  kind: WorkspaceKind;
   openedAt: string;
   catalog: WorkspaceSessionCatalog;
   pathIndex: WorkspacePathIndex;
@@ -54,6 +58,7 @@ export type WorkspaceRuntime = {
 };
 
 type RuntimeRecord = WorkspaceRuntime & {
+  refCount: number;
   unsubscribeAppLog: () => void;
 };
 
@@ -67,25 +72,38 @@ export class WorkspaceRuntimeRegistry {
     }
   >();
   private readonly agentDir: string;
+  private readonly appDataDir: string;
   private activeWorkspaceId: string | null = null;
 
   constructor(private readonly options: WorkspaceRuntimeRegistryOptions) {
     this.agentDir = options.agentDir ?? getSvvyAgentDir();
+    this.appDataDir = options.appDataDir ?? getSvvyDataDir();
     if (options.openInitialWorkspace) {
-      this.activeWorkspaceId = this.openWorkspace(options.initialCwd).workspaceId;
+      this.activeWorkspaceId = this.acquireWorkspace(options.initialCwd).workspaceId;
     }
   }
 
   openWorkspace(cwd: string, options: OpenWorkspaceOptions = {}): WorkspaceRuntime {
+    return this.acquireWorkspace(cwd, options);
+  }
+
+  acquireWorkspace(cwd: string, options: OpenWorkspaceOptions = {}): WorkspaceRuntime {
     const workspaceCwd = canonicalizeWorkspaceCwd(cwd);
-    const workspaceId = normalizeWorkspaceRuntimeId(workspaceCwd, options.workspaceId);
-    if (this.runtimes.has(workspaceId)) {
-      throw new Error(`Workspace is already open: ${workspaceId}`);
+    const workspaceId = normalizeWorkspaceRuntimeId(workspaceCwd);
+    const existing = this.runtimes.get(workspaceId);
+    if (existing) {
+      existing.refCount += 1;
+      this.activeWorkspaceId = workspaceId;
+      return existing;
     }
-    const runtime = this.createRuntime(workspaceId, workspaceCwd);
+    const runtime = this.createRuntime(workspaceId, workspaceCwd, options.kind ?? "user");
     this.runtimes.set(workspaceId, runtime);
     this.activeWorkspaceId = workspaceId;
     return runtime;
+  }
+
+  getDefaultWorkspace(): WorkspaceRuntime {
+    return this.acquireWorkspace(getDefaultWorkspaceCwd(this.appDataDir), { kind: "default" });
   }
 
   getRuntime(workspaceId: string): WorkspaceRuntime {
@@ -124,14 +142,27 @@ export class WorkspaceRuntimeRegistry {
   listOpenWorkspaces(): WorkspaceTabInfo[] {
     return Array.from(this.runtimes.values()).map((runtime) => ({
       ...runtime.getInfo(),
+      workspaceTabId: runtime.workspaceId,
       openedAt: runtime.openedAt,
     }));
   }
 
   async closeWorkspace(workspaceId: string): Promise<boolean> {
+    return this.releaseWorkspace(workspaceId);
+  }
+
+  async releaseWorkspace(workspaceId: string): Promise<boolean> {
     const runtime = this.runtimes.get(workspaceId);
     if (!runtime) {
       return false;
+    }
+
+    runtime.refCount -= 1;
+    if (runtime.refCount > 0) {
+      if (this.activeWorkspaceId === workspaceId) {
+        this.activeWorkspaceId = workspaceId;
+      }
+      return true;
     }
 
     this.runtimes.delete(workspaceId);
@@ -144,8 +175,8 @@ export class WorkspaceRuntimeRegistry {
     return true;
   }
 
-  private createRuntime(workspaceId: string, cwd: string): RuntimeRecord {
-    const label = basename(cwd) || "workspace";
+  private createRuntime(workspaceId: string, cwd: string, kind: WorkspaceKind): RuntimeRecord {
+    const label = kind === "default" ? "Default Workspace" : basename(cwd) || "workspace";
     const sessionDir = getSvvySessionDir(cwd, this.agentDir);
     const catalog = new WorkspaceSessionCatalog(
       cwd,
@@ -193,7 +224,9 @@ export class WorkspaceRuntimeRegistry {
       workspaceId,
       cwd,
       label,
+      kind,
       openedAt: new Date().toISOString(),
+      refCount: 1,
       catalog,
       pathIndex,
       agentSettingsStore,
@@ -204,6 +237,7 @@ export class WorkspaceRuntimeRegistry {
         workspaceId,
         cwd,
         workspaceLabel: label,
+        kind,
       }),
       dispose: async () => {
         unsubscribeAppLog();
@@ -253,11 +287,9 @@ function sanitizeWorkspaceRuntimeStorageKey(value: string): string {
   return value.replace(/^[/\\]/, "").replace(/[/\\:#]/g, "-");
 }
 
-function normalizeWorkspaceRuntimeId(cwd: string, workspaceId?: string): string {
-  if (workspaceId?.startsWith(`${cwd}#`)) {
-    return workspaceId;
-  }
-  return `${cwd}#${randomUUID()}`;
+function normalizeWorkspaceRuntimeId(cwd: string): string {
+  const hash = createHash("sha256").update(cwd).digest("hex").slice(0, 24);
+  return `workspace:${hash}`;
 }
 
 function recordTitleGenerationLog(

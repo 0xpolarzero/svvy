@@ -286,15 +286,18 @@ const DEFAULT_RPC_CLIENT: ChatRuntimeRpcClient = rpc;
 export interface ChatRuntimeOptions {
   workspaceInfo?: WorkspaceInfoResponse;
   workspaceId?: string;
+  workspaceTabId?: string;
   onMissingProviderAccess?: (provider: string) => void;
 }
 
 export interface ChatRuntime {
   storage: ChatStorage;
   workspaceId: string;
+  workspaceTabId?: string;
   workspaceLabel: string;
   cwd: string;
   branch?: string;
+  kind: WorkspaceInfoResponse["kind"];
   appLogSummary: AppLogSummary;
   sessions: WorkspaceSessionSummary[];
   sessionNavigation: WorkspaceSessionNavigationReadModel;
@@ -926,6 +929,14 @@ export async function createChatRuntime(
     workspaceId: workspaceInfo.workspaceId,
   });
 
+  const scopedUiRestore = <T extends object>(
+    request?: T,
+  ): T & { workspaceId: string; workspaceTabId?: string } => ({
+    ...(request ?? ({} as T)),
+    workspaceId: workspaceInfo.workspaceId,
+    ...(options.workspaceTabId ? { workspaceTabId: options.workspaceTabId } : {}),
+  });
+
   const currentLayoutSlots = (): WorkspaceLayoutSlotSummary[] =>
     WORKSPACE_LAYOUT_SLOT_IDS.map((id) => {
       const layout = id === activeLayoutId ? paneLayout : savedLayouts[id];
@@ -957,7 +968,7 @@ export async function createChatRuntime(
     };
 
     void rpcClient.request
-      .setWorkspaceUiRestore(scoped({ state }))
+      .setWorkspaceUiRestore(scopedUiRestore({ state }))
       .catch((error: unknown) =>
         console.error("Failed to persist workspace UI restore state:", error),
       );
@@ -1413,7 +1424,7 @@ export async function createChatRuntime(
   await syncProviderAuthPromise;
 
   const restoreState = (await rpcClient.request
-    .getWorkspaceUiRestore(scoped())
+    .getWorkspaceUiRestore(scopedUiRestore())
     .catch((error: unknown) => {
       console.error("Failed to load workspace UI restore state:", error);
       return null;
@@ -1434,6 +1445,7 @@ export async function createChatRuntime(
     const hasOnlyRestorablePanes = paneLayout.panels.every(
       (paneState) =>
         !paneState.binding ||
+        paneState.binding.surface === "open-workspace" ||
         paneState.binding.surface === "app-logs" ||
         paneState.binding.surface === "prompt-library" ||
         paneState.binding.surface === "saved-workflow-library" ||
@@ -1446,6 +1458,7 @@ export async function createChatRuntime(
       if (
         !paneState.binding ||
         (paneState.binding.surface !== "app-logs" &&
+          paneState.binding.surface !== "open-workspace" &&
           paneState.binding.surface !== "prompt-library" &&
           paneState.binding.surface !== "saved-workflow-library" &&
           !sessionIds.has(paneState.binding.workspaceSessionId))
@@ -1509,6 +1522,14 @@ export async function createChatRuntime(
           ? activeRestoreLayout.focusedPanelId
           : restoredPaneIds[0]!,
     };
+    persistWorkspaceUiRestore();
+    emit();
+  } else if (workspaceInfo.kind === "default") {
+    paneLayout = addDockviewPanel(
+      createEmptyPaneLayout(),
+      { surface: "open-workspace" },
+      PRIMARY_CHAT_PANE_ID,
+    );
     persistWorkspaceUiRestore();
     emit();
   } else if (initialCatalog.sessions.length > 0) {
@@ -1584,8 +1605,10 @@ export async function createChatRuntime(
   const runtime: ChatRuntime = {
     storage,
     workspaceId: workspaceInfo.workspaceId,
+    workspaceTabId: options.workspaceTabId,
     workspaceLabel: workspaceInfo.workspaceLabel,
     cwd: workspaceInfo.cwd,
+    kind: workspaceInfo.kind,
     get branch() {
       return workspaceBranch;
     },
@@ -1808,7 +1831,8 @@ export async function createChatRuntime(
         target.surface === "project-ci-check" ||
         target.surface === "saved-workflow-library" ||
         target.surface === "prompt-library" ||
-        target.surface === "app-logs"
+        target.surface === "app-logs" ||
+        target.surface === "open-workspace"
       ) {
         const nextPaneId = resolveOpenTarget({ ...target }, openTarget);
         const previousTarget =

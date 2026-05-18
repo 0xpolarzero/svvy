@@ -58,15 +58,15 @@ export function formatWorkspaceTabAriaLabel(
 }
 
 export function reorderWorkspaceTabs<
-  T extends { workspace: Pick<WorkspaceTabInfo, "workspaceId"> },
->(tabs: readonly T[], workspaceId: string, beforeWorkspaceId: string | null): T[] {
-  if (workspaceId === beforeWorkspaceId) return [...tabs];
-  const movingTab = tabs.find((tab) => tab.workspace.workspaceId === workspaceId);
+  T extends { workspace: Pick<WorkspaceTabInfo, "workspaceTabId"> },
+>(tabs: readonly T[], workspaceTabId: string, beforeWorkspaceTabId: string | null): T[] {
+  if (workspaceTabId === beforeWorkspaceTabId) return [...tabs];
+  const movingTab = tabs.find((tab) => tab.workspace.workspaceTabId === workspaceTabId);
   if (!movingTab) return [...tabs];
 
-  const remainingTabs = tabs.filter((tab) => tab.workspace.workspaceId !== workspaceId);
-  const beforeIndex = beforeWorkspaceId
-    ? remainingTabs.findIndex((tab) => tab.workspace.workspaceId === beforeWorkspaceId)
+  const remainingTabs = tabs.filter((tab) => tab.workspace.workspaceTabId !== workspaceTabId);
+  const beforeIndex = beforeWorkspaceTabId
+    ? remainingTabs.findIndex((tab) => tab.workspace.workspaceTabId === beforeWorkspaceTabId)
     : -1;
   const nextTabs = [...remainingTabs];
   nextTabs.splice(beforeIndex >= 0 ? beforeIndex : nextTabs.length, 0, movingTab);

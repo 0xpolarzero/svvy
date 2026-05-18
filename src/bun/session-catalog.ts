@@ -3793,10 +3793,14 @@ function resolveRegisteredModel(modelRegistry: ModelRegistry, provider: string, 
   );
 }
 
-export function getSvvyAgentDir(): string {
+export function getSvvyDataDir(): string {
   return process.platform === "win32"
-    ? join(process.env.APPDATA ?? homedir(), "svvy", "pi-agent")
-    : join(homedir(), ".config", "svvy", "pi-agent");
+    ? join(process.env.APPDATA ?? homedir(), "svvy")
+    : join(homedir(), ".config", "svvy");
+}
+
+export function getSvvyAgentDir(): string {
+  return join(getSvvyDataDir(), "pi-agent");
 }
 
 export function getSvvySessionDir(cwd: string, agentDir = getSvvyAgentDir()): string {

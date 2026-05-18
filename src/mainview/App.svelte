@@ -8,9 +8,7 @@
 	import Settings from "./Settings.svelte";
 	import { applyAppAppearance } from "./theme";
 	import StatusCard from "./ui/StatusCard.svelte";
-	import WorkspaceTabStrip, {
-		type WorkspaceTabStripItem,
-	} from "./WorkspaceTabStrip.svelte";
+	import type { WorkspaceTabStripItem } from "./WorkspaceTabStrip.svelte";
 	import {
 		EMPTY_WORKSPACE_TAB_COUNTS,
 		reorderWorkspaceTabs,
@@ -32,7 +30,6 @@
 
 	const storage: ChatStorage = createChatStorage();
 	let tabs = $state<OpenWorkspaceTab[]>([]);
-	let activeWorkspaceId = $state<string | null>(null);
 	let bootstrapError = $state<string | null>(null);
 	let openingError = $state<string | null>(null);
 	let restoring = $state(true);
@@ -41,8 +38,10 @@
 	let knownWorkspaces = $state<WorkspaceTabInfo[]>([]);
 	let disposed = false;
 	let disposeAppearanceSync: (() => void) | null = null;
+	const createWorkspaceTabId = () => `workspace-tab-${crypto.randomUUID()}`;
+	let activeWorkspaceTabId = $state<string | null>(null);
 	const activeTab = $derived(
-		tabs.find((tab) => tab.workspace.workspaceId === activeWorkspaceId) ?? null,
+		tabs.find((tab) => tab.workspace.workspaceTabId === activeWorkspaceTabId) ?? null,
 	);
 	const workspaceTabItems = $derived<WorkspaceTabStripItem[]>(
 		tabs.map((tab) => ({ workspace: tab.workspace, counts: tab.counts })),
@@ -67,9 +66,11 @@
 	function toWorkspaceTabInfo(
 		workspace: WorkspaceInfoResponse | WorkspaceTabInfo,
 		openedAt = new Date().toISOString(),
+		workspaceTabId = "workspaceTabId" in workspace ? workspace.workspaceTabId : createWorkspaceTabId(),
 	): WorkspaceTabInfo {
 		return {
 			...workspace,
+			workspaceTabId,
 			openedAt: "openedAt" in workspace ? workspace.openedAt : openedAt,
 		};
 	}
@@ -84,9 +85,11 @@
 	): WorkspaceTabInfo[] {
 		const byKey = new Map<string, WorkspaceTabInfo>();
 		for (const workspace of existing) {
+			if (workspace.kind === "default") continue;
 			byKey.set(workspaceHistoryKey(workspace), workspace);
 		}
 		for (const workspace of incoming) {
+			if (workspace.kind === "default") continue;
 			byKey.set(workspaceHistoryKey(workspace), workspace);
 		}
 		return [...byKey.values()].toSorted((left, right) =>
@@ -98,8 +101,8 @@
 		const openTabs = tabs.map((tab) => tab.workspace);
 		knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, openTabs);
 		const state: AppWorkspaceTabsState = {
-			version: 3,
-			activeWorkspaceId,
+			version: 4,
+			activeWorkspaceTabId,
 			tabs: openTabs,
 			knownWorkspaces,
 		};
@@ -123,12 +126,12 @@
 	}
 
 	async function refreshAppAppearance() {
-		if (!activeWorkspaceId) {
+		if (!activeTab) {
 			setAppAppearance("system");
 			return;
 		}
 		try {
-			const preferences = await rpc.request.getAppPreferences({ workspaceId: activeWorkspaceId });
+			const preferences = await rpc.request.getAppPreferences({ workspaceId: activeTab.workspace.workspaceId });
 			setAppAppearance(preferences.appAppearance);
 		} catch (error) {
 			console.error("Failed to load app appearance:", error);
@@ -136,11 +139,15 @@
 		}
 	}
 
-	async function createWorkspaceTab(workspace: WorkspaceInfoResponse | WorkspaceTabInfo): Promise<OpenWorkspaceTab> {
-		const workspaceTab = toWorkspaceTabInfo(workspace);
+	async function createWorkspaceTab(
+		workspace: WorkspaceInfoResponse | WorkspaceTabInfo,
+		workspaceTabId?: string,
+	): Promise<OpenWorkspaceTab> {
+		const workspaceTab = toWorkspaceTabInfo(workspace, new Date().toISOString(), workspaceTabId);
 		const runtime = await createChatRuntime(
 			{
 				workspaceInfo: workspaceTab,
+				workspaceTabId: workspaceTab.workspaceTabId,
 				onMissingProviderAccess: () => {
 					openSettings();
 				},
@@ -162,14 +169,15 @@
 		return tab;
 	}
 
-	async function setActiveWorkspace(workspaceId: string | null) {
-		activeWorkspaceId = workspaceId;
-		if (!workspaceId) {
+	async function setActiveWorkspace(workspaceTabId: string | null) {
+		activeWorkspaceTabId = workspaceTabId;
+		const tab = tabs.find((candidate) => candidate.workspace.workspaceTabId === workspaceTabId) ?? null;
+		if (!tab) {
 			await persistWorkspaceTabs();
 			return;
 		}
 		try {
-			await rpc.request.setActiveWorkspace({ workspaceId });
+			await rpc.request.setActiveWorkspace({ workspaceId: tab.workspace.workspaceId });
 			await refreshAppAppearance();
 		} catch (error) {
 			console.error("Failed to set active workspace:", error);
@@ -184,31 +192,25 @@
 				return null;
 			});
 			knownWorkspaces = restoreState?.knownWorkspaces ?? [];
-			const tabsToRestore = restoreState?.tabs.length
-				? restoreState.tabs
-				: await rpc.request.getOpenWorkspaces();
+			const tabsToRestore = restoreState?.tabs.length ? restoreState.tabs : [];
 			knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, tabsToRestore);
-			if (!tabsToRestore.length) {
-				await persistWorkspaceTabs();
-				restoring = false;
-				return;
-			}
 
 			const restoredTabs: OpenWorkspaceTab[] = [];
 			for (const savedTab of tabsToRestore) {
 				if (disposed) return;
 				try {
-					const workspaceInfo = restoreState?.tabs.length
-						? (await rpc.request.openWorkspace({ cwd: savedTab.cwd, workspaceId: savedTab.workspaceId })).workspace
-						: await rpc.request.getWorkspaceInfo({
-								workspaceId: savedTab.workspaceId,
-							});
+					const workspaceInfo =
+						savedTab.kind === "default"
+							? await rpc.request.getDefaultWorkspace()
+							: (await rpc.request.openWorkspace({ cwd: savedTab.cwd, workspaceTabId: savedTab.workspaceTabId })).workspace;
 					if (!workspaceInfo) {
 						continue;
 					}
-					restoredTabs.push(await createWorkspaceTab(toWorkspaceTabInfo(workspaceInfo, savedTab.openedAt)));
+					restoredTabs.push(await createWorkspaceTab(toWorkspaceTabInfo(workspaceInfo, savedTab.openedAt, savedTab.workspaceTabId), savedTab.workspaceTabId));
 				} catch (error) {
 					console.error("Failed to restore workspace tab:", error);
+					const fallback = await rpc.request.getDefaultWorkspace();
+					restoredTabs.push(await createWorkspaceTab(toWorkspaceTabInfo(fallback, savedTab.openedAt, savedTab.workspaceTabId), savedTab.workspaceTabId));
 				}
 			}
 
@@ -221,17 +223,21 @@
 			}
 
 			tabs = restoredTabs;
+			if (!tabs.length) {
+				const defaultInfo = await rpc.request.getDefaultWorkspace();
+				tabs = [await createWorkspaceTab(defaultInfo)];
+			}
 			knownWorkspaces = mergeKnownWorkspaces(
 				knownWorkspaces,
 				restoredTabs.map((tab) => tab.workspace),
 			);
-			const savedActiveIndex = restoreState?.activeWorkspaceId
-				? tabsToRestore.findIndex((tab) => tab.workspaceId === restoreState.activeWorkspaceId)
+			const savedActiveIndex = restoreState?.activeWorkspaceTabId
+				? tabsToRestore.findIndex((tab) => tab.workspaceTabId === restoreState.activeWorkspaceTabId)
 				: -1;
 			const restoredActive =
 				savedActiveIndex >= 0
-					? (restoredTabs[savedActiveIndex]?.workspace.workspaceId ?? restoredTabs[0]?.workspace.workspaceId ?? null)
-					: (restoredTabs[0]?.workspace.workspaceId ?? null);
+					? (tabs[savedActiveIndex]?.workspace.workspaceTabId ?? tabs[0]?.workspace.workspaceTabId ?? null)
+					: (tabs[0]?.workspace.workspaceTabId ?? null);
 			await setActiveWorkspace(restoredActive);
 			bootstrapError = null;
 		} catch (error) {
@@ -245,26 +251,46 @@
 		}
 	}
 
-	async function openWorkspace() {
+	async function openWorkspace(placement: "current-tab" | "new-tab" = "current-tab") {
 		if (openingWorkspace) return;
 		openingWorkspace = true;
 		openingError = null;
 		try {
-			const response = await rpc.request.openWorkspace({});
+			const response =
+				placement === "new-tab"
+					? await rpc.request.openWorkspace({ placement: "new-tab" })
+					: await rpc.request.openWorkspace({ placement: "current-tab" });
 			const workspaceInfo = response.workspace;
 			if (!workspaceInfo) {
 				return;
 			}
 
-			const tab = await createWorkspaceTab(workspaceInfo);
+			const tab = await createWorkspaceTab(workspaceInfo, placement === "current-tab" ? activeWorkspaceTabId ?? undefined : undefined);
 			if (disposed) {
 				tab.unsubscribe();
 				tab.runtime.dispose();
 				return;
 			}
 			knownWorkspaces = mergeKnownWorkspaces(knownWorkspaces, [tab.workspace]);
-			tabs = [...tabs, tab];
-			await setActiveWorkspace(tab.workspace.workspaceId);
+			if (placement === "new-tab" || !activeWorkspaceTabId) {
+				const activeIndex = tabs.findIndex((candidate) => candidate.workspace.workspaceTabId === activeWorkspaceTabId);
+				tabs = [
+					...tabs.slice(0, activeIndex + 1),
+					tab,
+					...tabs.slice(activeIndex + 1),
+				];
+			} else {
+				const oldTab = tabs.find((candidate) => candidate.workspace.workspaceTabId === activeWorkspaceTabId);
+				tabs = tabs.map((candidate) =>
+					candidate.workspace.workspaceTabId === activeWorkspaceTabId ? tab : candidate,
+				);
+				oldTab?.unsubscribe();
+				oldTab?.runtime.dispose();
+				if (oldTab) {
+					void rpc.request.closeWorkspace({ workspaceId: oldTab.workspace.workspaceId });
+				}
+			}
+			await setActiveWorkspace(tab.workspace.workspaceTabId);
 			bootstrapError = null;
 		} catch (error) {
 			openingError = error instanceof Error ? error.message : "Unable to open workspace.";
@@ -273,29 +299,47 @@
 		}
 	}
 
-	async function closeWorkspaceTab(workspaceId: string) {
-		const tab = tabs.find((candidate) => candidate.workspace.workspaceId === workspaceId);
+	async function createDefaultWorkspaceTab() {
+		const defaultInfo = await rpc.request.getDefaultWorkspace();
+		const tab = await createWorkspaceTab(defaultInfo);
+		const activeIndex = tabs.findIndex((candidate) => candidate.workspace.workspaceTabId === activeWorkspaceTabId);
+		tabs = [
+			...tabs.slice(0, activeIndex + 1),
+			tab,
+			...tabs.slice(activeIndex + 1),
+		];
+		await setActiveWorkspace(tab.workspace.workspaceTabId);
+	}
+
+	async function closeWorkspaceTab(workspaceTabId: string) {
+		const tab = tabs.find((candidate) => candidate.workspace.workspaceTabId === workspaceTabId);
 		if (!tab) return;
 		const index = tabs.indexOf(tab);
 		tab.unsubscribe();
 		tab.runtime.dispose();
-		tabs = tabs.filter((candidate) => candidate.workspace.workspaceId !== workspaceId);
+		tabs = tabs.filter((candidate) => candidate.workspace.workspaceTabId !== workspaceTabId);
 		try {
-			await rpc.request.closeWorkspace({ workspaceId });
+			await rpc.request.closeWorkspace({ workspaceId: tab.workspace.workspaceId });
 		} catch (error) {
 			console.error("Failed to close workspace:", error);
 		}
-		if (activeWorkspaceId === workspaceId) {
+		if (!tabs.length) {
+			const defaultInfo = await rpc.request.getDefaultWorkspace();
+			tabs = [await createWorkspaceTab(defaultInfo)];
+			await setActiveWorkspace(tabs[0]!.workspace.workspaceTabId);
+			return;
+		}
+		if (activeWorkspaceTabId === workspaceTabId) {
 			const nextTab = tabs[index] ?? tabs[index - 1] ?? null;
-			await setActiveWorkspace(nextTab?.workspace.workspaceId ?? null);
+			await setActiveWorkspace(nextTab?.workspace.workspaceTabId ?? null);
 			return;
 		}
 		await persistWorkspaceTabs();
 	}
 
-	function reorderWorkspaceTab(workspaceId: string, beforeWorkspaceId: string | null) {
-		const nextTabs = reorderWorkspaceTabs(tabs, workspaceId, beforeWorkspaceId);
-		if (nextTabs.map((tab) => tab.workspace.workspaceId).join("\0") === tabs.map((tab) => tab.workspace.workspaceId).join("\0")) {
+	function reorderWorkspaceTab(workspaceTabId: string, beforeWorkspaceTabId: string | null) {
+		const nextTabs = reorderWorkspaceTabs(tabs, workspaceTabId, beforeWorkspaceTabId);
+		if (nextTabs.map((tab) => tab.workspace.workspaceTabId).join("\0") === tabs.map((tab) => tab.workspace.workspaceTabId).join("\0")) {
 			return;
 		}
 		tabs = nextTabs;
@@ -319,7 +363,7 @@
 				tab.runtime.dispose();
 			}
 			tabs = [];
-			activeWorkspaceId = null;
+			activeWorkspaceTabId = null;
 		};
 	});
 </script>
@@ -328,19 +372,6 @@
 	<div class="app-shell">
 		<div class="app-frame">
 			<main class="workspace">
-				{#if !activeTab}
-					<header class="workspace-picker-chrome electrobun-webkit-app-region-drag">
-						<WorkspaceTabStrip
-							tabs={workspaceTabItems}
-							{activeWorkspaceId}
-							{openingWorkspace}
-							onSelectWorkspace={(workspaceId) => void setActiveWorkspace(workspaceId)}
-							onCloseWorkspace={(workspaceId) => void closeWorkspaceTab(workspaceId)}
-							onOpenWorkspace={() => void openWorkspace()}
-							onReorderWorkspace={reorderWorkspaceTab}
-						/>
-					</header>
-				{/if}
 				<div class="workspace-body">
 					{#if bootstrapError}
 						<StatusCard
@@ -355,11 +386,15 @@
 							shortcutsEnabled={!showSettings}
 							onOpenSettings={openSettings}
 							workspaceTabs={workspaceTabItems}
-							{activeWorkspaceId}
+							{activeWorkspaceTabId}
 							{openingWorkspace}
-							onSelectWorkspace={(workspaceId) => void setActiveWorkspace(workspaceId)}
-							onCloseWorkspace={(workspaceId) => void closeWorkspaceTab(workspaceId)}
-							onOpenWorkspace={() => void openWorkspace()}
+							openWorkspaceError={openingError}
+							{knownWorkspaces}
+							onSelectWorkspace={(workspaceTabId) => void setActiveWorkspace(workspaceTabId)}
+							onCloseWorkspace={(workspaceTabId) => void closeWorkspaceTab(workspaceTabId)}
+							onOpenWorkspace={() => void openWorkspace("current-tab")}
+							onNewWorkspaceTab={() => void createDefaultWorkspaceTab()}
+							onOpenWorkspaceInNewTab={() => void openWorkspace("new-tab")}
 							onReorderWorkspace={reorderWorkspaceTab}
 						/>
 					{/if}
@@ -369,17 +404,6 @@
 							title="Starting svvy"
 							message="Restoring open workspace tabs."
 						/>
-					{:else if !activeTab && !bootstrapError}
-						<section class="workspace-picker">
-							<StatusCard
-								eyebrow="Workspace"
-								title="Open a repository"
-								message={openingError ?? "Choose a workspace to start a repository-scoped svvy runtime."}
-							/>
-							<button class="workspace-picker-button" type="button" disabled={openingWorkspace} onclick={() => void openWorkspace()}>
-								{openingWorkspace ? "Opening..." : "Open Workspace"}
-							</button>
-						</section>
 					{/if}
 				</div>
 			</main>
@@ -389,7 +413,7 @@
 
 {#if showSettings}
 	<Settings
-		workspaceId={activeWorkspaceId}
+		workspaceId={activeTab?.workspace.workspaceId ?? null}
 		onClose={() => (showSettings = false)}
 		onProviderAuthChanged={handleProviderAuthChanged}
 		onAppAppearanceChanged={setAppAppearance}
@@ -423,51 +447,12 @@
 		overflow: hidden;
 	}
 
-	.workspace-picker-chrome {
-		display: flex;
-		align-items: center;
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		z-index: 3;
-		min-height: 2.4rem;
-		padding: 0.4rem 0.7rem 0.32rem;
-	}
-
-	.workspace-picker-button:disabled {
-		cursor: default;
-		opacity: 0.58;
-	}
-
 	.workspace-body {
 		display: grid;
 		grid-template-rows: minmax(0, 1fr);
 		height: 100%;
 		min-height: 0;
 		overflow: hidden;
-	}
-
-	.workspace-picker {
-		display: grid;
-		place-content: center;
-		gap: 0.8rem;
-		height: 100%;
-		padding: 1rem;
-	}
-
-	.workspace-picker-button {
-		justify-self: center;
-		height: 2rem;
-		padding: 0 0.86rem;
-		border: 1px solid var(--ui-border-strong);
-		border-radius: var(--ui-radius-md);
-		background: var(--ui-accent);
-		color: var(--ui-accent-contrast);
-		font: inherit;
-		font-size: var(--text-base);
-		font-weight: 600;
-		cursor: pointer;
 	}
 
 	@media (max-width: 760px) {

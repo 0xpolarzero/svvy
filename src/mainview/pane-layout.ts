@@ -27,6 +27,7 @@ export type DockviewPanelChromeKind =
   | "saved-workflow-library"
   | "prompt-library"
   | "app-logs"
+  | "open-workspace"
   | "command"
   | "workflow-task-attempt"
   | "empty"
@@ -157,6 +158,8 @@ export function createPanelChrome(
       return chrome("Context", "instructions", "prompt-library", true);
     case "app-logs":
       return chrome("Logs", "workspace", "app-logs", true);
+    case "open-workspace":
+      return chrome("Open Workspace", "choose a folder", "open-workspace", true);
     case "command":
       return chrome("Command Inspector", binding.commandId, "command", true);
     case "workflow-task-attempt":

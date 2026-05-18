@@ -114,12 +114,16 @@
     shortcutsEnabled?: boolean;
     onOpenSettings?: () => void;
     workspaceTabs?: WorkspaceTabStripItem[];
-    activeWorkspaceId?: string | null;
+    activeWorkspaceTabId?: string | null;
     openingWorkspace?: boolean;
-    onSelectWorkspace?: (workspaceId: string) => void;
-    onCloseWorkspace?: (workspaceId: string) => void;
+    openWorkspaceError?: string | null;
+    knownWorkspaces?: WorkspaceTabStripItem["workspace"][];
+    onSelectWorkspace?: (workspaceTabId: string) => void;
+    onCloseWorkspace?: (workspaceTabId: string) => void;
     onOpenWorkspace?: () => void;
-    onReorderWorkspace?: (workspaceId: string, beforeWorkspaceId: string | null) => void;
+    onNewWorkspaceTab?: () => void;
+    onOpenWorkspaceInNewTab?: () => void;
+    onReorderWorkspace?: (workspaceTabId: string, beforeWorkspaceTabId: string | null) => void;
   };
 
   let {
@@ -127,11 +131,15 @@
     shortcutsEnabled = true,
     onOpenSettings,
     workspaceTabs = [],
-    activeWorkspaceId = null,
+    activeWorkspaceTabId = null,
     openingWorkspace = false,
+    openWorkspaceError = null,
+    knownWorkspaces = [],
     onSelectWorkspace,
     onCloseWorkspace,
     onOpenWorkspace,
+    onNewWorkspaceTab,
+    onOpenWorkspaceInNewTab,
     onReorderWorkspace,
   }: Props = $props();
   const sidebarToggleShortcut = getShortcutReadable("sidebar.toggle");
@@ -541,6 +549,7 @@
   const commandRegistry = $derived(
     buildCommandRegistry({
       sessions,
+      workspaceKind: runtime.kind,
       focusedSessionId: activeSessionId,
       focusedSurfaceTarget,
       handlerThreads,
@@ -560,6 +569,21 @@
 
   createHotkeys(
     () => [
+      {
+        hotkey: getShortcutHotkey("workspace.open"),
+        callback: () => onOpenWorkspace?.(),
+        options: () => workspaceShortcutOptions("workspace.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("workspace.newTab"),
+        callback: () => onNewWorkspaceTab?.(),
+        options: () => workspaceShortcutOptions("workspace.newTab"),
+      },
+      {
+        hotkey: getShortcutHotkey("workspace.openInNewTab"),
+        callback: () => onOpenWorkspaceInNewTab?.(),
+        options: () => workspaceShortcutOptions("workspace.openInNewTab"),
+      },
       {
         hotkey: getShortcutHotkey("commandPalette.open"),
         callback: () => openPalette("commands"),
@@ -848,6 +872,15 @@
       case "quickOpen.open":
         openPalette("search");
         return;
+      case "workspace.open":
+        onOpenWorkspace?.();
+        return;
+      case "workspace.newTab":
+        onNewWorkspaceTab?.();
+        return;
+      case "workspace.openInNewTab":
+        onOpenWorkspaceInNewTab?.();
+        return;
       case "session.new":
         void handleCreateSession();
         return;
@@ -905,6 +938,11 @@
             action,
             panelId,
             onOpenSettings: () => onOpenSettings?.(),
+            onWorkspaceAction: (workspaceAction) => {
+              if (workspaceAction === "open") onOpenWorkspace?.();
+              if (workspaceAction === "new-tab") onNewWorkspaceTab?.();
+              if (workspaceAction === "open-in-new-tab") onOpenWorkspaceInNewTab?.();
+            },
             onOpenWorkflowTaskAttempt: ({ workspaceSessionId, workflowTaskAttemptId }) =>
               handleInspectWorkflowTaskAttempt({ workflowTaskAttemptId }, workspaceSessionId),
           });
@@ -2151,13 +2189,13 @@
     <div class="workspace-titlebar-tabs">
       <WorkspaceTabStrip
         tabs={workspaceTabs}
-        {activeWorkspaceId}
+        {activeWorkspaceTabId}
         {openingWorkspace}
-        onSelectWorkspace={(workspaceId) => onSelectWorkspace?.(workspaceId)}
-        onCloseWorkspace={(workspaceId) => onCloseWorkspace?.(workspaceId)}
-        onOpenWorkspace={() => onOpenWorkspace?.()}
-        onReorderWorkspace={(workspaceId, beforeWorkspaceId) =>
-          onReorderWorkspace?.(workspaceId, beforeWorkspaceId)}
+        onSelectWorkspace={(workspaceTabId) => onSelectWorkspace?.(workspaceTabId)}
+        onCloseWorkspace={(workspaceTabId) => onCloseWorkspace?.(workspaceTabId)}
+        onNewWorkspaceTab={() => onNewWorkspaceTab?.()}
+        onReorderWorkspace={(workspaceTabId, beforeWorkspaceTabId) =>
+          onReorderWorkspace?.(workspaceTabId, beforeWorkspaceTabId)}
       />
     </div>
     <div class="workspace-titlebar-actions electrobun-webkit-app-region-no-drag">
@@ -2275,8 +2313,13 @@
         dockviewLayout={paneLayout.dockview}
         focusedPanelId={focusedPanelId}
         layoutEpoch={dockviewLayoutEpoch}
+        {openingWorkspace}
+        openWorkspaceError={openWorkspaceError}
+        recentWorkspaces={knownWorkspaces}
         onFocusPanel={(panelId) => void handleFocusPane(panelId)}
         onOpenModelPicker={(panelId) => void handleOpenPaneModelPicker(panelId)}
+        onOpenWorkspace={() => onOpenWorkspace?.()}
+        onOpenWorkspaceInNewTab={() => onOpenWorkspaceInNewTab?.()}
         onPersistDockview={(dockview, panelId) => runtime.setDockviewLayout(dockview, panelId)}
       />
     </section>

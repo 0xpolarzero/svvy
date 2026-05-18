@@ -8,6 +8,7 @@
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
+  import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import type { ContextBudget } from "../shared/context-budget";
   import { getShortcutCompact } from "../shared/shortcut-registry";
@@ -784,23 +785,30 @@
   {/if}
 
   <footer class="sidebar-footer">
-    <Tooltip label="Switch branch">
-      <CompactCombobox
-        bind:open={branchMenuOpen}
-        value={footerWorkspaceLabel}
-        options={branchSelectOptions}
-        ariaLabel="Switch branch"
-        placeholder="Search branches"
-        emptyLabel="No branches match."
-        disabled={!branchControlEnabled || busy}
-        triggerClass="workspace-path"
-        menuClass="branch-menu"
-        optionClass="branch-option"
-        leadingIcon={footerShowsBranch ? "branch" : "workspace"}
-        onBeforeOpen={loadBranchOptions}
-        onSelect={switchBranch}
-      />
-    </Tooltip>
+    {#if branchControlEnabled}
+      <Tooltip label="Switch branch">
+        <CompactCombobox
+          bind:open={branchMenuOpen}
+          value={footerWorkspaceLabel}
+          options={branchSelectOptions}
+          ariaLabel="Switch branch"
+          placeholder="Search branches"
+          emptyLabel="No branches match."
+          disabled={busy}
+          triggerClass="workspace-path"
+          menuClass="branch-menu"
+          optionClass="branch-option"
+          leadingIcon="branch"
+          onBeforeOpen={loadBranchOptions}
+          onSelect={switchBranch}
+        />
+      </Tooltip>
+    {:else}
+      <div class="workspace-path-static" aria-label="Workspace">
+        <FolderGit2Icon size={12} aria-hidden="true" />
+        <span>{footerWorkspaceLabel}</span>
+      </div>
+    {/if}
     {#if onOpenSettings}
       <Tooltip label="Open settings">
         <button
@@ -1435,6 +1443,29 @@
     background: transparent;
     color: inherit;
     cursor: pointer;
+  }
+
+  .workspace-path-static {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 1.45rem;
+    padding: 0 0.22rem 0 0.28rem;
+    overflow: hidden;
+    color: inherit;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .workspace-path-static span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sidebar-footer-button:hover,

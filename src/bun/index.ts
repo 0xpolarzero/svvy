@@ -802,7 +802,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         const defaults = getDefaultAgentSettings();
         return createAuthState(providerId || defaults.provider);
       },
-      openWorkspace: async ({ cwd, workspaceId }) => {
+      openWorkspace: async ({ cwd }) => {
         const selectedCwd =
           cwd ??
           (
@@ -817,13 +817,16 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
             })
           )[0];
         if (!selectedCwd) return { workspace: null };
-        const runtime = workspaceRuntimeRegistry.openWorkspace(selectedCwd, { workspaceId });
+        const runtime = workspaceRuntimeRegistry.acquireWorkspace(selectedCwd);
         runtime.appLog.info("workspace", "Workspace opened.", { workspaceId: runtime.workspaceId });
         recordDevBrowserToolsEvent("workspace.opened", { workspaceId: runtime.workspaceId });
         return { workspace: addWorkspaceBranch(runtime.getInfo()) };
       },
       getOpenWorkspaces: async () => {
         return workspaceRuntimeRegistry.listOpenWorkspaces().map(addWorkspaceBranch);
+      },
+      getDefaultWorkspace: async () => {
+        return addWorkspaceBranch(workspaceRuntimeRegistry.getDefaultWorkspace().getInfo());
       },
       getAppWorkspaceTabs: async () => {
         return appWorkspaceTabsStore.getState();
@@ -832,11 +835,11 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         appWorkspaceTabsStore.setState(state);
         return { ok: true };
       },
-      getWorkspaceUiRestore: async ({ workspaceId }) => {
-        return appWorkspaceUiRestoreStore.getState(workspaceId);
+      getWorkspaceUiRestore: async ({ workspaceId, workspaceTabId }) => {
+        return appWorkspaceUiRestoreStore.getState(workspaceTabId ?? workspaceId);
       },
-      setWorkspaceUiRestore: async ({ workspaceId, state }) => {
-        appWorkspaceUiRestoreStore.setState(workspaceId, state);
+      setWorkspaceUiRestore: async ({ workspaceId, workspaceTabId, state }) => {
+        appWorkspaceUiRestoreStore.setState(workspaceTabId ?? workspaceId, state);
         return { ok: true };
       },
       setActiveWorkspace: async ({ workspaceId }) => {
@@ -1667,7 +1670,14 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
   },
   {
     label: "File",
-    submenu: [appMenuItem("session.new"), appMenuItem("session.dumb")],
+    submenu: [
+      appMenuItem("workspace.open"),
+      appMenuItem("workspace.newTab"),
+      appMenuItem("workspace.openInNewTab"),
+      { type: "separator" },
+      appMenuItem("session.new"),
+      appMenuItem("session.dumb"),
+    ],
   },
   {
     label: "Edit",

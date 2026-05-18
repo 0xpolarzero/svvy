@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { AppWorkspaceTabsState, WorkspaceTabInfo } from "../shared/workspace-contract";
 
 const APP_WORKSPACE_TABS_FILENAME = "app-workspace-tabs.json";
@@ -24,8 +25,8 @@ export function createAppWorkspaceTabsStore(input: { agentDir: string }): AppWor
 
   const writeState = (state: AppWorkspaceTabsState): AppWorkspaceTabsState => {
     const normalized = normalizeAppWorkspaceTabsState(state) ?? {
-      version: 3,
-      activeWorkspaceId: null,
+      version: 4,
+      activeWorkspaceTabId: null,
       tabs: [],
       knownWorkspaces: [],
     };
@@ -44,7 +45,7 @@ export function createAppWorkspaceTabsStore(input: { agentDir: string }): AppWor
 function normalizeAppWorkspaceTabsState(input: unknown): AppWorkspaceTabsState | null {
   if (!input || typeof input !== "object") return null;
   const raw = input as Partial<AppWorkspaceTabsState>;
-  if (raw.version !== 3 || !Array.isArray(raw.tabs) || !Array.isArray(raw.knownWorkspaces)) {
+  if (raw.version !== 4 || !Array.isArray(raw.tabs) || !Array.isArray(raw.knownWorkspaces)) {
     return null;
   }
 
@@ -52,15 +53,15 @@ function normalizeAppWorkspaceTabsState(input: unknown): AppWorkspaceTabsState |
   const knownWorkspaces = raw.knownWorkspaces
     .map(normalizeWorkspaceTab)
     .filter((tab): tab is WorkspaceTabInfo => !!tab);
-  const activeWorkspaceId =
-    typeof raw.activeWorkspaceId === "string" &&
-    tabs.some((tab) => tab.workspaceId === raw.activeWorkspaceId)
-      ? raw.activeWorkspaceId
+  const activeWorkspaceTabId =
+    typeof raw.activeWorkspaceTabId === "string" &&
+    tabs.some((tab) => tab.workspaceTabId === raw.activeWorkspaceTabId)
+      ? raw.activeWorkspaceTabId
       : null;
 
   return {
-    version: 3,
-    activeWorkspaceId,
+    version: 4,
+    activeWorkspaceTabId,
     tabs,
     knownWorkspaces,
   };
@@ -73,15 +74,24 @@ function normalizeWorkspaceTab(input: unknown): WorkspaceTabInfo | null {
     typeof raw.workspaceId !== "string" ||
     typeof raw.cwd !== "string" ||
     typeof raw.workspaceLabel !== "string" ||
+    (raw.kind !== "default" && raw.kind !== "user") ||
     typeof raw.openedAt !== "string"
   ) {
     return null;
   }
   return {
+    workspaceTabId:
+      typeof raw.workspaceTabId === "string" && raw.workspaceTabId.trim()
+        ? raw.workspaceTabId
+        : `workspace-tab-${randomUUID()}`,
     workspaceId: raw.workspaceId,
     cwd: raw.cwd,
     workspaceLabel: raw.workspaceLabel,
+    kind: raw.kind,
     openedAt: raw.openedAt,
     ...(typeof raw.branch === "string" ? { branch: raw.branch } : {}),
+    ...(raw.activeLayoutId === "A" || raw.activeLayoutId === "B" || raw.activeLayoutId === "C"
+      ? { activeLayoutId: raw.activeLayoutId }
+      : {}),
   };
 }

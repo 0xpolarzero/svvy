@@ -4,6 +4,7 @@ import type {
   WorkspaceHandlerThreadSummary,
   WorkspaceProjectCiStatusPanel,
   WorkspaceSessionSummary,
+  WorkspaceKind,
   WorkspaceWorkflowTaskAttemptSummary,
 } from "../shared/workspace-contract";
 import type { ChatRuntime } from "./chat-runtime";
@@ -14,6 +15,7 @@ export type CommandPaletteMode = "commands" | "search";
 export const COMMAND_PALETTE_COMMAND_PREFIX = ">";
 
 export type CommandActionCategory =
+  | "workspace"
   | "session"
   | "surface"
   | "project-ci"
@@ -48,6 +50,7 @@ export type CommandExecutionTarget =
   | { kind: "open-saved-workflow-library" }
   | { kind: "start-orchestrator-turn"; workspaceSessionId: string; prompt: string }
   | { kind: "open-settings"; target: string }
+  | { kind: "workspace-action"; action: "open" | "new-tab" | "open-in-new-tab" }
   | {
       kind: "pane-action";
       action: "duplicate-right" | "duplicate-below" | "close";
@@ -78,6 +81,7 @@ export type CommandActionPlacementHint = {
 
 export type CommandRegistryInput = {
   sessions: WorkspaceSessionSummary[];
+  workspaceKind?: WorkspaceKind;
   focusedSessionId?: string;
   focusedSurfaceTarget?: PromptTarget | null;
   handlerThreads?: WorkspaceHandlerThreadSummary[];
@@ -112,6 +116,7 @@ export const COMMAND_PALETTE_NEW_PANE_PREFIX = "command-palette";
 const PRIMARY_COMMAND_PANE_ID = "primary";
 
 const COMMAND_ACTION_CATEGORY_LABELS: Record<CommandActionCategory, string> = {
+  workspace: "Workspace",
   session: "Sessions",
   surface: "Surfaces",
   "project-ci": "Project CI",
@@ -124,6 +129,7 @@ const COMMAND_ACTION_CATEGORY_LABELS: Record<CommandActionCategory, string> = {
 };
 
 const COMMAND_ACTION_CATEGORY_ORDER: CommandActionCategory[] = [
+  "workspace",
   "session",
   "handler-thread",
   "surface",
@@ -180,7 +186,52 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
     ? input.sessions.find((session) => session.id === input.focusedSessionId)
     : null;
   const hasFocusedSession = !!focusedSession;
+  const projectCiAvailability =
+    input.workspaceKind === "default"
+      ? {
+          kind: "disabled" as const,
+          reason: "Open a repository workspace before running Project CI.",
+        }
+      : hasFocusedSession
+        ? { kind: "available" as const }
+        : { kind: "disabled" as const, reason: "Open a session before running Project CI." };
+  const projectCiConfigureAvailability =
+    input.workspaceKind === "default"
+      ? {
+          kind: "disabled" as const,
+          reason: "Open a repository workspace before configuring Project CI.",
+        }
+      : hasFocusedSession
+        ? { kind: "available" as const }
+        : { kind: "disabled" as const, reason: "Open a session before configuring Project CI." };
   const actions: CommandAction[] = [
+    {
+      id: "workspace.open",
+      label: "Open Workspace...",
+      category: "workspace",
+      aliases: ["open folder", "open repository", "retarget tab", "choose workspace"],
+      shortcut: getShortcutReadable("workspace.open"),
+      availability: { kind: "available" },
+      execute: { kind: "workspace-action", action: "open" },
+    },
+    {
+      id: "workspace.newTab",
+      label: "New Tab",
+      category: "workspace",
+      aliases: ["new workspace tab", "default workspace tab"],
+      shortcut: getShortcutReadable("workspace.newTab"),
+      availability: { kind: "available" },
+      execute: { kind: "workspace-action", action: "new-tab" },
+    },
+    {
+      id: "workspace.openInNewTab",
+      label: "Open Workspace in New Tab...",
+      category: "workspace",
+      aliases: ["open folder in new tab", "open repository in new tab", "new workspace"],
+      shortcut: getShortcutReadable("workspace.openInNewTab"),
+      availability: { kind: "available" },
+      execute: { kind: "workspace-action", action: "open-in-new-tab" },
+    },
     {
       id: "session.new",
       label: "New Session",
@@ -250,9 +301,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       category: "project-ci",
       aliases: ["ci", "checks", "test project"],
       shortcut: null,
-      availability: hasFocusedSession
-        ? { kind: "available" }
-        : { kind: "disabled", reason: "Open a session before running Project CI." },
+      availability: projectCiAvailability,
       execute: {
         kind: "start-orchestrator-turn",
         workspaceSessionId: input.focusedSessionId ?? "",
@@ -266,9 +315,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       category: "project-ci",
       aliases: ["setup ci", "edit project ci", "ci configuration"],
       shortcut: null,
-      availability: hasFocusedSession
-        ? { kind: "available" }
-        : { kind: "disabled", reason: "Open a session before configuring Project CI." },
+      availability: projectCiConfigureAvailability,
       execute: {
         kind: "start-orchestrator-turn",
         workspaceSessionId: input.focusedSessionId ?? "",
@@ -503,6 +550,8 @@ export function getCommandActionShortcutHints(action: CommandAction): string[] {
             getShortcutReadable("commandPalette.submit"),
             getShortcutReadable("commandPalette.submitFocusedPane"),
           ];
+    case "workspace-action":
+      return action.shortcut ? [action.shortcut, getShortcutReadable("commandPalette.submit")] : [];
     default:
       return action.shortcut ? [action.shortcut] : [];
   }
@@ -538,6 +587,7 @@ export async function executeCommandAction(input: {
   action: CommandAction;
   paneId: string;
   onOpenSettings?: (target: string) => void;
+  onWorkspaceAction?: (action: "open" | "new-tab" | "open-in-new-tab") => Promise<void> | void;
   onOpenWorkflowTaskAttempt?: (input: {
     workspaceSessionId: string;
     workflowTaskAttemptId: string;
@@ -583,6 +633,9 @@ export async function executeCommandAction(input: {
       return;
     case "open-settings":
       input.onOpenSettings?.(target.target);
+      return;
+    case "workspace-action":
+      await input.onWorkspaceAction?.(target.action);
       return;
     case "pane-action":
       if (target.action === "duplicate-right") {

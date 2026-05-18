@@ -18,27 +18,35 @@ describe("app workspace tabs store", () => {
     const store = createAppWorkspaceTabsStore({ agentDir });
 
     store.setState({
-      version: 3,
-      activeWorkspaceId: "workspace-b",
+      version: 4,
+      activeWorkspaceTabId: "tab-b",
       tabs: [
         {
+          workspaceTabId: "tab-a",
           workspaceId: "workspace-a",
           cwd: "/tmp/workspace-a",
           workspaceLabel: "workspace-a",
+          kind: "user",
           openedAt: "2026-05-15T12:00:00.000Z",
+          activeLayoutId: "A",
         },
         {
+          workspaceTabId: "tab-b",
           workspaceId: "workspace-b",
           cwd: "/tmp/workspace-b",
           workspaceLabel: "workspace-b",
+          kind: "user",
           openedAt: "2026-05-15T12:01:00.000Z",
+          activeLayoutId: "B",
         },
       ],
       knownWorkspaces: [
         {
+          workspaceTabId: "known-tab-a",
           workspaceId: "workspace-a",
           cwd: "/tmp/workspace-a",
           workspaceLabel: "workspace-a",
+          kind: "user",
           openedAt: "2026-05-15T12:00:00.000Z",
         },
       ],
@@ -50,20 +58,109 @@ describe("app workspace tabs store", () => {
       "/tmp/workspace-a",
       "/tmp/workspace-b",
     ]);
-    expect(reloaded.getState()?.activeWorkspaceId).toBe("workspace-b");
+    expect(reloaded.getState()?.tabs.map((tab) => tab.workspaceTabId)).toEqual(["tab-a", "tab-b"]);
+    expect(reloaded.getState()?.tabs.map((tab) => tab.kind)).toEqual(["user", "user"]);
+    expect(reloaded.getState()?.tabs.map((tab) => tab.activeLayoutId)).toEqual(["A", "B"]);
+    expect(reloaded.getState()?.activeWorkspaceTabId).toBe("tab-b");
   });
 
-  it("drops an active workspace id that is not in the open tab list", () => {
+  it("preserves duplicate visual tabs that share one workspace runtime", () => {
     const store = createAppWorkspaceTabsStore({ agentDir: tempAgentDir() });
 
     const state = store.setState({
-      version: 3,
-      activeWorkspaceId: "missing",
+      version: 4,
+      activeWorkspaceTabId: "tab-2",
+      tabs: [
+        {
+          workspaceTabId: "tab-1",
+          workspaceId: "repo-runtime",
+          cwd: "/tmp/repo",
+          workspaceLabel: "repo",
+          kind: "user",
+          openedAt: "2026-05-15T12:00:00.000Z",
+        },
+        {
+          workspaceTabId: "tab-2",
+          workspaceId: "repo-runtime",
+          cwd: "/tmp/repo",
+          workspaceLabel: "repo",
+          kind: "user",
+          openedAt: "2026-05-15T12:01:00.000Z",
+        },
+      ],
+      knownWorkspaces: [],
+    });
+
+    expect(state.tabs.map((tab) => tab.workspaceTabId)).toEqual(["tab-1", "tab-2"]);
+    expect(new Set(state.tabs.map((tab) => tab.workspaceId))).toEqual(new Set(["repo-runtime"]));
+    expect(state.activeWorkspaceTabId).toBe("tab-2");
+  });
+
+  it("stores default workspace tabs as real tabs instead of an empty picker state", () => {
+    const store = createAppWorkspaceTabsStore({ agentDir: tempAgentDir() });
+
+    const state = store.setState({
+      version: 4,
+      activeWorkspaceTabId: "default-tab",
+      tabs: [
+        {
+          workspaceTabId: "default-tab",
+          workspaceId: "default-runtime",
+          cwd: "/tmp/svvy/default-workspace",
+          workspaceLabel: "Default Workspace",
+          kind: "default",
+          openedAt: "2026-05-15T12:00:00.000Z",
+          activeLayoutId: "A",
+        },
+      ],
+      knownWorkspaces: [],
+    });
+
+    expect(state.tabs).toHaveLength(1);
+    expect(state.tabs[0]).toMatchObject({
+      workspaceTabId: "default-tab",
+      workspaceId: "default-runtime",
+      workspaceLabel: "Default Workspace",
+      kind: "default",
+    });
+  });
+
+  it("drops an active workspace tab id that is not in the open tab list", () => {
+    const store = createAppWorkspaceTabsStore({ agentDir: tempAgentDir() });
+
+    const state = store.setState({
+      version: 4,
+      activeWorkspaceTabId: "missing",
       tabs: [],
       knownWorkspaces: [],
     });
 
-    expect(state.activeWorkspaceId).toBeNull();
+    expect(state.activeWorkspaceTabId).toBeNull();
+  });
+
+  it("does not normalize the removed v3 workspace-id-as-tab-id state shape", () => {
+    const store = createAppWorkspaceTabsStore({ agentDir: tempAgentDir() });
+
+    const state = store.setState({
+      version: 3,
+      activeWorkspaceId: "workspace-a",
+      tabs: [
+        {
+          workspaceId: "workspace-a",
+          cwd: "/tmp/workspace-a",
+          workspaceLabel: "workspace-a",
+          openedAt: "2026-05-15T12:00:00.000Z",
+        },
+      ],
+      knownWorkspaces: [],
+    } as never);
+
+    expect(state).toEqual({
+      version: 4,
+      activeWorkspaceTabId: null,
+      tabs: [],
+      knownWorkspaces: [],
+    });
   });
 });
 
