@@ -1520,6 +1520,51 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("clears the live stale prompt binding when context returns to the bound prompt", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
+
+    try {
+      const created = await catalog.createSession({ title: "Context Revert" }, DEFAULTS);
+      const originalPromptState = catalog.getPromptLibraryState();
+      appendPromptLibraryMarker(catalog, "Temporary prompt marker for live revert.");
+
+      await waitFor(() =>
+        surfaceSyncs.some(
+          (payload) =>
+            payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
+            payload.snapshot?.promptBinding?.stale === true,
+        ),
+      );
+
+      catalog.updatePromptLibraryState(originalPromptState);
+
+      await waitFor(() => {
+        const latest = surfaceSyncs.findLast(
+          (payload) => payload.target.surfacePiSessionId === created.target.surfacePiSessionId,
+        );
+        return latest?.snapshot?.promptBinding?.stale === false;
+      });
+
+      const update = surfaceSyncs.findLast(
+        (payload) => payload.target.surfacePiSessionId === created.target.surfacePiSessionId,
+      );
+      expect(update?.snapshot?.promptBinding?.stale).toBe(false);
+      expect(update?.snapshot?.promptBinding?.currentRevision).toBe(
+        catalog.getPromptLibraryState().revision,
+      );
+      expect(update?.snapshot?.promptBinding?.boundSystemPrompt).toBe(
+        update?.snapshot?.promptBinding?.currentSystemPrompt,
+      );
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("applies an idle prompt refresh immediately without queueing a visible row", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);

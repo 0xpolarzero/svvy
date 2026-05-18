@@ -2217,7 +2217,6 @@ export class WorkspaceSessionCatalog {
       boundExternalSourceHashes,
       currentExternalSourceHashes,
       stale:
-        session.promptLibraryRevision !== currentState.revision ||
         session.systemPrompt !== currentSystemPrompt ||
         !sameStringList(boundExternalSourceHashes, currentExternalSourceHashes),
     };
