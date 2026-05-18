@@ -40,7 +40,7 @@ For each issue, record:
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Fixed |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Fixed |
 | AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Fixed |
-| AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Researched |
+| AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Fixed |
 | AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Researched |
 | AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Researched |
 | AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Researched |
@@ -560,24 +560,31 @@ Relevant code:
 
 ### AUD-012 - Project CI projection depends on in-memory terminal output
 
+**Disposition:** Fixed. Project CI projection now derives from durable Smithers output and durable `svvy` workflow facts instead of process-local terminal output memory.
+
 **Impact:** High durability issue for Project CI status.
 
-**Precise issue:** Project CI records are created only when terminal workflow output is available in an in-memory map. If the app restarts after the Smithers run finishes but before projection records the CI result, the terminal output is lost and the manager cannot validate or record the CI result later.
+**Precise issue:** Project CI records were created only when terminal workflow output was available in an in-memory map. If the app restarted after the Smithers run finished but before projection recorded the CI result, the terminal output was lost and the manager could not validate or record the CI result later.
 
 Relevant code:
 
-- `src/bun/workflow-supervision/manager.ts`: terminal output for CI projection is read from `terminalOutputByRunId`.
-- `src/bun/workflow-supervision/manager.ts`: projection refuses to record CI if the in-memory output is missing or invalid.
+- `src/bun/smithers-runtime/manager.ts`: terminal output for CI projection was previously read from `terminalOutputByRunId`.
+- `src/bun/smithers-runtime/manager.ts`: terminal output is read through `readDurableTerminalOutput(...)` from Smithers' durable `schema.output` table via Smithers' `loadOutputs(resolveSchema(...))` path instead of process memory.
+- `src/bun/smithers-runtime/manager.ts`: a declared Project CI run is marked failed when durable terminal output is missing, with a troubleshooting summary instead of silently skipping projection.
 - `src/bun/structured-session-state.ts`: persists CI run/check records after projection.
 
-**Why this matters:** A CI workflow can finish successfully in Smithers, but the svvy UI can permanently miss the result after a restart. CI state should be derived from durable workflow output, not process memory.
+**Why this mattered:** A CI workflow could finish successfully in Smithers, but the svvy UI could permanently miss the result after a restart. CI state should be derived from durable workflow output, not process memory.
 
-**Best fix:**
+**Resolved design / best fix:**
+
+Project CI is event-triggered reconciliation over durable Smithers facts and durable `svvy` workflow facts. Terminal events, monitor callbacks, and restart recovery may trigger derivation, but memory is not authoritative and the UI/read models derive from durable facts.
 
 1. Persist terminal workflow output needed for CI projection, or re-read it from Smithers durable state during terminal projection.
 2. Validate the durable output against `resultSchema` before recording CI.
 3. Keep CI upserts idempotent so recovery can safely run after restart.
-4. Preserve current invalid-output rejection behavior.
+4. Run the same derivation after terminal events, monitor reconnect, and app restart recovery.
+5. Record invalid or missing terminal output as a durable projection failure or workflow troubleshooting state instead of silently skipping CI projection.
+6. Preserve current invalid-output rejection behavior: do not parse logs, node output, final prose, or command names to infer Project CI records.
 
 **Verification required:**
 
@@ -585,7 +592,9 @@ Relevant code:
 - Invalid or lookalike outputs still do not create CI records.
 - Re-running recovery does not duplicate checks.
 
-**Documentation impact:** None if implementing existing durability expectations.
+**Verification:** `src/bun/smithers-runtime/manager.test.ts` includes Project CI schema-valid projection, invalid-output failure projection, idempotent repeated projection, restart recovery from durable Smithers output after Smithers finished before `svvy` projection, and missing durable terminal-output troubleshooting coverage.
+
+**Documentation impact:** The Project CI and workflow supervision specs now state the durable-facts reconciliation contract. `docs/features.ts` summarizes the durable-facts design, and `docs/progress.md` records the landed restart-specific reconciliation and missing-result projection items.
 
 **Confidence:** High.
 

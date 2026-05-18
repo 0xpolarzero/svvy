@@ -323,7 +323,9 @@ The result schema does.
 
 ## Result Contract
 
-Project CI records come only from terminal output that validates against the CI entry's `resultSchema`.
+Project CI records come only from terminal product output or an equivalent declared result payload that validates against the CI entry's `resultSchema`.
+
+That output is a durable workflow fact, not process-local memory. The runtime may observe it through a live Smithers completion event, a terminal Smithers snapshot, a persisted Smithers run/result record, or a durable `svvy` workflow-run projection, but once observed it must be recoverable enough for idempotent Project CI reconciliation after restart.
 
 Recommended default result schema:
 
@@ -378,14 +380,38 @@ The runtime records Project CI state only when all of these are true:
 
 1. The Smithers run was launched from a runnable entry that declares `productKind = "project-ci"`.
 2. The run reaches a terminal Smithers state.
-3. The terminal product output is directly available from the entry's declared result output.
+3. The terminal product output is directly available from the entry's declared durable result output.
 4. The terminal product output validates against the entry's `resultSchema`.
 
 If any condition is false, the runtime must not synthesize Project CI records.
 
-Invalid CI output is a CI workflow failure or troubleshooting state.
+Invalid or missing CI output is a durable CI projection failure and workflow troubleshooting state.
 
 It is not an invitation to parse logs, read node text, inspect final prose, or guess partial results.
+
+The runtime must record enough troubleshooting detail to explain why CI projection failed, such as missing terminal result, schema validation failure, mismatched product kind, or missing entry metadata. It must not silently skip a declared CI run just because the result was missing from process memory.
+
+## Reconciliation Model
+
+Project CI is an event-triggered reconciliation over durable Smithers facts and durable `svvy` workflow facts.
+
+The sanctioned triggers are:
+
+- CI workflow launch, resume, completion, cancellation, or failure events
+- workflow monitor reconnect or terminal bootstrap reads
+- app restart recovery for nonterminal or terminal workflow runs whose CI projection has not been reconciled
+- durable Smithers result or workflow-run projection writes that affect a declared Project CI entry
+
+Each trigger should run the same idempotent derivation:
+
+1. Load the durable workflow-run record and owning handler/thread/session facts.
+2. Confirm the runnable entry still resolves as `productKind = "project-ci"`.
+3. Load the durable terminal result payload from Smithers or the persisted `svvy` workflow projection.
+4. Validate that payload against the entry's `resultSchema`.
+5. Upsert exactly one `ci_run` for the workflow run and stable `ci_check_result` rows by `checkId`.
+6. If the durable result is missing or invalid, record a projection failure or troubleshooting state instead of creating partial CI records.
+
+In-memory maps, live monitors, UI state, and transcript text are not authoritative. They may trigger reconciliation or carry live progress, but the UI/read models must derive from durable `ci_run`, `ci_check_result`, workflow-run, and Smithers facts.
 
 ## Durable State
 

@@ -342,6 +342,8 @@ For entries declaring `productKind = "project-ci"`, the bridge must preserve eno
 
 No Smithers supervision path may classify a workflow run as Project CI from entry labels, command names, logs, node outputs, or final prose.
 
+Project CI projection is an event-triggered reconciliation over durable Smithers and `svvy` workflow facts. Live terminal events may start the reconciliation, but process-local terminal-output memory is not authoritative. Restart recovery, monitor reconnect, and terminal bootstrap reads must be able to re-run the same idempotent derivation from durable run/result state. If the durable terminal result for a declared Project CI entry is missing or fails the entry's result schema, supervision records a durable projection failure/troubleshooting state instead of silently skipping CI projection or inferring results from logs.
+
 The handler-visible launch contract must preserve launch-side semantics:
 
 - `workflowId` selects the runnable entry whose contract was returned by `smithers.list_workflows`
@@ -442,8 +444,11 @@ The bridge is responsible for updating:
 - workflow-run summary
 - thread wait state when the workflow enters a durable wait
 - lifecycle events and artifacts that explain meaningful workflow transitions
+- Project CI reconciliation state when a declared CI workflow reaches or is recovered in a terminal state
 
 The bridge must not rely on transcript parsing or read-side repair loops to keep workflow state current.
+
+For Project CI specifically, the bridge must not rely on unrecoverable process memory to keep CI state current. In-memory terminal buffers, live monitors, and renderer state can trigger projection, but the durable read model must derive from Smithers result facts, workflow-run facts, and `ci_run` or `ci_check_result` records. Missing or invalid terminal result data is itself durable troubleshooting state.
 
 ### Thread Status Semantics During Supervision
 

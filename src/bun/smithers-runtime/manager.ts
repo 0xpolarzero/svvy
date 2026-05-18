@@ -13,7 +13,6 @@ import {
   ensureSmithersTables,
   runWorkflow,
   signalRun,
-  type RunResult,
   type RunStatus,
   type SmithersEvent,
   type SmithersWorkflow,
@@ -236,7 +235,6 @@ export class SmithersRuntimeManager {
   private readonly deliveringAttentionRunIds = new Set<string>();
   private readonly activeWorkflowPromises = new Set<Promise<void>>();
   private readonly activeWorkflowPromiseByRunId = new Map<string, Promise<void>>();
-  private readonly terminalOutputByRunId = new Map<string, unknown>();
 
   constructor(private readonly options: SmithersRuntimeManagerOptions) {
     this.runtimeRoot = join(options.cwd, ".svvy", "smithers-runtime");
@@ -1286,7 +1284,7 @@ export class SmithersRuntimeManager {
     resume: boolean;
   }) {
     try {
-      const result = (await Effect.runPromise(
+      await Effect.runPromise(
         runWorkflow(input.runnableEntry.workflow, {
           runId: input.runId,
           input: input.input,
@@ -1298,8 +1296,7 @@ export class SmithersRuntimeManager {
             void this.handleProgressEvent(input.monitor, event);
           },
         }),
-      )) as RunResult;
-      this.terminalOutputByRunId.set(input.runId, result.output);
+      );
     } catch (error) {
       if (!input.monitor.abortController.signal.aborted) {
         await this.captureUnexpectedWorkflowFailure(input.runId, error);
@@ -1540,7 +1537,7 @@ export class SmithersRuntimeManager {
     );
     const diagnosis = run.status === "waiting-event" ? await this.getRunDiagnosis(runId) : null;
     const waitKind = mapRunStatusToWaitKind(run.status);
-    const projectCiProjection = this.resolveProjectCiProjection({
+    const projectCiProjection = await this.resolveProjectCiProjection({
       runId,
       ownership,
       runStatus: run.status,
@@ -1734,11 +1731,11 @@ export class SmithersRuntimeManager {
     }
   }
 
-  private resolveProjectCiProjection(input: {
+  private async resolveProjectCiProjection(input: {
     runId: string;
     ownership: WorkflowOwnership;
     runStatus: RunStatus;
-  }): ProjectCiProjection | null {
+  }): Promise<ProjectCiProjection | null> {
     if (input.runStatus !== "finished") {
       return null;
     }
@@ -1761,10 +1758,6 @@ export class SmithersRuntimeManager {
       };
     }
 
-    if (!this.terminalOutputByRunId.has(input.runId)) {
-      return null;
-    }
-
     if (!entry.resultSchema) {
       return {
         workflowStatus: "failed",
@@ -1774,7 +1767,16 @@ export class SmithersRuntimeManager {
       };
     }
 
-    const output = this.terminalOutputByRunId.get(input.runId);
+    const output = await this.readDurableTerminalOutput(input.runId);
+    if (!output) {
+      return {
+        workflowStatus: "failed",
+        summary:
+          "Project CI Smithers run finished without durable terminal output, so no CI records were created.",
+        result: null,
+      };
+    }
+
     const entryValidation = entry.resultSchema.safeParse(output);
     if (!entryValidation.success) {
       return {
@@ -1800,6 +1802,46 @@ export class SmithersRuntimeManager {
       summary: projectionValidation.data.summary,
       result: projectionValidation.data,
     };
+  }
+
+  private async readDurableTerminalOutput(runId: string): Promise<unknown[] | null> {
+    const nodes = (
+      (await this.db.listNodes(runId)) as Array<{
+        nodeId?: string;
+        node_id?: string;
+        iteration?: number | null;
+        updatedAtMs?: number | null;
+        updated_at_ms?: number | null;
+        outputTable?: string | null;
+        output_table?: string | null;
+      }>
+    )
+      .map((node) => ({
+        nodeId: node.nodeId ?? node.node_id,
+        iteration: node.iteration ?? 0,
+        updatedAtMs: node.updatedAtMs ?? node.updated_at_ms ?? 0,
+        outputTable: node.outputTable ?? node.output_table,
+      }))
+      .filter((node) => node.outputTable === "output" && typeof node.nodeId === "string");
+    if (nodes.length === 0) {
+      return null;
+    }
+
+    const rows: unknown[] = [];
+    for (const node of nodes.toSorted(compareDurableOutputNodes)) {
+      const rawOutput = await this.db.getRawNodeOutputForIteration(
+        "output",
+        runId,
+        node.nodeId!,
+        node.iteration,
+      );
+      if (!rawOutput) {
+        continue;
+      }
+      rows.push(normalizeDurableSmithersOutputRow(rawOutput));
+    }
+
+    return rows.length > 0 ? rows : null;
   }
 
   private applyThreadProjection(input: {
@@ -2536,6 +2578,57 @@ function isTerminalWorkflowReplayAfterThreadCompletion(
   workflowStatus: StructuredWorkflowStatus,
 ): boolean {
   return threadStatus === "completed" && isTerminalWorkflowStatus(workflowStatus);
+}
+
+function compareDurableOutputNodes(
+  left: { nodeId?: string; iteration: number; updatedAtMs: number },
+  right: { nodeId?: string; iteration: number; updatedAtMs: number },
+): number {
+  const updatedDelta = left.updatedAtMs - right.updatedAtMs;
+  if (updatedDelta !== 0) {
+    return updatedDelta;
+  }
+  const nodeDelta = (left.nodeId ?? "").localeCompare(right.nodeId ?? "");
+  if (nodeDelta !== 0) {
+    return nodeDelta;
+  }
+  return left.iteration - right.iteration;
+}
+
+function normalizeDurableSmithersOutputRow(row: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+  for (const [rawKey, rawValue] of Object.entries(row)) {
+    if (
+      rawKey === "runId" ||
+      rawKey === "run_id" ||
+      rawKey === "nodeId" ||
+      rawKey === "node_id" ||
+      rawKey === "iteration"
+    ) {
+      continue;
+    }
+    normalized[snakeToCamel(rawKey)] = parseDurableSqliteJsonValue(rawValue);
+  }
+  return normalized;
+}
+
+function parseDurableSqliteJsonValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("{") && !trimmed.startsWith("["))) {
+    return value;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function snakeToCamel(value: string): string {
+  return value.replace(/_([a-z])/g, (_match, char: string) => char.toUpperCase());
 }
 
 function parseJson(value: string | null | undefined): any {

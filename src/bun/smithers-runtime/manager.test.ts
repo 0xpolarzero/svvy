@@ -14,8 +14,9 @@ import {
   bundledWorkflowRuntimeStoredInputSchema,
   readBundledWorkflowLaunchInput,
 } from "./runtime-input";
-import { Timer, WaitForEvent, createSmithers } from "smithers-orchestrator";
+import { Timer, WaitForEvent, createSmithers, runWorkflow } from "smithers-orchestrator";
 import { z } from "zod";
+import { Effect } from "effect";
 
 const tempDirs: string[] = [];
 const stores: Array<ReturnType<typeof createStructuredSessionStateStore>> = [];
@@ -738,6 +739,49 @@ function createProjectCiTerminalOutputWorkflowDefinition(input: {
   };
 }
 
+function createProjectCiMissingTerminalOutputWorkflowDefinition(
+  dbPath: string,
+): TestWorkflowDefinition {
+  const launchSchema = z.object({
+    scope: z.enum(["fast", "full", "release"]).default("fast"),
+  });
+  const otherOutputSchema = z.object({
+    summary: z.string().min(1),
+  });
+  const smithersApi = createSmithers(
+    {
+      input: bundledWorkflowRuntimeStoredInputSchema,
+      otherOutput: otherOutputSchema,
+    },
+    { dbPath },
+  );
+
+  return {
+    id: "missing_project_ci_output",
+    label: "Missing Project CI Output",
+    summary: "Declared Project CI workflow that finishes without Smithers terminal output.",
+    launchSchema,
+    productKind: "project-ci",
+    resultSchema: projectCiTerminalResultSchema,
+    workflow: smithersApi.smithers((ctx) => {
+      const workflowInput = readBundledWorkflowLaunchInput(launchSchema, ctx.input);
+      return React.createElement(
+        smithersApi.Workflow,
+        { name: "svvy-missing-project-ci-output" },
+        React.createElement(smithersApi.Task, {
+          id: "not-terminal-output",
+          output: smithersApi.outputs.otherOutput,
+          children: {
+            summary: `Recorded ${workflowInput.scope} details outside the terminal output table.`,
+          },
+        }),
+      );
+    }),
+    sourceScope: "saved",
+    entryPath: ".svvy/workflows/entries/ci/missing-project-ci-output.tsx",
+  };
+}
+
 describe("SmithersRuntimeManager", () => {
   it("publishes workflow discovery metadata with input-side defaults", () => {
     const { cwd, manager } = createWorkspaceFixture();
@@ -937,6 +981,129 @@ describe("SmithersRuntimeManager", () => {
     const afterInvalidSnapshot = store.getSessionState(sessionId);
     expect(afterInvalidSnapshot.ciRuns).toHaveLength(1);
     expect(afterInvalidSnapshot.ciCheckResults).toHaveLength(1);
+  });
+
+  it("projects Project CI from durable Smithers output after restart when Smithers finished first", async () => {
+    const fixture = createWorkspaceFixture();
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } = fixture;
+    const definition = createProjectCiTerminalOutputWorkflowDefinition({
+      dbPath: smithersDbPath(cwd),
+      productKind: "project-ci",
+    });
+    registerWorkflow(manager, definition);
+
+    const runId = "smithers-finished-before-svvy-project-ci-projection";
+    await Effect.runPromise(
+      runWorkflow(definition.workflow, {
+        runId,
+        input: { scope: "full" },
+        rootDir: cwd,
+      }),
+    );
+
+    const command = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Recover a finished Project CI workflow",
+      title: "Recover Project CI",
+      summary: "Project a Smithers run that finished before svvy reconciled it.",
+    });
+    const structuredRun = store.recordWorkflow({
+      threadId,
+      commandId: command.commandId,
+      smithersRunId: runId,
+      workflowName: "project_ci",
+      workflowSource: "saved",
+      entryPath: ".svvy/workflows/entries/ci/project-ci.tsx",
+      savedEntryId: "project_ci",
+      status: "running",
+      smithersStatus: "running",
+      waitKind: null,
+      continuedFromRunIds: [],
+      activeDescendantRunId: null,
+      lastEventSeq: null,
+      pendingAttentionSeq: null,
+      lastAttentionSeq: null,
+      heartbeatAt: null,
+      summary: "Recovering Project CI.",
+    });
+
+    await manager.close();
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: fixture.structuredStateChanges,
+      handlerAttentions: fixture.handlerAttentions,
+    });
+    registerWorkflow(restoredManager, definition);
+
+    await restoredManager.restoreSessionSupervision(sessionId, { emitAttention: false });
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(snapshot.workflowRuns.find((entry) => entry.id === structuredRun.id)).toMatchObject({
+      status: "completed",
+      smithersStatus: "finished",
+      summary: "Project CI full checks passed.",
+    });
+    expect(snapshot.ciRuns).toHaveLength(1);
+    expect(snapshot.ciRuns[0]).toMatchObject({
+      workflowRunId: structuredRun.id,
+      status: "passed",
+      summary: "Project CI full checks passed.",
+    });
+    expect(snapshot.ciCheckResults).toHaveLength(1);
+    expect(snapshot.ciCheckResults[0]).toMatchObject({
+      ciRunId: snapshot.ciRuns[0]?.id,
+      checkId: "typecheck",
+    });
+  });
+
+  it("marks declared Project CI troubleshooting when durable terminal output is missing", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(
+      manager,
+      createProjectCiMissingTerminalOutputWorkflowDefinition(smithersDbPath(cwd)),
+    );
+
+    const command = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Run Project CI without terminal output",
+      title: "Run Project CI without terminal output",
+      summary: "Launch a declared Project CI workflow that omits the terminal output table.",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "missing_project_ci_output",
+      launchInput: { scope: "fast" },
+      commandId: command.commandId,
+    });
+
+    await waitFor("missing Project CI output troubleshooting projection", async () => {
+      const run = await manager.getRun(launched.runId);
+      const snapshot = store.getSessionState(sessionId);
+      const workflowRun = snapshot.workflowRuns.find(
+        (entry) => entry.smithersRunId === launched.runId,
+      );
+      const thread = snapshot.threads.find((entry) => entry.id === threadId);
+      return (
+        run.status === "finished" &&
+        workflowRun?.status === "failed" &&
+        thread?.status === "troubleshooting" &&
+        workflowRun.summary.includes("finished without durable terminal output")
+      );
+    });
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(snapshot.ciRuns).toHaveLength(0);
+    expect(snapshot.ciCheckResults).toHaveLength(0);
   });
 
   it("runs the saved hello_world fixture workflow through the real Smithers runtime and projects completion back to the handler thread", async () => {
