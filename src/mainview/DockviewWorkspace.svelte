@@ -677,6 +677,20 @@
     background: var(--dv-tabs-and-actions-container-background-color);
   }
 
+  :global(.dockview-workbench .dv-pane-container.dv-animated .dv-view),
+  :global(.dockview-workbench .dv-split-view-container.dv-animation .dv-view),
+  :global(.dockview-workbench .dv-split-view-container.dv-animation .dv-sash),
+  :global(.dockview-workbench .dv-tab.dv-tab--shifting),
+  :global(.dockview-workbench .dv-tab.dv-tab--dragging),
+  :global(.dockview-workbench .dv-tab.dv-tab--group-collapsed),
+  :global(.dockview-workbench .dv-tab.dv-tab--group-expanding),
+  :global(.dockview-workbench .dv-tab-group-chip.dv-tab-group-chip--shifting),
+  :global(.dockview-workbench .dv-tab-group-chip.dv-tab-group-chip--dragging),
+  :global(.dockview-workbench .dv-tabs-container-vertical .dv-tab.dv-tab--group-collapsed),
+  :global(.dockview-workbench .dv-tabs-container-vertical .dv-tab.dv-tab--group-expanding) {
+    transition: none !important;
+  }
+
   :global(.dockview-surface-content) {
     height: 100%;
     min-height: 0;

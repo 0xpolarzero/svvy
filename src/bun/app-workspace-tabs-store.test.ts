@@ -138,29 +138,25 @@ describe("app workspace tabs store", () => {
     expect(state.activeWorkspaceTabId).toBeNull();
   });
 
-  it("does not normalize the removed v3 workspace-id-as-tab-id state shape", () => {
+  it("throws on malformed v4 tabs instead of repairing missing tab identity", () => {
     const store = createAppWorkspaceTabsStore({ agentDir: tempAgentDir() });
 
-    const state = store.setState({
-      version: 3,
-      activeWorkspaceId: "workspace-a",
-      tabs: [
-        {
-          workspaceId: "workspace-a",
-          cwd: "/tmp/workspace-a",
-          workspaceLabel: "workspace-a",
-          openedAt: "2026-05-15T12:00:00.000Z",
-        },
-      ],
-      knownWorkspaces: [],
-    } as never);
-
-    expect(state).toEqual({
-      version: 4,
-      activeWorkspaceTabId: null,
-      tabs: [],
-      knownWorkspaces: [],
-    });
+    expect(() =>
+      store.setState({
+        version: 4,
+        activeWorkspaceTabId: "workspace-a",
+        tabs: [
+          {
+            workspaceId: "workspace-a",
+            cwd: "/tmp/workspace-a",
+            workspaceLabel: "workspace-a",
+            kind: "user",
+            openedAt: "2026-05-15T12:00:00.000Z",
+          },
+        ],
+        knownWorkspaces: [],
+      } as never),
+    ).toThrow("tabs[0] is missing required workspace tab fields");
   });
 });
 

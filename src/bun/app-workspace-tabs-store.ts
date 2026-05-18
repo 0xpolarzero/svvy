@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { AppWorkspaceTabsState, WorkspaceTabInfo } from "../shared/workspace-contract";
 
 const APP_WORKSPACE_TABS_FILENAME = "app-workspace-tabs.json";
@@ -16,20 +15,11 @@ export function createAppWorkspaceTabsStore(input: { agentDir: string }): AppWor
 
   const readState = (): AppWorkspaceTabsState | null => {
     if (!existsSync(statePath)) return null;
-    try {
-      return normalizeAppWorkspaceTabsState(JSON.parse(readFileSync(statePath, "utf8")));
-    } catch {
-      return null;
-    }
+    return parseAppWorkspaceTabsState(JSON.parse(readFileSync(statePath, "utf8")));
   };
 
   const writeState = (state: AppWorkspaceTabsState): AppWorkspaceTabsState => {
-    const normalized = normalizeAppWorkspaceTabsState(state) ?? {
-      version: 4,
-      activeWorkspaceTabId: null,
-      tabs: [],
-      knownWorkspaces: [],
-    };
+    const normalized = parseAppWorkspaceTabsState(state);
     mkdirSync(dirname(statePath), { recursive: true });
     writeFileSync(statePath, `${JSON.stringify(normalized, null, 2)}\n`);
     return normalized;
@@ -42,17 +32,26 @@ export function createAppWorkspaceTabsStore(input: { agentDir: string }): AppWor
   };
 }
 
-function normalizeAppWorkspaceTabsState(input: unknown): AppWorkspaceTabsState | null {
-  if (!input || typeof input !== "object") return null;
+function parseAppWorkspaceTabsState(input: unknown): AppWorkspaceTabsState {
+  if (!input || typeof input !== "object") {
+    throw new Error("Invalid app workspace tabs state: expected an object.");
+  }
   const raw = input as Partial<AppWorkspaceTabsState>;
   if (raw.version !== 4 || !Array.isArray(raw.tabs) || !Array.isArray(raw.knownWorkspaces)) {
-    return null;
+    throw new Error(
+      "Invalid app workspace tabs state: expected version 4 tabs and knownWorkspaces.",
+    );
+  }
+  if (raw.activeWorkspaceTabId !== null && typeof raw.activeWorkspaceTabId !== "string") {
+    throw new Error(
+      "Invalid app workspace tabs state: activeWorkspaceTabId must be a string or null.",
+    );
   }
 
-  const tabs = raw.tabs.map(normalizeWorkspaceTab).filter((tab): tab is WorkspaceTabInfo => !!tab);
-  const knownWorkspaces = raw.knownWorkspaces
-    .map(normalizeWorkspaceTab)
-    .filter((tab): tab is WorkspaceTabInfo => !!tab);
+  const tabs = raw.tabs.map((tab, index) => parseWorkspaceTab(tab, `tabs[${index}]`));
+  const knownWorkspaces = raw.knownWorkspaces.map((tab, index) =>
+    parseWorkspaceTab(tab, `knownWorkspaces[${index}]`),
+  );
   const activeWorkspaceTabId =
     typeof raw.activeWorkspaceTabId === "string" &&
     tabs.some((tab) => tab.workspaceTabId === raw.activeWorkspaceTabId)
@@ -67,23 +66,26 @@ function normalizeAppWorkspaceTabsState(input: unknown): AppWorkspaceTabsState |
   };
 }
 
-function normalizeWorkspaceTab(input: unknown): WorkspaceTabInfo | null {
-  if (!input || typeof input !== "object") return null;
+function parseWorkspaceTab(input: unknown, path: string): WorkspaceTabInfo {
+  if (!input || typeof input !== "object") {
+    throw new Error(`Invalid app workspace tabs state: ${path} must be an object.`);
+  }
   const raw = input as Partial<WorkspaceTabInfo>;
   if (
     typeof raw.workspaceId !== "string" ||
+    typeof raw.workspaceTabId !== "string" ||
+    !raw.workspaceTabId.trim() ||
     typeof raw.cwd !== "string" ||
     typeof raw.workspaceLabel !== "string" ||
     (raw.kind !== "default" && raw.kind !== "user") ||
     typeof raw.openedAt !== "string"
   ) {
-    return null;
+    throw new Error(
+      `Invalid app workspace tabs state: ${path} is missing required workspace tab fields.`,
+    );
   }
   return {
-    workspaceTabId:
-      typeof raw.workspaceTabId === "string" && raw.workspaceTabId.trim()
-        ? raw.workspaceTabId
-        : `workspace-tab-${randomUUID()}`,
+    workspaceTabId: raw.workspaceTabId,
     workspaceId: raw.workspaceId,
     cwd: raw.cwd,
     workspaceLabel: raw.workspaceLabel,

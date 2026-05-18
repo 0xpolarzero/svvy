@@ -315,9 +315,18 @@
 		const tab = tabs.find((candidate) => candidate.workspace.workspaceTabId === workspaceTabId);
 		if (!tab) return;
 		const index = tabs.indexOf(tab);
+		const closingActiveTab = activeWorkspaceTabId === workspaceTabId;
+		const remainingTabs = tabs.filter((candidate) => candidate.workspace.workspaceTabId !== workspaceTabId);
+		const nextActiveTabId =
+			closingActiveTab
+				? (remainingTabs[index]?.workspace.workspaceTabId ??
+					remainingTabs[index - 1]?.workspace.workspaceTabId ??
+					null)
+				: activeWorkspaceTabId;
 		tab.unsubscribe();
 		tab.runtime.dispose();
-		tabs = tabs.filter((candidate) => candidate.workspace.workspaceTabId !== workspaceTabId);
+		tabs = remainingTabs;
+		activeWorkspaceTabId = nextActiveTabId;
 		try {
 			await rpc.request.closeWorkspace({ workspaceId: tab.workspace.workspaceId });
 		} catch (error) {
@@ -329,9 +338,8 @@
 			await setActiveWorkspace(tabs[0]!.workspace.workspaceTabId);
 			return;
 		}
-		if (activeWorkspaceTabId === workspaceTabId) {
-			const nextTab = tabs[index] ?? tabs[index - 1] ?? null;
-			await setActiveWorkspace(nextTab?.workspace.workspaceTabId ?? null);
+		if (closingActiveTab) {
+			await setActiveWorkspace(nextActiveTabId);
 			return;
 		}
 		await persistWorkspaceTabs();

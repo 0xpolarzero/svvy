@@ -162,7 +162,7 @@
   let showModelPicker = $state(false);
   let allowedProviders = $state<string[]>([]);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
-  let windowWidth = $state(0);
+  let windowWidth = $state(typeof window === "undefined" ? 1024 : window.innerWidth);
   let isMacWindowChrome = $state(false);
   let dockviewLayoutEpoch = $state(0);
   let sessions = $state<WorkspaceSessionSummary[]>([]);
@@ -3273,7 +3273,6 @@
     height: 100%;
     min-height: 0;
     padding: 0;
-    transition: grid-template-columns 230ms cubic-bezier(0.19, 1, 0.22, 1);
   }
 
   .chat-workspace.sidebar-hidden {
