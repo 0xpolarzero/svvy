@@ -317,7 +317,7 @@ The first adopted Smithers-native surface is:
 | `smithers.list_artifacts`             | required                            | Inspect structured workflow artifacts and node outputs.                                                                                                             | Smithers semantic tool `list_artifacts`.                                                                                                    |
 | `smithers.get_chat_transcript`        | required                            | Read workflow-related agent transcript grouped by attempts.                                                                                                         | Smithers semantic tool `get_chat_transcript`.                                                                                               |
 | `smithers.get_run_events`             | required                            | Read raw lifecycle events and paginate by sequence.                                                                                                                 | Smithers semantic tool `get_run_events`, aligned with `GET /v1/runs/:runId/events?afterSeq=N`.                                              |
-| `smithers.runs.cancel`                | required                            | Cancel an active run.                                                                                                                                               | `POST /v1/runs/:runId/cancel` and Gateway `runs.cancel`.                                                                                    |
+| `smithers.runs.cancel`                | required                            | Cancel a Smithers run using Smithers server semantics: direct terminal cancellation for `waiting-approval` and `waiting-timer`, request-and-abort for live `running`, and rejection for inactive states Smithers does not cancel directly. | `POST /v1/runs/:runId/cancel` and Gateway `runs.cancel`.                                                                                    |
 | `smithers.signals.send`               | required when workflows use signals | Deliver a durable signal to a waiting run.                                                                                                                          | `POST /v1/runs/:runId/signals/:signalName` and Gateway `signals.send`.                                                                      |
 | `smithers.frames.list`                | bridge or UI                        | Inspect rendered frames for timeline or inspector UIs.                                                                                                              | `GET /v1/runs/:runId/frames` and Gateway `frames.list` and `frames.get`.                                                                    |
 | `smithers.getDevToolsSnapshot`        | bridge or UI                        | Read a DevTools tree snapshot for the workflow inspector.                                                                                                           | Gateway `getDevToolsSnapshot`.                                                                                                              |
@@ -529,6 +529,17 @@ The stable `smithers.run_workflow({ workflowId, input, runId? })` surface has an
 - different `workflowId` values can run concurrently under one handler thread
 
 If the handler edits workflow source, changes workflow input, or hits a Smithers non-resumable condition, it must start a replacement run instead of trying to resume the same run.
+
+### Cancellation
+
+`smithers.runs.cancel` must follow Smithers server cancellation semantics rather than a svvy-specific approximation:
+
+- `running` runs use Smithers' cancel-request path and abort the live monitor so the active engine loop observes cancellation
+- `waiting-approval` runs are terminalized immediately with a Smithers `RunCancelled` event
+- `waiting-timer` runs are terminalized immediately with Smithers' timer cleanup: the waiting timer attempt and node become `cancelled`, a `TimerCancelled` event is written, then the run receives `RunCancelled`
+- `waiting-event` is not direct-terminalized because Smithers server cancellation does not do that; it remains a signal-mediated wait unless Smithers adds native direct cancellation for that state
+
+After any direct paused-run terminalization, `svvy` must flush Smithers events into the structured workflow run, clear thread and session waits, move the owning handler thread into `troubleshooting`, and request handler attention for the cancellation.
 
 ## Recovery And Restart
 

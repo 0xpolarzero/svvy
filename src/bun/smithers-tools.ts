@@ -519,7 +519,10 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       execute: async (params) => {
         const result = await options.manager.cancelRun(params.runId);
         return {
-          summary: `Cancellation requested for run ${params.runId}.`,
+          summary:
+            result.status === "cancelled"
+              ? `Cancelled paused run ${params.runId}.`
+              : `Cancellation requested for run ${params.runId}.`,
           details: result,
         };
       },

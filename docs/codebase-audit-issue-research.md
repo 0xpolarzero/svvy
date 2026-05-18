@@ -39,7 +39,7 @@ For each issue, record:
 | AUD-008 | P1 | Workspace-scoped RPC handlers must never route through active runtime state | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Fixed |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Fixed |
-| AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Researched |
+| AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Fixed |
 | AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Researched |
 | AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Researched |
 | AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Researched |
@@ -513,37 +513,40 @@ Relevant code:
 
 **Impact:** High workflow lifecycle issue.
 
-**Precise issue:** Cancelling a waiting run requests cancellation and aborts any in-memory monitor, but an inactive paused run may have no live engine loop to observe the cancellation request and terminalize the run.
+**Disposition:** Fixed. `smithers.runs.cancel` now mirrors Smithers server cancellation semantics instead of relying on a svvy-only cancel-request path for paused runs.
+
+**Precise issue:** Cancelling a waiting run used to request cancellation and abort any in-memory monitor, but an inactive paused run may have no live engine loop to observe the cancellation request and terminalize the run.
 
 Relevant code:
 
-- `src/bun/smithers-tools.ts`: `runs.cancel` calls the workflow manager.
-- `src/bun/workflow-supervision/manager.ts`: cancellation requests cancellation, aborts in-memory monitor, and flushes events.
-- Smithers reference behavior: paused waiting-approval or waiting-timer states can be terminalized directly with `RunCancelled`; running states use cancellation observed by the engine loop.
+- `src/bun/smithers-tools.ts`: `runs.cancel` calls the workflow manager and reports whether cancellation was direct or requested.
+- `src/bun/smithers-runtime/manager.ts`: running runs use Smithers' cancel-request/live-abort path.
+- `src/bun/smithers-runtime/manager.ts`: `waiting-approval` runs are directly terminalized with `RunCancelled`.
+- `src/bun/smithers-runtime/manager.ts`: `waiting-timer` runs follow Smithers server cleanup by cancelling waiting timer attempts/nodes, writing `TimerCancelled`, then writing `RunCancelled`.
+- Smithers reference behavior: paused `waiting-approval` or `waiting-timer` states can be terminalized directly with `RunCancelled`; `running` states use cancellation observed by the engine loop; `waiting-event` is not direct-terminalized by Smithers server cancellation.
 
 **Why this matters:** A waiting approval/timer/event can remain nonterminal after cancellation. That blocks handler progress, `thread.handoff`, and wait-state clearing.
 
-**Best fix:**
+**Resolved behavior:**
 
-Mirror Smithers cancellation semantics:
+1. Inspect the current Smithers run status.
+2. Directly terminalize `waiting-approval` and write `RunCancelled`.
+3. Directly terminalize `waiting-timer` by cancelling waiting timer attempt/node rows, writing `TimerCancelled`, then writing `RunCancelled`.
+4. Flush/project terminal state into structured session records, clear waits, and deliver handler attention.
+5. Keep live `running` runs on the request-and-abort path.
+6. Reject `waiting-event` direct cancellation because Smithers server cancellation does not terminalize that state.
 
-1. Inspect the current run status.
-2. For inactive paused states that Smithers supports for direct cancellation, terminalize immediately and write a `RunCancelled` event.
-3. Update attempt/timer/approval state consistently.
-4. Flush/project terminal state into structured session records.
-5. Keep live running runs on the request-and-abort path.
-6. Decide and document whether `waiting-event` is directly cancellable or remains engine-mediated.
+**Verification:**
 
-**Verification required:**
+- `bun test src/bun/smithers-runtime/manager.test.ts`
+- `src/bun/smithers-runtime/manager.test.ts` covers cancelling live and restored/no-live-monitor paused approval runs into Smithers `cancelled` state, svvy `cancelled` projection, cleared waits, and handler attention.
+- `src/bun/smithers-runtime/manager.test.ts` covers cancelling live and restored/no-live-monitor paused timer runs, including cancelled timer node/attempt rows plus `TimerCancelled` and `RunCancelled` events.
+- `src/bun/smithers-runtime/manager.test.ts` covers `waiting-event` rejection according to current Smithers server behavior, with the run remaining in `waiting-event`.
+- `src/bun/smithers-runtime/manager.test.ts` covers running cancellation through the live cancel-request path.
 
-- Cancel waiting-approval with no live monitor; Smithers row becomes cancelled, structured workflow becomes cancelled, wait attention clears.
-- Cancel waiting-timer similarly.
-- Cover waiting-event according to the resolved policy.
-- Running cancellation still uses the live cancellation path.
+**Documentation impact:** `docs/specs/workflow-supervision.spec.md` now states the Smithers-aligned cancellation split, including the current `waiting-event` policy.
 
-**Documentation impact:** Update Smithers tool/spec docs if waiting-event support is explicitly included or excluded.
-
-**Confidence:** Medium-high. Waiting approval/timer risk is clear; waiting-event policy needs confirmation.
+**Confidence:** High. Waiting approval/timer cancellation now follows Smithers server behavior, and the `waiting-event` policy is explicitly covered as non-direct-terminalized.
 
 ### AUD-012 - Project CI projection depends on in-memory terminal output
 

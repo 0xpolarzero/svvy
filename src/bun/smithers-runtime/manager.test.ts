@@ -14,7 +14,7 @@ import {
   bundledWorkflowRuntimeStoredInputSchema,
   readBundledWorkflowLaunchInput,
 } from "./runtime-input";
-import { WaitForEvent, createSmithers } from "smithers-orchestrator";
+import { Timer, WaitForEvent, createSmithers } from "smithers-orchestrator";
 import { z } from "zod";
 
 const tempDirs: string[] = [];
@@ -427,6 +427,53 @@ function createSignalWorkflowDefinition(dbPath: string): TestWorkflowDefinition 
                 },
               })
             : null,
+        ),
+      );
+    }),
+  };
+}
+
+function createTimerWorkflowDefinition(dbPath: string): TestWorkflowDefinition {
+  const launchSchema = z.object({
+    duration: z.string().min(1).default("1h"),
+  });
+  const resultSchema = z.object({
+    summary: z.string(),
+  });
+  const smithersApi = createSmithers(
+    {
+      input: bundledWorkflowRuntimeStoredInputSchema,
+      timerResult: resultSchema,
+    },
+    { dbPath },
+  );
+
+  return {
+    id: "wait_for_timer",
+    label: "Wait For Timer",
+    summary: "Waits on a durable Smithers timer and records when it fires.",
+    workflowName: "svvy-wait-for-timer",
+    launchSchema,
+    workflow: smithersApi.smithers((ctx) => {
+      const workflowInput = readBundledWorkflowLaunchInput(launchSchema, ctx.input);
+      return React.createElement(
+        smithersApi.Workflow,
+        { name: "svvy-wait-for-timer" },
+        React.createElement(
+          smithersApi.Sequence,
+          null,
+          React.createElement(Timer, {
+            id: "sleep",
+            duration: workflowInput.duration,
+            label: `timer:${workflowInput.duration}`,
+          }),
+          React.createElement(smithersApi.Task, {
+            id: "result",
+            output: smithersApi.outputs.timerResult,
+            children: {
+              summary: `Timer ${workflowInput.duration} fired.`,
+            },
+          }),
         ),
       );
     }),
@@ -1035,6 +1082,164 @@ describe("SmithersRuntimeManager", () => {
     expect(artifacts.outputs.map((entry: { nodeId: string }) => entry.nodeId)).toEqual(
       expect.arrayContaining(["greeting", "result"]),
     );
+  });
+
+  it("cancels a paused approval run by terminalizing it like Smithers server cancellation", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId, handlerAttentions } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const command = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow",
+      title: "Run approval_gate",
+      summary: "Launch the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Approve before cancel?" },
+      commandId: command.commandId,
+    });
+
+    await waitFor("approval workflow wait", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "waiting-approval";
+    });
+
+    const cancelled = await manager.cancelRun(launched.runId);
+
+    expect(cancelled).toMatchObject({
+      ok: true,
+      runId: launched.runId,
+      status: "cancelled",
+    });
+    expect(await manager.getRun(launched.runId)).toMatchObject({
+      runId: launched.runId,
+      status: "cancelled",
+      waitKind: null,
+    });
+    const events = await manager.getRunEvents({ runId: launched.runId });
+    expect(events.map((event: { type: string }) => event.type)).toContain("RunCancelled");
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "cancelled",
+      smithersStatus: "cancelled",
+      waitKind: null,
+    });
+    expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
+      status: "troubleshooting",
+      wait: null,
+    });
+    expect(snapshot.session.wait).toBeNull();
+    expect(handlerAttentions.some((event) => event.reason.includes("was cancelled"))).toBe(true);
+  });
+
+  it("cancels a paused timer run by cancelling the waiting timer attempt before RunCancelled", async () => {
+    const { cwd, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createTimerWorkflowDefinition(smithersDbPath(cwd)));
+
+    const command = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch timer workflow",
+      title: "Run wait_for_timer",
+      summary: "Launch the wait_for_timer workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_timer",
+      launchInput: { duration: "1h" },
+      commandId: command.commandId,
+    });
+
+    await waitFor("timer workflow wait", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "waiting-timer";
+    });
+
+    await manager.cancelRun(launched.runId);
+
+    expect(await manager.getRun(launched.runId)).toMatchObject({
+      runId: launched.runId,
+      status: "cancelled",
+      waitKind: null,
+    });
+    const detail = await manager.getNodeDetail({
+      runId: launched.runId,
+      nodeId: "sleep",
+    });
+    expect(detail.node).toMatchObject({
+      nodeId: "sleep",
+      state: "cancelled",
+    });
+    expect(detail.attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          state: "cancelled",
+        }),
+      ]),
+    );
+    const events = await manager.getRunEvents({ runId: launched.runId });
+    expect(events.map((event: { type: string }) => event.type)).toEqual(
+      expect.arrayContaining(["TimerCancelled", "RunCancelled"]),
+    );
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "cancelled",
+      smithersStatus: "cancelled",
+      waitKind: null,
+    });
+  });
+
+  it("does not invent direct cancellation for waiting-event runs because Smithers does not", async () => {
+    const { cwd, manager, sessionId, threadId, surfacePiSessionId, store } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const command = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch signal workflow",
+      title: "Run wait_for_signal",
+      summary: "Launch the wait_for_signal workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_signal",
+      launchInput: { signalName: "deploy.completed" },
+      commandId: command.commandId,
+    });
+
+    await waitFor("signal workflow wait", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "waiting-event";
+    });
+
+    await expect(manager.cancelRun(launched.runId)).rejects.toThrow("Run is not currently active");
+    expect(await manager.getRun(launched.runId)).toMatchObject({
+      runId: launched.runId,
+      status: "waiting-event",
+    });
   });
 
   it("resumes exactly the supplied runId instead of inferring a run from workflowId", async () => {
@@ -2171,6 +2376,259 @@ describe("SmithersRuntimeManager", () => {
         event.reason.includes("finished and the handler must reconcile"),
       ),
     ).toBe(true);
+  });
+
+  it("cancels a restored waiting approval run directly and clears structured waits", async () => {
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow",
+      title: "Run approval_gate",
+      summary: "Launch the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Cancel while waiting?" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("approval wait before cancellation", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-approval";
+      } catch {
+        return false;
+      }
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    const restoredHandlerAttentions: HandlerAttentionEvent[] = [];
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: restoredHandlerAttentions,
+    });
+    registerWorkflow(restoredManager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    await restoredManager.cancelRun(launched.runId);
+
+    const run = await restoredManager.getRun(launched.runId);
+    expect(run.status).toBe("cancelled");
+    const events = await restoredManager.getRunEvents({ runId: launched.runId });
+    expect(events.map((event: { type: string }) => event.type)).toContain("RunCancelled");
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "cancelled",
+      smithersStatus: "cancelled",
+      waitKind: null,
+    });
+    expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
+      id: threadId,
+      status: "troubleshooting",
+      wait: null,
+    });
+    expect(snapshot.session.wait).toBeNull();
+    expect(restoredHandlerAttentions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          smithersRunId: launched.runId,
+          reason: expect.stringContaining("was cancelled"),
+        }),
+      ]),
+    );
+  });
+
+  it("cancels a restored waiting timer run with Smithers timer cleanup", async () => {
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createTimerWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch timer workflow",
+      title: "Run wait_for_timer",
+      summary: "Launch the wait_for_timer workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_timer",
+      launchInput: { duration: "1h" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("timer wait before cancellation", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-timer";
+      } catch {
+        return false;
+      }
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: [],
+    });
+    registerWorkflow(restoredManager, createTimerWorkflowDefinition(smithersDbPath(cwd)));
+
+    await restoredManager.cancelRun(launched.runId);
+
+    const run = await restoredManager.getRun(launched.runId);
+    expect(run.status).toBe("cancelled");
+    const detail = await restoredManager.getNodeDetail({
+      runId: launched.runId,
+      nodeId: "sleep",
+    });
+    expect(detail.node.state).toBe("cancelled");
+    expect(detail.attempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          state: "cancelled",
+          finishedAtMs: expect.any(Number),
+        }),
+      ]),
+    );
+    const events = await restoredManager.getRunEvents({ runId: launched.runId });
+    expect(events.map((event: { type: string }) => event.type)).toEqual(
+      expect.arrayContaining(["TimerCancelled", "RunCancelled"]),
+    );
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "cancelled",
+      smithersStatus: "cancelled",
+      waitKind: null,
+    });
+    expect(snapshot.session.wait).toBeNull();
+  });
+
+  it("does not invent direct cancellation for restored waiting-event runs", async () => {
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch signal workflow",
+      title: "Run wait_for_signal",
+      summary: "Launch the wait_for_signal workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_signal",
+      launchInput: { signalName: "deploy.completed" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("signal wait before cancellation attempt", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-event";
+      } catch {
+        return false;
+      }
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: [],
+    });
+    registerWorkflow(restoredManager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    await expect(restoredManager.cancelRun(launched.runId)).rejects.toThrow(
+      "Run is not currently active",
+    );
+    const run = await restoredManager.getRun(launched.runId);
+    expect(run.status).toBe("waiting-event");
+    const events = await restoredManager.getRunEvents({ runId: launched.runId });
+    expect(events.map((event: { type: string }) => event.type)).not.toContain("RunCancelled");
+  });
+
+  it("keeps running cancellation on the live cancel-request path", async () => {
+    const { cwd, manager, sessionId, threadId, surfacePiSessionId, store } =
+      createWorkspaceFixture();
+    registerWorkflow(manager, createSlowWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch slow workflow",
+      title: "Run slow_resume",
+      summary: "Launch the slow_resume workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "slow_resume",
+      launchInput: { delayMs: 10_000, message: "cancel me" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("running workflow heartbeat before cancellation", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "running" && run.heartbeatAt !== null;
+      } catch {
+        return false;
+      }
+    });
+
+    await expect(manager.cancelRun(launched.runId)).resolves.toMatchObject({
+      ok: true,
+      runId: launched.runId,
+      status: "cancel-requested",
+    });
+    await waitFor("running workflow cancellation to terminalize", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "cancelled";
+      } catch {
+        return false;
+      }
+    });
   });
 
   it("tracks continue-as-new lineage with parent and descendant structured workflow runs", async () => {

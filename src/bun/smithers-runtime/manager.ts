@@ -1102,6 +1102,23 @@ export class SmithersRuntimeManager {
   }
 
   async cancelRun(runId: string) {
+    const run = await this.db.getRun(runId);
+    if (!run) {
+      throw new Error(`Smithers run not found: ${runId}`);
+    }
+    if (run.status === "waiting-approval" || run.status === "waiting-timer") {
+      await this.cancelPausedRun(runId, run.status);
+      await this.flushRunEvents(runId, { source: "control" });
+      return {
+        ok: true,
+        runId,
+        status: "cancelled",
+      };
+    }
+    if (run.status !== "running" || !isSmithersRunHeartbeatFresh(run)) {
+      throw new Error("Run is not currently active");
+    }
+
     await this.db.requestRunCancel(runId, Date.now());
     const monitor = this.monitorByRunId.get(runId);
     monitor?.abortController.abort();
@@ -1109,7 +1126,71 @@ export class SmithersRuntimeManager {
     return {
       ok: true,
       runId,
+      status: "cancel-requested",
     };
+  }
+
+  private async cancelPausedRun(
+    runId: string,
+    status: Extract<RunStatus, "waiting-approval" | "waiting-timer">,
+  ): Promise<void> {
+    const cancelledAtMs = Date.now();
+    if (status === "waiting-timer") {
+      const nodes = await this.db.listNodes(runId);
+      for (const node of (nodes as any[]).filter((entry) => entry.state === "waiting-timer")) {
+        const iteration = node.iteration ?? 0;
+        const attempts = await this.db.listAttempts(runId, node.nodeId, iteration);
+        const waitingAttempt = (attempts as any[]).find(
+          (attempt) => attempt.state === "waiting-timer",
+        );
+        if (!waitingAttempt) {
+          continue;
+        }
+        await this.db.updateAttempt(runId, node.nodeId, iteration, waitingAttempt.attempt, {
+          state: "cancelled",
+          finishedAtMs: cancelledAtMs,
+        });
+        await this.db.insertNode({
+          runId,
+          nodeId: node.nodeId,
+          iteration,
+          state: "cancelled",
+          lastAttempt: waitingAttempt.attempt,
+          updatedAtMs: cancelledAtMs,
+          outputTable: node.outputTable ?? "",
+          label: node.label ?? null,
+        });
+        await this.db.insertEventWithNextSeq({
+          runId,
+          timestampMs: cancelledAtMs,
+          type: "TimerCancelled",
+          payloadJson: JSON.stringify({
+            type: "TimerCancelled",
+            runId,
+            timerId: node.nodeId,
+            timestampMs: cancelledAtMs,
+          }),
+        });
+      }
+    }
+
+    await this.db.updateRun(runId, {
+      status: "cancelled",
+      finishedAtMs: cancelledAtMs,
+      heartbeatAtMs: null,
+      runtimeOwnerId: null,
+      cancelRequestedAtMs: null,
+    });
+    await this.db.insertEventWithNextSeq({
+      runId,
+      timestampMs: cancelledAtMs,
+      type: "RunCancelled",
+      payloadJson: JSON.stringify({
+        type: "RunCancelled",
+        runId,
+        timestampMs: cancelledAtMs,
+      }),
+    });
   }
 
   async restoreSessionSupervision(
@@ -2194,6 +2275,17 @@ function mapRunStatusToWorkflowStatus(status: RunStatus): StructuredWorkflowStat
     case "cancelled":
       return "cancelled";
   }
+}
+
+function isSmithersRunHeartbeatFresh(run: {
+  status?: string | null;
+  heartbeatAtMs?: number | null;
+}): boolean {
+  return (
+    run.status === "running" &&
+    typeof run.heartbeatAtMs === "number" &&
+    Date.now() - run.heartbeatAtMs <= 5_000
+  );
 }
 
 function mapAttemptStateToWorkflowTaskAttemptStatus(
