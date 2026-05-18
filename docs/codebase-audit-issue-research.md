@@ -800,7 +800,7 @@ Better change:
 
 **Impact:** High prompt correctness issue.
 
-**Precise issue:** Surfaces could detect stale prompt bindings and show a warning, but there was no complete path to apply an updated prompt binding before the next user turn. Existing managed-session recreation checked actor/provider/model/recreate flags, but not prompt drift. The UI banner was informational and lacked working `Update for next turn` behavior.
+**Precise issue:** Surfaces could detect stale prompt bindings and show a warning, but there was no complete path to apply an updated prompt binding before the next user turn. Existing managed-session recreation checked actor/provider/model/recreate flags, but not prompt drift. The UI banner was informational and lacked working `Update system prompt` behavior.
 
 Relevant code:
 
@@ -819,7 +819,7 @@ Relevant code:
 3. The queue runner claims `prompt_refresh`, rebuilds the actor prompt from backend source of truth, recreates/rebinds the managed pi session behind the same product surface, marks the item delivered, and continues draining later queued work.
 4. Normal sends respect existing queued surface work, so a direct send cannot jump ahead of a queued prompt refresh.
 5. Prompt-library changes emit open-surface snapshots so stale status updates without reopening the pane.
-6. The renderer shows a sticky stale-context strip with `Update for next turn`, switches to `Cancel update` while the refresh item is queued, and renders the queued context update as a visible cancellable `Update instructions` row.
+6. The renderer shows a sticky stale-context strip with `Update system prompt`, switches to `Cancel update` while the refresh item is queued, and renders the queued context update as a visible cancellable `Update instructions` row.
 
 **Verification required:**
 

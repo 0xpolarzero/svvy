@@ -198,7 +198,7 @@
           </button>
         {:else}
           <button type="button" onclick={() => void controller.queuePromptRefresh()}>
-            Update for next turn
+            Update system prompt
           </button>
         {/if}
       </div>
@@ -289,6 +289,7 @@
     font: inherit;
     font-weight: 700;
     padding: 0.25rem 0.5rem;
+    cursor: pointer;
   }
 
   .prompt-stale-banner button:hover {

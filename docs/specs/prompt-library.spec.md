@@ -713,7 +713,7 @@ Context settings changed since this surface started.
 Actions:
 
 - `View changes`
-- `Update for next turn`
+- `Update system prompt`
 - `Keep current`
 
 The warning is shown for orchestrator sessions and handler-thread surfaces. Workflow task-agent attempt surfaces can show the same metadata in their inspector or summary because task attempts are not ordinary long-lived chat surfaces.
@@ -794,7 +794,7 @@ The semantic diff should group changes by:
 
 ## Update For Next Turn
 
-`Update for next turn` binds the surface to the latest prompt revision through the same durable
+`Update system prompt` binds the surface to the latest prompt revision through the same durable
 surface queue used for user follow-up messages and handler handoffs.
 
 The queued item kind is `prompt_refresh`.
@@ -843,7 +843,7 @@ Context settings updated from rev A to rev B.
 ```
 
 While a `prompt_refresh` item is queued, the stale-context warning remains sticky at the top of the
-surface and changes its action from `Update for next turn` to `Cancel update`. The queue row label is
+surface and changes its action from `Update system prompt` to `Cancel update`. The queue row label is
 `Update instructions`, because it applies when the queue runner reaches it rather than at some later
 turn after that. Cancelling the queued refresh leaves the stale binding intact and shows the warning
 again.
@@ -885,7 +885,7 @@ Prompt revisions are durable app state. They must survive app restart and must b
 
 ### Workspace Routing
 
-Context Library requests that evaluate or mutate workspace-affecting state must carry the target `workspaceId` explicitly. This includes instruction and context-pack edits, scope changes, actor aggregate reads, generated-context previews, runtime standards projection, snapshot creation and loading, prompt freshness checks, and update-for-next-turn actions when the result depends on workspace-scoped activation or workspace-derived generated parts.
+Context Library requests that evaluate or mutate workspace-affecting state must carry the target `workspaceId` explicitly. This includes instruction and context-pack edits, scope changes, actor aggregate reads, generated-context previews, runtime standards projection, snapshot creation and loading, prompt freshness checks, and system-prompt update actions when the result depends on workspace-scoped activation or workspace-derived generated parts.
 
 The backend must resolve these requests from the supplied `workspaceId`, not from the active workspace, focused tab, focused Dockview panel, or active runtime. A background handler or orchestrator surface may keep running in one workspace while another workspace is focused, so active workspace state is not a valid routing key.
 
@@ -931,7 +931,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 
 - the prompt diff
 - the Context pane actor recipe
-- update-for-next-turn action
+- system-prompt update action
 
 ## UX Invariants
 
@@ -948,7 +948,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Runtime standards sources are visible in the generated-context area, read-only, openable in the configured external editor, and not editable through the Context pane.
 - Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files do not participate in svvy prompt composition.
 - New sessions use the latest internal prompt revision.
-- Existing sessions warn when their bound prompt revision, runtime standards hashes, or resolved hash differs from current prompt settings.
+- Existing sessions warn when their effective bound prompt, runtime standards hashes, or resolved hash differs from current prompt settings.
 - Existing sessions update only through an explicit user action.
 
 ## Implementation Phases
@@ -978,7 +978,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Store runtime standards hashes in prompt bindings.
 - Show stale-prompt warnings on existing surfaces.
 - Add grouped semantic diff and raw text diff.
-- Add update-for-next-turn.
+- Add system-prompt update.
 
 ### Phase 4: Runtime Integration Completion
 
