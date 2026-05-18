@@ -271,7 +271,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
 - [x] Represent handler handoffs as typed orchestrator surface queue items, block `thread.handoff` until accept/reject, and return explicit handler tool errors for rejected handoffs. Commit(s): 7739c2c824
-- [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): pending current landing commit
+- [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): 61ba639d6a
 
 ## 14. Context Library And Context Packs
 
