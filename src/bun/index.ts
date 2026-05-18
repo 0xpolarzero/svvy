@@ -18,7 +18,6 @@ import {
 } from "node:fs";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import type {
-  AppLogUpdateMessage,
   AuthStateResponse,
   ChatRPCSchema,
   ComposerAttachment,
@@ -629,7 +628,7 @@ const workspaceRuntimeRegistry = new WorkspaceRuntimeRegistry({
     rpc.send.sendAppLogUpdate({
       ...payload,
       workspaceId,
-    } as AppLogUpdateMessage & { workspaceId: string });
+    });
   },
   onWorkspaceSync: (_workspaceId, payload) => {
     rpc.send.sendWorkspaceSync(payload);
@@ -835,11 +834,18 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         appWorkspaceTabsStore.setState(state);
         return { ok: true };
       },
-      getWorkspaceUiRestore: async ({ workspaceId, workspaceTabId }) => {
-        return appWorkspaceUiRestoreStore.getState(workspaceTabId ?? workspaceId);
+      getWorkspaceUiRestore: async ({ workspaceId }) => {
+        const runtime = getWorkspaceRuntime({ workspaceId });
+        if (runtime.kind === "default") {
+          return null;
+        }
+        return appWorkspaceUiRestoreStore.getState(workspaceId);
       },
-      setWorkspaceUiRestore: async ({ workspaceId, workspaceTabId, state }) => {
-        appWorkspaceUiRestoreStore.setState(workspaceTabId ?? workspaceId, state);
+      setWorkspaceUiRestore: async ({ workspaceId, state }) => {
+        const runtime = getWorkspaceRuntime({ workspaceId });
+        if (runtime.kind !== "default") {
+          appWorkspaceUiRestoreStore.setState(workspaceId, state);
+        }
         return { ok: true };
       },
       setActiveWorkspace: async ({ workspaceId }) => {

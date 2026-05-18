@@ -15,6 +15,7 @@
 		type WorkspaceTabCounts,
 	} from "./workspace-tabs";
 	import type {
+		AppWorkspaceUiRestoreState,
 		AppWorkspaceTabsState,
 		WorkspaceInfoResponse,
 		WorkspaceTabInfo,
@@ -144,10 +145,23 @@
 		workspaceTabId?: string,
 	): Promise<OpenWorkspaceTab> {
 		const workspaceTab = toWorkspaceTabInfo(workspace, new Date().toISOString(), workspaceTabId);
+		let tab: OpenWorkspaceTab;
 		const runtime = await createChatRuntime(
 			{
 				workspaceInfo: workspaceTab,
 				workspaceTabId: workspaceTab.workspaceTabId,
+				initialLayoutId: workspaceTab.kind === "user" ? workspaceTab.activeLayoutId : undefined,
+				onActiveLayoutChange: (layoutId) => {
+					if (workspaceTab.kind !== "user") return;
+					workspaceTab.activeLayoutId = layoutId;
+					if (tab) tab.workspace.activeLayoutId = layoutId;
+					tabs = [...tabs];
+					void persistWorkspaceTabs();
+				},
+				onWorkspaceLayoutPersist: (state) => {
+					if (workspaceTab.kind !== "user") return;
+					void syncOpenWorkspaceLayouts(workspaceTab.workspaceId, state, tab);
+				},
 				onMissingProviderAccess: () => {
 					openSettings();
 				},
@@ -155,7 +169,7 @@
 			undefined,
 			storage,
 		);
-		const tab: OpenWorkspaceTab = {
+		tab = {
 			workspace: workspaceTab,
 			runtime,
 			counts: summarizeWorkspace(runtime),
@@ -167,6 +181,18 @@
 		});
 		tab.unsubscribe = unsubscribe;
 		return tab;
+	}
+
+	async function syncOpenWorkspaceLayouts(
+		workspaceId: string,
+		state: AppWorkspaceUiRestoreState,
+		sourceTab: OpenWorkspaceTab | undefined,
+	) {
+		await Promise.all(
+			tabs
+				.filter((candidate) => candidate !== sourceTab && candidate.workspace.workspaceId === workspaceId && candidate.workspace.kind === "user")
+				.map((candidate) => candidate.runtime.syncWorkspaceLayoutState(state)),
+		);
 	}
 
 	async function setActiveWorkspace(workspaceTabId: string | null) {
@@ -265,7 +291,15 @@
 				return;
 			}
 
-			const tab = await createWorkspaceTab(workspaceInfo, placement === "current-tab" ? activeWorkspaceTabId ?? undefined : undefined);
+			const knownWorkspace =
+				workspaceInfo.kind === "user"
+					? knownWorkspaces.find((workspace) => workspaceHistoryKey(workspace) === (workspaceInfo.cwd.trim() || workspaceInfo.workspaceId))
+					: null;
+			const workspaceForTab =
+				knownWorkspace?.activeLayoutId && workspaceInfo.kind === "user"
+					? { ...workspaceInfo, activeLayoutId: knownWorkspace.activeLayoutId }
+					: workspaceInfo;
+			const tab = await createWorkspaceTab(workspaceForTab, placement === "current-tab" ? activeWorkspaceTabId ?? undefined : undefined);
 			if (disposed) {
 				tab.unsubscribe();
 				tab.runtime.dispose();
@@ -403,22 +437,24 @@
 							message={bootstrapError}
 						/>
 					{:else if activeTab}
-						<ChatWorkspace
-							runtime={activeTab.runtime}
-							shortcutsEnabled={!showSettings}
-							onOpenSettings={openSettings}
-							workspaceTabs={workspaceTabItems}
-							{activeWorkspaceTabId}
-							{openingWorkspace}
-							openWorkspaceError={openingError}
-							{knownWorkspaces}
-							onSelectWorkspace={(workspaceTabId) => void setActiveWorkspace(workspaceTabId)}
-							onCloseWorkspace={(workspaceTabId) => void closeWorkspaceTab(workspaceTabId)}
-							onOpenWorkspace={() => void openWorkspace("current-tab")}
-							onNewWorkspaceTab={() => void createDefaultWorkspaceTab()}
-							onOpenWorkspaceInNewTab={() => void openWorkspace("new-tab")}
-							onReorderWorkspace={reorderWorkspaceTab}
-						/>
+						{#key `${activeTab.workspace.workspaceTabId}:${activeTab.workspace.workspaceId}`}
+							<ChatWorkspace
+								runtime={activeTab.runtime}
+								shortcutsEnabled={!showSettings}
+								onOpenSettings={openSettings}
+								workspaceTabs={workspaceTabItems}
+								{activeWorkspaceTabId}
+								{openingWorkspace}
+								openWorkspaceError={openingError}
+								{knownWorkspaces}
+								onSelectWorkspace={(workspaceTabId) => void setActiveWorkspace(workspaceTabId)}
+								onCloseWorkspace={(workspaceTabId) => void closeWorkspaceTab(workspaceTabId)}
+								onOpenWorkspace={() => void openWorkspace("current-tab")}
+								onNewWorkspaceTab={() => void createDefaultWorkspaceTab()}
+								onOpenWorkspaceInNewTab={() => void openWorkspace("new-tab")}
+								onReorderWorkspace={reorderWorkspaceTab}
+							/>
+						{/key}
 					{/if}
 					{#if restoring && !bootstrapError}
 						<StatusCard

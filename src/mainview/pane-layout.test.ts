@@ -5,6 +5,7 @@ import {
   createEmptyPaneLayout,
   getSidebarSessionOpenTarget,
   normalizePaneLayout,
+  removeDockviewPanel,
   splitPane,
 } from "./pane-layout";
 
@@ -126,5 +127,50 @@ describe("pane layout normalization", () => {
 
     expect(splitPane(layout, "logs", "right").panels).toHaveLength(1);
     expect(splitPane(layout, "logs", "right", { duplicateBinding: true }).panels).toHaveLength(2);
+  });
+
+  it("drops serialized Dockview geometry when a pane is removed by runtime state", () => {
+    const layout = normalizePaneLayout({
+      dockview: {
+        grid: { root: { type: "leaf", data: { views: ["primary", "logs"] } } },
+        panels: {
+          primary: {},
+          logs: {},
+        },
+      } as unknown as SerializedDockview,
+      panels: [
+        {
+          panelId: "primary",
+          binding: {
+            workspaceSessionId: "session-1",
+            surface: "orchestrator",
+            surfacePiSessionId: "session-1",
+          },
+          localState: {
+            inspectorSelection: null,
+            scroll: null,
+            timelineDensity: "comfortable",
+          },
+        },
+        {
+          panelId: "logs",
+          binding: { surface: "app-logs" },
+          localState: {
+            inspectorSelection: null,
+            scroll: null,
+            timelineDensity: "comfortable",
+          },
+        },
+      ],
+      compactSurfaces: [],
+      focusedPanelId: "primary",
+      updatedAt: "2026-05-15T00:00:00.000Z",
+    });
+
+    const next = removeDockviewPanel(layout, "primary");
+
+    expect(next.panels.map((panel) => panel.panelId)).toEqual(["logs"]);
+    expect(next.dockview).toBeNull();
+    expect(next.focusedPanelId).toBe("logs");
   });
 });

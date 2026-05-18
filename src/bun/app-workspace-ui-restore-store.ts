@@ -1,12 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type {
-  AppWorkspaceUiRestoreState,
-  WorkspaceLayoutSlotId,
-} from "../shared/workspace-contract";
+import type { AppWorkspaceUiRestoreState } from "../shared/workspace-contract";
 
 const APP_WORKSPACE_UI_RESTORE_FILENAME = "app-workspace-ui-restore.json";
-const WORKSPACE_LAYOUT_SLOT_IDS: WorkspaceLayoutSlotId[] = ["A", "B", "C"];
 
 export type AppWorkspaceUiRestoreStore = {
   getState(workspaceId: string): AppWorkspaceUiRestoreState | null;
@@ -35,17 +31,25 @@ export function createAppWorkspaceUiRestoreStore(input: {
   };
 
   return {
-    getState: (workspaceId) => readAll()[workspaceId] ?? null,
+    getState: (workspaceId) => readAll()[createWorkspaceUiRestoreKey(workspaceId)] ?? null,
     setState: (workspaceId, state) => {
       const normalized = normalizeWorkspaceUiRestoreState(state) ?? createEmptyRestoreState();
       writeAll({
         ...readAll(),
-        [workspaceId]: normalized,
+        [createWorkspaceUiRestoreKey(workspaceId)]: normalized,
       });
       return normalized;
     },
     getPath: () => statePath,
   };
+}
+
+function createWorkspaceUiRestoreKey(input: string): string {
+  const workspaceId = input.trim();
+  if (!workspaceId) {
+    throw new Error("Workspace UI restore state requires a workspaceId.");
+  }
+  return `workspace:${encodeURIComponent(workspaceId)}`;
 }
 
 function normalizeAllStates(input: unknown): Record<string, AppWorkspaceUiRestoreState> {
@@ -70,8 +74,7 @@ function normalizeWorkspaceUiRestoreState(input: unknown): AppWorkspaceUiRestore
 
   const raw = input as Partial<AppWorkspaceUiRestoreState>;
   if (
-    raw.version !== 4 ||
-    !isWorkspaceLayoutSlotId(raw.activeLayoutId) ||
+    raw.version !== 5 ||
     !raw.layouts ||
     typeof raw.layouts !== "object" ||
     Array.isArray(raw.layouts)
@@ -80,8 +83,7 @@ function normalizeWorkspaceUiRestoreState(input: unknown): AppWorkspaceUiRestore
   }
 
   return {
-    version: 4,
-    activeLayoutId: raw.activeLayoutId,
+    version: 5,
     layouts: {
       A: normalizeLayoutValue(raw.layouts.A),
       B: normalizeLayoutValue(raw.layouts.B),
@@ -94,14 +96,9 @@ function normalizeLayoutValue(value: unknown): unknown | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
-function isWorkspaceLayoutSlotId(value: unknown): value is WorkspaceLayoutSlotId {
-  return WORKSPACE_LAYOUT_SLOT_IDS.includes(value as WorkspaceLayoutSlotId);
-}
-
 function createEmptyRestoreState(): AppWorkspaceUiRestoreState {
   return {
-    version: 4,
-    activeLayoutId: "A",
+    version: 5,
     layouts: {
       A: null,
       B: null,

@@ -95,21 +95,31 @@ On restart, restoring a panel binding uses the same product open path used by an
 
 ## Stored Shape
 
-Each open workspace chrome tab has three fixed layout slots: `A`, `B`, and `C`. These slots are not user-renamable layouts. They are quick visual arrangements for the tab and render as compact selectable controls pinned at the far right of the workspace chrome. Empty slots are visually muted, not disabled. Duplicate same-cwd workspace tabs have independent layout slots and panel-local state while sharing the same backend workspace runtime, durable sessions, live surface registry, queues, threads, workflow runs, app logs, and workspace read models.
+Each user workspace has three fixed durable layout slots: `A`, `B`, and `C`, keyed by `(workspaceId, layoutId)`. These slots are not user-renamable layouts. They are quick visual arrangements for the workspace and render as compact selectable controls pinned at the far right of the workspace chrome when a user workspace tab is active. Empty slots are visually muted, not disabled. Duplicate same-cwd workspace tabs share the same backend workspace runtime, durable sessions, live surface registry, queues, threads, workflow runs, app logs, workspace read models, and durable layout slots. Each tab stores only its active layout id.
 
-The persisted workspace UI restore state is keyed by an explicit workspace tab or view id, with a reference to the shared `workspaceId` for the canonical cwd runtime. It owns that visual tab's active slot plus each slot's layout snapshot:
+The workspace tab record is chrome state. It chooses a shared runtime and, for user workspaces, the selected layout slot:
 
 ```ts
 type WorkspaceLayoutSlotId = "A" | "B" | "C";
 
-type WorkspaceUiRestoreState = {
+type WorkspaceTabChromeState = {
   version: 4;
+  workspaceTabId: string;
+  workspaceId: string;
   activeLayoutId: WorkspaceLayoutSlotId;
+};
+```
+
+The persisted user workspace layout store is keyed by `workspaceId` and `layoutId`. It owns the durable Dockview layout snapshot for that workspace slot:
+
+```ts
+type WorkspaceLayoutStore = {
+  version: 5;
   layouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>;
 };
 ```
 
-The workspace layout snapshot inside each slot is durable view-local workspace UI state:
+The workspace layout snapshot inside each slot is durable workspace UI state:
 
 ```ts
 type WorkspaceDockviewLayoutState = {
@@ -246,7 +256,7 @@ type PaneLocalState = {
 };
 ```
 
-Panel-local state is durable view-local workspace UI state. Scroll, inspector selection, and display preferences should persist per panel and restore when their referenced targets still exist. Duplicate same-cwd workspace tabs must not share panel-local state unless they are showing the same visual tab restore record.
+Panel-local state is durable workspace layout state inside one `(workspaceId, layoutId)` slot. Scroll, inspector selection, and display preferences should persist per panel and restore when their referenced targets still exist. Duplicate same-cwd workspace tabs share panel-local state when they select the same layout slot because they are viewing the same durable layout document; selecting different layout ids gives them different workspace-owned slot state.
 
 ## State Ownership
 
@@ -726,13 +736,13 @@ The renderer persists layout after meaningful Dockview changes:
 - popout group moved or resized
 - edge-group visibility changed
 - tab group created, changed, collapsed, or destroyed
-- active `A`/`B`/`C` layout slot changed
+- active `A`/`B`/`C` layout slot changed on a workspace tab
 
-Dockview layout is restored from the active workspace tab's active `A`/`B`/`C` slot with `fromJSON`. When existing renderer instances should be reused, the integration should use Dockview's existing-panel reuse path rather than tearing down live Svelte hosts unnecessarily. After `fromJSON`, `svvy` must reconcile the restored Dockview panel ids with svvy panel metadata, reapply constraints, reattach renderer subscriptions, and mark missing product targets as unavailable.
+Dockview layout is restored from the active user workspace tab's selected `(workspaceId, layoutId)` slot with `fromJSON`. When existing renderer instances should be reused, the integration should use Dockview's existing-panel reuse path rather than tearing down live Svelte hosts unnecessarily. After `fromJSON`, `svvy` must reconcile the restored Dockview panel ids with svvy panel metadata, reapply constraints, reattach renderer subscriptions, and mark missing product targets as unavailable. Default workspace tabs do not load or persist these slots; they initialize with one `Open Workspace` pane and any later pane changes remain ephemeral.
 
 Persistence should debounce high-frequency layout updates such as splitter movement and floating resize.
 
-The persisted snapshot must include the workspace tab or view id, the shared runtime `workspaceId`, active slot id, and that slot's Dockview JSON and svvy panel metadata in one logical workspace UI update so layout and bindings do not drift across visual tabs.
+The persisted layout update is scoped by the shared runtime `workspaceId` and writes the workspace's `A`/`B`/`C` layout snapshots in one logical workspace layout update so layout and bindings do not drift across duplicate tabs. The workspace tab chrome update stores only the tab id, selected `workspaceId`, and active layout id.
 
 ## Sidebar Indicators And Focus Highlight
 
@@ -837,7 +847,9 @@ Requirements:
 ## Invariants
 
 - Dockview is the canonical layout interaction engine.
-- Dockview serialized layout plus svvy panel metadata is durable view-local workspace UI layout state inside fixed per-tab slots `A`, `B`, and `C`.
+- Dockview serialized layout plus svvy panel metadata is durable user workspace UI layout state inside fixed slots `A`, `B`, and `C` keyed by `(workspaceId, layoutId)`.
+- Workspace tabs are chrome state that select `workspaceId` plus active layout id; they do not own durable layout documents.
+- Default workspace tabs have no durable layout slots and initialize with exactly one `Open Workspace` pane.
 - Panel metadata is separate from durable session/workflow state.
 - Panel metadata is separate from live surface runtime state.
 - Live runtime controllers are keyed by `surfacePiSessionId`.
@@ -872,7 +884,7 @@ This design is successful when:
 - related orchestrator, handler-thread, workflow-run, artifact, and Project CI surfaces can sit side by side or in tabs
 - duplicated panels show the same live surface without duplicating runtime controllers
 - panel-local UI state remains independent across duplicated views
-- restart restores the user's Dockview layout, occupancy, focus, durable bindings, and panel-local state without reviving stale transient UI state
-- users can switch among fixed layout slots `A`, `B`, and `C` from the far-right workspace chrome controls; initialized slots look normal and empty slots look muted while remaining selectable
+- restart restores user workspace Dockview layouts, occupancy, focus, durable bindings, and panel-local state without reviving stale transient UI state
+- users can switch among fixed user workspace layout slots `A`, `B`, and `C` from the far-right workspace chrome controls; initialized slots look normal and empty slots look muted while remaining selectable
 - sidebar indicators make open surface locations obvious across grid, tab, floating, popout, and edge-group placements
 - compact timeline cards expose delegated work without forcing the orchestrator to absorb raw workflow detail

@@ -13,12 +13,11 @@ afterEach(() => {
 });
 
 describe("app workspace UI restore store", () => {
-  test("persists view-local restore state by workspace tab id", () => {
+  test("persists durable restore state by workspace id", () => {
     const agentDir = tempAgentDir();
     const workspaceId = "/repo/app#workspace-1";
     const state = {
-      version: 4 as const,
-      activeLayoutId: "B" as const,
+      version: 5 as const,
       layouts: {
         A: null,
         B: {
@@ -38,25 +37,21 @@ describe("app workspace UI restore store", () => {
     expect(reloaded.getState(workspaceId)).toEqual(state);
   });
 
-  test("keeps view-local states for duplicate same-cwd tabs separate", () => {
+  test("shares durable state for the same workspace id", () => {
     const store = createAppWorkspaceUiRestoreStore({ agentDir: tempAgentDir() });
-    const cwd = "/repo/app";
-    const first = `${cwd}#first`;
-    const second = `${cwd}#second`;
+    const workspaceId = "/repo/app";
 
-    store.setState(first, {
-      version: 4,
-      activeLayoutId: "A",
+    store.setState(workspaceId, {
+      version: 5,
       layouts: { A: { focusedPanelId: "primary" }, B: null, C: null },
     });
-    store.setState(second, {
-      version: 4,
-      activeLayoutId: "C",
+    store.setState(workspaceId, {
+      version: 5,
       layouts: { A: null, B: null, C: { focusedPanelId: "logs" } },
     });
 
-    expect(store.getState(first)?.activeLayoutId).toBe("A");
-    expect(store.getState(second)?.activeLayoutId).toBe("C");
+    expect(store.getState(workspaceId)?.layouts.A).toBeNull();
+    expect(store.getState(workspaceId)?.layouts.C).toEqual({ focusedPanelId: "logs" });
   });
 
   test("ignores malformed saved data", () => {
@@ -65,12 +60,10 @@ describe("app workspace UI restore store", () => {
     expect(
       store.setState("/repo/app#bad", {
         version: 999,
-        activeLayoutId: "A",
         layouts: { A: null, B: null, C: null },
       } as never),
     ).toEqual({
-      version: 4,
-      activeLayoutId: "A",
+      version: 5,
       layouts: { A: null, B: null, C: null },
     });
   });

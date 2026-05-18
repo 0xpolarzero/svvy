@@ -105,6 +105,7 @@ export interface AppLogReadModel {
 }
 
 export interface AppLogUpdateMessage {
+  workspaceId: string;
   entries: AppLogEntry[];
   summary: AppLogSummary;
 }
@@ -293,13 +294,11 @@ export interface AppWorkspaceTabsState {
 export type WorkspaceLayoutSlotId = "A" | "B" | "C";
 
 export interface AppWorkspaceUiRestoreState {
-  version: 4;
-  activeLayoutId: WorkspaceLayoutSlotId;
+  version: 5;
   layouts: Record<WorkspaceLayoutSlotId, unknown | null>;
 }
 
 export interface SetWorkspaceUiRestoreRequest extends WorkspaceScopedRequest {
-  workspaceTabId?: string;
   state: AppWorkspaceUiRestoreState;
 }
 
@@ -1249,7 +1248,7 @@ export interface ChatRPCSchema {
         response: WorkspaceMutationResponse;
       };
       getWorkspaceUiRestore: {
-        params: WorkspaceScopedRequest & { workspaceTabId?: string };
+        params: WorkspaceScopedRequest;
         response: AppWorkspaceUiRestoreState | null;
       };
       setWorkspaceUiRestore: {

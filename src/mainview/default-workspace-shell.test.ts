@@ -68,4 +68,32 @@ describe("default workspace renderer shell", () => {
     expect(dockviewSource).toContain("existingPanel.update");
     expect(dockviewSource).toContain("existingPanel.setRenderer");
   });
+
+  it("remounts workspace shell state for each active workspace tab", async () => {
+    const appSource = await readFile(new URL("./App.svelte", import.meta.url), "utf8");
+    const panelHostSource = await readFile(
+      new URL("./DockviewPanelHost.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(appSource).toContain(
+      "{#key `${activeTab.workspace.workspaceTabId}:${activeTab.workspace.workspaceId}`}",
+    );
+    expect(panelHostSource).not.toContain("Surface unavailable");
+  });
+
+  it("mutes layout slot controls for the default workspace", async () => {
+    const runtimeSource = await readFile(new URL("./chat-runtime.ts", import.meta.url), "utf8");
+    const workspaceSource = await readFile(
+      new URL("./ChatWorkspace.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(runtimeSource).toContain(
+      'const durableLayoutEnabled = workspaceInfo.kind !== "default"',
+    );
+    expect(runtimeSource).toContain("get layoutSlotsEnabled()");
+    expect(workspaceSource).toContain("disabled={!layoutSlotsEnabled}");
+    expect(workspaceSource).toContain("Layout slots are unavailable in the default workspace");
+  });
 });

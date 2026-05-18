@@ -226,9 +226,7 @@
     />
   </section>
 {:else}
-  <section class="dockview-empty-panel" data-testid="workspace-pane">
-    <p>Surface unavailable</p>
-  </section>
+  <section class="dockview-empty-panel" aria-hidden="true" data-testid="workspace-pane"></section>
 {/if}
 
 <style>

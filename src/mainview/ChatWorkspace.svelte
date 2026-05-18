@@ -192,6 +192,7 @@
   });
   let activeLayoutId = $state<WorkspaceLayoutSlotId>("A");
   let layoutSlots = $state<WorkspaceLayoutSlotSummary[]>([]);
+  let layoutSlotsEnabled = $state(true);
   let currentPane = $state<ChatPaneState | null>(null);
   let focusedPanelId = $state(PRIMARY_CHAT_PANE_ID);
   let focusedSurfaceTarget = $state<PromptTarget | null>(null);
@@ -807,6 +808,7 @@
   }
 
   async function handleSwitchLayout(layoutId: WorkspaceLayoutSlotId) {
+    if (!layoutSlotsEnabled) return;
     await runSessionMutation(() => runtime.switchWorkspaceLayout(layoutId));
   }
 
@@ -2022,6 +2024,7 @@
     paneLayout = runtime.paneLayout;
     activeLayoutId = runtime.activeLayoutId;
     layoutSlots = runtime.layoutSlots;
+    layoutSlotsEnabled = runtime.layoutSlotsEnabled;
     focusedPanelId = paneLayout.focusedPanelId ?? PRIMARY_CHAT_PANE_ID;
     currentPane = runtime.getPane(focusedPanelId) ?? null;
     focusedSurfaceTarget = currentPane?.target ?? null;
@@ -2173,15 +2176,24 @@
       <div class="workspace-layout-switcher" role="tablist" aria-label="Workspace layouts">
         {#each layoutSlots as slot (slot.id)}
           <Tooltip
-            label={`Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`}
+            label={
+              layoutSlotsEnabled
+                ? `Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`
+                : "Layout slots are unavailable in the default workspace"
+            }
             side="bottom"
           >
             <button
               type="button"
               role="tab"
-              aria-label={`Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`}
+              aria-label={
+                layoutSlotsEnabled
+                  ? `Layout ${slot.id}: ${slot.initialized ? "switch to this saved pane arrangement" : "start a new pane arrangement"}`
+                  : `Layout ${slot.id}: unavailable in the default workspace`
+              }
               aria-selected={slot.id === activeLayoutId}
-              class={`workspace-layout-tab ${slot.id === activeLayoutId ? "active" : ""} ${slot.initialized ? "initialized" : "empty"}`.trim()}
+              disabled={!layoutSlotsEnabled}
+              class={`workspace-layout-tab ${slot.id === activeLayoutId ? "active" : ""} ${slot.initialized ? "initialized" : "empty"} ${layoutSlotsEnabled ? "" : "disabled"}`.trim()}
               onclick={() => void handleSwitchLayout(slot.id)}
             >
               {slot.id}
@@ -3362,16 +3374,30 @@
     opacity: 0.48;
   }
 
+  .workspace-layout-tab.disabled {
+    cursor: default;
+    opacity: 0.34;
+  }
+
   .workspace-layout-tab.empty:hover,
   .workspace-layout-tab.empty:focus-visible,
   .workspace-layout-tab.active {
     opacity: 1;
   }
 
+  .workspace-layout-tab.disabled:hover,
+  .workspace-layout-tab.disabled:focus-visible {
+    opacity: 0.34;
+  }
+
   .workspace-layout-tab.active {
     border-color: color-mix(in oklab, var(--ui-accent) 52%, var(--ui-border-strong));
     background: color-mix(in oklab, var(--ui-accent) 16%, var(--ui-panel));
     color: var(--ui-text-primary);
+  }
+
+  .workspace-layout-tab.disabled.active {
+    opacity: 0.5;
   }
 
   .workspace-main-meta :global(.ui-metadata-chip) {

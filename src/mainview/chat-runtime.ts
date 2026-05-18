@@ -287,6 +287,9 @@ export interface ChatRuntimeOptions {
   workspaceInfo?: WorkspaceInfoResponse;
   workspaceId?: string;
   workspaceTabId?: string;
+  initialLayoutId?: WorkspaceLayoutSlotId;
+  onActiveLayoutChange?: (layoutId: WorkspaceLayoutSlotId) => void;
+  onWorkspaceLayoutPersist?: (state: AppWorkspaceUiRestoreState) => void;
   onMissingProviderAccess?: (provider: string) => void;
 }
 
@@ -304,6 +307,7 @@ export interface ChatRuntime {
   paneLayout: ChatPaneLayoutState;
   activeLayoutId: WorkspaceLayoutSlotId;
   layoutSlots: WorkspaceLayoutSlotSummary[];
+  layoutSlotsEnabled: boolean;
   primaryPaneId: string;
   dispose: () => void;
   subscribe: (listener: ChatRuntimeListener) => () => void;
@@ -324,6 +328,7 @@ export interface ChatRuntime {
     dockview: WorkspaceDockviewLayoutState["dockview"],
     focusedPanelId?: string | null,
   ) => void;
+  syncWorkspaceLayoutState: (state: AppWorkspaceUiRestoreState) => Promise<void>;
   switchWorkspaceLayout: (layoutId: WorkspaceLayoutSlotId) => Promise<void>;
   getCommandInspector: (
     commandId: string,
@@ -472,6 +477,26 @@ function normalizePromptTarget(target: PromptTarget): PromptTarget {
 
 function isPromptTarget(target: WorkspacePaneSurfaceTarget | null): target is PromptTarget {
   return target?.surface === "orchestrator" || target?.surface === "thread";
+}
+
+function isWorkspaceLayoutSlotId(value: unknown): value is WorkspaceLayoutSlotId {
+  return value === "A" || value === "B" || value === "C";
+}
+
+function isRestorableStaticTarget(
+  target: WorkspacePaneSurfaceTarget,
+  options: { allowOpenWorkspace: boolean },
+): boolean {
+  return (
+    (options.allowOpenWorkspace && target.surface === "open-workspace") ||
+    target.surface === "app-logs" ||
+    target.surface === "prompt-library" ||
+    target.surface === "saved-workflow-library"
+  );
+}
+
+function getPaneTargetWorkspaceSessionId(target: WorkspacePaneSurfaceTarget): string | null {
+  return "workspaceSessionId" in target ? (target.workspaceSessionId ?? null) : null;
 }
 
 function convertToLlm(messages: AgentMessage[]): Message[] {
@@ -905,7 +930,14 @@ export async function createChatRuntime(
     totals: { total: 0, info: 0, warning: 0, error: 0 },
   };
   let paneLayout = createEmptyPaneLayout();
-  let activeLayoutId: WorkspaceLayoutSlotId = "A";
+  const durableLayoutEnabled = workspaceInfo.kind !== "default";
+  const workspaceTabLayoutId =
+    "activeLayoutId" in workspaceInfo && isWorkspaceLayoutSlotId(workspaceInfo.activeLayoutId)
+      ? workspaceInfo.activeLayoutId
+      : undefined;
+  const initialLayoutId: WorkspaceLayoutSlotId =
+    options.initialLayoutId ?? workspaceTabLayoutId ?? "A";
+  let activeLayoutId: WorkspaceLayoutSlotId = initialLayoutId;
   let savedLayouts: Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null> = {
     A: null,
     B: null,
@@ -929,14 +961,6 @@ export async function createChatRuntime(
     workspaceId: workspaceInfo.workspaceId,
   });
 
-  const scopedUiRestore = <T extends object>(
-    request?: T,
-  ): T & { workspaceId: string; workspaceTabId?: string } => ({
-    ...(request ?? ({} as T)),
-    workspaceId: workspaceInfo.workspaceId,
-    ...(options.workspaceTabId ? { workspaceTabId: options.workspaceTabId } : {}),
-  });
-
   const currentLayoutSlots = (): WorkspaceLayoutSlotSummary[] =>
     WORKSPACE_LAYOUT_SLOT_IDS.map((id) => {
       const layout = id === activeLayoutId ? paneLayout : savedLayouts[id];
@@ -956,22 +980,22 @@ export async function createChatRuntime(
   };
 
   const persistWorkspaceUiRestore = (): void => {
-    if (disposed) {
+    if (disposed || !durableLayoutEnabled) {
       return;
     }
 
     captureActiveLayout();
     const state: WorkspaceUiRestoreState = {
-      version: 4,
-      activeLayoutId,
+      version: 5,
       layouts: structuredClone(savedLayouts),
     };
 
     void rpcClient.request
-      .setWorkspaceUiRestore(scopedUiRestore({ state }))
+      .setWorkspaceUiRestore(scoped({ state }))
       .catch((error: unknown) =>
         console.error("Failed to persist workspace UI restore state:", error),
       );
+    options.onWorkspaceLayoutPersist?.(structuredClone(state));
   };
 
   const syncPaneTargetForSurface = (target: PromptTarget): void => {
@@ -1361,6 +1385,21 @@ export async function createChatRuntime(
     binding: WorkspacePaneSurfaceTarget,
     openTarget?: PaneOpenTarget | string,
   ): string => {
+    if (workspaceInfo.kind === "default" && isPromptTarget(binding)) {
+      const openWorkspacePaneId =
+        paneLayout.panels.find(
+          (pane) =>
+            pane.panelId === paneLayout.focusedPanelId &&
+            pane.binding?.surface === "open-workspace",
+        )?.panelId ??
+        (paneLayout.panels.length === 1 &&
+        paneLayout.panels[0]?.binding?.surface === "open-workspace"
+          ? paneLayout.panels[0].panelId
+          : null);
+      if (openWorkspacePaneId && typeof openTarget !== "string" && openTarget?.kind !== "panel") {
+        return openWorkspacePaneId;
+      }
+    }
     if (typeof openTarget === "string") {
       if (!paneLayout.panels.some((pane) => pane.panelId === openTarget)) {
         return addBoundPanel(binding, openTarget);
@@ -1423,45 +1462,72 @@ export async function createChatRuntime(
   const syncProviderAuthPromise = syncProviderAuth(defaults.provider);
   await syncProviderAuthPromise;
 
-  const restoreState = (await rpcClient.request
-    .getWorkspaceUiRestore(scopedUiRestore())
-    .catch((error: unknown) => {
-      console.error("Failed to load workspace UI restore state:", error);
+  const restoreState = durableLayoutEnabled
+    ? ((await rpcClient.request.getWorkspaceUiRestore(scoped()).catch((error: unknown) => {
+        console.error("Failed to load workspace UI restore state:", error);
+        return null;
+      })) as WorkspaceUiRestoreState | null)
+    : null;
+  const canUseOpenWorkspaceSurface = workspaceInfo.kind === "default";
+  const normalizeRestoredLayout = (
+    layout: WorkspaceDockviewLayoutState | null,
+  ): WorkspaceDockviewLayoutState | null => {
+    if (!layout) {
       return null;
-    })) as WorkspaceUiRestoreState | null;
-  if (restoreState) {
-    activeLayoutId = restoreState.activeLayoutId;
-    savedLayouts = {
-      A: restoreState.layouts.A ? normalizePaneLayout(restoreState.layouts.A) : null,
-      B: restoreState.layouts.B ? normalizePaneLayout(restoreState.layouts.B) : null,
-      C: restoreState.layouts.C ? normalizePaneLayout(restoreState.layouts.C) : null,
+    }
+    return normalizePaneLayout(layout);
+  };
+
+  const normalizeRestoredLayouts = (
+    state: AppWorkspaceUiRestoreState | null,
+  ): Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null> => {
+    const layouts = state?.layouts as
+      | Partial<Record<WorkspaceLayoutSlotId, WorkspaceDockviewLayoutState | null>>
+      | undefined;
+    return {
+      A: normalizeRestoredLayout(layouts?.A ?? null),
+      B: normalizeRestoredLayout(layouts?.B ?? null),
+      C: normalizeRestoredLayout(layouts?.C ?? null),
     };
-  }
-  const activeRestoreLayout = restoreState?.layouts[activeLayoutId] ?? null;
-  let restoredPaneIds: string[] = [];
-  if (activeRestoreLayout?.panels.length) {
-    const sessionIds = new Set(initialCatalog.sessions.map((session) => session.id));
-    paneLayout = normalizePaneLayout(activeRestoreLayout);
+  };
+
+  const hydrateActiveLayout = async (
+    layout: WorkspaceDockviewLayoutState | null,
+  ): Promise<void> => {
+    restoredPaneIds = [];
+    if (!layout?.panels.length) {
+      paneLayout = createEmptyPaneLayout();
+      return;
+    }
+
+    const sessionIds = new Set(sessions.map((session) => session.id));
+    paneLayout = layout;
     const hasOnlyRestorablePanes = paneLayout.panels.every(
       (paneState) =>
         !paneState.binding ||
-        paneState.binding.surface === "open-workspace" ||
-        paneState.binding.surface === "app-logs" ||
-        paneState.binding.surface === "prompt-library" ||
-        paneState.binding.surface === "saved-workflow-library" ||
-        sessionIds.has(paneState.binding.workspaceSessionId),
+        isRestorableStaticTarget(paneState.binding, {
+          allowOpenWorkspace: canUseOpenWorkspaceSurface,
+        }) ||
+        (() => {
+          const workspaceSessionId = getPaneTargetWorkspaceSessionId(paneState.binding);
+          return workspaceSessionId ? sessionIds.has(workspaceSessionId) : false;
+        })(),
     );
     if (!hasOnlyRestorablePanes) {
       paneLayout = createEmptyPaneLayout();
+      return;
     }
+
     for (const paneState of paneLayout.panels) {
       if (
         !paneState.binding ||
-        (paneState.binding.surface !== "app-logs" &&
-          paneState.binding.surface !== "open-workspace" &&
-          paneState.binding.surface !== "prompt-library" &&
-          paneState.binding.surface !== "saved-workflow-library" &&
-          !sessionIds.has(paneState.binding.workspaceSessionId))
+        (!isRestorableStaticTarget(paneState.binding, {
+          allowOpenWorkspace: canUseOpenWorkspaceSurface,
+        }) &&
+          (() => {
+            const workspaceSessionId = getPaneTargetWorkspaceSessionId(paneState.binding);
+            return !workspaceSessionId || !sessionIds.has(workspaceSessionId);
+          })())
       ) {
         continue;
       }
@@ -1482,12 +1548,21 @@ export async function createChatRuntime(
         restoredPaneIds.push(paneState.panelId);
       } catch (error) {
         console.error("Failed to restore workspace pane:", error);
-        restoredPaneIds.push(paneState.panelId);
+        paneLayout = closePane(paneLayout, paneState.panelId);
       }
     }
     if (restoredPaneIds.length === 0 && paneLayout.panels.every((paneState) => paneState.binding)) {
       paneLayout = createEmptyPaneLayout();
     }
+  };
+
+  if (restoreState) {
+    savedLayouts = normalizeRestoredLayouts(restoreState);
+  }
+  const activeRestoreLayout = savedLayouts[activeLayoutId];
+  let restoredPaneIds: string[] = [];
+  if (activeRestoreLayout?.panels.length) {
+    await hydrateActiveLayout(activeRestoreLayout);
   }
 
   if (
@@ -1502,9 +1577,14 @@ export async function createChatRuntime(
     paneLayout = { ...paneLayout, focusedPanelId };
     if (restoredPaneIds.length === 0 && initialCatalog.sessions.length > 0) {
       const [initialSession] = initialCatalog.sessions;
-      const snapshot = await rpcClient.request.openSession(
-        scoped({ sessionId: initialSession!.id }),
-      );
+      let snapshot: ConversationSurfaceSnapshot;
+      try {
+        snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession!.id }));
+      } catch (error) {
+        console.error("Failed to open initial restored workspace session:", error);
+        snapshot = await rpcClient.request.createSession(scoped({}));
+        await refreshSessions();
+      }
       await bindPaneToSnapshot(focusedPanelId, snapshot, { focus: true, persist: false });
     } else if (restoredPaneIds.length === 0) {
       const snapshot = await rpcClient.request.createSession(scoped({}));
@@ -1537,7 +1617,14 @@ export async function createChatRuntime(
     if (!initialSession) {
       throw new Error("Expected an initial session to open.");
     }
-    const snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession.id }));
+    let snapshot: ConversationSurfaceSnapshot;
+    try {
+      snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession.id }));
+    } catch (error) {
+      console.error("Failed to open initial workspace session:", error);
+      snapshot = await rpcClient.request.createSession(scoped({}));
+      await refreshSessions();
+    }
     const panelId = resolveOpenTarget(normalizePromptTarget(snapshot.target), PRIMARY_CHAT_PANE_ID);
     await bindPaneToSnapshot(panelId, snapshot);
   } else {
@@ -1590,6 +1677,9 @@ export async function createChatRuntime(
   };
 
   const appLogUpdateListener = (payload: AppLogUpdateMessage) => {
+    if (payload.workspaceId !== workspaceInfo.workspaceId) {
+      return;
+    }
     appLogSummary = payload.summary;
     for (const listener of appLogUpdateListeners) {
       listener(payload);
@@ -1630,6 +1720,9 @@ export async function createChatRuntime(
     },
     get layoutSlots() {
       return currentLayoutSlots();
+    },
+    get layoutSlotsEnabled() {
+      return durableLayoutEnabled;
     },
     dispose: () => {
       disposed = true;
@@ -1734,7 +1827,29 @@ export async function createChatRuntime(
       emit();
       recordFocusedSession();
     },
+    syncWorkspaceLayoutState: async (state) => {
+      if (!durableLayoutEnabled || disposed) {
+        return;
+      }
+      savedLayouts = normalizeRestoredLayouts(state);
+      await hydrateActiveLayout(savedLayouts[activeLayoutId]);
+      const activeLayout = savedLayouts[activeLayoutId];
+      if (activeLayout?.panels.length && restoredPaneIds.length > 0) {
+        paneLayout = {
+          ...paneLayout,
+          focusedPanelId:
+            activeLayout.focusedPanelId && restoredPaneIds.includes(activeLayout.focusedPanelId)
+              ? activeLayout.focusedPanelId
+              : restoredPaneIds[0]!,
+        };
+      }
+      emit();
+      recordFocusedSession();
+    },
     switchWorkspaceLayout: async (layoutId) => {
+      if (!durableLayoutEnabled) {
+        return;
+      }
       if (layoutId === activeLayoutId) {
         return;
       }
@@ -1747,6 +1862,7 @@ export async function createChatRuntime(
         ...savedLayouts,
         [layoutId]: structuredClone(paneLayout),
       };
+      options.onActiveLayoutChange?.(layoutId);
       persistWorkspaceUiRestore();
       emit();
       recordFocusedSession();

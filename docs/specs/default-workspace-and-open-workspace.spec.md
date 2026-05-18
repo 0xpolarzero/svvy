@@ -15,7 +15,7 @@
 
 `svvy` should never boot into an empty page that only says `Open Workspace`.
 
-When there is no restored user workspace tab, the app opens a real svvy-owned default workspace. That default workspace is a normal workspace runtime with sessions, Context, Logs, command palette, app logs, layout state, prompt history, provider settings, and other runtime-backed product surfaces available. Its initial focused surface is an `Open Workspace` panel that lets the user choose a repository.
+When there is no restored user workspace tab, the app opens a real svvy-owned default workspace. That default workspace is a normal workspace runtime with sessions, Context, Logs, command palette, app logs, prompt history, provider settings, and other runtime-backed product surfaces available. Its initial focused surface is an `Open Workspace` panel that lets the user choose a repository. The default workspace does not have durable layout slots; default workspace tab layouts are ephemeral chrome state and are recreated as a single `Open Workspace` pane for each new default tab.
 
 This keeps the app usable before a user chooses a repository while preserving the product rule that substantive repository work happens inside workspace runtimes.
 
@@ -70,14 +70,16 @@ User workspaces keep the existing product meaning:
 
 A workspace tab is a visual view over a workspace runtime.
 
-Every workspace tab must have a stable view-local tab id. The tab id is separate from `workspaceId`.
+Every workspace tab must have a stable chrome tab id. The tab id is separate from `workspaceId`.
 
 Use:
 
 - `workspaceId` for the shared backend workspace runtime
-- `workspaceTabId` or equivalent for view-local tab state
+- `workspaceTabId` or equivalent for chrome tab state
 
-Duplicate tabs for the same cwd share one backend runtime but keep separate view-local UI state.
+Duplicate tabs for the same cwd share one backend runtime. Their durable user workspace layouts are also shared by `(workspaceId, layoutId)`; the tab only chooses which layout id is active.
+
+Tabs do not own durable layout documents. A tab stores chrome state such as tab order, selected `workspaceId`, and active layout id. For user workspaces, durable layout snapshots are keyed by `(workspaceId, layoutId)` where `layoutId` is `A`, `B`, or `C`.
 
 ### Open Workspace Surface
 
@@ -99,7 +101,7 @@ On app startup:
 4. If no tab restores, create one default workspace tab.
 5. Ensure the default workspace runtime exists.
 6. Focus the default workspace tab.
-7. Initialize its active layout with one `Open Workspace` panel.
+7. Initialize it with exactly one `Open Workspace` pane.
 
 The app must not show a separate centered picker-only page during normal startup.
 
@@ -112,15 +114,15 @@ The default workspace root must live under app-managed support data.
 Adopted default:
 
 ```text
-<svvy agent dir>/default-workspace
+<svvy app data dir>/default-workspace
 ```
 
-The current agent dir is the app's durable svvy state root. Keeping the default workspace there makes it packaged-app safe, avoids writing into arbitrary user repositories, and lets the runtime reuse existing session, log, settings, and prompt-library storage patterns.
+The svvy app data dir is the app-owned durable state root. Keeping the default workspace there makes it packaged-app safe and avoids writing into arbitrary user repositories while keeping PI-specific session storage under its own `pi-agent/` child directory.
 
 The exact path should be created by a Bun helper rather than hardcoded in renderer code, for example:
 
 ```ts
-getDefaultWorkspaceCwd(agentDir): string
+getDefaultWorkspaceCwd(appDataDir): string
 ```
 
 Rules:
@@ -171,7 +173,6 @@ The default workspace supports:
 - command palette
 - quick-open placeholder
 - app logs
-- layout slots
 - Dockview panels
 - transcript rendering
 - artifacts created inside the default workspace runtime
@@ -212,7 +213,7 @@ Current-tab open behavior:
 4. If the user selects a cwd, open or acquire the backend user workspace runtime for that cwd.
 5. Replace the current visual tab's `workspaceId` with the selected user workspace runtime id.
 6. Preserve the current visual tab id and tab order.
-7. Reinitialize that visual tab's layout for the selected user workspace.
+7. Reinitialize that visual tab from the selected user workspace's active layout id and durable layout slot.
 8. Focus the selected user workspace tab.
 9. Persist tab state.
 
@@ -225,7 +226,7 @@ When a current-tab retarget happens from one user workspace to another:
 - preserve the visual tab id and tab order
 - close the old visual tab attachment
 - release the old workspace runtime if no other tab or background work references it
-- initialize the new workspace view-local state from persisted restore state for that tab id when available, otherwise use the selected workspace's default layout
+- initialize the new user workspace view from the tab's active layout id and the selected workspace's durable layout slot when available, otherwise use the selected workspace's default layout
 - do not mutate or delete the old workspace's durable sessions, app logs, workflows, or Context state
 
 ### New Tab Behavior
@@ -238,11 +239,11 @@ The new tab:
 - becomes active immediately
 - has a unique `workspaceTabId`
 - uses the default workspace `workspaceId`
-- starts with one `Open Workspace` panel focused
-- has clean view-local layout state
+- starts with exactly one `Open Workspace` pane focused
+- has no durable layout slots
 - shares the default workspace runtime, sessions, app logs, Context, and prompt history with other default workspace tabs
 
-Multiple default workspace tabs are allowed. They are separate visual views over the same default workspace runtime.
+Multiple default workspace tabs are allowed. They are separate visual views over the same default workspace runtime. Pane changes made inside a default workspace tab are allowed but ephemeral; they do not persist as layout slots and do not affect later default workspace tabs.
 
 ### Open Workspace In New Tab Behavior
 
@@ -257,7 +258,7 @@ Behavior:
 5. Create a new visual tab after the active tab.
 6. Bind the tab to the selected workspace runtime.
 7. Make the new tab active.
-8. Initialize its layout from persisted view-local state when available, otherwise default workspace layout.
+8. Initialize its layout from the selected user workspace's active durable layout slot when available, otherwise the selected workspace's default layout.
 9. Persist tab state.
 
 Opening an already-open repository in a new tab creates a duplicate visual tab for the same backend runtime. It must not focus the existing tab unless the user explicitly chooses a switch action.
@@ -386,6 +387,7 @@ type WorkspaceTabInfo = {
   workspaceLabel: string;
   kind: WorkspaceKind;
   openedAt: string;
+  // User workspace tabs choose one durable slot. Default workspace tabs leave this unset.
   activeLayoutId?: WorkspaceLayoutSlotId;
 };
 
@@ -397,7 +399,7 @@ type AppWorkspaceTabsState = {
 };
 ```
 
-The current implementation uses `workspaceId` as both tab identity and runtime identity. This must change before duplicate same-cwd tabs and default workspace retargeting can be correct.
+Implementation must keep visual tab identity separate from runtime identity so duplicate same-cwd tabs and default workspace retargeting remain coherent.
 
 Rules:
 
@@ -408,7 +410,9 @@ Rules:
 - tab reorder operates on `workspaceTabId`
 - active tab state uses `activeWorkspaceTabId`
 - runtime RPC routing still uses explicit `workspaceId`
-- view-local restore state uses `workspaceTabId`
+- user workspace layout restore state uses `(workspaceId, layoutId)`
+- each user workspace tab stores only its active `layoutId`; duplicate same-cwd tabs can select different active layout ids but share the same durable slot contents
+- default workspace tabs do not use durable layout restore state
 
 ### Runtime Registry
 
@@ -527,9 +531,9 @@ Session sections show real default-workspace sessions. If no sessions exist, the
 
 ### Layout Controls
 
-Layout slots `A`, `B`, and `C` are usable in the default workspace because it is a real runtime.
+Durable layout slots `A`, `B`, and `C` are a user-workspace feature keyed by `(workspaceId, layoutId)`.
 
-The default workspace's initial layout slot should contain the `Open Workspace` panel. Empty slots remain muted but selectable under the pane-layout spec.
+Default workspace tabs do not expose or persist durable layout slots. A new default workspace tab always starts with exactly one `Open Workspace` pane. If the user changes panes in a default workspace tab before opening a repository, those changes are ephemeral and are discarded when the tab is retargeted, closed, or recreated.
 
 ### Logs
 
@@ -606,10 +610,10 @@ Persisted restore state should not depend on a no-workspace state.
 Restore rules:
 
 - restore persisted user workspace tabs when possible
-- restore persisted default workspace tabs when they were open at shutdown
+- restore persisted default workspace tabs as chrome tabs initialized with exactly one `Open Workspace` pane
 - if no tabs restore, create one default workspace tab
 - if the active tab id cannot be restored, focus the first restored tab
-- if a user workspace cwd no longer exists or cannot open, replace that tab with a default workspace tab and an inline restore error in the `Open Workspace` panel
+- if a user workspace cwd no longer exists or cannot open, replace that tab with a default workspace tab containing exactly one `Open Workspace` pane and an inline restore error
 - do not block the whole app on one failed tab restore
 
 ## Error Handling
@@ -646,7 +650,7 @@ Retarget fails after runtime acquisition:
 5. Add runtime registry acquire/release semantics so duplicate same-cwd tabs share one backend runtime and current-tab retargeting can release old runtimes safely.
 6. Change startup restore so no restored tabs creates a default workspace tab instead of rendering a standalone picker page.
 7. Add an `open-workspace` pane target and panel host surface.
-8. Initialize default workspace tabs with one `Open Workspace` panel in layout slot `A`.
+8. Initialize default workspace tabs with exactly one `Open Workspace` pane and no durable layout slot writes.
 9. Implement current-tab open replacement from the `Open Workspace` panel and `workspace.open` action.
 10. Implement `New Tab` as a new default workspace visual tab.
 11. Implement `Open Workspace in New Tab` as picker plus new user workspace visual tab.
@@ -678,7 +682,7 @@ Renderer tests:
 - default workspace logs and Context open normally
 - open-workspace panel primary button uses current-tab placement
 - `Open Workspace in New Tab` leaves the default tab in place and opens the selected workspace beside it
-- layout slots are visible and usable in the default workspace
+- default workspace tabs do not show durable layout slots and always start with one `Open Workspace` pane
 - branch footer falls back to workspace label when default workspace is not a git repo
 
 Integration tests:
@@ -696,7 +700,7 @@ E2E tests:
 - chat can be started in the default workspace before choosing a repository
 - choosing a repository from the first panel opens it in that same tab
 - opening a repository in a new tab preserves the default tab
-- duplicate same-cwd user tabs share sessions and app logs but keep independent layout state
+- duplicate same-cwd user tabs share sessions, app logs, and durable layout slots keyed by `(workspaceId, layoutId)` while each tab keeps only its active layout choice
 
 Run e2e through the OrbStack machine lane with `bun run test:e2e`.
 

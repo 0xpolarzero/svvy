@@ -578,8 +578,7 @@ function createWorkspaceRestoreState(
   activeLayoutId: "A" | "B" | "C" = "A",
 ): WorkspaceUiRestoreState {
   return {
-    version: 4,
-    activeLayoutId,
+    version: 5,
     layouts: {
       A: activeLayoutId === "A" ? layout : null,
       B: activeLayoutId === "B" ? layout : null,
@@ -1679,13 +1678,13 @@ function createFakeRpc(input: {
   return harness;
 }
 
-async function createRuntime(harness: FakeRpcHarness, storage = createMemoryStorage()) {
+async function createRuntime(
+  harness: FakeRpcHarness,
+  storage = createMemoryStorage(),
+  workspaceInfo = TEST_WORKSPACE_INFO,
+) {
   const { createChatRuntime } = await import("./chat-runtime");
-  return await createChatRuntime(
-    { workspaceInfo: TEST_WORKSPACE_INFO },
-    harness.client as never,
-    storage,
-  );
+  return await createChatRuntime({ workspaceInfo }, harness.client as never, storage);
 }
 
 describe("createChatRuntime", () => {
@@ -2718,7 +2717,6 @@ describe("createChatRuntime", () => {
     firstRuntime.dispose();
 
     const restoreState = firstHarness.getWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId);
-    expect(restoreState?.activeLayoutId).toBe("A");
     expect(restoreState?.layouts.A?.focusedPanelId).toBe("secondary");
     expect(restoreState?.layouts.A?.panels).toContainEqual(
       expect.objectContaining({
@@ -2987,7 +2985,6 @@ describe("createChatRuntime", () => {
     expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
 
     const restoreState = harness.getWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId);
-    expect(restoreState?.activeLayoutId).toBe("A");
     expect(restoreState?.layouts.A?.panels[0]?.binding).toEqual(
       createOrchestratorTarget("session-1"),
     );
@@ -2997,6 +2994,91 @@ describe("createChatRuntime", () => {
     expect(restoreState?.layouts.C).toBeNull();
 
     runtime.dispose();
+  });
+
+  it("uses the tab-selected active layout against durable workspace layout slots", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+    harness.setWorkspaceUiRestore(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState(
+        {
+          dockview: null,
+          compactSurfaces: [],
+          panels: [
+            {
+              panelId: "secondary",
+              binding: createOrchestratorTarget("session-1"),
+              localState: {
+                inspectorSelection: null,
+                scroll: null,
+                timelineDensity: "comfortable",
+              },
+            },
+          ],
+          focusedPanelId: "secondary",
+          updatedAt: "2026-04-27T00:00:00.000Z",
+        },
+        "B",
+      ),
+    );
+
+    const runtime = await createRuntime(harness, storage, {
+      ...TEST_WORKSPACE_INFO,
+      activeLayoutId: "B",
+    });
+
+    expect(runtime.activeLayoutId).toBe("B");
+    expect(runtime.getPane("secondary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    runtime.dispose();
+  });
+
+  it("syncs shared workspace layout slot changes into another open tab on the same slot", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+    const { createChatRuntime } = await import("./chat-runtime");
+    let secondRuntime: Awaited<ReturnType<typeof createChatRuntime>> | null = null;
+    let syncPromise: Promise<void> = Promise.resolve();
+    const firstRuntime = await createChatRuntime(
+      {
+        workspaceInfo: TEST_WORKSPACE_INFO,
+        onWorkspaceLayoutPersist: (state) => {
+          syncPromise = secondRuntime?.syncWorkspaceLayoutState(state) ?? Promise.resolve();
+        },
+      },
+      harness.client as never,
+      storage,
+    );
+    secondRuntime = await createChatRuntime(
+      { workspaceInfo: TEST_WORKSPACE_INFO },
+      harness.client as never,
+      storage,
+    );
+
+    await firstRuntime.openSurface({ surface: "app-logs" }, "primary");
+    await syncPromise;
+
+    expect(secondRuntime.getPane("primary")?.target).toEqual({ surface: "app-logs" });
+
+    firstRuntime.dispose();
+    secondRuntime.dispose();
   });
 
   it("creates an initial session when a restored empty pane layout has no sessions", async () => {
@@ -3027,6 +3109,172 @@ describe("createChatRuntime", () => {
 
     expect(runtime.sessions).toHaveLength(1);
     expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    runtime.dispose();
+  });
+
+  it("starts default workspace tabs with only the Open Workspace pane", async () => {
+    const storage = createMemoryStorage();
+    const defaultWorkspaceInfo: WorkspaceTabInfo = {
+      ...TEST_WORKSPACE_INFO,
+      workspaceTabId: "default-tab-1",
+      workspaceId: "workspace:default",
+      cwd: "/tmp/svvy/default-workspace",
+      workspaceLabel: "Default Workspace",
+      kind: "default",
+      branch: undefined,
+    };
+    const harness = createFakeRpc({ sessions: [], surfaces: [] });
+    harness.setWorkspaceUiRestore(
+      defaultWorkspaceInfo.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: { surface: "app-logs" },
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
+          },
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
+
+    const runtime = await createRuntime(harness, storage, defaultWorkspaceInfo);
+
+    expect(runtime.sessions).toHaveLength(0);
+    expect(runtime.getPane("primary")?.target).toEqual({ surface: "open-workspace" });
+    expect(runtime.layoutSlotsEnabled).toBe(false);
+    await runtime.switchWorkspaceLayout("B");
+    expect(runtime.activeLayoutId).toBe("A");
+    expect(runtime.getPane("primary")?.target).toEqual({ surface: "open-workspace" });
+
+    runtime.dispose();
+  });
+
+  it("replaces the default Open Workspace pane when creating a session", async () => {
+    const storage = createMemoryStorage();
+    const defaultWorkspaceInfo: WorkspaceTabInfo = {
+      ...TEST_WORKSPACE_INFO,
+      workspaceTabId: "default-tab-1",
+      workspaceId: "workspace:default",
+      cwd: "/tmp/svvy/default-workspace",
+      workspaceLabel: "Default Workspace",
+      kind: "default",
+      branch: undefined,
+    };
+    const harness = createFakeRpc({ sessions: [], surfaces: [] });
+    harness.setWorkspaceUiRestore(
+      defaultWorkspaceInfo.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: { surface: "open-workspace" },
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
+          },
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
+
+    const runtime = await createRuntime(harness, storage, defaultWorkspaceInfo);
+
+    await runtime.createSession();
+
+    expect(runtime.sessions).toHaveLength(1);
+    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    runtime.dispose();
+  });
+
+  it("replaces the default Open Workspace pane when sidebar session creation requests a new panel", async () => {
+    const storage = createMemoryStorage();
+    const defaultWorkspaceInfo: WorkspaceTabInfo = {
+      ...TEST_WORKSPACE_INFO,
+      workspaceTabId: "default-tab-1",
+      workspaceId: "workspace:default",
+      cwd: "/tmp/svvy/default-workspace",
+      workspaceLabel: "Default Workspace",
+      kind: "default",
+      branch: undefined,
+    };
+    const harness = createFakeRpc({ sessions: [], surfaces: [] });
+    harness.setWorkspaceUiRestore(
+      defaultWorkspaceInfo.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: { surface: "open-workspace" },
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
+          },
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
+
+    const runtime = await createRuntime(harness, storage, defaultWorkspaceInfo);
+
+    await runtime.createSession({}, { kind: "new-panel", direction: "right" });
+
+    expect(runtime.paneLayout.panels).toHaveLength(1);
+    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    runtime.dispose();
+  });
+
+  it("removes restored prompt panes that fail to reopen instead of leaving unavailable surfaces", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [createSummary("missing-session", "Missing", "")],
+      surfaces: [],
+    });
+    harness.setWorkspaceUiRestore(
+      TEST_WORKSPACE_INFO.workspaceId,
+      createWorkspaceRestoreState({
+        dockview: null,
+        compactSurfaces: [],
+        panels: [
+          {
+            panelId: "primary",
+            binding: createOrchestratorTarget("missing-session"),
+            localState: {
+              inspectorSelection: null,
+              scroll: null,
+              timelineDensity: "comfortable",
+            },
+          },
+        ],
+        focusedPanelId: "primary",
+        updatedAt: "2026-04-27T00:00:00.000Z",
+      }),
+    );
+
+    const runtime = await createRuntime(harness, storage);
+
+    expect(runtime.sessions).toHaveLength(2);
+    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-2"));
 
     runtime.dispose();
   });
@@ -3087,6 +3335,7 @@ describe("createChatRuntime", () => {
       surfacePiSessionId: "session-1",
     };
     harness.emitAppLogUpdate({
+      workspaceId: TEST_WORKSPACE_INFO.workspaceId,
       entries: [entry],
       summary: {
         latestSeq: 1,
@@ -3103,6 +3352,43 @@ describe("createChatRuntime", () => {
 
     await runtime.markAppLogsSeen(1);
     expect(harness.appLogSeenRequests).toEqual([1]);
+    expect(runtime.appLogSummary.unread.total).toBe(0);
+
+    runtime.dispose();
+  });
+
+  it("ignores app log updates for other workspace runtimes", async () => {
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+
+    harness.emitAppLogUpdate({
+      workspaceId: "workspace:other",
+      entries: [
+        {
+          id: "other-log-1",
+          seq: 1,
+          createdAt: "2026-05-13T10:00:00.000Z",
+          level: "error",
+          source: "prompt",
+          message: "Other workspace failed",
+        },
+      ],
+      summary: {
+        latestSeq: 1,
+        seenSeq: 0,
+        unread: { total: 1, info: 0, warning: 0, error: 1 },
+        totals: { total: 1, info: 0, warning: 0, error: 1 },
+      },
+    });
+
     expect(runtime.appLogSummary.unread.total).toBe(0);
 
     runtime.dispose();

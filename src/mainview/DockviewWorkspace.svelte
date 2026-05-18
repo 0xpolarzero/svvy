@@ -63,6 +63,7 @@
   let unsubscribeRuntime: (() => void) | null = null;
   let panelRenderKeys = new Map<string, string>();
   const tabRenderers = new Set<SurfaceTabRenderer>();
+  const headerRenderers = new Set<SurfaceHeaderActionsRenderer>();
 
   type PaneTabState = "waiting" | "streaming" | "error" | null;
 
@@ -190,6 +191,9 @@
     for (const renderer of tabRenderers) {
       renderer.render();
     }
+    for (const renderer of headerRenderers) {
+      renderer.refresh();
+    }
   }
 
   function getPaneTabPresentation(panelId: string): PaneTabPresentation {
@@ -283,9 +287,11 @@
       );
       this.syncDisabledState();
       this.activePanelDisposable = params.api.onDidActivePanelChange(() => this.syncDisabledState());
+      headerRenderers.add(this);
     }
 
     dispose(): void {
+      headerRenderers.delete(this);
       this.activePanelDisposable?.dispose();
       this.activePanelDisposable = null;
       this.unmountSnapshotControls();
@@ -339,6 +345,10 @@
       for (const child of this.element.querySelectorAll<HTMLButtonElement>("button.dockview-surface-action")) {
         child.toggleAttribute("disabled", disabled);
       }
+    }
+
+    refresh(): void {
+      this.syncDisabledState();
     }
 
     private syncSnapshotControls(): void {
@@ -504,6 +514,7 @@
       } finally {
         applying = false;
       }
+      panelRenderKeys = new Map();
       syncDockviewPanels();
     }
     scheduleDockviewLayout();

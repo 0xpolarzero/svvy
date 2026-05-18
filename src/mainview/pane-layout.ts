@@ -353,9 +353,14 @@ export function removeDockviewPanel(
   panelId: string,
 ): WorkspaceDockviewLayoutState {
   const panels = layout.panels.filter((panel) => panel.panelId !== panelId);
+  const panelIds = new Set(panels.map((panel) => panel.panelId));
   return touch({
     ...layout,
-    dockview: panels.length === 0 ? null : layout.dockview,
+    dockview: sanitizeSerializedDockview(
+      layout.dockview,
+      panelIds,
+      panels.length !== layout.panels.length,
+    ),
     panels,
     focusedPanelId:
       layout.focusedPanelId === panelId ? (panels[0]?.panelId ?? null) : layout.focusedPanelId,

@@ -199,6 +199,7 @@ export class WorkspaceRuntimeRegistry {
     });
     const unsubscribeAppLog = appLog.subscribe((entries, summary) => {
       this.options.onAppLogUpdate?.(workspaceId, {
+        workspaceId,
         entries,
         summary,
       });
