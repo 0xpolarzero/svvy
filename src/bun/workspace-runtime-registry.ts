@@ -220,6 +220,7 @@ export class WorkspaceRuntimeRegistry {
     catalog.setTitleGenerationLogListener((event) => {
       recordTitleGenerationLog(appLog, event);
     });
+    catalog.scheduleDurableWorkflowSupervisionRestore();
 
     const runtime: RuntimeRecord = {
       workspaceId,

@@ -245,6 +245,11 @@ export class WorkspaceSessionCatalog {
   private readonly agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
   private readonly promptLibraryStore: PromptLibraryStore;
   private readonly titleGenerationJobs = new Set<string>();
+  private readonly restoredWorkflowSupervisionSessionIds = new Set<string>();
+  private readonly workflowSupervisionRestoreTasks = new Map<string, Promise<void>>();
+  private durableWorkflowSupervisionRestoreScheduled = false;
+  private durableWorkflowSupervisionRestoreStarted = false;
+  private durableWorkflowSupervisionRestoreTask: Promise<void> | null = null;
   private closed = false;
   private focusedSurfacePiSessionId: string | null = null;
   private workspaceSyncListener: ((payload: WorkspaceSyncMessage) => void) | null = null;
@@ -293,6 +298,7 @@ export class WorkspaceSessionCatalog {
       },
     });
     this.resumeDurableTitleGenerationJobs();
+    this.scheduleDurableWorkflowSupervisionRestore();
   }
 
   private get threadSurfaceDir(): string {
@@ -333,6 +339,65 @@ export class WorkspaceSessionCatalog {
 
   setTitleGenerationLogListener(listener: ((event: TitleGenerationLogEvent) => void) | null): void {
     this.titleGenerationLogListener = listener;
+  }
+
+  scheduleDurableWorkflowSupervisionRestore(): void {
+    if (
+      this.closed ||
+      this.durableWorkflowSupervisionRestoreScheduled ||
+      this.durableWorkflowSupervisionRestoreStarted
+    ) {
+      return;
+    }
+    this.durableWorkflowSupervisionRestoreScheduled = true;
+    queueMicrotask(() => {
+      void this.restoreDurableWorkflowSupervision().catch((error) => {
+        if (!this.closed) {
+          console.error("Failed to restore durable workflow supervision:", error);
+        }
+      });
+    });
+  }
+
+  async restoreDurableWorkflowSupervision(): Promise<void> {
+    if (this.closed) {
+      return;
+    }
+    if (this.durableWorkflowSupervisionRestoreTask) {
+      await this.durableWorkflowSupervisionRestoreTask;
+      return;
+    }
+    if (this.durableWorkflowSupervisionRestoreStarted) {
+      return;
+    }
+
+    this.durableWorkflowSupervisionRestoreStarted = true;
+    this.durableWorkflowSupervisionRestoreTask = (async () => {
+      for (const snapshot of this.structuredSessionStore.listSessionStates()) {
+        if (this.closed) {
+          return;
+        }
+        if (!hasRestorableWorkflowSupervision(snapshot)) {
+          continue;
+        }
+        try {
+          await this.restoreWorkflowSupervisionForSession(snapshot.session.id);
+        } catch (error) {
+          if (!this.closed) {
+            console.error(
+              `Failed to restore workflow supervision for session ${snapshot.session.id}:`,
+              error,
+            );
+          }
+        }
+      }
+    })();
+
+    try {
+      await this.durableWorkflowSupervisionRestoreTask;
+    } finally {
+      this.durableWorkflowSupervisionRestoreTask = null;
+    }
   }
 
   getPromptLibraryState(): PromptLibraryState {
@@ -1771,10 +1836,36 @@ export class WorkspaceSessionCatalog {
   }
 
   private async restoreWorkflowSupervisionIfTracked(sessionId: string): Promise<void> {
-    if (!this.getStructuredSnapshot(sessionId)) {
+    const snapshot = this.getStructuredSnapshot(sessionId);
+    if (!snapshot || !hasRestorableWorkflowSupervision(snapshot)) {
       return;
     }
-    await this.smithersRuntimeManager.restoreSessionSupervision(sessionId);
+    await this.restoreWorkflowSupervisionForSession(sessionId);
+  }
+
+  private async restoreWorkflowSupervisionForSession(sessionId: string): Promise<void> {
+    if (this.closed || this.restoredWorkflowSupervisionSessionIds.has(sessionId)) {
+      return;
+    }
+    const existingTask = this.workflowSupervisionRestoreTasks.get(sessionId);
+    if (existingTask) {
+      await existingTask;
+      return;
+    }
+
+    const task = (async () => {
+      await this.smithersRuntimeManager.restoreSessionSupervision(sessionId);
+      if (!this.closed) {
+        this.restoredWorkflowSupervisionSessionIds.add(sessionId);
+      }
+    })();
+    this.workflowSupervisionRestoreTasks.set(sessionId, task);
+
+    try {
+      await task;
+    } finally {
+      this.workflowSupervisionRestoreTasks.delete(sessionId);
+    }
   }
 
   private buildOrchestratorPromptTarget(workspaceSessionId: string): PromptTarget {
@@ -4187,6 +4278,25 @@ function persistSessionManagerSnapshot(sessionManager: SessionManager): void {
   const entries = sessionManager.getEntries();
   const lines = [header, ...entries].map((entry) => JSON.stringify(entry));
   writeFileSync(sessionFile, `${lines.join("\n")}\n`);
+}
+
+function hasRestorableWorkflowSupervision(snapshot: StructuredSessionSnapshot): boolean {
+  return snapshot.workflowRuns.some(
+    (workflowRun) =>
+      !isTerminalStructuredWorkflowStatus(workflowRun.status) ||
+      workflowRun.pendingAttentionSeq !== null,
+  );
+}
+
+function isTerminalStructuredWorkflowStatus(
+  status: StructuredSessionSnapshot["workflowRuns"][number]["status"],
+): boolean {
+  return (
+    status === "continued" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled"
+  );
 }
 
 function messageToPlainText(message: Message): string {

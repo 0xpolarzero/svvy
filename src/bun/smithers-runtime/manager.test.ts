@@ -433,6 +433,50 @@ function createSignalWorkflowDefinition(dbPath: string): TestWorkflowDefinition 
   };
 }
 
+function createSlowWorkflowDefinition(dbPath: string): TestWorkflowDefinition {
+  const launchSchema = z.object({
+    delayMs: z.number().int().min(50).max(10_000).default(500),
+    message: z.string().min(1).default("slow workflow"),
+  });
+  const resultSchema = z.object({
+    summary: z.string(),
+    message: z.string(),
+  });
+  const smithersApi = createSmithers(
+    {
+      input: bundledWorkflowRuntimeStoredInputSchema,
+      slowResult: resultSchema,
+    },
+    { dbPath },
+  );
+
+  return {
+    id: "slow_resume",
+    label: "Slow Resume",
+    summary: "Sleeps long enough for restart recovery to resume the same Smithers run.",
+    workflowName: "svvy-slow-resume",
+    launchSchema,
+    workflow: smithersApi.smithers((ctx) => {
+      const workflowInput = readBundledWorkflowLaunchInput(launchSchema, ctx.input);
+      return React.createElement(
+        smithersApi.Workflow,
+        { name: "svvy-slow-resume" },
+        React.createElement(smithersApi.Task, {
+          id: "slow-result",
+          output: smithersApi.outputs.slowResult,
+          children: async () => {
+            await Bun.sleep(workflowInput.delayMs);
+            return {
+              summary: `Finished after ${workflowInput.delayMs}ms.`,
+              message: workflowInput.message,
+            };
+          },
+        }),
+      );
+    }),
+  };
+}
+
 function createTranscriptWorkflowDefinition(dbPath: string): TestWorkflowDefinition {
   const launchSchema = z.object({
     prompt: z.string().min(1).default("Summarize the latest transcript probe."),
@@ -1404,6 +1448,363 @@ describe("SmithersRuntimeManager", () => {
       threadId,
       pendingAttentionSeq: null,
       lastAttentionSeq: beforeRestart?.pendingAttentionSeq,
+    });
+  });
+
+  it("reattaches a running workflow after manager restart and resumes the same Smithers run", async () => {
+    let shouldDeliverAttention = false;
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture({
+        onHandlerAttention: async () => shouldDeliverAttention,
+      });
+    registerWorkflow(manager, createSlowWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch slow workflow",
+      title: "Run slow_resume",
+      summary: "Launch the slow_resume workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "slow_resume",
+      launchInput: { delayMs: 1_500, message: "recover running run" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("slow workflow running before restart", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "running";
+      } catch {
+        return false;
+      }
+    });
+
+    (manager as any).monitorByRunId.get(launched.runId)?.abortController.abort();
+    await (manager as any).db.updateRun(launched.runId, {
+      runtimeOwnerId: "pid:0:svvy-test-dead-owner",
+      heartbeatAtMs: Date.now() - 60_000,
+    });
+
+    shouldDeliverAttention = true;
+    const restoredHandlerAttentions: HandlerAttentionEvent[] = [];
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: restoredHandlerAttentions,
+      onHandlerAttention: async () => shouldDeliverAttention,
+    });
+    registerWorkflow(restoredManager, createSlowWorkflowDefinition(smithersDbPath(cwd)));
+
+    await restoredManager.restoreSessionSupervision(sessionId);
+
+    await waitFor("slow workflow completion after restart resume", async () => {
+      try {
+        const run = await restoredManager.getRun(launched.runId);
+        return run.status === "finished";
+      } catch {
+        return false;
+      }
+    });
+
+    const snapshot = store.getSessionState(sessionId);
+    const workflowRuns = snapshot.workflowRuns.filter(
+      (entry) => entry.smithersRunId === launched.runId,
+    );
+    expect(workflowRuns).toHaveLength(1);
+    expect(workflowRuns[0]).toMatchObject({
+      id: launched.structuredWorkflowRunId,
+      status: "completed",
+      smithersStatus: "finished",
+    });
+
+    shouldDeliverAttention = false;
+  });
+
+  it("restores approval attention after restart without creating a duplicate workflow projection", async () => {
+    let shouldDeliverAttention = false;
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture({
+        onHandlerAttention: async () => shouldDeliverAttention,
+      });
+    registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch approval workflow",
+      title: "Run approval_gate",
+      summary: "Launch the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Approve after restart?" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("approval wait before restart", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-approval";
+      } catch {
+        return false;
+      }
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    shouldDeliverAttention = true;
+    const restoredHandlerAttentions: HandlerAttentionEvent[] = [];
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: restoredHandlerAttentions,
+      onHandlerAttention: async () => shouldDeliverAttention,
+    });
+    registerWorkflow(restoredManager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
+
+    await restoredManager.restoreSessionSupervision(sessionId);
+    await restoredManager.restoreSessionSupervision(sessionId);
+
+    let snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.filter((entry) => entry.smithersRunId === launched.runId),
+    ).toHaveLength(1);
+    expect(restoredHandlerAttentions).toHaveLength(1);
+    expect(restoredHandlerAttentions[0]).toMatchObject({
+      smithersRunId: launched.runId,
+      reason: expect.stringContaining("waiting on approval"),
+    });
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      pendingAttentionSeq: null,
+      lastAttentionSeq: expect.any(Number),
+    });
+
+    await restoredManager.resolveApproval({
+      runId: launched.runId,
+      nodeId: "publish-gate",
+      decision: "approve",
+      note: "Approved after restart.",
+    });
+    const resumeCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Resume approval workflow",
+      title: "Resume approval_gate",
+      summary: "Resume the approval_gate workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    await restoredManager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "approval_gate",
+      launchInput: { title: "Approve after restart?" },
+      commandId: resumeCommand.commandId,
+      runId: launched.runId,
+    });
+    await waitFor("approval workflow completion after restart", async () => {
+      const run = await restoredManager.getRun(launched.runId);
+      return run.status === "finished";
+    });
+
+    snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "completed",
+      smithersStatus: "finished",
+    });
+
+    shouldDeliverAttention = false;
+  });
+
+  it("restores signal attention after restart and resumes the same run after the signal arrives", async () => {
+    let shouldDeliverAttention = false;
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture({
+        onHandlerAttention: async () => shouldDeliverAttention,
+      });
+    registerWorkflow(manager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch signal workflow",
+      title: "Run wait_for_signal",
+      summary: "Launch the wait_for_signal workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_signal",
+      launchInput: { signalName: "deploy.completed" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("signal wait before restart", async () => {
+      try {
+        const run = await manager.getRun(launched.runId);
+        return run.status === "waiting-event";
+      } catch {
+        return false;
+      }
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    shouldDeliverAttention = true;
+    const restoredHandlerAttentions: HandlerAttentionEvent[] = [];
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: restoredHandlerAttentions,
+      onHandlerAttention: async () => shouldDeliverAttention,
+    });
+    registerWorkflow(restoredManager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
+
+    await restoredManager.restoreSessionSupervision(sessionId);
+
+    expect(restoredHandlerAttentions).toHaveLength(1);
+    expect(restoredHandlerAttentions[0]).toMatchObject({
+      smithersRunId: launched.runId,
+      reason: expect.stringContaining("waiting on an external event or signal"),
+    });
+
+    await restoredManager.sendSignal({
+      runId: launched.runId,
+      signalName: "deploy.completed",
+      data: {
+        environment: "production",
+        sha: "restart123",
+        status: "success",
+      },
+    });
+    const resumeCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Resume signal workflow",
+      title: "Resume wait_for_signal",
+      summary: "Resume the wait_for_signal workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const resumed = await restoredManager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "wait_for_signal",
+      launchInput: { signalName: "deploy.completed" },
+      commandId: resumeCommand.commandId,
+      runId: launched.runId,
+    });
+
+    expect(resumed.structuredWorkflowRunId).toBe(launched.structuredWorkflowRunId);
+    await waitFor("signal workflow completion after restart", async () => {
+      const run = await restoredManager.getRun(launched.runId);
+      return run.status === "finished";
+    });
+
+    const snapshot = store.getSessionState(sessionId);
+    expect(
+      snapshot.workflowRuns.filter((entry) => entry.smithersRunId === launched.runId),
+    ).toHaveLength(1);
+    expect(
+      snapshot.workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      status: "completed",
+      smithersStatus: "finished",
+      waitKind: null,
+    });
+  });
+
+  it("does not resume terminal workflow runs during restart restoration", async () => {
+    const { cwd, agentDir, store, manager, sessionId, threadId, surfacePiSessionId } =
+      createWorkspaceFixture({
+        onHandlerAttention: async () => true,
+      });
+
+    const launchCommand = createWorkflowCommand({
+      store,
+      sessionId,
+      threadId,
+      surfacePiSessionId,
+      requestSummary: "Launch hello world",
+      title: "Run hello_world",
+      summary: "Launch the hello_world workflow.",
+      toolName: "smithers.run_workflow",
+    });
+    const launched = await manager.launchWorkflow({
+      sessionId,
+      threadId,
+      workflowId: "hello_world",
+      launchInput: { message: "terminal no resume" },
+      commandId: launchCommand.commandId,
+    });
+
+    await waitFor("hello_world terminal before restart", async () => {
+      const run = await manager.getRun(launched.runId);
+      return run.status === "finished";
+    });
+    await waitFor("terminal attention delivered before restart", () => {
+      const workflowRun = store
+        .getSessionState(sessionId)
+        .workflowRuns.find((entry) => entry.smithersRunId === launched.runId);
+      return workflowRun?.pendingAttentionSeq === null && workflowRun?.lastAttentionSeq !== null;
+    });
+
+    await manager.close();
+    managers.splice(managers.indexOf(manager), 1);
+
+    const restoredHandlerAttentions: HandlerAttentionEvent[] = [];
+    const restoredManager = createManagerHarness({
+      cwd,
+      agentDir,
+      store,
+      structuredStateChanges: [],
+      handlerAttentions: restoredHandlerAttentions,
+      onHandlerAttention: async () => true,
+    });
+    registerWorkflow(restoredManager, createHelloWorldTestWorkflow(smithersDbPath(cwd)));
+
+    await restoredManager.restoreSessionSupervision(sessionId);
+
+    expect((restoredManager as any).activeWorkflowPromiseByRunId.size).toBe(0);
+    expect(restoredHandlerAttentions).toHaveLength(0);
+    expect(store.getSessionState(sessionId).workflowRuns).toHaveLength(1);
+    expect(
+      store
+        .getSessionState(sessionId)
+        .workflowRuns.find((entry) => entry.smithersRunId === launched.runId),
+    ).toMatchObject({
+      id: launched.structuredWorkflowRunId,
+      status: "completed",
+      smithersStatus: "finished",
     });
   });
 

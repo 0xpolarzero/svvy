@@ -29,6 +29,7 @@ import {
   type SessionDefaults,
   type TitleGenerationLogEvent,
 } from "./session-catalog";
+import { SmithersRuntimeManager } from "./smithers-runtime/manager";
 import type { StructuredSessionStateStore } from "./structured-session-state";
 
 const tempDirs: string[] = [];
@@ -460,6 +461,55 @@ async function createHandlerThreadHarness(
   };
 }
 
+async function seedDurableWorkflowSession(input: {
+  cwd: string;
+  agentDir: string;
+  sessionDir: string;
+  workflowStatus?: "running" | "waiting" | "continued" | "completed" | "failed" | "cancelled";
+  pendingAttentionSeq?: number | null;
+}): Promise<string> {
+  const catalog = new WorkspaceSessionCatalog(input.cwd, input.agentDir, input.sessionDir);
+  await catalog.restoreDurableWorkflowSupervision();
+
+  try {
+    const created = await catalog.createSession({ title: "Durable Workflow" }, DEFAULTS);
+    const sessionId = created.target.workspaceSessionId;
+    const handler = await createHandlerThreadHarness(catalog, sessionId, {
+      title: "Durable Workflow",
+      objective: "Supervise durable workflow.",
+    });
+    const store = getStructuredSessionStore(catalog);
+    const workflowCommand = store.createCommand({
+      turnId: handler.turnId,
+      surfacePiSessionId: handler.surfacePiSessionId,
+      threadId: handler.threadId,
+      toolName: "smithers.run_workflow",
+      executor: "smithers",
+      visibility: "surface",
+      title: "Run durable workflow",
+      summary: "Launch durable workflow.",
+    });
+    store.startCommand(workflowCommand.id);
+    store.recordWorkflow({
+      threadId: handler.threadId,
+      commandId: workflowCommand.id,
+      smithersRunId: "smithers-run-durable-startup",
+      workflowName: "durable_startup",
+      workflowSource: "saved",
+      entryPath: ".svvy/workflows/entries/durable-startup.tsx",
+      savedEntryId: "durable_startup",
+      status: input.workflowStatus ?? "running",
+      smithersStatus: input.workflowStatus === "completed" ? "finished" : "running",
+      pendingAttentionSeq: input.pendingAttentionSeq ?? null,
+      lastAttentionSeq: null,
+      summary: "Durable workflow needs startup supervision.",
+    });
+    return sessionId;
+  } finally {
+    await catalog.dispose();
+  }
+}
+
 function hasAssistantReply(messages: readonly AgentMessage[], text: string): boolean {
   return messages.some(
     (message) =>
@@ -817,6 +867,36 @@ describe("WorkspaceSessionCatalog", () => {
     try {
       const created = await catalog.createSession({ title: "Tracked Session" }, DEFAULTS);
       const sessionId = created.target.workspaceSessionId;
+      const handler = await createHandlerThreadHarness(catalog, sessionId, {
+        title: "Tracked Workflow",
+        objective: "Supervise tracked workflow.",
+      });
+      const store = getStructuredSessionStore(catalog);
+      const workflowCommand = store.createCommand({
+        turnId: handler.turnId,
+        surfacePiSessionId: handler.surfacePiSessionId,
+        threadId: handler.threadId,
+        toolName: "smithers.run_workflow",
+        executor: "smithers",
+        visibility: "surface",
+        title: "Run tracked workflow",
+        summary: "Launch tracked workflow.",
+      });
+      store.startCommand(workflowCommand.id);
+      store.recordWorkflow({
+        threadId: handler.threadId,
+        commandId: workflowCommand.id,
+        smithersRunId: "smithers-run-tracked-open",
+        workflowName: "tracked_open",
+        workflowSource: "saved",
+        entryPath: ".svvy/workflows/entries/tracked-open.tsx",
+        savedEntryId: "tracked_open",
+        status: "completed",
+        smithersStatus: "finished",
+        pendingAttentionSeq: 7,
+        lastAttentionSeq: null,
+        summary: "Tracked workflow finished and needs handler attention.",
+      });
       const restoreCalls: Array<{ sessionId: string; options?: { emitAttention?: boolean } }> = [];
       const manager = getSmithersRuntimeManager(catalog);
       const restoreSpy = spyOn(manager, "restoreSessionSupervision").mockImplementation(
@@ -833,6 +913,55 @@ describe("WorkspaceSessionCatalog", () => {
 
       expect(restoreCalls).toEqual([{ sessionId, options: undefined }]);
     } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("restores durable workflow supervision at catalog startup without opening a surface", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const sessionId = await seedDurableWorkflowSession({ cwd, agentDir, sessionDir });
+    const restoreCalls: Array<{ sessionId: string; options?: { emitAttention?: boolean } }> = [];
+    const restoreSpy = spyOn(
+      SmithersRuntimeManager.prototype,
+      "restoreSessionSupervision",
+    ).mockImplementation(async (nextSessionId, options) => {
+      restoreCalls.push({ sessionId: nextSessionId, options });
+    });
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      await waitFor(() => restoreCalls.length === 1);
+
+      expect(restoreCalls).toEqual([{ sessionId, options: undefined }]);
+      expect(getManagedSurfaces(catalog).size).toBe(0);
+    } finally {
+      restoreSpy.mockRestore();
+      await catalog.dispose();
+    }
+  });
+
+  it("does not restore durable workflow supervision for sessions with no workflow state", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const seedCatalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    await seedCatalog.restoreDurableWorkflowSupervision();
+    await seedCatalog.createSession({ title: "No Workflow State" }, DEFAULTS);
+    await seedCatalog.dispose();
+
+    const restoreCalls: string[] = [];
+    const restoreSpy = spyOn(
+      SmithersRuntimeManager.prototype,
+      "restoreSessionSupervision",
+    ).mockImplementation(async (sessionId) => {
+      restoreCalls.push(sessionId);
+    });
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      await catalog.restoreDurableWorkflowSupervision();
+
+      expect(restoreCalls).toEqual([]);
+    } finally {
+      restoreSpy.mockRestore();
       await catalog.dispose();
     }
   });

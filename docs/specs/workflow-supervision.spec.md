@@ -528,8 +528,10 @@ On app start or session restoration, `svvy` should:
 
 1. find workflow runs that are not known terminal or still have undelivered handler attention
 2. bootstrap each such run with a one-shot inspection read
-3. reconnect each monitor from the last durable event sequence
-4. re-emit any necessary handler attention that was durable but not yet delivered
+3. resume and reattach each active `running` Smithers run by explicit `runId` when the previous owner process is gone
+4. restore waiting approval, signal, and timer runs as durable waits plus pending handler attention, leaving same-run resume to the handler after the wait is resolved
+5. reconnect each monitor from the last durable event sequence when the transport supports a live event stream
+6. re-emit any necessary handler attention that was durable but not yet delivered
 
 Recovery must be precise per workflow run.
 

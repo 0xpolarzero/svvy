@@ -235,6 +235,7 @@ export class SmithersRuntimeManager {
   private readonly flushPromiseByRunId = new Map<string, Promise<void>>();
   private readonly deliveringAttentionRunIds = new Set<string>();
   private readonly activeWorkflowPromises = new Set<Promise<void>>();
+  private readonly activeWorkflowPromiseByRunId = new Map<string, Promise<void>>();
   private readonly terminalOutputByRunId = new Map<string, unknown>();
 
   constructor(private readonly options: SmithersRuntimeManagerOptions) {
@@ -401,7 +402,8 @@ export class SmithersRuntimeManager {
 
     const existingRunId =
       input.runId?.trim() ||
-      this.findResumableThreadRun(input.sessionId, input.threadId, input.workflowId)?.smithersRunId;
+      this.findNonterminalThreadRun(input.sessionId, input.threadId, input.workflowId)
+        ?.smithersRunId;
     if (!existingRunId) {
       await this.cancelSupersededThreadRuns(input.sessionId, input.threadId);
     }
@@ -469,6 +471,32 @@ export class SmithersRuntimeManager {
       commandId: input.commandId,
     });
 
+    const existingActiveRun = this.activeWorkflowPromiseByRunId.has(runId)
+      ? await this.db.getRun(runId)
+      : null;
+    if (existingActiveRun?.status === "running") {
+      await this.emitStructuredStateChanged(input.sessionId);
+      return {
+        workflowId: entry.workflowId,
+        label: entry.label,
+        sourceScope: entry.sourceScope,
+        entryPath: entry.entryPath,
+        definitionPaths: entry.definitionPaths.slice(),
+        promptPaths: entry.promptPaths.slice(),
+        componentPaths: entry.componentPaths.slice(),
+        assetPaths: Array.from(
+          new Set([...entry.definitionPaths, ...entry.promptPaths, ...entry.componentPaths]),
+        ).toSorted(),
+        launchInput: parsedInput.data as Record<string, unknown>,
+        runId,
+        resumedRunId: existingRunId ?? null,
+        structuredWorkflowRunId: structuredWorkflowRun.id,
+        status: structuredWorkflowRun.status,
+        smithersStatus: existingActiveRun.status,
+        summary: structuredWorkflowRun.summary,
+      };
+    }
+
     const monitor = this.createMonitor({
       sessionId: input.sessionId,
       threadId: input.threadId,
@@ -487,10 +515,7 @@ export class SmithersRuntimeManager {
       input: parsedInput.data as Record<string, unknown>,
       resume: Boolean(existingRunId),
     });
-    this.activeWorkflowPromises.add(workflowPromise);
-    void workflowPromise.finally(() => {
-      this.activeWorkflowPromises.delete(workflowPromise);
-    });
+    this.trackActiveWorkflowPromise(runId, workflowPromise);
 
     await this.waitForRunRegistration(runId);
 
@@ -1080,6 +1105,7 @@ export class SmithersRuntimeManager {
       emitAttention?: boolean;
     } = {},
   ): Promise<void> {
+    await this.refreshWorkflowRegistry();
     const snapshot = this.options.store.getSessionState(sessionId);
     this.hydrateRunOwnershipForSession(sessionId);
 
@@ -1092,6 +1118,7 @@ export class SmithersRuntimeManager {
         emitAttention: false,
         source: "bootstrap",
       });
+      await this.reattachWorkflowRunOnRestore(workflowRun.smithersRunId);
     }
 
     if (options.emitAttention ?? true) {
@@ -1133,6 +1160,7 @@ export class SmithersRuntimeManager {
 
     this.monitorByRunId.clear();
     this.ownershipByRunId.clear();
+    this.activeWorkflowPromiseByRunId.clear();
   }
 
   private createMonitor(input: {
@@ -1169,6 +1197,7 @@ export class SmithersRuntimeManager {
           runId: input.runId,
           input: input.input,
           resume: input.resume,
+          force: input.resume,
           rootDir: this.options.cwd,
           signal: input.monitor.abortController.signal,
           onProgress: (event: SmithersEvent) => {
@@ -1188,6 +1217,61 @@ export class SmithersRuntimeManager {
         }),
       );
     }
+  }
+
+  private trackActiveWorkflowPromise(runId: string, workflowPromise: Promise<void>): void {
+    this.activeWorkflowPromises.add(workflowPromise);
+    this.activeWorkflowPromiseByRunId.set(runId, workflowPromise);
+    void workflowPromise.finally(() => {
+      this.activeWorkflowPromises.delete(workflowPromise);
+      if (this.activeWorkflowPromiseByRunId.get(runId) === workflowPromise) {
+        this.activeWorkflowPromiseByRunId.delete(runId);
+      }
+    });
+  }
+
+  private async reattachWorkflowRunOnRestore(runId: string): Promise<void> {
+    if (this.activeWorkflowPromiseByRunId.has(runId)) {
+      return;
+    }
+
+    const ownership = this.ownershipByRunId.get(runId) ?? this.rehydrateRunOwnership(runId);
+    if (!ownership) {
+      return;
+    }
+    const workflowRun = this.findStructuredWorkflowRunById(
+      ownership.sessionId,
+      ownership.structuredWorkflowId,
+    );
+    if (!workflowRun || isTerminalWorkflowStatus(workflowRun.status)) {
+      return;
+    }
+    const entry = this.workflowEntriesById.get(ownership.workflowId);
+    if (!entry) {
+      return;
+    }
+    const run = await this.db.getRun(runId);
+    if (!run || run.status !== "running" || isTerminalRunStatus(run.status)) {
+      return;
+    }
+    const monitor = this.createMonitor({
+      sessionId: ownership.sessionId,
+      threadId: ownership.threadId,
+      workflowId: ownership.workflowId,
+      runId,
+    });
+    this.trackRunIdWithMonitor(monitor, runId);
+    const runnableEntry = entry.createRunnableEntry({
+      dbPath: this.runtimeDbPath,
+    });
+    const workflowPromise = this.runWorkflowInBackground({
+      runnableEntry,
+      monitor,
+      runId,
+      input: {},
+      resume: true,
+    });
+    this.trackActiveWorkflowPromise(runId, workflowPromise);
   }
 
   private async handleProgressEvent(monitor: WorkflowMonitor, event: SmithersEvent) {
@@ -1979,7 +2063,7 @@ export class SmithersRuntimeManager {
     );
   }
 
-  private findResumableThreadRun(
+  private findNonterminalThreadRun(
     sessionId: string,
     threadId: string,
     workflowId: string,
@@ -1991,7 +2075,7 @@ export class SmithersRuntimeManager {
           (workflowRun) =>
             workflowRun.threadId === threadId &&
             (workflowRun.savedEntryId === workflowId || workflowRun.workflowName === workflowId) &&
-            (workflowRun.status === "waiting" || workflowRun.status === "continued"),
+            !isTerminalWorkflowStatus(workflowRun.status),
         )
         .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null
     );

@@ -37,7 +37,7 @@ For each issue, record:
 | AUD-006 | P1 | HTML artifact previews use `srcdoc` without an iframe sandbox | `34a6` | Fixed |
 | AUD-007 | Not accepted | Duplicate same-cwd workspace tabs share workspace runtime and durable state while isolating only visual state | `209c`, `3eed`, `2a4e`, `34a6` | Intentional shared workspace runtime |
 | AUD-008 | P1 | Workspace-scoped RPC handlers must never route through active runtime state | `209c`, `2a4e`, `1291` | Fixed |
-| AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Researched |
+| AUD-009 | P1 | Nonterminal Smithers workflow runs are not reliably reattached after restart | `209c`, `3eed`, `2a4e` | Fixed |
 | AUD-010 | P1 | `smithers.run_workflow` can implicitly resume the wrong run when `runId` is omitted | `3eed`, `34a6`, `2a4e` | Researched |
 | AUD-011 | P1 | Smithers cancellation may leave inactive waiting runs stuck | `1291` | Researched |
 | AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Researched |
@@ -448,40 +448,31 @@ Relevant code:
 
 **Confidence:** High.
 
-### AUD-009 - Nonterminal Smithers runs are not reattached after restart
+### AUD-009 - Nonterminal Smithers runs are reattached after restart
 
 **Impact:** High workflow reliability issue.
 
-**Precise issue:** The product contract calls for recovery of supervised workflow runs after restart: find nonterminal runs, bootstrap state, reconnect monitors from event cursors, and re-emit durable attention. The current restore path hydrates state and events, but does not reattach a live monitor or explicitly resume Smithers execution for nonterminal runs.
+**Disposition:** Fixed in `src/bun/session-catalog.ts` and `src/bun/smithers-runtime/manager.ts`.
 
-Relevant code:
+**Current contract:** On app start or session restoration, `svvy` finds workflow runs that are not known terminal or still have undelivered handler attention, bootstraps each run from Smithers durable state, resumes same-run execution for active `running` Smithers runs with explicit `runId`, and re-emits durable handler attention for approval, signal, and terminal attention without creating duplicate workflow-run projections.
 
-- `src/bun/session-catalog.ts`: creates the manager, resumes title generation, and restores workflow state when surfaces open or prompts prepare.
-- `src/bun/workflow-supervision/manager.ts`: restore path hydrates ownership and flushes events, but does not recreate monitor execution or call Smithers resume.
-- `src/bun/workflow-supervision/manager.ts`: `runWorkflowInBackground` is launch-oriented.
-- Smithers full documentation: resuming requires `runWorkflow(..., { runId, resume: true })`.
+Waiting approval and signal runs restore their durable wait plus handler attention. They are not force-resumed during bootstrap; after the handler or user resolves the approval or sends the signal, the handler resumes the same run through `smithers.run_workflow({ workflowId, input, runId })`.
 
-**Why this matters:** After restart, a run can appear waiting/running in durable state while no process is actually monitoring or resuming it. Future Smithers events, approval attention, and task projections may never arrive unless another path incidentally repairs the state.
+**Confirmed code path:**
 
-**Best fix:**
+- `src/bun/session-catalog.ts`: schedules a one-shot durable workflow supervision restore on catalog startup, restores only sessions with nonterminal workflow runs or pending handler attention, dedupes startup/open-surface races per session, and still restores tracked sessions when surfaces or prompts are opened later.
+- `src/bun/smithers-runtime/manager.ts`: `restoreSessionSupervision` refreshes the workflow registry, hydrates durable run ownership, flushes unapplied Smithers events from the durable cursor, reattaches active running runs through `runWorkflow(..., { runId, resume: true, force: true })`, and delivers pending handler attention.
+- `src/bun/smithers-runtime/manager.ts`: `activeWorkflowPromiseByRunId` prevents duplicate live resume loops for the same Smithers run inside one manager.
+- `src/bun/smithers-runtime/manager.ts`: terminal workflow replay remains idempotent after handler handoff and does not reopen a completed thread or enqueue duplicate attention.
 
-1. On workspace startup, enumerate every nonterminal structured workflow run.
-2. For each run, load durable Smithers state and the last consumed event cursor.
-3. Recreate monitor state and subscribe from that cursor.
-4. For resumable active runs, call Smithers resume with the explicit `runId`.
-5. Re-emit undelivered durable attention without creating duplicate runs.
-6. Keep lazy surface-open restoration as a fallback, not the only recovery path.
+**Verification:**
 
-**Verification required:**
+- `src/bun/smithers-runtime/manager.test.ts` now covers restart recovery for a running run that resumes the same Smithers `runId` to completion.
+- The same test file covers approval wait restoration, duplicate restore idempotency, explicit same-run approval resume after restart, signal attention restoration, explicit same-run signal resume after restart, terminal no-resume behavior, and multi-batch event cursor replay.
 
-- Start a run, leave it running/waiting, recreate the manager/app, and assert a new monitor is attached.
-- Restart while waiting for approval or signal and assert attention reappears without duplicate run creation.
-- Restart after terminal state and assert no resume happens.
-- Assert event cursor recovery does not replay duplicate projections.
+**Documentation updates:** No PRD, feature inventory, or spec change is required; this implements the existing workflow-supervision and restart-recovery contract. `docs/progress.md` already tracked the durable reconnect/bootstrap capability as complete, so no roadmap item changed.
 
-**Documentation impact:** None if implementing the current contract. If recovery stays lazy/on-open only, specs and progress must say that explicitly.
-
-**Confidence:** High for missing reattach/resume. Medium for startup-wide scope until full app boot path is rechecked.
+**Residual risk:** Smithers resume still depends on stable workflow source and Smithers resumability rules. If an entry is missing or Smithers rejects resume because the workflow changed incompatibly, the handler must repair or start an intentional replacement run rather than silently creating one during bootstrap.
 
 ### AUD-010 - Omitted Smithers `runId` can implicitly resume the wrong run
 
