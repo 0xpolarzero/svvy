@@ -167,7 +167,7 @@ type DockviewPanelRestoreState = {
 
 If `dockview` is `null` or invalid, the active slot opens a single default Dockview panel bound to the primary orchestrator surface when one exists, or an empty panel otherwise.
 
-A slot is initialized once its layout contains at least one bound product surface. Empty slots are muted in the layout switcher but remain selectable. Selecting an empty slot creates an empty single-panel Dockview layout so the user can build the arrangement from scratch.
+A slot is initialized once it has been explicitly selected or saved, even if it currently contains no open panes. Empty slots are muted in the layout switcher but remain selectable. Selecting an empty slot creates an empty layout so the user can build the arrangement from scratch. An uninitialized slot also opens empty; it must not infer a session to display from the workspace catalog. If the user closes every pane in a slot, that empty layout is saved and restored as empty; restart must not reopen the last focused session just because the workspace still has sessions.
 
 ## Dockview Panel Identity
 

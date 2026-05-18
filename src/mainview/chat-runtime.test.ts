@@ -1682,7 +1682,45 @@ async function createRuntime(
   harness: FakeRpcHarness,
   storage = createMemoryStorage(),
   workspaceInfo = TEST_WORKSPACE_INFO,
+  options: { seedInitialLayout?: boolean } = {},
 ) {
+  if (
+    options.seedInitialLayout !== false &&
+    workspaceInfo.kind === "user" &&
+    !harness.getWorkspaceUiRestore(workspaceInfo.workspaceId)
+  ) {
+    const catalog = await harness.client.request.listSessions({
+      workspaceId: workspaceInfo.workspaceId,
+    });
+    const initialSession = catalog.sessions[0];
+    if (initialSession) {
+      try {
+        harness.getSurfaceSnapshot(initialSession.id);
+        harness.setWorkspaceUiRestore(
+          workspaceInfo.workspaceId,
+          createWorkspaceRestoreState({
+            dockview: null,
+            compactSurfaces: [],
+            panels: [
+              {
+                panelId: "primary",
+                binding: createOrchestratorTarget(initialSession.id),
+                localState: {
+                  inspectorSelection: null,
+                  scroll: null,
+                  timelineDensity: "comfortable",
+                },
+              },
+            ],
+            focusedPanelId: "primary",
+            updatedAt: "2026-04-27T00:00:00.000Z",
+          }),
+        );
+      } catch {
+        // Tests without a surface snapshot exercise empty-layout startup.
+      }
+    }
+  }
   const { createChatRuntime } = await import("./chat-runtime");
   return await createChatRuntime({ workspaceInfo }, harness.client as never, storage);
 }
@@ -2474,7 +2512,7 @@ describe("createChatRuntime", () => {
 
     expect(runtime.getPane("secondary")?.target).toEqual(threadTarget);
     expect(runtime.paneLayout.focusedPanelId).toBe("secondary");
-    expect(harness.requestCounts.listSessions).toBe(1);
+    expect(harness.requestCounts.listSessions).toBe(2);
 
     runtime.dispose();
   });
@@ -3081,26 +3119,24 @@ describe("createChatRuntime", () => {
     secondRuntime.dispose();
   });
 
-  it("creates an initial session when a restored empty pane layout has no sessions", async () => {
+  it("preserves a saved empty layout without reopening the last session", async () => {
     const storage = createMemoryStorage();
-    const harness = createFakeRpc({ sessions: [], surfaces: [] });
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
     harness.setWorkspaceUiRestore(
       TEST_WORKSPACE_INFO.workspaceId,
       createWorkspaceRestoreState({
         dockview: null,
         compactSurfaces: [],
-        panels: [
-          {
-            panelId: "primary",
-            binding: null,
-            localState: {
-              inspectorSelection: null,
-              scroll: null,
-              timelineDensity: "comfortable",
-            },
-          },
-        ],
-        focusedPanelId: "primary",
+        panels: [],
+        focusedPanelId: null,
         updatedAt: "2026-04-27T00:00:00.000Z",
       }),
     );
@@ -3108,7 +3144,31 @@ describe("createChatRuntime", () => {
     const runtime = await createRuntime(harness, storage);
 
     expect(runtime.sessions).toHaveLength(1);
-    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-1"));
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.paneLayout.focusedPanelId).toBeNull();
+
+    runtime.dispose();
+  });
+
+  it("starts an uninitialized user workspace layout empty instead of reopening the first session", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness, storage, TEST_WORKSPACE_INFO, {
+      seedInitialLayout: false,
+    });
+
+    expect(runtime.sessions).toHaveLength(1);
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.paneLayout.focusedPanelId).toBeNull();
 
     runtime.dispose();
   });
@@ -3273,8 +3333,9 @@ describe("createChatRuntime", () => {
 
     const runtime = await createRuntime(harness, storage);
 
-    expect(runtime.sessions).toHaveLength(2);
-    expect(runtime.getPane("primary")?.target).toEqual(createOrchestratorTarget("session-2"));
+    expect(runtime.sessions).toHaveLength(1);
+    expect(runtime.paneLayout.panels).toHaveLength(0);
+    expect(runtime.getPane("primary")).toBeUndefined();
 
     runtime.dispose();
   });

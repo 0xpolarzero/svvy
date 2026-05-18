@@ -1559,6 +1559,8 @@ export async function createChatRuntime(
   if (restoreState) {
     savedLayouts = normalizeRestoredLayouts(restoreState);
   }
+  const activeRestoreSlotSaved =
+    durableLayoutEnabled && !!restoreState && restoreState.layouts[activeLayoutId] !== null;
   const activeRestoreLayout = savedLayouts[activeLayoutId];
   let restoredPaneIds: string[] = [];
   if (activeRestoreLayout?.panels.length) {
@@ -1575,22 +1577,6 @@ export async function createChatRuntime(
         ? activeRestoreLayout.focusedPanelId
         : (paneLayout.panels[0]?.panelId ?? PRIMARY_CHAT_PANE_ID);
     paneLayout = { ...paneLayout, focusedPanelId };
-    if (restoredPaneIds.length === 0 && initialCatalog.sessions.length > 0) {
-      const [initialSession] = initialCatalog.sessions;
-      let snapshot: ConversationSurfaceSnapshot;
-      try {
-        snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession!.id }));
-      } catch (error) {
-        console.error("Failed to open initial restored workspace session:", error);
-        snapshot = await rpcClient.request.createSession(scoped({}));
-        await refreshSessions();
-      }
-      await bindPaneToSnapshot(focusedPanelId, snapshot, { focus: true, persist: false });
-    } else if (restoredPaneIds.length === 0) {
-      const snapshot = await rpcClient.request.createSession(scoped({}));
-      await bindPaneToSnapshot(focusedPanelId, snapshot, { focus: true, persist: false });
-      await refreshSessions();
-    }
     persistWorkspaceUiRestore();
     emit();
   } else if (restoredPaneIds.length > 0) {
@@ -1604,6 +1590,11 @@ export async function createChatRuntime(
     };
     persistWorkspaceUiRestore();
     emit();
+  } else if (activeRestoreSlotSaved) {
+    if (!activeRestoreLayout?.panels.length) {
+      paneLayout = activeRestoreLayout ?? createEmptyPaneLayout();
+    }
+    emit();
   } else if (workspaceInfo.kind === "default") {
     paneLayout = addDockviewPanel(
       createEmptyPaneLayout(),
@@ -1612,26 +1603,9 @@ export async function createChatRuntime(
     );
     persistWorkspaceUiRestore();
     emit();
-  } else if (initialCatalog.sessions.length > 0) {
-    const [initialSession] = initialCatalog.sessions;
-    if (!initialSession) {
-      throw new Error("Expected an initial session to open.");
-    }
-    let snapshot: ConversationSurfaceSnapshot;
-    try {
-      snapshot = await rpcClient.request.openSession(scoped({ sessionId: initialSession.id }));
-    } catch (error) {
-      console.error("Failed to open initial workspace session:", error);
-      snapshot = await rpcClient.request.createSession(scoped({}));
-      await refreshSessions();
-    }
-    const panelId = resolveOpenTarget(normalizePromptTarget(snapshot.target), PRIMARY_CHAT_PANE_ID);
-    await bindPaneToSnapshot(panelId, snapshot);
   } else {
-    const snapshot = await rpcClient.request.createSession(scoped({}));
-    const panelId = resolveOpenTarget(normalizePromptTarget(snapshot.target), PRIMARY_CHAT_PANE_ID);
-    await bindPaneToSnapshot(panelId, snapshot);
-    await refreshSessions();
+    paneLayout = createEmptyPaneLayout();
+    emit();
   }
 
   const workspaceSyncListener = (payload: WorkspaceSyncMessage) => {
