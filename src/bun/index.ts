@@ -299,7 +299,7 @@ function getSessionDefaults(
   return {
     model: defaults.model,
     provider: defaults.provider,
-    systemPrompt: runtime.catalog.buildOrchestratorSystemPrompt(agentSettings),
+    systemPrompt: agentSettings.systemPrompt,
     thinkingLevel: defaults.reasoningEffort,
     sessionMode: mode,
     sessionAgentKey: mode === "dumb" ? "dumbOrchestrator" : "defaultSession",

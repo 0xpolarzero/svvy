@@ -1557,7 +1557,7 @@ function createFakeRpc(input: {
                 {
                   id: `queued-${record.snapshot.queuedMessages.length + 1}`,
                   kind: "prompt_refresh",
-                  text: "Update instructions before next turn",
+                  text: "Update instructions",
                   summary: "Context revision 2",
                   status: "queued",
                   createdAt: "2026-04-10T10:12:00.000Z",
@@ -2285,7 +2285,7 @@ describe("createChatRuntime", () => {
 
     expect(await controller.queuePromptRefresh()).toBe(true);
     expect(controller.queuedPrompts.map((prompt) => [prompt.kind, prompt.text])).toEqual([
-      ["prompt_refresh", "Update instructions before next turn"],
+      ["prompt_refresh", "Update instructions"],
     ]);
     const refresh = controller.queuedPrompts[0];
     expect(refresh).toBeDefined();

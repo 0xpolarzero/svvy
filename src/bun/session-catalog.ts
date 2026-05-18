@@ -1252,9 +1252,27 @@ export class WorkspaceSessionCatalog {
     this.assertValidPromptTarget(input.target);
     const session = await this.retainManagedSurface(input.target);
     try {
-      const existing = this.structuredSessionStore
-        .listQueuedSurfaceMessages({ surfacePiSessionId: input.target.surfacePiSessionId })
-        .find((message) => message.kind === "prompt_refresh");
+      const queuedMessages = this.structuredSessionStore.listQueuedSurfaceMessages({
+        surfacePiSessionId: input.target.surfacePiSessionId,
+      });
+      if (!session.activePrompt && queuedMessages.length === 0) {
+        const refreshed = await this.refreshManagedSurfacePromptBinding(session, input.target);
+        await this.emitSurfaceSync({
+          session: refreshed,
+          reason: "surface.updated",
+          target: input.target,
+        });
+        await this.emitWorkspaceSync("structured.updated");
+        return {
+          ok: true,
+          target: structuredClone(input.target),
+          snapshot: await this.buildSurfaceSnapshot(refreshed, input.target, {
+            refreshExternalSources: true,
+          }),
+        };
+      }
+
+      const existing = queuedMessages.find((message) => message.kind === "prompt_refresh");
       if (!existing) {
         this.structuredSessionStore.enqueueSurfaceMessage({
           sessionId: input.target.workspaceSessionId,
@@ -1266,7 +1284,7 @@ export class WorkspaceSessionCatalog {
             requestedRevision: this.promptLibraryStore.getState().revision,
             requestedAt: new Date().toISOString(),
           } satisfies PromptRefreshQueuePayload),
-          requestSummary: "Update context before the next turn",
+          requestSummary: "Update instructions",
           position: "front",
         });
       }
@@ -1501,13 +1519,12 @@ export class WorkspaceSessionCatalog {
       provider: defaults.provider,
       model: defaults.model,
       thinkingLevel: defaults.thinkingLevel,
-      systemPrompt: defaults.systemPrompt,
+      systemPrompt: this.buildOrchestratorSystemPrompt({ systemPrompt: defaults.systemPrompt }),
       sessionMode: mode,
       sessionAgentKey,
     });
     updated.sessionMode = mode;
     updated.sessionAgentKey = sessionAgentKey;
-    updated.systemPrompt = defaults.systemPrompt;
     updated.recreateOnNextPrompt = false;
 
     this.syncManagedState(updated);
@@ -1828,7 +1845,7 @@ export class WorkspaceSessionCatalog {
           id: message.id,
           kind: message.kind,
           text: promptRefreshPayload
-            ? "Update instructions before next turn"
+            ? "Update instructions"
             : payload
               ? `Handler handoff: ${payload.summary}`
               : this.getQueuedMessageText(message.messageJson),

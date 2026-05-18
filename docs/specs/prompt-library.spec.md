@@ -810,8 +810,8 @@ The queued item kind is `prompt_refresh`.
 
 Rules:
 
-- if the surface has an active prompt, the update is queued and applies after the active turn completes
-- if the surface is idle, the same queue runner claims and applies the update before later queue work
+- if the surface has an active prompt or existing queued work, the update is queued and applies in order after earlier active work completes
+- if the surface is idle and has no queued work, the update applies immediately without rendering a transient queue row
 - if user messages or handler handoffs are already queued, `prompt_refresh` runs in its queue order before later prompt-bearing items
 - the next user turn or handler handoff delivered after the refresh uses the latest context library composition
 - the update records a structured lifecycle event
@@ -843,8 +843,10 @@ Context settings updated from rev A to rev B.
 ```
 
 While a `prompt_refresh` item is queued, the stale-context warning remains sticky at the top of the
-surface and changes its action from `Update for next turn` to `Cancel update`. Cancelling the queued
-refresh leaves the stale binding intact and shows the warning again.
+surface and changes its action from `Update for next turn` to `Cancel update`. The queue row label is
+`Update instructions`, because it applies when the queue runner reaches it rather than at some later
+turn after that. Cancelling the queued refresh leaves the stale binding intact and shows the warning
+again.
 
 ## Keep Current
 

@@ -796,7 +796,7 @@ Better change:
 
 ### AUD-017 - Prompt freshness is detected but not enforceably applied
 
-**Disposition:** Fixed. Stale prompt updates are now explicit queued surface work. The sticky stale-context warning creates a `prompt_refresh` queue item, the row is visible and cancellable, and the shared surface queue runner applies the fresh prompt binding before later user messages or handler handoffs run.
+**Disposition:** Fixed. Stale prompt updates are now explicit surface work. The sticky stale-context warning applies immediately when the surface is idle and has no queued work; otherwise it creates a `prompt_refresh` queue item labelled `Update instructions`, the row is visible and cancellable, and the shared surface queue runner applies the fresh prompt binding before later user messages or handler handoffs run.
 
 **Impact:** High prompt correctness issue.
 
@@ -819,7 +819,7 @@ Relevant code:
 3. The queue runner claims `prompt_refresh`, rebuilds the actor prompt from backend source of truth, recreates/rebinds the managed pi session behind the same product surface, marks the item delivered, and continues draining later queued work.
 4. Normal sends respect existing queued surface work, so a direct send cannot jump ahead of a queued prompt refresh.
 5. Prompt-library changes emit open-surface snapshots so stale status updates without reopening the pane.
-6. The renderer shows a sticky stale-context strip with `Update for next turn`, switches to `Cancel update` while the refresh item is queued, and renders the queued context update as a visible cancellable row.
+6. The renderer shows a sticky stale-context strip with `Update for next turn`, switches to `Cancel update` while the refresh item is queued, and renders the queued context update as a visible cancellable `Update instructions` row.
 
 **Verification required:**
 

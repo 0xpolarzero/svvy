@@ -56,7 +56,7 @@
 
   function getItemTitle(prompt: QueuedPrompt): string {
     if (prompt.kind === "handler_handoff" && prompt.summary) return prompt.summary;
-    if (prompt.kind === "prompt_refresh") return "Update instructions before next turn";
+    if (prompt.kind === "prompt_refresh") return "Update instructions";
     return prompt.text;
   }
 

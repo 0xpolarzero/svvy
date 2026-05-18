@@ -18,6 +18,7 @@ import type {
   SurfaceSyncMessage,
   WorkspaceSyncMessage,
 } from "../shared/workspace-contract";
+import { DEFAULT_ORCHESTRATOR_SESSION_PROMPT } from "../shared/agent-settings";
 import { buildSystemPrompt } from "./default-system-prompt";
 import {
   getSvvyAgentDir,
@@ -1412,6 +1413,28 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("does not mark a fresh session-agent prompt binding stale", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession(
+        { title: "Fresh Session Agent" },
+        {
+          ...DEFAULTS,
+          systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+          sessionAgentKey: "defaultSession",
+        },
+      );
+
+      expect(created.promptBinding?.stale).toBe(false);
+      expect(created.systemPrompt).not.toContain("## Session Agent");
+      expect(created.systemPrompt).toBe(buildSystemPrompt("orchestrator"));
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("keeps a stale surface on its bound prompt until the user queues a context update", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
@@ -1458,6 +1481,31 @@ describe("WorkspaceSessionCatalog", () => {
       } finally {
         promptSpy.mockRestore();
       }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("applies an idle prompt refresh immediately without queueing a visible row", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Idle Prompt Refresh" }, DEFAULTS);
+      const freshMarker = "Fresh prompt marker for idle refresh.";
+      appendPromptLibraryMarker(catalog, freshMarker);
+      const stale = await catalog.openSurface(created.target);
+      expect(stale.promptBinding?.stale).toBe(true);
+
+      const refreshed = await catalog.queuePromptRefresh({ target: created.target });
+
+      expect(refreshed.snapshot?.queuedMessages).toEqual([]);
+      expect(refreshed.snapshot?.promptBinding?.stale).toBe(false);
+      expect(refreshed.snapshot?.resolvedSystemPrompt).toContain(freshMarker);
+      expect(
+        getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
+          .queuedMessages,
+      ).toEqual([]);
     } finally {
       await catalog.dispose();
     }
