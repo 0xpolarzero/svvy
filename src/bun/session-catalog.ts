@@ -190,13 +190,15 @@ export interface SessionDefaults {
   provider: string;
   model: string;
   thinkingLevel: ThinkingLevel;
-  systemPrompt: string;
   sessionMode?: SessionMode;
   sessionAgentKey?: SessionAgentKey;
   sessionAgentSettings?: SessionAgentSettings;
 }
 
-export interface SendAgentPromptOptions extends SessionDefaults {
+export interface SendAgentPromptOptions {
+  provider: string;
+  model: string;
+  thinkingLevel: ThinkingLevel;
   target: PromptTarget;
   messages: Message[];
   onEvent?: (event: AssistantMessageEvent) => void;
@@ -549,7 +551,7 @@ export class WorkspaceSessionCatalog {
     };
   }
 
-  buildOrchestratorSystemPrompt(settings: { systemPrompt: string }): string {
+  buildOrchestratorSystemPrompt(settings: Pick<SessionAgentSettings, "systemPrompt">): string {
     return buildSessionAgentSystemPrompt(
       settings,
       this.promptLibraryStore.getState(),
@@ -999,10 +1001,10 @@ export class WorkspaceSessionCatalog {
       provider: defaults.provider,
       model: defaults.model,
       thinkingLevel: defaults.thinkingLevel,
-      systemPrompt:
-        defaults.sessionAgentKey || request.mode === "dumb"
-          ? this.buildOrchestratorSystemPrompt({ systemPrompt: defaults.systemPrompt })
-          : this.buildPromptFromLibrary("orchestrator"),
+      systemPrompt: this.buildOrchestratorSystemPromptForDefaults(
+        defaults,
+        request.mode ?? "orchestrator",
+      ),
       sessionMode: request.mode ?? "orchestrator",
       sessionAgentKey:
         defaults.sessionAgentKey ??
@@ -1016,20 +1018,11 @@ export class WorkspaceSessionCatalog {
     return this.buildSurfaceSnapshot(session, target);
   }
 
-  async openSession(
-    sessionId: string,
-    systemPrompt?: string,
-  ): Promise<ConversationSurfaceSnapshot> {
-    return this.openSurface(
-      this.buildOrchestratorPromptTarget(sessionId),
-      systemPrompt ?? buildSystemPrompt("orchestrator"),
-    );
+  async openSession(sessionId: string): Promise<ConversationSurfaceSnapshot> {
+    return this.openSurface(this.buildOrchestratorPromptTarget(sessionId));
   }
 
-  async openSurface(
-    target: PromptTarget,
-    _systemPrompt?: string,
-  ): Promise<ConversationSurfaceSnapshot> {
+  async openSurface(target: PromptTarget): Promise<ConversationSurfaceSnapshot> {
     this.assertValidPromptTarget(target);
     const session = await this.retainManagedSurface(target);
     await this.restoreWorkflowSupervisionIfTracked(target.workspaceSessionId);
@@ -1088,7 +1081,8 @@ export class WorkspaceSessionCatalog {
             provider: activeOrchestrator.provider,
             model: activeOrchestrator.model,
             thinkingLevel: activeOrchestrator.thinkingLevel,
-            systemPrompt: activeOrchestrator.systemPrompt,
+            sessionMode: activeOrchestrator.sessionMode,
+            sessionAgentKey: activeOrchestrator.sessionAgentKey,
           }
         : defaults;
       return this.createSession({ title: request.title }, fallbackDefaults);
@@ -1519,7 +1513,7 @@ export class WorkspaceSessionCatalog {
       provider: defaults.provider,
       model: defaults.model,
       thinkingLevel: defaults.thinkingLevel,
-      systemPrompt: this.buildOrchestratorSystemPrompt({ systemPrompt: defaults.systemPrompt }),
+      systemPrompt: this.buildOrchestratorSystemPromptForDefaults(defaults, mode),
       sessionMode: mode,
       sessionAgentKey,
     });
@@ -1614,7 +1608,7 @@ export class WorkspaceSessionCatalog {
     session: ManagedSession,
     options: Pick<
       SendAgentPromptOptions,
-      "provider" | "model" | "thinkingLevel" | "systemPrompt" | "messages" | "target"
+      "provider" | "model" | "thinkingLevel" | "messages" | "target"
     >,
   ): Promise<ManagedSession> {
     const actorKind = getActorKindForTarget(options.target);
@@ -2158,6 +2152,18 @@ export class WorkspaceSessionCatalog {
     const agentSettings = this.resolveThreadAgentSettings(target.surfacePiSessionId);
     const suffix = agentSettings?.systemPrompt.trim();
     return suffix ? `${basePrompt}\n\n## Handler Agent Override\n${suffix}` : basePrompt;
+  }
+
+  private buildOrchestratorSystemPromptForDefaults(
+    defaults: SessionDefaults,
+    mode: SessionMode,
+  ): string {
+    const sessionAgentKey =
+      defaults.sessionAgentKey ?? (mode === "dumb" ? "dumbOrchestrator" : "defaultSession");
+    const settings =
+      defaults.sessionAgentSettings ??
+      this.agentSettingsStore.getState().sessionAgents[sessionAgentKey];
+    return this.buildOrchestratorSystemPrompt(settings);
   }
 
   private resolveThreadAgentSettings(surfacePiSessionId: string): SessionAgentSettings | null {
@@ -2779,7 +2785,6 @@ export class WorkspaceSessionCatalog {
         provider: handlerSession.provider,
         model: handlerSession.model,
         thinkingLevel: handlerSession.thinkingLevel,
-        systemPrompt: handlerSession.systemPrompt,
         messages: [
           ...convertToLlmMessages(handlerSession.session.agent.state.messages),
           initialMessage,
@@ -3417,7 +3422,6 @@ export class WorkspaceSessionCatalog {
         provider: session.provider,
         model: session.model,
         thinkingLevel: session.thinkingLevel,
-        systemPrompt: session.systemPrompt,
         messages: [...convertToLlmMessages(session.session.agent.state.messages), message],
         queuedMessageId: queued.id,
       };
@@ -3497,7 +3501,6 @@ export class WorkspaceSessionCatalog {
         provider: handlerSession.provider,
         model: handlerSession.model,
         thinkingLevel: handlerSession.thinkingLevel,
-        systemPrompt: handlerSession.systemPrompt,
         messages: [
           ...convertToLlmMessages(handlerSession.session.agent.state.messages),
           resumeMessage,

@@ -299,10 +299,10 @@ function getSessionDefaults(
   return {
     model: defaults.model,
     provider: defaults.provider,
-    systemPrompt: agentSettings.systemPrompt,
     thinkingLevel: defaults.reasoningEffort,
     sessionMode: mode,
     sessionAgentKey: mode === "dumb" ? "dumbOrchestrator" : "defaultSession",
+    sessionAgentSettings: agentSettings,
   };
 }
 
@@ -1084,7 +1084,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       openSession: async (input) => {
         const runtime = getWorkspaceRuntime(input);
         const { sessionId } = input;
-        const session = await runtime.catalog.openSession(sessionId, DEFAULT_SYSTEM_PROMPT);
+        const session = await runtime.catalog.openSession(sessionId);
         recordDevBrowserToolsEvent("session.opened", {
           sessionId,
         });
@@ -1104,7 +1104,7 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       openSurface: async (input) => {
         const runtime = getWorkspaceRuntime(input);
         const { target } = input;
-        const session = await runtime.catalog.openSurface(target, DEFAULT_SYSTEM_PROMPT);
+        const session = await runtime.catalog.openSurface(target);
         recordDevBrowserToolsEvent("surface.opened", {
           surface: target.surface,
           surfacePiSessionId: target.surfacePiSessionId,
@@ -1346,7 +1346,6 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           model: model.id,
           thinkingLevel: resolved.reasoningEffort,
           messages: payload.messages,
-          systemPrompt: payload.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
           queueOnly: payload.queueOnly ?? false,
           onEvent: (event) => {
             if (event.type === "start") {
@@ -1471,7 +1470,6 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           model: model.id,
           thinkingLevel: resolved.reasoningEffort,
           messages: payload.messages,
-          systemPrompt: payload.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
         });
 
         runtime.appLog.info("prompt", "Prompt steer dispatched to pi runtime.", {

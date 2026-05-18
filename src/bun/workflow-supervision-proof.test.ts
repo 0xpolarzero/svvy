@@ -37,7 +37,6 @@ const TEST_DEFAULTS: SessionDefaults = {
   provider: "zai",
   model: "glm-5-turbo",
   thinkingLevel: "medium",
-  systemPrompt: "You are svvy.",
 };
 
 afterEach(() => {

@@ -46,7 +46,7 @@ For each issue, record:
 | AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Fixed |
 | AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Fixed |
 | AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Fixed |
-| AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Researched |
+| AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Fixed |
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Researched |
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Researched |
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Researched |
@@ -834,6 +834,8 @@ Relevant code:
 **Confidence:** High.
 
 ### AUD-018 - New-session and mode-switch prompt composition can double-wrap or bypass generated prompts
+
+**Disposition:** Fixed. Session defaults now carry raw session-agent settings instead of a prebuilt system prompt, and new-session creation, session mode switching, surface opening, and prompt dispatch no longer accept caller-provided resolved prompt text as a composition input. The catalog composes the final orchestrator system prompt exactly once from Context Library state plus the selected raw session-agent settings.
 
 **Impact:** High agent behavior issue.
 

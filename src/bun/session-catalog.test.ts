@@ -18,7 +18,10 @@ import type {
   SurfaceSyncMessage,
   WorkspaceSyncMessage,
 } from "../shared/workspace-contract";
-import { DEFAULT_ORCHESTRATOR_SESSION_PROMPT } from "../shared/agent-settings";
+import {
+  DEFAULT_DUMB_ORCHESTRATOR_PROMPT,
+  DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+} from "../shared/agent-settings";
 import { buildSystemPrompt } from "./default-system-prompt";
 import {
   getSvvyAgentDir,
@@ -39,7 +42,6 @@ const DEFAULTS: SessionDefaults = {
   provider: "openai",
   model: "gpt-4o",
   thinkingLevel: "medium",
-  systemPrompt: "You are svvy.",
 };
 
 describe("svvy storage paths", () => {
@@ -355,6 +357,10 @@ function appendPromptLibraryMarker(catalog: WorkspaceSessionCatalog, marker: str
       },
     },
   });
+}
+
+function countOccurrences(text: string, needle: string): number {
+  return text.split(needle).length - 1;
 }
 
 async function closeSurface(catalog: WorkspaceSessionCatalog, target: PromptTarget): Promise<void> {
@@ -927,7 +933,7 @@ describe("WorkspaceSessionCatalog", () => {
       );
 
       try {
-        await catalog.openSession(sessionId, DEFAULTS.systemPrompt);
+        await catalog.openSession(sessionId);
       } finally {
         restoreSpy.mockRestore();
       }
@@ -1422,14 +1428,80 @@ describe("WorkspaceSessionCatalog", () => {
         { title: "Fresh Session Agent" },
         {
           ...DEFAULTS,
-          systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
           sessionAgentKey: "defaultSession",
+          sessionAgentSettings: {
+            provider: DEFAULTS.provider,
+            model: DEFAULTS.model,
+            reasoningEffort: DEFAULTS.thinkingLevel,
+            systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+          },
         },
       );
 
       expect(created.promptBinding?.stale).toBe(false);
       expect(created.systemPrompt).not.toContain("## Session Agent");
       expect(created.systemPrompt).toBe(buildSystemPrompt("orchestrator"));
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("composes new-session prompts from raw session-agent settings once", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const suffix = "Custom raw session-agent suffix.";
+
+    try {
+      const created = await catalog.createSession(
+        { title: "Raw Settings Prompt" },
+        {
+          ...DEFAULTS,
+          sessionAgentKey: "defaultSession",
+          sessionAgentSettings: {
+            provider: DEFAULTS.provider,
+            model: DEFAULTS.model,
+            reasoningEffort: DEFAULTS.thinkingLevel,
+            systemPrompt: suffix,
+          },
+        },
+      );
+
+      expect(created.systemPrompt.startsWith(buildSystemPrompt("orchestrator"))).toBe(true);
+      expect(countOccurrences(created.systemPrompt, "## Session Agent")).toBe(1);
+      expect(countOccurrences(created.systemPrompt, suffix)).toBe(1);
+      expect(created.systemPrompt).not.toContain(
+        `${buildSystemPrompt("orchestrator")}\n\n## Session Agent\n${buildSystemPrompt("orchestrator")}`,
+      );
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("composes mode-switch prompts through the same raw settings path", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Mode Prompt" }, DEFAULTS);
+      const changed = await catalog.setSessionMode(created.target, "dumb", {
+        ...DEFAULTS,
+        sessionAgentKey: "dumbOrchestrator",
+        sessionAgentSettings: {
+          provider: DEFAULTS.provider,
+          model: DEFAULTS.model,
+          reasoningEffort: DEFAULTS.thinkingLevel,
+          systemPrompt: DEFAULT_DUMB_ORCHESTRATOR_PROMPT,
+        },
+      });
+
+      expect(changed.ok).toBe(true);
+      expect(changed.snapshot?.systemPrompt.startsWith(buildSystemPrompt("orchestrator"))).toBe(
+        true,
+      );
+      expect(countOccurrences(changed.snapshot?.systemPrompt ?? "", "## Session Agent")).toBe(1);
+      expect(
+        countOccurrences(changed.snapshot?.systemPrompt ?? "", DEFAULT_DUMB_ORCHESTRATOR_PROMPT),
+      ).toBe(1);
     } finally {
       await catalog.dispose();
     }

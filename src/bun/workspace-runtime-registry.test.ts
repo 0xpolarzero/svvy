@@ -237,7 +237,6 @@ describe("WorkspaceRuntimeRegistry", () => {
         provider: "openai",
         model: "gpt-4o",
         thinkingLevel: "medium",
-        systemPrompt: "Test prompt",
       },
     );
 
