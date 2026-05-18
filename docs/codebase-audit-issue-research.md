@@ -125,6 +125,16 @@ The items below were highlighted by source audit finals or source audit subagent
 - **Additional performance hotspots:** Registry refresh churn, app-log aggregation, path-index churn, log burst cost, and sync scans were called out in audit summaries. AUD-025 through AUD-027 cover the largest performance issues, but these named paths need targeted profiling or static confirmation before implementation.
 - **Workflow rename state:** Mentioned in progress drift summaries. AUD-032 covers progress/docs drift, but workflow rename shipped state should be verified before ticking or rewriting progress items.
 
+### Smithers-Native Follow-Ups From AUD-011 Exploration
+
+These are not AUD-011 regressions. They are adjacent places where `svvy` may still be rolling custom workflow-control logic that should be checked against native Smithers behavior before implementation:
+
+- **Approval resolution:** `smithers.resolve_approval` should mirror Smithers approval semantics and payloads, including native approve/deny behavior, instead of preserving a simplified svvy-only decision shape. This belongs with AUD-033 unless it proves more severe.
+- **Run watching:** `smithers.watch_run` deserves a Smithers-native review because custom polling can drift from the event/control-plane behavior Smithers already provides. This overlaps AUD-026 and AUD-033.
+- **Inspection result shapes:** `smithers.get_node_detail`, `smithers.list_artifacts`, transcript, event, and related inspection tools should preserve native Smithers read-model fields unless the product docs explicitly choose a smaller projection. This belongs with AUD-033.
+- **Task-attempt identity:** Workflow task-attempt records should bind to exact Smithers run, node, iteration, and attempt identity rather than recency-style resume-handle lookup. This belongs with AUD-020/AUD-033.
+- **DevTools streaming:** `smithers.streamDevTools` should be checked against Smithers' intended streaming surface instead of a bounded collector if handlers or UI depend on live DevTools behavior. This overlaps AUD-026/AUD-033.
+
 ### Source Provenance And Commands
 
 The cross-check used these local transcript files as source material:
