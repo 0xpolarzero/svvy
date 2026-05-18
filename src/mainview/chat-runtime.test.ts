@@ -2906,7 +2906,12 @@ describe("createChatRuntime", () => {
     expect(runtime.getPaneController("thread-left")).toBe(threadController);
     expect(runtime.getPaneController("thread-right")).toBe(threadController);
     expect(runtime.getPaneController("inspector")).toBeNull();
-    expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(2);
+    expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(1);
+    expect(
+      harness.openedTargets.filter(
+        (target) => target.surfacePiSessionId === threadTarget.surfacePiSessionId,
+      ),
+    ).toHaveLength(1);
 
     runtime.dispose();
   });

@@ -625,6 +625,8 @@ Project CI is event-triggered reconciliation over durable Smithers result facts 
 
 ### AUD-013 - Queued-message claiming is not atomic and dispatching rows are hidden
 
+**Disposition:** Fixed. Queued surface-message dispatch now uses one atomic store claim, queue draining is centralized through one runner per `surfacePiSessionId`, and dispatching rows stay visible as locked/in-flight queue state until the prompt accepts the pending user message.
+
 **Impact:** High conversation reliability issue.
 
 **Precise issue:** Surface queued messages are drained through a read-then-mark sequence instead of a single transactional claim. The backend peeks the next pending surface message and then marks it dispatching. A concurrent drain can select the same row before either caller marks it. Separately, dispatching messages are excluded from the queue projection, so the UI can lose the visible "sending" row while a prompt is in flight.
@@ -644,6 +646,19 @@ Relevant code:
 2. Use a conditional update from `queued` to `dispatching` ordered by queue position and return the claimed row.
 3. Include `dispatching` rows in the renderer projection as locked/in-flight queue items.
 4. Keep the existing startup reset from `dispatching` to `queued`, but record a recovery event or audit fact so the restart behavior is explainable.
+
+**Implemented resolution:**
+
+- `StructuredSessionStateStore.claimNextQueuedSurfaceMessage` transactionally selects the next `queued` row and changes it to `dispatching` before returning it.
+- `WorkspaceSessionCatalog.wakeSurfaceQueue` deduplicates queue runners by `surfacePiSessionId`; visual panes, duplicate tabs, prompt-settle callbacks, and steering paths only wake the shared surface runner.
+- `listQueuedSurfaceMessages` includes `dispatching` rows so renderer snapshots can show the in-flight row.
+- Layout hydrate/re-sync now reuses an existing prompt-surface controller for repeated panes bound to the same `surfacePiSessionId` instead of opening/retaining the backend surface once per visual pane.
+
+**Adjacent follow-ups found during the AUD-013 pass:**
+
+- `smithers.run_workflow` launch and `thread.handoff` need a shared per-handler lifecycle claim so a fresh workflow launch cannot interleave with handoff completion.
+- Workflow task-attempt message replacement should be transactional.
+- Workflow task-attempt upsert should be backed by a durable uniqueness contract on Smithers run/node/iteration/attempt identity.
 
 **Verification required:**
 

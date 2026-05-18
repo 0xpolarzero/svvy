@@ -131,11 +131,14 @@ The durable record should keep:
 
 ## Delivery Semantics
 
-When the current turn settles, the owning surface checks its queue.
+When the current turn settles, the owning surface wakes the queue runner for its `surfacePiSessionId`.
+Queue delivery is owned by that surface runtime, not by any Dockview pane, workspace tab, or visual
+instance. Waking the runner is idempotent; if a runner is already scheduled or active for the
+surface, additional wakes do not start another delivery loop.
 
 If the queue has at least one queued message:
 
-1. mark the first queued message `dispatching`
+1. atomically claim the first `queued` message and mark it `dispatching`
 2. submit it as the next real user message to that same pi surface
 3. create a normal turn record for the delivery
 4. mark it `delivered` once pi commits the queued user message into the surface history

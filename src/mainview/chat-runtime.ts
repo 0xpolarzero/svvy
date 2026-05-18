@@ -1109,11 +1109,18 @@ export async function createChatRuntime(
   const bindPaneToExistingController = (
     panelId: string,
     controller: ChatSurfaceControllerInternal,
+    bindOptions: { focus?: boolean; persist?: boolean } = {},
   ): void => {
+    const focus = bindOptions.focus ?? true;
+    const persist = bindOptions.persist ?? true;
+    const previousFocusedPaneId = paneLayout.focusedPanelId;
     const previousTarget =
       paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
     const nextTarget = normalizePromptTarget(controller.target);
     paneLayout = bindPane(paneLayout, panelId, nextTarget);
+    if (!focus) {
+      paneLayout = { ...paneLayout, focusedPanelId: previousFocusedPaneId };
+    }
     controller.attachPane(panelId);
     emit();
     recordFocusedSession();
@@ -1124,7 +1131,9 @@ export async function createChatRuntime(
     ) {
       surfaceControllers.get(previousTarget.surfacePiSessionId)?.detachPane(panelId);
     }
-    persistWorkspaceUiRestore();
+    if (persist) {
+      persistWorkspaceUiRestore();
+    }
   };
 
   const refreshSessions = async (): Promise<WorkspaceSessionSummary[]> => {
@@ -1538,6 +1547,15 @@ export async function createChatRuntime(
       }
 
       const target = normalizePromptTarget(paneState.binding);
+      const existingController = surfaceControllers.get(target.surfacePiSessionId);
+      if (existingController) {
+        bindPaneToExistingController(paneState.panelId, existingController, {
+          focus: false,
+          persist: false,
+        });
+        restoredPaneIds.push(paneState.panelId);
+        continue;
+      }
 
       try {
         const snapshot =

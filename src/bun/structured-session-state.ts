@@ -671,10 +671,9 @@ export interface StructuredSessionStateStore {
     surfacePiSessionId: string;
   }): StructuredSurfaceQueuedMessageRecord[];
   getSurfaceQueuedMessage(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
-  peekPendingSurfaceMessage(input: {
+  claimNextQueuedSurfaceMessage(input: {
     surfacePiSessionId: string;
   }): StructuredSurfaceQueuedMessageRecord | null;
-  markSurfaceMessageDispatching(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
   markSurfaceMessageSteering(input: { id: string }): StructuredSurfaceQueuedMessageRecord;
   markSurfaceMessageQueued(input: {
     id: string;
@@ -2967,27 +2966,38 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return this.mustFindSurfaceQueuedMessageRecord(input.id);
   }
 
-  peekPendingSurfaceMessage(input: {
+  claimNextQueuedSurfaceMessage(input: {
     surfacePiSessionId: string;
   }): StructuredSurfaceQueuedMessageRecord | null {
-    const row =
-      (this.db
+    const timestamp = this.now();
+    const claim = this.db.transaction(() => {
+      const row =
+        (this.db
+          .query(
+            `SELECT * FROM surface_message_queue
+             WHERE surface_pi_session_id = ? AND status = 'queued'
+             ORDER BY position ASC, rowid ASC
+             LIMIT 1`,
+          )
+          .get(input.surfacePiSessionId) as SurfaceQueuedMessageRow | undefined) ?? null;
+      if (!row) {
+        return null;
+      }
+      const result = this.db
         .query(
-          `SELECT * FROM surface_message_queue
-           WHERE surface_pi_session_id = ? AND status = 'queued'
-           ORDER BY position ASC, rowid ASC
-           LIMIT 1`,
+          `UPDATE surface_message_queue
+           SET status = 'dispatching',
+               updated_at = ?
+           WHERE id = ? AND status = 'queued'`,
         )
-        .get(input.surfacePiSessionId) as SurfaceQueuedMessageRow | undefined) ?? null;
-    return row ? this.mapSurfaceQueuedMessage(row) : null;
-  }
-
-  markSurfaceMessageDispatching(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
-    return this.updateSurfaceMessageStatus({
-      id: input.id,
-      status: "dispatching",
-      eventKind: "surfaceMessage.dispatching",
+        .run(timestamp, row.id);
+      if (result.changes !== 1) {
+        return null;
+      }
+      this.recordSurfaceMessageEvent(row, "surfaceMessage.dispatching", timestamp);
+      return this.mustFindSurfaceQueuedMessageRecord(row.id);
     });
+    return claim();
   }
 
   markSurfaceMessageSteering(input: { id: string }): StructuredSurfaceQueuedMessageRecord {
@@ -3543,7 +3553,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return this.db
       .query(
         `SELECT * FROM surface_message_queue
-         WHERE surface_pi_session_id = ? AND status IN ('queued', 'steering')
+         WHERE surface_pi_session_id = ? AND status IN ('queued', 'steering', 'dispatching')
          ORDER BY position ASC, rowid ASC`,
       )
       .all(surfacePiSessionId) as SurfaceQueuedMessageRow[];

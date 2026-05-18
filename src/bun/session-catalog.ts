@@ -245,6 +245,8 @@ export class WorkspaceSessionCatalog {
   private readonly agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
   private readonly promptLibraryStore: PromptLibraryStore;
   private readonly titleGenerationJobs = new Set<string>();
+  private readonly runningSurfaceQueueDrains = new Set<string>();
+  private readonly pendingSurfaceQueueDrains = new Set<string>();
   private readonly restoredWorkflowSupervisionSessionIds = new Set<string>();
   private readonly workflowSupervisionRestoreTasks = new Map<string, Promise<void>>();
   private durableWorkflowSupervisionRestoreScheduled = false;
@@ -996,13 +998,7 @@ export class WorkspaceSessionCatalog {
       refreshExternalSources: true,
     });
     if (!session.activePrompt && snapshot.queuedMessages.length > 0) {
-      setTimeout(() => {
-        void this.drainNextQueuedSurfacePrompt(target).catch((error) => {
-          if (!this.closed) {
-            console.error("Failed to drain queued surface prompt on open:", error);
-          }
-        });
-      }, 0);
+      this.wakeSurfaceQueue(target);
     }
     return snapshot;
   }
@@ -1248,7 +1244,7 @@ export class WorkspaceSessionCatalog {
           position: "front",
         });
         await this.emitQueuedSurfaceUpdate(input.target);
-        await this.drainNextQueuedSurfacePrompt(input.target);
+        this.wakeSurfaceQueue(input.target);
         return {
           ok: true,
           target: structuredClone(input.target),
@@ -2972,13 +2968,7 @@ export class WorkspaceSessionCatalog {
           );
         }
         if (!suppressQueuedDrain) {
-          setTimeout(() => {
-            void this.drainNextQueuedSurfacePrompt(options.target).catch((error) => {
-              if (!this.closed) {
-                console.error("Failed to drain queued surface prompt:", error);
-              }
-            });
-          }, 0);
+          this.wakeSurfaceQueue(options.target);
         }
         await this.disposeManagedSurfaceIfUnused(session);
       }
@@ -3011,21 +3001,56 @@ export class WorkspaceSessionCatalog {
     }
   }
 
+  private wakeSurfaceQueue(target: PromptTarget): void {
+    if (this.closed) {
+      return;
+    }
+    if (this.runningSurfaceQueueDrains.has(target.surfacePiSessionId)) {
+      this.pendingSurfaceQueueDrains.add(target.surfacePiSessionId);
+      return;
+    }
+    this.runningSurfaceQueueDrains.add(target.surfacePiSessionId);
+    setTimeout(() => {
+      void this.runSurfaceQueue(target).catch((error) => {
+        if (!this.closed) {
+          console.error("Failed to drain queued surface prompt:", error);
+        }
+      });
+    }, 0);
+  }
+
+  private async runSurfaceQueue(target: PromptTarget): Promise<void> {
+    try {
+      while (!this.closed) {
+        const dispatched = await this.drainNextQueuedSurfacePrompt(target);
+        if (!dispatched) {
+          return;
+        }
+      }
+    } finally {
+      this.runningSurfaceQueueDrains.delete(target.surfacePiSessionId);
+      if (this.pendingSurfaceQueueDrains.delete(target.surfacePiSessionId)) {
+        this.wakeSurfaceQueue(target);
+      }
+    }
+  }
+
   private async drainNextQueuedSurfacePrompt(target: PromptTarget): Promise<boolean> {
     if (this.closed) {
-      return false;
-    }
-
-    const queued = this.structuredSessionStore.peekPendingSurfaceMessage({
-      surfacePiSessionId: target.surfacePiSessionId,
-    });
-    if (!queued) {
       return false;
     }
 
     const currentTarget = this.resolvePromptTargetForSurfacePiSessionId(target.surfacePiSessionId);
     const session = await this.retainManagedSurface(currentTarget);
     if (session.activePrompt) {
+      await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+      return false;
+    }
+
+    const queued = this.structuredSessionStore.claimNextQueuedSurfaceMessage({
+      surfacePiSessionId: currentTarget.surfacePiSessionId,
+    });
+    if (!queued) {
       await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
       return false;
     }
@@ -3040,7 +3065,6 @@ export class WorkspaceSessionCatalog {
     }
 
     try {
-      this.structuredSessionStore.markSurfaceMessageDispatching({ id: queued.id });
       session.abortRequested = false;
       session.activePrompt = true;
       session.activeStreamMessage = null;

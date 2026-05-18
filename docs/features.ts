@@ -153,7 +153,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Queued Surface Messages",
     status: "in-progress",
     summary:
-      "Lets a user submit follow-up messages to an already-running orchestrator or handler-thread surface by placing them in a visible FIFO queue owned by the target `surfacePiSessionId`; ordinary queued sends do not steer, interrupt, or create concurrent turns, while a row-level `Steer` action deliberately locks the row and uses pi/Codex-style steering at the next safe boundary; queued messages remain structured product state until delivered as real pi user input, survive panel focus changes and duplicated panels, write prompt history once at queue time, and stay recoverable across restart, cancellation, restore-to-composer, and pre-accept delivery failure.",
+      "Lets a user submit follow-up messages to an already-running orchestrator or handler-thread surface by placing them in a visible FIFO queue owned by the target `surfacePiSessionId`; ordinary queued sends do not steer, interrupt, or create concurrent turns, while a row-level `Steer` action deliberately locks the row and uses pi/Codex-style steering at the next safe boundary; queued messages are claimed atomically by one shared queue runner per `surfacePiSessionId`, dispatching rows stay visible as locked in-flight state until accepted as the pending user message, remain structured product state until delivered as real pi user input, survive panel focus changes and duplicated panels, write prompt history once at queue time, and stay recoverable across restart, cancellation, restore-to-composer, and pre-accept delivery failure.",
     sourceSpecs: ["docs/prd.md", "docs/specs/queued-messages.spec.md"],
   },
   {

@@ -1872,6 +1872,86 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("runs one queued prompt drain per surface and shows the dispatching row", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Queued Drain" }, DEFAULTS);
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const queuedPrompt = userMessage("Run the queued turn.");
+      const queuedPromptGate = createDeferred<void>();
+      const promptPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(
+          promptText: string,
+          options?: {
+            expandPromptTemplates?: boolean;
+          },
+        ): Promise<void>;
+      };
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(
+        async function (this: PromptableSession) {
+          const surface = findManagedSurfaceBySession(catalog, this);
+          if (surface?.actorKind === "namer") {
+            appendMessagesToSession(this, [userMessage("Name the session."), assistantMessage("")]);
+            return;
+          }
+          await queuedPromptGate.promise;
+          appendMessagesToSession(this, [queuedPrompt, assistantMessage("Queued turn finished.")]);
+        },
+      );
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [queuedPrompt],
+          queueOnly: true,
+          onEvent: () => {},
+        });
+
+        const wakeSurfaceQueue = (
+          catalog as unknown as {
+            wakeSurfaceQueue(target: PromptTarget): void;
+          }
+        ).wakeSurfaceQueue.bind(catalog);
+        wakeSurfaceQueue(created.target);
+        wakeSurfaceQueue(created.target);
+
+        await waitFor(() => {
+          const queue =
+            getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
+              .queuedMessages ?? [];
+          return (
+            promptSpy.mock.calls.length === 1 &&
+            getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt &&
+            queue.some((message) => message.status === "dispatching")
+          );
+        });
+
+        const snapshot = await catalog.openSurface(created.target);
+        expect(snapshot.queuedMessages.map((message) => message.status)).toEqual(["dispatching"]);
+        expect(userMessageText(snapshot.pendingUserMessage)).toBe("Run the queued turn.");
+
+        queuedPromptGate.resolve();
+        await waitFor(
+          () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+        expect(promptSpy).toHaveBeenCalledTimes(1);
+        expect(
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.map((message) => message.status) ?? [],
+        ).toEqual(["delivered"]);
+      } finally {
+        queuedPromptGate.resolve();
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("steers an active surface through pi without durably queueing the message", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);

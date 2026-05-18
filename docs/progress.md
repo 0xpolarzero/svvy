@@ -268,6 +268,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [ ] Deliver queued messages as the next real pi user message after the owning surface prompt lock releases, creating a normal turn record and preserving prompt history as a single queue-time submission.
 - [ ] Project queued messages near the owning surface composer, including count, order, remove, restore-to-composer, delivery failure, and duplicated-panel consistency.
 - [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
+- [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): pending current landing commit
 
 ## 14. Context Library And Context Packs
 

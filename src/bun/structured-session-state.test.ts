@@ -619,6 +619,67 @@ describe("structured session state write API", () => {
     expect(store.getSessionState("session-orchestrator-wait").session.wait).toBeNull();
   });
 
+  it("claims queued surface messages atomically and keeps dispatching rows visible", () => {
+    const store = createStore();
+    seedSession(store, "session-queue-claim");
+
+    const first = store.enqueueSurfaceMessage({
+      sessionId: "session-queue-claim",
+      surfacePiSessionId: "surface-queue-claim",
+      messageJson: JSON.stringify({ role: "user", content: "First queued prompt" }),
+      requestSummary: "First queued prompt",
+    });
+    const second = store.enqueueSurfaceMessage({
+      sessionId: "session-queue-claim",
+      surfacePiSessionId: "surface-queue-claim",
+      messageJson: JSON.stringify({ role: "user", content: "Second queued prompt" }),
+      requestSummary: "Second queued prompt",
+    });
+
+    expect(
+      store
+        .listQueuedSurfaceMessages({ surfacePiSessionId: "surface-queue-claim" })
+        .map((message) => [message.id, message.status]),
+    ).toEqual([
+      [first.id, "queued"],
+      [second.id, "queued"],
+    ]);
+
+    const claimed = store.claimNextQueuedSurfaceMessage({
+      surfacePiSessionId: "surface-queue-claim",
+    });
+    expect(claimed).toMatchObject({
+      id: first.id,
+      status: "dispatching",
+    });
+    const nextClaim = store.claimNextQueuedSurfaceMessage({
+      surfacePiSessionId: "surface-queue-claim",
+    });
+    expect(nextClaim).toMatchObject({
+      id: second.id,
+      status: "dispatching",
+    });
+    expect(
+      store.claimNextQueuedSurfaceMessage({ surfacePiSessionId: "surface-queue-claim" }),
+    ).toBeNull();
+    expect(
+      store
+        .listQueuedSurfaceMessages({ surfacePiSessionId: "surface-queue-claim" })
+        .map((message) => [message.id, message.status]),
+    ).toEqual([
+      [first.id, "dispatching"],
+      [second.id, "dispatching"],
+    ]);
+
+    store.markSurfaceMessageDelivered({ id: first.id });
+    store.markSurfaceMessageQueued({ id: second.id, position: "front" });
+    expect(
+      store
+        .listQueuedSurfaceMessages({ surfacePiSessionId: "surface-queue-claim" })
+        .map((message) => [message.id, message.status]),
+    ).toEqual([[second.id, "queued"]]);
+  });
+
   it("loads thread context idempotently and records Project CI results by workflow run", () => {
     const store = createStore();
     seedSession(store, "session-project-ci");
