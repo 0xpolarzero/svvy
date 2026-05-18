@@ -82,6 +82,20 @@ describe("default workspace renderer shell", () => {
     expect(panelHostSource).not.toContain("Surface unavailable");
   });
 
+  it("tracks prompt freshness banner state through Svelte state", async () => {
+    const panelHostSource = await readFile(
+      new URL("./DockviewPanelHost.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelHostSource).toContain(
+      'let promptBinding = $state<ChatSurfaceController["promptBinding"]>(undefined);',
+    );
+    expect(panelHostSource).toContain("promptBinding = controller.promptBinding;");
+    expect(panelHostSource).toContain("{#if promptBinding?.stale}");
+    expect(panelHostSource).not.toContain("{#if controller.promptBinding?.stale}");
+  });
+
   it("mutes layout slot controls for the default workspace", async () => {
     const runtimeSource = await readFile(new URL("./chat-runtime.ts", import.meta.url), "utf8");
     const workspaceSource = await readFile(

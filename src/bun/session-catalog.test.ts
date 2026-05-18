@@ -1486,6 +1486,40 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("emits a stale prompt binding update when the context library changes", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
+
+    try {
+      const created = await catalog.createSession({ title: "Context Sync" }, DEFAULTS);
+      expect(created.promptBinding?.stale).toBe(false);
+
+      appendPromptLibraryMarker(catalog, "Fresh prompt marker for live sync.");
+
+      await waitFor(() =>
+        surfaceSyncs.some(
+          (payload) =>
+            payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
+            payload.snapshot?.promptBinding?.stale === true,
+        ),
+      );
+
+      const update = surfaceSyncs.findLast(
+        (payload) => payload.target.surfacePiSessionId === created.target.surfacePiSessionId,
+      );
+      expect(update?.snapshot?.promptBinding?.stale).toBe(true);
+      expect(update?.snapshot?.promptBinding?.currentRevision).toBe(
+        catalog.getPromptLibraryState().revision,
+      );
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("applies an idle prompt refresh immediately without queueing a visible row", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);

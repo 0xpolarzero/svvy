@@ -48,6 +48,8 @@
   let streamMessage = $state<ChatSurfaceController["agent"]["state"]["streamMessage"]>(null);
   let pendingToolCalls = $state(new Set<string>());
   let queuedMessages = $state<QueuedPrompt[]>([]);
+  let promptBinding = $state<ChatSurfaceController["promptBinding"]>(undefined);
+  let resolvedSystemPrompt = $state("");
   let isStreaming = $state(false);
   let errorMessage = $state<string | undefined>(undefined);
   let currentModel = $state<ChatSurfaceController["agent"]["state"]["model"] | null>(null);
@@ -79,6 +81,8 @@
       streamMessage = null;
       pendingToolCalls = new Set();
       queuedMessages = [];
+      promptBinding = undefined;
+      resolvedSystemPrompt = "";
       isStreaming = false;
       errorMessage = undefined;
       currentModel = null;
@@ -90,6 +94,8 @@
     streamMessage = controller.agent.state.streamMessage;
     pendingToolCalls = new Set(controller.agent.state.pendingToolCalls);
     queuedMessages = [...controller.queuedPrompts];
+    promptBinding = controller.promptBinding;
+    resolvedSystemPrompt = controller.resolvedSystemPrompt;
     isStreaming = controller.agent.state.isStreaming || controller.promptStatus === "streaming";
     errorMessage = controller.agent.state.error;
     currentModel = controller.agent.state.model;
@@ -178,8 +184,8 @@
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}
   <RelatedInspectorPane {runtime} target={pane.target} />
 {:else if controller}
-  <section class="dockview-chat-panel" class:has-prompt-banner={controller.promptBinding?.stale} data-testid="workspace-pane">
-    {#if controller.promptBinding?.stale}
+  <section class="dockview-chat-panel" class:has-prompt-banner={promptBinding?.stale} data-testid="workspace-pane">
+    {#if promptBinding?.stale}
       <div class="prompt-stale-banner" role="status">
         <span>
           {queuedPromptRefresh
@@ -201,7 +207,7 @@
       {conversation}
       target={controller.target}
       sessionId={controller.agent.sessionId ?? controller.target.surfacePiSessionId}
-      systemPrompt={controller.resolvedSystemPrompt}
+      systemPrompt={resolvedSystemPrompt}
       streamMessage={visibleStreamMessage}
       currentModel={currentModel ?? controller.agent.state.model}
       {pendingToolCalls}
