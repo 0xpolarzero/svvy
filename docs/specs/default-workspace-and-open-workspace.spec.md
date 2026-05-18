@@ -117,7 +117,7 @@ Adopted default:
 <svvy app data dir>/default-workspace
 ```
 
-The svvy app data dir is the app-owned durable state root. Keeping the default workspace there makes it packaged-app safe and avoids writing into arbitrary user repositories while keeping PI-specific session storage under its own `pi-agent/` child directory.
+The svvy app data dir is the app-owned durable state root. Keeping the default workspace there makes it packaged-app safe and avoids writing into arbitrary user repositories while keeping PI-specific session storage under its own `pi/` child directory.
 
 The exact path should be created by a Bun helper rather than hardcoded in renderer code, for example:
 

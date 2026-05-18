@@ -12,6 +12,8 @@ import type {
 } from "../shared/workspace-contract";
 import { buildSystemPrompt } from "./default-system-prompt";
 import {
+  getSvvyAgentDir,
+  getSvvyDataDir,
   getSvvySessionDir,
   normalizeGeneratedTitle,
   WorkspaceSessionCatalog,
@@ -29,6 +31,12 @@ const DEFAULTS: SessionDefaults = {
   thinkingLevel: "medium",
   systemPrompt: "You are svvy.",
 };
+
+describe("svvy storage paths", () => {
+  it("roots PI runtime state under the svvy pi directory", () => {
+    expect(getSvvyAgentDir()).toBe(join(getSvvyDataDir(), "pi"));
+  });
+});
 
 afterEach(() => {
   while (tempDirs.length > 0) {

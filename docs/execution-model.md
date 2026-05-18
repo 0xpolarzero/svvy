@@ -36,7 +36,7 @@ flowchart TD
     end
 
     subgraph Load["Context Load"]
-        LoadState["Load workspace, session, threads, workflow runs, episodes, artifacts, Project CI, waits, pi-discovered AGENTS.md/CLAUDE.md runtime standards, and .svvy config"]
+        LoadState["Load workspace, session, threads, workflow runs, episodes, artifacts, Project CI, waits, pi-discovered AGENTS.md/CLAUDE.md runtime standards, svvy app state, svvy pi runtime state, and workspace .svvy config"]
     end
 
     subgraph Surface["Target Surface"]

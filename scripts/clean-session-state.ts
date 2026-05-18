@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 function getSvvyAgentDir(): string {
   return process.platform === "win32"
-    ? join(process.env.APPDATA ?? homedir(), "svvy", "pi-agent")
-    : join(homedir(), ".config", "svvy", "pi-agent");
+    ? join(process.env.APPDATA ?? homedir(), "svvy", "pi")
+    : join(homedir(), ".config", "svvy", "pi");
 }
 
 function getWorkspaceSessionDir(cwd: string): string {

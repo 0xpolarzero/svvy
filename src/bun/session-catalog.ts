@@ -3800,7 +3800,7 @@ export function getSvvyDataDir(): string {
 }
 
 export function getSvvyAgentDir(): string {
-  return join(getSvvyDataDir(), "pi-agent");
+  return join(getSvvyDataDir(), "pi");
 }
 
 export function getSvvySessionDir(cwd: string, agentDir = getSvvyAgentDir()): string {

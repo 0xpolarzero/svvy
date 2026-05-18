@@ -54,7 +54,7 @@ export interface SeededSession {
 }
 
 export function getTestAgentDir(homeDir: string): string {
-  return join(homeDir, ".config", "svvy", "pi-agent");
+  return join(homeDir, ".config", "svvy", "pi");
 }
 
 export async function writeAgentModelsConfig(
