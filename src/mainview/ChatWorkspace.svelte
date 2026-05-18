@@ -164,7 +164,6 @@
   let promptHistory = $state<PromptHistoryEntry[]>([]);
   let windowWidth = $state(typeof window === "undefined" ? 1024 : window.innerWidth);
   let isMacWindowChrome = $state(false);
-  let dockviewLayoutEpoch = $state(0);
   let sessions = $state<WorkspaceSessionSummary[]>([]);
   let workspaceBranch = $state<string | undefined>(undefined);
   let sessionNavigation = $state<WorkspaceSessionNavigationReadModel>({
@@ -253,8 +252,6 @@
   let workflowTaskAttemptInspectorSessionId: string | null = null;
   let unsubscribeSurfaceController: (() => void) | null = null;
   let restoredInspectorKey: string | null = null;
-  let dockviewLayoutSyncFrame: number | null = null;
-  let dockviewLayoutSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
   const conversation = $derived(projectConversation(messages));
   const conversationSummary = $derived(projectConversationSummary(conversation, streamMessage));
@@ -742,47 +739,10 @@
     artifactSyncMessageCount = nextMessageCount;
   }
 
-  function pulseDockviewLayout() {
-    dockviewLayoutEpoch += 1;
-  }
-
-  function scheduleDockviewLayoutPulse(delayMs = 0) {
-    if (delayMs > 0) {
-      if (dockviewLayoutSyncTimer) {
-        clearTimeout(dockviewLayoutSyncTimer);
-      }
-      dockviewLayoutSyncTimer = setTimeout(() => {
-        dockviewLayoutSyncTimer = null;
-        pulseDockviewLayout();
-      }, delayMs);
-      return;
-    }
-
-    if (dockviewLayoutSyncFrame !== null) {
-      window.cancelAnimationFrame(dockviewLayoutSyncFrame);
-    }
-    dockviewLayoutSyncFrame = window.requestAnimationFrame(() => {
-      dockviewLayoutSyncFrame = null;
-      pulseDockviewLayout();
-    });
-  }
-
-  function syncDockviewAfterSidebarToggle() {
-    pulseDockviewLayout();
-    scheduleDockviewLayoutPulse();
-    scheduleDockviewLayoutPulse(260);
-  }
-
   function toggleSidebarVisibility() {
     const next = getNextSidebarVisibility({ sidebarHidden, narrowShell, narrowSidebarOpen });
     sidebarHidden = next.sidebarHidden;
     narrowSidebarOpen = next.narrowSidebarOpen;
-    syncDockviewAfterSidebarToggle();
-  }
-
-  function handleWorkspaceTransitionEnd(event: TransitionEvent) {
-    if (event.target !== event.currentTarget || event.propertyName !== "grid-template-columns") return;
-    pulseDockviewLayout();
   }
 
   function setSidebarResizing(nextValue: boolean) {
@@ -848,7 +808,6 @@
 
   async function handleSwitchLayout(layoutId: WorkspaceLayoutSlotId) {
     await runSessionMutation(() => runtime.switchWorkspaceLayout(layoutId));
-    scheduleDockviewLayoutPulse();
   }
 
   function openPalette(mode: CommandPaletteMode) {
@@ -2142,14 +2101,6 @@
       nextController.dispose();
       setSidebarResizing(false);
       clearCopyTranscriptResetTimer();
-      if (dockviewLayoutSyncFrame !== null) {
-        window.cancelAnimationFrame(dockviewLayoutSyncFrame);
-        dockviewLayoutSyncFrame = null;
-      }
-      if (dockviewLayoutSyncTimer) {
-        clearTimeout(dockviewLayoutSyncTimer);
-        dockviewLayoutSyncTimer = null;
-      }
       window.removeEventListener("resize", handleResize);
       unsubscribeAppMenuAction();
       controller = null;
@@ -2244,7 +2195,6 @@
   <div
     class={`chat-workspace ${showDesktopSplit ? "split" : ""} ${effectiveSidebarHidden ? "sidebar-hidden" : ""} viewport-${viewportClass}`.trim()}
     style={`--sidebar-width: ${effectiveSidebarWidth}px;`}
-    ontransitionend={handleWorkspaceTransitionEnd}
   >
     <aside class="workspace-sidebar" aria-hidden={effectiveSidebarHidden} inert={effectiveSidebarHidden}>
       <div class="sidebar-surface">
@@ -2312,7 +2262,6 @@
         panels={paneLayout.panels}
         dockviewLayout={paneLayout.dockview}
         focusedPanelId={focusedPanelId}
-        layoutEpoch={dockviewLayoutEpoch}
         {openingWorkspace}
         openWorkspaceError={openWorkspaceError}
         recentWorkspaces={knownWorkspaces}

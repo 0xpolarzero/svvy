@@ -315,6 +315,26 @@
 		const tab = tabs.find((candidate) => candidate.workspace.workspaceTabId === workspaceTabId);
 		if (!tab) return;
 		const index = tabs.indexOf(tab);
+		if (tabs.length === 1) {
+			const defaultInfo = await rpc.request.getDefaultWorkspace();
+			const replacementTab = await createWorkspaceTab(defaultInfo);
+			if (disposed) {
+				replacementTab.unsubscribe();
+				replacementTab.runtime.dispose();
+				return;
+			}
+			tabs = [replacementTab];
+			activeWorkspaceTabId = replacementTab.workspace.workspaceTabId;
+			tab.unsubscribe();
+			tab.runtime.dispose();
+			try {
+				await rpc.request.closeWorkspace({ workspaceId: tab.workspace.workspaceId });
+			} catch (error) {
+				console.error("Failed to close workspace:", error);
+			}
+			await setActiveWorkspace(replacementTab.workspace.workspaceTabId);
+			return;
+		}
 		const closingActiveTab = activeWorkspaceTabId === workspaceTabId;
 		const remainingTabs = tabs.filter((candidate) => candidate.workspace.workspaceTabId !== workspaceTabId);
 		const nextActiveTabId =
@@ -331,12 +351,6 @@
 			await rpc.request.closeWorkspace({ workspaceId: tab.workspace.workspaceId });
 		} catch (error) {
 			console.error("Failed to close workspace:", error);
-		}
-		if (!tabs.length) {
-			const defaultInfo = await rpc.request.getDefaultWorkspace();
-			tabs = [await createWorkspaceTab(defaultInfo)];
-			await setActiveWorkspace(tabs[0]!.workspace.workspaceTabId);
-			return;
 		}
 		if (closingActiveTab) {
 			await setActiveWorkspace(nextActiveTabId);

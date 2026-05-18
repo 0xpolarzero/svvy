@@ -57,4 +57,15 @@ describe("default workspace renderer shell", () => {
     expect(sidebarSource).not.toContain('label={footerShowsBranch ? "Switch branch"');
     expect(sidebarSource).not.toContain("showCaret");
   });
+
+  it("refreshes existing Dockview panel content when a pane changes surface", async () => {
+    const dockviewSource = await readFile(
+      new URL("./DockviewWorkspace.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(dockviewSource).toContain("getPanelRenderKey");
+    expect(dockviewSource).toContain("existingPanel.update");
+    expect(dockviewSource).toContain("existingPanel.setRenderer");
+  });
 });

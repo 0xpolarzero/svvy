@@ -29,7 +29,6 @@
     panels: WorkspaceDockviewPanelState[];
     dockviewLayout: SerializedDockview | null;
     focusedPanelId: string | null;
-    layoutEpoch?: number;
     openingWorkspace?: boolean;
     openWorkspaceError?: string | null;
     recentWorkspaces?: WorkspaceTabInfo[];
@@ -45,7 +44,6 @@
     panels,
     dockviewLayout,
     focusedPanelId,
-    layoutEpoch = 0,
     openingWorkspace = false,
     openWorkspaceError = null,
     recentWorkspaces = [],
@@ -59,7 +57,11 @@
   let dockview: DockviewComponent | null = null;
   let applying = false;
   let layoutFrame: number | null = null;
+  let dockviewResizeObserver: ResizeObserver | null = null;
+  let observedDockviewWidth = 0;
+  let observedDockviewHeight = 0;
   let unsubscribeRuntime: (() => void) | null = null;
+  let panelRenderKeys = new Map<string, string>();
   const tabRenderers = new Set<SurfaceTabRenderer>();
 
   type PaneTabState = "waiting" | "streaming" | "error" | null;
@@ -526,6 +528,29 @@
     }
   }
 
+  function syncDockviewLayoutFromResize(width: number, height: number): void {
+    const nextWidth = Math.round(width);
+    const nextHeight = Math.round(height);
+    if (nextWidth === observedDockviewWidth && nextHeight === observedDockviewHeight) return;
+    observedDockviewWidth = nextWidth;
+    observedDockviewHeight = nextHeight;
+    if (layoutFrame !== null) {
+      window.cancelAnimationFrame(layoutFrame);
+      layoutFrame = null;
+    }
+    layoutDockview();
+  }
+
+  function observeDockviewHostSize(): void {
+    if (!hostElement || typeof ResizeObserver === "undefined") return;
+    dockviewResizeObserver = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      syncDockviewLayoutFromResize(entry.contentRect.width, entry.contentRect.height);
+    });
+    dockviewResizeObserver.observe(hostElement);
+  }
+
   function scheduleDockviewLayout(): void {
     if (layoutFrame !== null) {
       window.cancelAnimationFrame(layoutFrame);
@@ -545,12 +570,22 @@
     return surface === "orchestrator" || surface === "thread" ? "always" : "onlyWhenVisible";
   }
 
+  function getPanelRenderKey(panel: WorkspaceDockviewPanelState): string {
+    return JSON.stringify({
+      binding: panel.binding,
+      title: panel.chrome?.title ?? null,
+      renderer: getPanelRenderer(panel),
+    });
+  }
+
   function syncDockviewPanels(): void {
     if (!dockview) return;
     applying = true;
     try {
       for (const panel of panels) {
-        if (!getDockviewPanel(panel.panelId)) {
+        const existingPanel = getDockviewPanel(panel.panelId);
+        const renderKey = getPanelRenderKey(panel);
+        if (!existingPanel) {
           const referencePanel = panel.placement?.referencePanelId
             ? getDockviewPanel(panel.placement.referencePanelId)
             : undefined;
@@ -571,11 +606,18 @@
                   }
                 : undefined,
           });
+          panelRenderKeys.set(panel.panelId, renderKey);
+        } else if (panelRenderKeys.get(panel.panelId) !== renderKey) {
+          existingPanel.setTitle(panel.chrome?.title ?? "Surface");
+          existingPanel.setRenderer(getPanelRenderer(panel));
+          existingPanel.update({ params: { renderKey } });
+          panelRenderKeys.set(panel.panelId, renderKey);
         }
       }
       for (const panel of dockview.panels) {
         if (!panels.some((candidate) => candidate.panelId === panel.id)) {
           dockview.removePanel(panel);
+          panelRenderKeys.delete(panel.id);
         }
       }
       const focused = focusedPanelId ? getDockviewPanel(focusedPanelId) : undefined;
@@ -595,20 +637,17 @@
     scheduleDockviewLayout();
   });
 
-  $effect(() => {
-    if (layoutEpoch >= 0) {
-      scheduleDockviewLayout();
-    }
-  });
-
   onMount(() => {
     createDockview();
+    observeDockviewHostSize();
     unsubscribeRuntime = runtime.subscribe(refreshSurfaceTabs);
   });
 
   onDestroy(() => {
     unsubscribeRuntime?.();
     unsubscribeRuntime = null;
+    dockviewResizeObserver?.disconnect();
+    dockviewResizeObserver = null;
     if (layoutFrame !== null) {
       window.cancelAnimationFrame(layoutFrame);
       layoutFrame = null;
