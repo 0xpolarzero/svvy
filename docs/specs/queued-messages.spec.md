@@ -68,6 +68,8 @@ Local pi references:
 
 `svvy` treats ordinary composer submits as queued follow-up user messages. The queue row also exposes an explicit `Steer` action for the uncommon case where the user wants that queued text delivered through pi/Codex-style steering at the next safe boundary of the active turn.
 
+The queue is generic surface work, not only composer text. Every interactive surface accepts `user_message` queue items. The orchestrator additionally accepts `handler_handoff` items created by blocking `thread.handoff` tool calls. A `handler_handoff` item waits in the orchestrator queue with user messages, can be reordered with them, can be steered, and is accepted once it becomes orchestrator input. Rejection is explicit: the queue row shows a handoff rejection action, and rejecting it returns a tool error to the blocked handler.
+
 When a user submits from a composer:
 
 - if the target surface is idle, the message starts a normal turn immediately
@@ -87,18 +89,19 @@ The `Steer` row action is separate from ordinary queued delivery. It commits the
 
 ## Queue Ownership
 
-A queued message record belongs to exactly one interactive surface.
+A queued item record belongs to exactly one interactive surface.
 
 Required identity:
 
 - `workspaceSessionId`
 - `surfacePiSessionId`
 - `threadId` when the target surface is a handler thread
-- `queuedMessageId`
+- `queuedItemId`
+- `kind`, currently `user_message` or `handler_handoff`
 
 The queue is ordered per `surfacePiSessionId`. Queue ordering is FIFO unless the user explicitly edits, removes, or reorders messages through future queue-management UI.
 
-Queued messages are not Dockview panel state. If two panels show the same surface, both render the same queue projection. If no panel shows the surface, the queue still belongs to the live surface and durable workspace state.
+Queued items are not Dockview panel state. If two panels show the same surface, both render the same queue projection. If no panel shows the surface, the queue still belongs to the live surface and durable workspace state.
 
 ## Queue Lifecycle
 
@@ -123,7 +126,9 @@ Lifecycle rules:
 
 The durable record should keep:
 
-- submitted text exactly as sent
+- item kind
+- submitted text exactly as sent for `user_message`
+- source thread, source command, title, summary, body, and episode kind for `handler_handoff`
 - composer attachments or mention-link serialized text according to their own specs
 - creation, update, delivery, and cancellation timestamps
 - source panel id for diagnostics only, not for ownership
@@ -136,16 +141,17 @@ Queue delivery is owned by that surface runtime, not by any Dockview pane, works
 instance. Waking the runner is idempotent; if a runner is already scheduled or active for the
 surface, additional wakes do not start another delivery loop.
 
-If the queue has at least one queued message:
+If the queue has at least one queued item:
 
-1. atomically claim the first `queued` message and mark it `dispatching`
-2. submit it as the next real user message to that same pi surface
-3. create a normal turn record for the delivery
-4. mark it `delivered` once pi commits the queued user message into the surface history
+1. atomically claim the first `queued` item and mark it `dispatching`
+2. derive the input for that item kind
+3. submit it as the next real user message to that same pi surface
+4. create a normal turn record for the delivery
+5. mark it `delivered` once pi accepts the queued item into the surface history
 
-If delivery fails before pi accepts the message, the message returns to the front of the durable `queued` list.
+If delivery fails before pi accepts the item, the item returns to the front of the durable `queued` list.
 
-If delivery starts and the resulting turn later fails, the queued message remains `delivered`; the turn failure belongs to the normal turn lifecycle.
+If delivery starts and the resulting turn later fails, the queued item remains `delivered`; the turn failure belongs to the normal turn lifecycle.
 
 ## Cancellation And Restore
 
@@ -181,7 +187,7 @@ Projection should make clear:
 - whether the current surface is running, waiting, or ready
 - whether a message is queued for normal follow-up or has been selected for steering
 
-Queued rows render as a compact vertical list directly above attachment chips and the textarea. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `queued` rows expose drag reorder, `Steer`, edit, and delete. Drag-hover reorder previews are local renderer state; the durable queue order changes only when the user drops a row into a final changed position. Locked `steering` or `dispatching` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, steered again, or reordered.
+Queued rows render as a compact vertical list directly above attachment chips and the textarea. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `user_message` rows expose drag reorder, `Steer`, edit, and delete. Editable `handler_handoff` rows expose drag reorder, `Steer`, and `Reject`; they do not expose text edit or restore-to-composer because their prompt is derived from durable handoff metadata at delivery time. Drag-hover reorder previews are local renderer state; the durable queue order changes only when the user drops a row into a final changed position. Locked `steering` or `dispatching` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, rejected, steered again, or reordered.
 
 Sidebar rows may show a compact queued-count badge for an open surface, but queued messages do not change the row's lifecycle status to running or waiting by themselves.
 

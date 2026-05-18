@@ -356,8 +356,8 @@ The intended use of the native control subset is:
 - the orchestrator normally uses `thread.start` to open a delegated handler thread
 - the orchestrator may pass `context: ["ci"]` to `thread.start` when the delegated objective clearly needs Project CI authoring context
 - a handler thread may call `request_context({ keys: ["ci"] })` when it later discovers that Project CI configuration or modification is required
-- a handler thread uses `thread.handoff` to emit a durable handoff episode and mark the current objective span complete without losing direct interactivity in that thread surface, but only after no running or waiting workflow run still belongs to that span
-- a successful `thread.handoff` immediately opens a fresh orchestrator reconciliation turn so the orchestrator can act on the latest durable handoff without waiting for another user-authored orchestrator message
+- a handler thread uses `thread.handoff` to request transfer back to the orchestrator only after no running or waiting workflow run still belongs to that span; the tool call blocks while the request is represented as a typed orchestrator surface queue item
+- accepting the queued handoff as the next orchestrator input emits the durable handoff episode, marks the current objective span complete, and lets the blocked `thread.handoff` tool call return successfully; rejecting the queued handoff returns an explicit tool error to the handler so it can ask for clarification or continue work
 - a handler thread normally uses Smithers-native bridge tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, and `smithers.get_run_events` to supervise Smithers execution
 - any interactive surface may use `wait` when it needs user or external input
 
@@ -911,7 +911,7 @@ When the target surface is the main orchestrator:
    - call `thread.start`
    - hand off the delegated objective to a handler thread
    - include requestable context-pack keys such as `context: ["ci"]` only when the objective needs that product context from the first handler turn
-5. when a handler thread explicitly hands control back, open an orchestrator turn that reconciles the latest handoff from durable state: thread durable state plus the latest handoff episode
+5. when a handler thread explicitly hands control back, accept its typed handoff queue item as orchestrator input and reconcile the latest durable handoff state: thread durable state plus the latest handoff episode
 
 ### Handler Thread Loop
 
@@ -935,7 +935,7 @@ When the target surface is a handler thread:
 5. continue supervising until the objective is truly finished
 6. when appropriate, return control to the orchestrator by explicitly calling `thread.handoff`
 
-When `thread.handoff` succeeds, the owning orchestrator surface should regain control through a fresh orchestrator turn rather than waiting for the user to manually poke the orchestrator again.
+When `thread.handoff` succeeds, the handoff has crossed the clear ownership boundary: the owning orchestrator surface accepted the typed queue item as input and should reconcile it in that fresh orchestrator turn. If the orchestrator is already active, the handoff waits in the same ordered surface queue as user follow-up messages and can be reordered or steered from there.
 
 If a thread already handed control back earlier:
 

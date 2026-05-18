@@ -84,13 +84,19 @@ import {
   type StructuredSessionSnapshot,
   type StructuredWaitState,
   type StructuredSessionStateStore,
+  type StructuredEpisodeKind,
+  type StructuredSurfaceQueuedMessageRecord,
 } from "./structured-session-state";
 import { createExecuteTypescriptTool } from "./execute-typescript-tool";
 import { createWaitTool } from "./wait-tool";
 import { resolveApiKey } from "./auth-store";
 import { createToolExecutionCommandTracker } from "./tool-execution-command-tracker";
 import { createStartThreadTool } from "./thread-start-tool";
-import { createThreadHandoffTool } from "./thread-handoff-tool";
+import {
+  createThreadHandoffTool,
+  type ThreadHandoffAcceptance,
+  type ThreadHandoffRequest,
+} from "./thread-handoff-tool";
 import {
   buildPromptLibraryGeneratedEntries,
   buildSystemPrompt,
@@ -204,6 +210,21 @@ export interface SendAgentPromptResult {
   snapshot?: ConversationSurfaceSnapshot;
 }
 
+interface HandlerHandoffQueuePayload {
+  threadId: string;
+  sourceCommandId: string;
+  turnId: string;
+  title: string;
+  summary: string;
+  body: string;
+  kind: StructuredEpisodeKind;
+}
+
+type PendingThreadHandoff = {
+  resolve: (acceptance: ThreadHandoffAcceptance) => void;
+  reject: (error: Error) => void;
+};
+
 interface CreateManagedSessionOptions {
   sessionManager: SessionManager;
   actorKind: ManagedActorKind;
@@ -247,6 +268,7 @@ export class WorkspaceSessionCatalog {
   private readonly titleGenerationJobs = new Set<string>();
   private readonly runningSurfaceQueueDrains = new Set<string>();
   private readonly pendingSurfaceQueueDrains = new Set<string>();
+  private readonly pendingThreadHandoffs = new Map<string, PendingThreadHandoff>();
   private readonly restoredWorkflowSupervisionSessionIds = new Set<string>();
   private readonly workflowSupervisionRestoreTasks = new Map<string, Promise<void>>();
   private durableWorkflowSupervisionRestoreScheduled = false;
@@ -323,6 +345,12 @@ export class WorkspaceSessionCatalog {
 
   async dispose(): Promise<void> {
     this.closed = true;
+    for (const [queuedMessageId, waiter] of this.pendingThreadHandoffs) {
+      waiter.reject(
+        new Error(`Queued handler handoff ${queuedMessageId} was cancelled on shutdown.`),
+      );
+    }
+    this.pendingThreadHandoffs.clear();
     for (const session of this.managedSurfaces.values()) {
       session.session.dispose();
     }
@@ -1133,7 +1161,6 @@ export class WorkspaceSessionCatalog {
       setTimeout(() => {
         void (async () => {
           await this.runAgentPrompt(session, options, promptExecution);
-          await this.resumeOrchestratorAfterHandlerHandoff(promptExecution);
         })()
           .catch((error) => {
             console.error("Failed to continue orchestrator control after prompt execution:", error);
@@ -1189,8 +1216,14 @@ export class WorkspaceSessionCatalog {
     queuedMessageId: string;
   }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
-    this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
+    const queued = this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
     this.structuredSessionStore.cancelSurfaceMessage({ id: input.queuedMessageId });
+    if (queued.kind === "handler_handoff") {
+      this.rejectPendingThreadHandoff(
+        queued.id,
+        "The user rejected this handoff before orchestrator acceptance.",
+      );
+    }
     const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
     return { ok: true, target: structuredClone(input.target), snapshot };
   }
@@ -1201,6 +1234,9 @@ export class WorkspaceSessionCatalog {
   }): Promise<{ ok: boolean; text?: string; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
     const queued = this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
+    if (queued.kind !== "user_message") {
+      throw new Error("Only queued user messages can be restored to the composer.");
+    }
     const text = this.getQueuedMessageText(queued.messageJson);
     this.structuredSessionStore.cancelSurfaceMessage({ id: input.queuedMessageId });
     const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
@@ -1232,7 +1268,10 @@ export class WorkspaceSessionCatalog {
   }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
     const queued = this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
-    const text = this.getQueuedMessageText(queued.messageJson);
+    const text =
+      queued.kind === "handler_handoff"
+        ? this.buildHandlerHandoffQueuedPrompt(queued)
+        : this.getQueuedMessageText(queued.messageJson);
     this.structuredSessionStore.markSurfaceMessageSteering({ id: input.queuedMessageId });
     await this.emitQueuedSurfaceUpdate(input.target);
 
@@ -1253,10 +1292,12 @@ export class WorkspaceSessionCatalog {
       }
 
       let images: ImageContent[] = [];
-      try {
-        images = getLatestUserImages([JSON.parse(queued.messageJson) as Message]);
-      } catch {
-        images = [];
+      if (queued.kind === "user_message") {
+        try {
+          images = getLatestUserImages([JSON.parse(queued.messageJson) as Message]);
+        } catch {
+          images = [];
+        }
       }
       if (images.length > 0) {
         await session.session.steer(text, images);
@@ -1569,6 +1610,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
     nextSession.retainCount = session.retainCount;
@@ -1586,6 +1628,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
     this.managedSurfaces.set(session.sessionId, session);
@@ -1703,18 +1746,107 @@ export class WorkspaceSessionCatalog {
   private buildQueuedSurfaceMessages(surfacePiSessionId: string): QueuedSurfaceMessage[] {
     return this.structuredSessionStore
       .listQueuedSurfaceMessages({ surfacePiSessionId })
-      .map((message) => ({
-        id: message.id,
-        text: this.getQueuedMessageText(message.messageJson),
-        status:
-          message.status === "dispatching"
-            ? "dispatching"
-            : message.status === "steering"
-              ? "steering"
-              : "queued",
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt,
-      }));
+      .map((message) => {
+        const payload =
+          message.kind === "handler_handoff" ? this.parseHandlerHandoffQueuePayload(message) : null;
+        return {
+          id: message.id,
+          kind: message.kind,
+          text: payload
+            ? `Handler handoff: ${payload.summary}`
+            : this.getQueuedMessageText(message.messageJson),
+          title: payload?.title,
+          summary: payload?.summary,
+          threadId: payload?.threadId,
+          sourceCommandId: payload?.sourceCommandId,
+          status:
+            message.status === "dispatching"
+              ? "dispatching"
+              : message.status === "steering"
+                ? "steering"
+                : "queued",
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+        };
+      });
+  }
+
+  private parseHandlerHandoffQueuePayload(
+    message: StructuredSurfaceQueuedMessageRecord,
+  ): HandlerHandoffQueuePayload | null {
+    if (!message.payloadJson) {
+      return null;
+    }
+    try {
+      const payload = JSON.parse(message.payloadJson) as HandlerHandoffQueuePayload;
+      if (
+        typeof payload.threadId !== "string" ||
+        typeof payload.sourceCommandId !== "string" ||
+        typeof payload.turnId !== "string" ||
+        typeof payload.title !== "string" ||
+        typeof payload.summary !== "string" ||
+        typeof payload.body !== "string"
+      ) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildHandlerHandoffQueuedPrompt(message: StructuredSurfaceQueuedMessageRecord): string {
+    const payload = this.parseHandlerHandoffQueuePayload(message);
+    if (!payload) {
+      throw new Error(`Queued handler handoff ${message.id} has malformed payload.`);
+    }
+    const snapshot = this.getStructuredSnapshot(message.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === payload.threadId) ?? null;
+    return buildOrchestratorHandoffResumePrompt(thread, payload.summary);
+  }
+
+  private acceptHandlerHandoffQueueItem(
+    message: StructuredSurfaceQueuedMessageRecord,
+  ): ThreadHandoffAcceptance {
+    const payload = this.parseHandlerHandoffQueuePayload(message);
+    if (!payload) {
+      throw new Error(`Queued handler handoff ${message.id} has malformed payload.`);
+    }
+
+    this.structuredSessionStore.updateThread({
+      threadId: payload.threadId,
+      status: "completed",
+      wait: null,
+    });
+    const episode = this.structuredSessionStore.createEpisode({
+      threadId: payload.threadId,
+      sourceCommandId: payload.sourceCommandId,
+      kind: payload.kind,
+      title: payload.title,
+      summary: payload.summary,
+      body: payload.body,
+    });
+    const acceptance: ThreadHandoffAcceptance = {
+      episodeId: episode.id,
+      kind: episode.kind,
+      title: episode.title,
+      summary: episode.summary,
+    };
+    const waiter = this.pendingThreadHandoffs.get(message.id);
+    if (waiter) {
+      this.pendingThreadHandoffs.delete(message.id);
+      waiter.resolve(acceptance);
+    }
+    return acceptance;
+  }
+
+  private rejectPendingThreadHandoff(queuedMessageId: string, reason: string): void {
+    const waiter = this.pendingThreadHandoffs.get(queuedMessageId);
+    if (!waiter) {
+      return;
+    }
+    this.pendingThreadHandoffs.delete(queuedMessageId);
+    waiter.reject(new Error(reason));
   }
 
   private getQueuedMessageText(messageJson: string): string {
@@ -2173,6 +2305,36 @@ export class WorkspaceSessionCatalog {
     });
 
     return { target: structuredClone(options.target) };
+  }
+
+  private awaitThreadHandoffAcceptance(
+    request: ThreadHandoffRequest,
+  ): Promise<ThreadHandoffAcceptance> {
+    const orchestratorTarget = this.buildOrchestratorPromptTarget(request.runtime.sessionId);
+    const payload: HandlerHandoffQueuePayload = {
+      threadId: request.runtime.surfaceThreadId,
+      sourceCommandId: request.commandId,
+      turnId: request.runtime.turnId,
+      title: request.title,
+      summary: request.summary,
+      body: request.body,
+      kind: request.kind,
+    };
+    const queued = this.structuredSessionStore.enqueueSurfaceMessage({
+      sessionId: orchestratorTarget.workspaceSessionId,
+      surfacePiSessionId: orchestratorTarget.surfacePiSessionId,
+      kind: "handler_handoff",
+      messageJson: "{}",
+      payloadJson: JSON.stringify(payload),
+      requestSummary: request.summary,
+    });
+
+    const acceptance = new Promise<ThreadHandoffAcceptance>((resolve, reject) => {
+      this.pendingThreadHandoffs.set(queued.id, { resolve, reject });
+    });
+    void this.emitQueuedSurfaceUpdate(orchestratorTarget);
+    this.wakeSurfaceQueue(orchestratorTarget);
+    return acceptance;
   }
 
   private restorePiQueuedMessagesToSurface(session: ManagedSession, target: PromptTarget): void {
@@ -2697,6 +2859,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
     try {
@@ -2744,6 +2907,12 @@ export class WorkspaceSessionCatalog {
     const promptStartMessageCount = session.session.agent.state.messages.length;
     const displayUserMessage = getLatestUserMessage(options.messages);
     let queuedMessageDelivered = false;
+    const getQueuedMessageDeliveryText = (queued: StructuredSurfaceQueuedMessageRecord): string => {
+      if (queued.kind === "handler_handoff") {
+        return this.buildHandlerHandoffQueuedPrompt(queued);
+      }
+      return this.getQueuedMessageText(queued.messageJson);
+    };
     const markSteeringMessageDelivered = (message: Message): boolean => {
       const text = flattenUserMessageContent(message.content).trim();
       if (!text) {
@@ -2752,11 +2921,13 @@ export class WorkspaceSessionCatalog {
       const steering = this.structuredSessionStore
         .listQueuedSurfaceMessages({ surfacePiSessionId: options.target.surfacePiSessionId })
         .find(
-          (queued) =>
-            queued.status === "steering" && this.getQueuedMessageText(queued.messageJson) === text,
+          (queued) => queued.status === "steering" && getQueuedMessageDeliveryText(queued) === text,
         );
       if (!steering) {
         return false;
+      }
+      if (steering.kind === "handler_handoff") {
+        this.acceptHandlerHandoffQueueItem(steering);
       }
       this.structuredSessionStore.markSurfaceMessageDelivered({ id: steering.id });
       return true;
@@ -2770,6 +2941,12 @@ export class WorkspaceSessionCatalog {
         return false;
       }
       if (promptContext?.queuedMessageId && !queuedMessageDelivered) {
+        const queued = this.structuredSessionStore.getSurfaceQueuedMessage({
+          id: promptContext.queuedMessageId,
+        });
+        if (queued.kind === "handler_handoff") {
+          this.acceptHandlerHandoffQueueItem(queued);
+        }
         this.structuredSessionStore.markSurfaceMessageDelivered({
           id: promptContext.queuedMessageId,
         });
@@ -3056,12 +3233,27 @@ export class WorkspaceSessionCatalog {
     }
 
     let message: Message;
-    try {
-      message = JSON.parse(queued.messageJson) as Message;
-    } catch {
-      this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
-      await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
-      throw new Error(`Queued surface message ${queued.id} could not be parsed.`);
+    if (queued.kind === "handler_handoff") {
+      try {
+        const prompt = this.buildHandlerHandoffQueuedPrompt(queued);
+        message = createSyntheticUserMessage(prompt);
+      } catch (error) {
+        this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+        this.rejectPendingThreadHandoff(
+          queued.id,
+          error instanceof Error ? error.message : "Queued handler handoff could not be accepted.",
+        );
+        await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+        throw error;
+      }
+    } else {
+      try {
+        message = JSON.parse(queued.messageJson) as Message;
+      } catch {
+        this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+        await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+        throw new Error(`Queued surface message ${queued.id} could not be parsed.`);
+      }
     }
 
     try {
@@ -3095,76 +3287,9 @@ export class WorkspaceSessionCatalog {
         });
       }
       await this.emitQueuedSurfaceUpdate(currentTarget);
-      await this.resumeOrchestratorAfterHandlerHandoff(promptExecution);
       return true;
     } finally {
       await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
-    }
-  }
-
-  private async resumeOrchestratorAfterHandlerHandoff(
-    promptContext: PromptExecutionContext | null,
-  ): Promise<void> {
-    if (!promptContext || promptContext.surfaceKind !== "handler") {
-      return;
-    }
-
-    const snapshot = this.getStructuredSnapshot(promptContext.sessionId);
-    if (!snapshot) {
-      return;
-    }
-
-    const turn = snapshot.turns.find((entry) => entry.id === promptContext.turnId);
-    if (!turn || turn.turnDecision !== "thread.handoff" || turn.status !== "completed") {
-      return;
-    }
-
-    const thread = promptContext.rootThreadId
-      ? (snapshot.threads.find((entry) => entry.id === promptContext.rootThreadId) ?? null)
-      : null;
-    const latestEpisode = thread ? getLatestThreadEpisode(snapshot, thread.id) : null;
-    if (!thread || !latestEpisode) {
-      return;
-    }
-
-    const orchestratorSessionId = snapshot.session.orchestratorPiSessionId;
-    const target = this.buildOrchestratorPromptTarget(orchestratorSessionId);
-    const orchestratorSession = await this.retainManagedSurface(target);
-    if (orchestratorSession.activePrompt) {
-      await this.releaseManagedSurface(target.surfacePiSessionId);
-      return;
-    }
-
-    try {
-      orchestratorSession.abortRequested = false;
-      orchestratorSession.activePrompt = true;
-      await this.emitSurfaceSync({
-        session: orchestratorSession,
-        reason: "background.started",
-        target,
-      });
-
-      const resumeMessage = createSyntheticUserMessage(
-        buildOrchestratorHandoffResumePrompt(thread, latestEpisode),
-      );
-      const options: SendAgentPromptOptions = {
-        target,
-        provider: orchestratorSession.provider,
-        model: orchestratorSession.model,
-        thinkingLevel: orchestratorSession.thinkingLevel,
-        systemPrompt: orchestratorSession.systemPrompt,
-        messages: [
-          ...convertToLlmMessages(orchestratorSession.session.agent.state.messages),
-          resumeMessage,
-        ],
-      };
-      const orchestratorPromptContext = this.createPromptExecutionContext(
-        orchestratorSession,
-        options,
-      );
-      await this.runAgentPrompt(orchestratorSession, options, orchestratorPromptContext);
-    } finally {
-      await this.releaseManagedSurface(target.surfacePiSessionId);
     }
   }
 
@@ -3418,6 +3543,7 @@ async function createManagedSession(
     agentDir: string;
     structuredSessionStore: StructuredSessionStateStore;
     createHandlerThread: WorkspaceSessionCatalog["createHandlerThread"];
+    awaitThreadHandoffAcceptance: WorkspaceSessionCatalog["awaitThreadHandoffAcceptance"];
     smithersRuntimeManager: SmithersRuntimeManager;
   },
 ): Promise<ManagedSession> {
@@ -3494,6 +3620,7 @@ async function createManagedSession(
     runtime: promptExecutionRuntime,
     store: options.structuredSessionStore,
     listUnresolvedWorkflowRuns,
+    awaitHandoffAcceptance: options.awaitThreadHandoffAcceptance,
   });
   const requestContextTool = createRequestContextTool({
     runtime: promptExecutionRuntime,
@@ -3777,23 +3904,13 @@ function inferRootEpisodeKind(promptText: string): PromptExecutionContext["rootE
     : "change";
 }
 
-function getLatestThreadEpisode(
-  snapshot: StructuredSessionSnapshot,
-  threadId: string,
-): StructuredSessionSnapshot["episodes"][number] | null {
-  return (
-    snapshot.episodes
-      .filter((episode) => episode.threadId === threadId)
-      .toSorted((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null
-  );
-}
-
 function buildOrchestratorHandoffResumePrompt(
-  _thread: StructuredSessionSnapshot["threads"][number],
-  _episode: StructuredSessionSnapshot["episodes"][number],
+  _thread: StructuredSessionSnapshot["threads"][number] | null,
+  summary: string,
 ): string {
   return [
     "System event: A handler thread emitted a durable handoff.",
+    `Handoff summary: ${summary}`,
     "Use thread.list and thread.handoffs if durable delegated-thread state matters, then decide the next orchestrator action.",
   ].join("\n");
 }

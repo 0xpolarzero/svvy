@@ -4,7 +4,7 @@ import {
   type StructuredSessionStateStore,
 } from "./structured-session-state";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
-import { createThreadHandoffTool } from "./thread-handoff-tool";
+import { createThreadHandoffTool, type ThreadHandoffRequest } from "./thread-handoff-tool";
 
 const WORKSPACE = {
   id: "/repo/svvy",
@@ -97,11 +97,39 @@ function createHandlerRuntime(store: StructuredSessionStateStore): PromptExecuti
   };
 }
 
+function acceptHandoffImmediately(store: StructuredSessionStateStore) {
+  return async (request: ThreadHandoffRequest) => {
+    const threadId = request.runtime.surfaceThreadId;
+    store.updateThread({
+      threadId,
+      status: "completed",
+      wait: null,
+    });
+    const episode = store.createEpisode({
+      threadId,
+      sourceCommandId: request.commandId,
+      kind: request.kind,
+      title: request.title,
+      summary: request.summary,
+      body: request.body,
+    });
+    return {
+      episodeId: episode.id,
+      kind: episode.kind,
+      title: episode.title,
+      summary: episode.summary,
+    };
+  };
+}
+
 describe("thread handoff tool", () => {
   it("requires an active prompt runtime", async () => {
     const tool = createThreadHandoffTool({
       runtime: { current: null },
       store: createStore(),
+      awaitHandoffAcceptance: async () => {
+        throw new Error("unexpected handoff");
+      },
     });
 
     await expect(
@@ -118,6 +146,7 @@ describe("thread handoff tool", () => {
     const tool = createThreadHandoffTool({
       runtime,
       store,
+      awaitHandoffAcceptance: acceptHandoffImmediately(store),
     });
 
     const result = await tool.execute("tool-call-2", {
@@ -169,6 +198,7 @@ describe("thread handoff tool", () => {
     const tool = createThreadHandoffTool({
       runtime,
       store,
+      awaitHandoffAcceptance: acceptHandoffImmediately(store),
     });
     const handlerThreadId = runtime.current!.rootThreadId!;
 
@@ -290,6 +320,7 @@ describe("thread handoff tool", () => {
       const tool = createThreadHandoffTool({
         runtime,
         store,
+        awaitHandoffAcceptance: acceptHandoffImmediately(store),
       });
 
       const result = await tool.execute(`tool-call-unresolved-${status}`, {

@@ -28,10 +28,27 @@ export const threadHandoffParamsSchema = Type.Object(
 
 export type ThreadHandoffParams = Static<typeof threadHandoffParamsSchema>;
 
+export interface ThreadHandoffAcceptance {
+  episodeId: string;
+  kind: StructuredEpisodeKind;
+  title: string;
+  summary: string;
+}
+
+export interface ThreadHandoffRequest {
+  runtime: NonNullable<PromptExecutionRuntimeHandle["current"]> & { surfaceThreadId: string };
+  commandId: string;
+  title: string;
+  summary: string;
+  body: string;
+  kind: StructuredEpisodeKind;
+}
+
 const THREAD_HANDOFF_DESCRIPTION = [
-  "Emit a durable handoff episode for the current handler-thread objective and mark that objective completed.",
+  "Request handoff of the current handler-thread objective back to the orchestrator.",
+  "This call blocks while the handoff waits in the orchestrator queue and succeeds only after the orchestrator accepts it as input.",
   "Do not use this while the thread still owns a running or waiting workflow run; workflow waits stay inside the handler thread until they are resolved or cancelled.",
-  "The thread surface stays interactive after handoff and may receive later follow-up turns.",
+  "If the user rejects the queued handoff, the tool returns an explicit error and the handler should ask for clarification or continue work.",
 ].join(" ");
 
 export function createThreadHandoffTool(options: {
@@ -44,6 +61,7 @@ export function createThreadHandoffTool(options: {
       status: string;
     }>
   >;
+  awaitHandoffAcceptance: (request: ThreadHandoffRequest) => Promise<ThreadHandoffAcceptance>;
 }): AgentTool<typeof threadHandoffParamsSchema, Record<string, unknown>> {
   return {
     label: "Thread Handoff",
@@ -80,19 +98,13 @@ export function createThreadHandoffTool(options: {
           listUnresolvedWorkflowRuns: options.listUnresolvedWorkflowRuns,
         });
 
-        options.store.updateThread({
-          threadId,
-          status: "completed",
-          wait: null,
-        });
-
-        const episode = options.store.createEpisode({
-          threadId,
-          sourceCommandId: command.id,
-          kind: normalizeEpisodeKind(params.kind, runtime.rootEpisodeKind),
+        const accepted = await options.awaitHandoffAcceptance({
+          runtime,
+          commandId: command.id,
           title,
           summary,
           body,
+          kind: normalizeEpisodeKind(params.kind, runtime.rootEpisodeKind),
         });
 
         options.store.setTurnDecision({
@@ -106,9 +118,9 @@ export function createThreadHandoffTool(options: {
           summary,
           facts: {
             threadId,
-            episodeId: episode.id,
-            kind: episode.kind,
-            title: episode.title,
+            episodeId: accepted.episodeId,
+            kind: accepted.kind,
+            title: accepted.title,
           },
         });
 
@@ -120,10 +132,10 @@ export function createThreadHandoffTool(options: {
                 ok: true,
                 threadId,
                 commandId: command.id,
-                episodeId: episode.id,
-                kind: episode.kind,
-                title: episode.title,
-                summary: episode.summary,
+                episodeId: accepted.episodeId,
+                kind: accepted.kind,
+                title: accepted.title,
+                summary: accepted.summary,
               }),
             },
           ],
@@ -131,10 +143,10 @@ export function createThreadHandoffTool(options: {
             ok: true,
             threadId,
             commandId: command.id,
-            episodeId: episode.id,
-            kind: episode.kind,
-            title: episode.title,
-            summary: episode.summary,
+            episodeId: accepted.episodeId,
+            kind: accepted.kind,
+            title: accepted.title,
+            summary: accepted.summary,
           },
         };
       } catch (error) {

@@ -373,12 +373,16 @@ export type StructuredSurfaceQueuedMessageStatus =
   | "delivered"
   | "cancelled";
 
+export type StructuredSurfaceQueueItemKind = "user_message" | "handler_handoff";
+
 export interface StructuredSurfaceQueuedMessageRecord {
   id: string;
   sessionId: string;
   surfacePiSessionId: string;
   threadId: string | null;
+  kind: StructuredSurfaceQueueItemKind;
   messageJson: string;
+  payloadJson: string | null;
   requestSummary: string;
   status: StructuredSurfaceQueuedMessageStatus;
   position: number;
@@ -663,7 +667,9 @@ export interface StructuredSessionStateStore {
     sessionId: string;
     surfacePiSessionId: string;
     threadId?: string | null;
+    kind?: StructuredSurfaceQueueItemKind;
     messageJson: string;
+    payloadJson?: string | null;
     requestSummary: string;
     position?: "front" | "back";
   }): StructuredSurfaceQueuedMessageRecord;
@@ -946,7 +952,9 @@ type SurfaceQueuedMessageRow = {
   session_id: string;
   surface_pi_session_id: string;
   thread_id: string | null;
+  kind: StructuredSurfaceQueueItemKind;
   message_json: string;
+  payload_json: string | null;
   request_summary: string;
   status: StructuredSurfaceQueuedMessageStatus;
   position: number;
@@ -2895,7 +2903,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     sessionId: string;
     surfacePiSessionId: string;
     threadId?: string | null;
+    kind?: StructuredSurfaceQueueItemKind;
     messageJson: string;
+    payloadJson?: string | null;
     requestSummary: string;
     position?: "front" | "back";
   }): StructuredSurfaceQueuedMessageRecord {
@@ -2916,7 +2926,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            session_id,
            surface_pi_session_id,
            thread_id,
+           kind,
            message_json,
+           payload_json,
            request_summary,
            status,
            position,
@@ -2924,14 +2936,16 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            updated_at,
            delivered_at,
            cancelled_at
-         ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL)`,
       )
       .run(
         id,
         input.sessionId,
         input.surfacePiSessionId,
         input.threadId ?? null,
+        input.kind ?? "user_message",
         input.messageJson,
+        input.payloadJson ?? null,
         input.requestSummary,
         queuePosition,
         timestamp,
@@ -4127,7 +4141,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       sessionId: row.session_id,
       surfacePiSessionId: row.surface_pi_session_id,
       threadId: row.thread_id,
+      kind: row.kind,
       messageJson: row.message_json,
+      payloadJson: row.payload_json,
       requestSummary: row.request_summary,
       status: row.status,
       position: row.position,
@@ -4418,7 +4434,9 @@ function initializeSchema(db: Database): void {
       session_id TEXT NOT NULL,
       surface_pi_session_id TEXT NOT NULL,
       thread_id TEXT,
+      kind TEXT NOT NULL DEFAULT 'user_message',
       message_json TEXT NOT NULL,
+      payload_json TEXT,
       request_summary TEXT NOT NULL,
       status TEXT NOT NULL,
       position INTEGER NOT NULL DEFAULT 0,
@@ -4487,6 +4505,8 @@ function initializeSchema(db: Database): void {
   ensureColumn(db, "thread", "session_agent_json", "TEXT");
   ensureColumn(db, "surface_message_queue", "position", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "surface_message_queue", "cancelled_at", "TEXT");
+  ensureColumn(db, "surface_message_queue", "kind", "TEXT NOT NULL DEFAULT 'user_message'");
+  ensureColumn(db, "surface_message_queue", "payload_json", "TEXT");
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_surface_message_queue_pending
      ON surface_message_queue (surface_pi_session_id, status, position)`,

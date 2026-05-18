@@ -477,7 +477,7 @@ In the delegated model, the most important invariant is:
 
 Waiting inside a handler thread does not create a wait episode.
 
-A handoff episode is created only when that delegated objective reaches a terminal state for the current active work span and the handler thread explicitly calls `thread.handoff`.
+A handoff episode is created only when that delegated objective reaches a terminal state for the current active work span, the handler thread explicitly calls `thread.handoff`, and the resulting typed orchestrator queue item is accepted as orchestrator input. While the queue item is pending, the handler turn remains active because the `thread.handoff` tool call is still blocked. If the queued handoff is rejected, the tool call returns an explicit error and no handoff episode is emitted.
 
 The terminal handoff back to the orchestrator is:
 

@@ -132,6 +132,7 @@ The `svvy`-owned part is:
 - Runnable saved entries should live under `.svvy/workflows/entries/`, while artifact entries should live under `.svvy/artifacts/workflows/<artifact_workflow_id>/entries/`, and neither should depend on the repo authoring workspace.
 - A workflow run never returns control directly to the orchestrator.
 - Only `thread.handoff` returns control to the orchestrator.
+- `thread.handoff` returns control through a typed `handler_handoff` item in the orchestrator surface queue. The tool call blocks until that item is accepted as orchestrator input or rejected by the user; acceptance emits the durable handoff episode and rejection returns an explicit tool error to the handler.
 - If a handler thread opens a workflow run for its current objective span, that thread stays responsible until the span ends in `thread.handoff`; waits, approvals, resumes, and repairs stay inside the handler lifecycle.
 - Workflow-task-attempt projection is write-driven from the current Smithers attempt identity and explicit runtime handlers. When a task-local tool needs the attempt before handler-side projection has landed, the bootstrap path is an exact persisted resume-handle lookup against the Smithers attempt row, not a heuristic scan or fallback chain.
 

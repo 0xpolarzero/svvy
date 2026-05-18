@@ -1332,6 +1332,7 @@ function createFakeRpc(input: {
                 ...record.snapshot.queuedMessages,
                 {
                   id: `queued-${++queuedMessageSequence}`,
+                  kind: "user_message",
                   text:
                     pendingUserMessage && typeof pendingUserMessage.content !== "string"
                       ? pendingUserMessage.content

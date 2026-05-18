@@ -270,6 +270,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
 - [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
+- [x] Represent handler handoffs as typed orchestrator surface queue items, block `thread.handoff` until accept/reject, and return explicit handler tool errors for rejected handoffs. Commit(s): pending current landing commit
 
 ## 14. Context Library And Context Packs
 

@@ -2028,6 +2028,271 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("queues handler handoff work behind an active orchestrator and rejects it as the blocked tool result", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Blocked Handoff" }, DEFAULTS);
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptGate = createDeferred<void>();
+      const sessionPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        const surface = findManagedSurfaceBySession(catalog, this);
+        if (surface?.sessionId === created.target.surfacePiSessionId) {
+          await promptGate.promise;
+        }
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Done.")]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Keep working while a handler finishes.")],
+          onEvent: () => {},
+        });
+        await waitFor(
+          () => getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+
+        const store = getStructuredSessionStore(catalog);
+        const turn = store.startTurn({
+          sessionId: created.target.workspaceSessionId,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          requestSummary: "Delegate blocked handoff work",
+        });
+        const parentThread = store.createThread({
+          turnId: turn.id,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          title: "Parent",
+          objective: "Parent delegated work.",
+        });
+        const handlerThread = store.createThread({
+          turnId: turn.id,
+          parentThreadId: parentThread.id,
+          surfacePiSessionId: "handler-blocked-handoff",
+          title: "Handler",
+          objective: "Finish the blocked handoff.",
+        });
+        const command = store.createCommand({
+          turnId: turn.id,
+          surfacePiSessionId: handlerThread.surfacePiSessionId,
+          threadId: handlerThread.id,
+          toolName: "thread.handoff",
+          executor: "handler",
+          visibility: "surface",
+          title: "Hand off",
+          summary: "Handler finished while orchestrator was active.",
+        });
+        store.startCommand(command.id);
+
+        const handoffPromise = (
+          catalog as unknown as {
+            awaitThreadHandoffAcceptance(input: {
+              runtime: {
+                sessionId: string;
+                turnId: string;
+                surfacePiSessionId: string;
+                surfaceThreadId: string;
+                surfaceKind: "handler";
+                rootThreadId: string;
+                promptText: string;
+                rootEpisodeKind: "change";
+                sessionWaitApplied: false;
+                threadWasTerminalAtStart: false;
+              };
+              commandId: string;
+              title: string;
+              summary: string;
+              body: string;
+              kind: "change";
+            }): Promise<unknown>;
+          }
+        ).awaitThreadHandoffAcceptance.call(catalog, {
+          runtime: {
+            sessionId: created.target.workspaceSessionId,
+            turnId: turn.id,
+            surfacePiSessionId: handlerThread.surfacePiSessionId,
+            surfaceThreadId: handlerThread.id,
+            surfaceKind: "handler",
+            rootThreadId: handlerThread.id,
+            promptText: "Hand off",
+            rootEpisodeKind: "change",
+            sessionWaitApplied: false,
+            threadWasTerminalAtStart: false,
+          },
+          commandId: command.id,
+          title: "Blocked handoff",
+          summary: "Handler finished while orchestrator was active.",
+          body: "The handler completed its work and is asking the orchestrator to reconcile.",
+          kind: "change",
+        });
+
+        await waitFor(() =>
+          store
+            .listQueuedSurfaceMessages({
+              surfacePiSessionId: created.target.surfacePiSessionId,
+            })
+            .some((message) => message.kind === "handler_handoff"),
+        );
+        const queued = store
+          .listQueuedSurfaceMessages({ surfacePiSessionId: created.target.surfacePiSessionId })
+          .find((message) => message.kind === "handler_handoff");
+        expect(queued).toBeDefined();
+        if (!queued) return;
+        await catalog.deleteQueuedSurfaceMessage({
+          target: created.target,
+          queuedMessageId: queued.id,
+        });
+        await expect(handoffPromise).rejects.toThrow(
+          "The user rejected this handoff before orchestrator acceptance.",
+        );
+
+        promptGate.resolve();
+        await waitFor(
+          () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+        );
+        expect(store.getSessionState(created.target.workspaceSessionId).episodes).toEqual([]);
+      } finally {
+        promptGate.resolve();
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
+  it("accepts a queued handler handoff as the next orchestrator input", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Accepted Handoff" }, DEFAULTS);
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const sessionPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string, options?: { expandPromptTemplates?: boolean }): Promise<void>;
+      };
+      const orchestratorPrompts: string[] = [];
+      const promptSpy = spyOn(sessionPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        const surface = findManagedSurfaceBySession(catalog, this);
+        if (surface?.sessionId === created.target.surfacePiSessionId) {
+          orchestratorPrompts.push(promptText);
+        }
+        appendMessagesToSession(this, [userMessage(promptText), assistantMessage("Done.")]);
+      });
+
+      try {
+        const store = getStructuredSessionStore(catalog);
+        const turn = store.startTurn({
+          sessionId: created.target.workspaceSessionId,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          requestSummary: "Delegate accepted handoff work",
+        });
+        const parentThread = store.createThread({
+          turnId: turn.id,
+          surfacePiSessionId: created.target.surfacePiSessionId,
+          title: "Parent",
+          objective: "Parent delegated work.",
+        });
+        const handlerThread = store.createThread({
+          turnId: turn.id,
+          parentThreadId: parentThread.id,
+          surfacePiSessionId: "handler-accepted-handoff",
+          title: "Handler",
+          objective: "Finish the accepted handoff.",
+        });
+        const command = store.createCommand({
+          turnId: turn.id,
+          surfacePiSessionId: handlerThread.surfacePiSessionId,
+          threadId: handlerThread.id,
+          toolName: "thread.handoff",
+          executor: "handler",
+          visibility: "surface",
+          title: "Hand off",
+          summary: "Handler finished and can be accepted.",
+        });
+        store.startCommand(command.id);
+
+        const accepted = await (
+          catalog as unknown as {
+            awaitThreadHandoffAcceptance(input: {
+              runtime: {
+                sessionId: string;
+                turnId: string;
+                surfacePiSessionId: string;
+                surfaceThreadId: string;
+                surfaceKind: "handler";
+                rootThreadId: string;
+                promptText: string;
+                rootEpisodeKind: "change";
+                sessionWaitApplied: false;
+                threadWasTerminalAtStart: false;
+              };
+              commandId: string;
+              title: string;
+              summary: string;
+              body: string;
+              kind: "change";
+            }): Promise<{ episodeId: string }>;
+          }
+        ).awaitThreadHandoffAcceptance.call(catalog, {
+          runtime: {
+            sessionId: created.target.workspaceSessionId,
+            turnId: turn.id,
+            surfacePiSessionId: handlerThread.surfacePiSessionId,
+            surfaceThreadId: handlerThread.id,
+            surfaceKind: "handler",
+            rootThreadId: handlerThread.id,
+            promptText: "Hand off",
+            rootEpisodeKind: "change",
+            sessionWaitApplied: false,
+            threadWasTerminalAtStart: false,
+          },
+          commandId: command.id,
+          title: "Accepted handoff",
+          summary: "Handler finished and can be accepted.",
+          body: "The handler completed its work and is asking the orchestrator to reconcile.",
+          kind: "change",
+        });
+
+        await waitFor(() => orchestratorPrompts.length === 1);
+        expect(orchestratorPrompts[0]).toContain(
+          "System event: A handler thread emitted a durable handoff.",
+        );
+        expect(orchestratorPrompts[0]).toContain("Handler finished and can be accepted.");
+        const snapshot = store.getSessionState(created.target.workspaceSessionId);
+        expect(snapshot.episodes).toEqual([
+          expect.objectContaining({
+            id: accepted.episodeId,
+            threadId: handlerThread.id,
+            sourceCommandId: command.id,
+          }),
+        ]);
+        expect(snapshot.threads.find((thread) => thread.id === handlerThread.id)).toMatchObject({
+          status: "completed",
+        });
+        expect(
+          store.listQueuedSurfaceMessages({
+            surfacePiSessionId: created.target.surfacePiSessionId,
+          }),
+        ).toEqual([]);
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("applies model and reasoning changes only to the targeted surface", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);

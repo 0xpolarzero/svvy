@@ -43,8 +43,8 @@ For each issue, record:
 | AUD-012 | P1 | Project CI projection depends on in-memory terminal output and is not restart-safe | `1291` | Fixed |
 | AUD-013 | P1 | Queued message drain can double-dispatch or strand `dispatching` rows after restart | `209c`, `34a6`, `2a4e`, `1291` | Fixed |
 | AUD-014 | P2 | Queued-message reorder can spam durable writes during drag movement | `2a4e` | Fixed |
-| AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Researched |
-| AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Researched |
+| AUD-015 | P1 | Handler `thread.handoff` reconciliation can be dropped while the orchestrator is active | `34a6`, `2a4e` | Fixed |
+| AUD-016 | P1 | Initial handler auto-start handoff can fail to wake the orchestrator | `2a4e` | Fixed |
 | AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Researched |
 | AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Researched |
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Researched |
@@ -712,6 +712,8 @@ Relevant code:
 
 ### AUD-015 - Handler `thread.handoff` reconciliation can be dropped when orchestrator is active
 
+**Disposition:** Fixed. `thread.handoff` is now a blocking tool call that creates a typed `handler_handoff` item in the orchestrator surface queue. The handoff waits behind any active orchestrator turn or existing queued user messages, can be reordered or steered like other surface queue work, and returns success only once the item is accepted as orchestrator input. Rejecting the queue item returns an explicit tool error to the handler.
+
 **Impact:** High orchestration correctness issue.
 
 **Precise issue:** A successful handler `thread.handoff` records the episode and decision, then attempts to wake the orchestrator for reconciliation. If the orchestrator is already active, the wake path returns and no durable pending reconciliation is stored.
@@ -723,30 +725,39 @@ Relevant code:
 
 **Why this matters:** The product contract says a successful handoff should immediately open an orchestrator reconciliation turn. If the orchestrator is busy at the wrong moment, the handler's result can remain durable but unprocessed until a user manually prompts the orchestrator.
 
-**Best fix:**
+**Resolved design:**
 
-Introduce a durable handoff-reconciliation delivery queue keyed by episode/thread/command.
+Use the generic typed surface queue rather than a separate reconciliation queue.
 
-1. On successful handoff, persist a pending reconciliation record.
-2. Attempt to wake the orchestrator immediately.
-3. If the orchestrator is busy, leave the record pending.
-4. After the orchestrator settles, on surface open, and after restart, drain pending reconciliation records exactly once.
-5. Mark reconciliation delivered only after the synthetic orchestrator turn is accepted.
+1. Surface queue rows have a `kind`; all interactive surfaces accept `user_message`, and the orchestrator also accepts `handler_handoff`.
+2. `thread.handoff` creates a `handler_handoff` queue item with thread, command, title, summary, body, and episode-kind metadata, then blocks the handler tool call.
+3. If the orchestrator is active, the handoff remains queued behind existing orchestrator work and visible with distinct handoff UI.
+4. Queue delivery accepts the handoff as orchestrator input, creates the durable handoff episode, marks the handler objective span completed, and resolves the blocked tool call successfully.
+5. Queue rejection cancels the queue row and resolves the blocked tool call with an explicit user-rejected handoff error.
 
-Do not overload the normal user queued-message mechanism; reconciliation is system work tied to a handoff episode and needs exact-once semantics.
+App restart during the blocked tool call remains part of the broader active-tool-call restart recovery problem tracked separately.
+
+**Implemented resolution:**
+
+- `surface_message_queue` now carries a queue item `kind` and optional payload; `handler_handoff` items reuse the same ordering, claim, steering, and projection path as queued user messages.
+- `thread.handoff` delegates acceptance to the catalog, blocks while its queue item is pending, succeeds only after orchestrator input acceptance, and fails when the queue item is rejected.
+- The old direct `resumeOrchestratorAfterHandlerHandoff` path was removed, so normal handler turns and initial auto-start handler turns use the same handoff queue semantics.
+- The queued-message UI renders handler handoffs with distinct labeling and a `Reject` action instead of edit/delete.
 
 **Verification required:**
 
-- Handler hands off while orchestrator is idle: one reconciliation turn starts.
-- Handler hands off while orchestrator is active: no concurrent turn starts, but exactly one reconciliation turn starts after settle.
-- Restart with a pending reconciliation record delivers it once.
-- Duplicate handoff events do not duplicate reconciliation.
+- Handler hands off while orchestrator is idle: the handoff queue item is accepted as the next orchestrator input.
+- Handler hands off while orchestrator is active: no concurrent turn starts, the item remains visible in the orchestrator queue, and rejection returns a tool error.
+- Queued handoff rows can be ordered with queued user messages and rendered distinctly.
+- Restart with a blocked handoff tool call is covered by the broader active-tool-call recovery work.
 
 **Documentation impact:** Update thread/handoff specs to describe pending reconciliation delivery if a spec exists.
 
 **Confidence:** High.
 
 ### AUD-016 - Initial auto-start handler handoff does not wake the orchestrator
+
+**Disposition:** Fixed by the AUD-015 typed surface-queue design. `thread.handoff` owns handoff delivery directly, so the handler prompt entrypoint no longer matters; initial auto-start handler turns and normal handler follow-up turns both block on the same queued handoff accept/reject path.
 
 **Impact:** High orchestration correctness issue.
 

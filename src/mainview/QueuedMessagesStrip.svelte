@@ -47,7 +47,12 @@
   function getStatusLabel(prompt: QueuedPrompt): string {
     if (prompt.status === "steering") return "Steering";
     if (prompt.status === "dispatching") return "Sending";
+    if (prompt.kind === "handler_handoff") return "Handoff";
     return "Queued";
+  }
+
+  function getItemTitle(prompt: QueuedPrompt): string {
+    return prompt.kind === "handler_handoff" && prompt.summary ? prompt.summary : prompt.text;
   }
 
   function getDropTarget(clientY: number): string | null {
@@ -181,7 +186,7 @@
     <div class="queued-strip-scroll" role="list" bind:this={stripElement}>
       {#each displayedQueuedMessages as prompt, index (prompt.id)}
         <article
-          class={`queued-message ${prompt.id === draggedPromptId ? "dragging" : ""} ${isLocked(prompt) ? "locked" : ""}`.trim()}
+          class={`queued-message ${prompt.id === draggedPromptId ? "dragging" : ""} ${isLocked(prompt) ? "locked" : ""} ${prompt.kind === "handler_handoff" ? "handoff" : ""}`.trim()}
           data-prompt-id={prompt.id}
           data-reorderable={isLocked(prompt) ? "false" : "true"}
           role="listitem"
@@ -203,7 +208,12 @@
               <GripVerticalIcon size={13} aria-hidden="true" />
             {/if}
           </button>
-          <span class="queued-copy" title={prompt.text}>{prompt.text}</span>
+          <span class="queued-copy" title={getItemTitle(prompt)}>
+            {#if prompt.kind === "handler_handoff"}
+              <span class="queued-kind">Handoff</span>
+            {/if}
+            {getItemTitle(prompt)}
+          </span>
           {#if isLocked(prompt)}
             <div class="queued-status" aria-label={`${getStatusLabel(prompt)} queued message`}>
               <LockIcon size={11} aria-hidden="true" />
@@ -217,16 +227,24 @@
                   <span>Steer</span>
                 </button>
               </Tooltip>
-              <Tooltip label="Edit">
-                <button class="queued-icon-button" type="button" aria-label="Edit queued message" onclick={() => onEdit(prompt.id)}>
-                  <PencilIcon size={12} aria-hidden="true" />
-                </button>
-              </Tooltip>
-              <Tooltip label="Delete">
-                <button class="queued-icon-button danger" type="button" aria-label="Delete queued message" onclick={() => onDelete(prompt.id)}>
-                  <Trash2Icon size={12} aria-hidden="true" />
-                </button>
-              </Tooltip>
+              {#if prompt.kind === "user_message"}
+                <Tooltip label="Edit">
+                  <button class="queued-icon-button" type="button" aria-label="Edit queued message" onclick={() => onEdit(prompt.id)}>
+                    <PencilIcon size={12} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+                <Tooltip label="Delete">
+                  <button class="queued-icon-button danger" type="button" aria-label="Delete queued message" onclick={() => onDelete(prompt.id)}>
+                    <Trash2Icon size={12} aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              {:else}
+                <Tooltip label="Reject handoff">
+                  <button class="queued-reject-button" type="button" aria-label="Reject handoff" onclick={() => onDelete(prompt.id)}>
+                    Reject
+                  </button>
+                </Tooltip>
+              {/if}
             </div>
           {/if}
         </article>
@@ -316,9 +334,15 @@
     color: var(--ui-text-tertiary);
   }
 
+  .queued-message.handoff {
+    border-color: color-mix(in oklab, var(--ui-accent) 30%, var(--ui-border-soft));
+    background: color-mix(in oklab, var(--ui-accent) 8%, var(--ui-surface-subtle));
+  }
+
   .queued-drag-handle,
   .queued-icon-button,
-  .queued-steer-button {
+  .queued-steer-button,
+  .queued-reject-button {
     border: 0;
     background: transparent;
     color: inherit;
@@ -357,6 +381,15 @@
     white-space: nowrap;
   }
 
+  .queued-kind {
+    margin-right: 0.34rem;
+    color: color-mix(in oklab, var(--ui-accent) 68%, var(--ui-text-secondary));
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
   .queued-message.locked .queued-copy {
     color: var(--ui-text-secondary);
   }
@@ -386,7 +419,8 @@
   }
 
   .queued-icon-button,
-  .queued-steer-button {
+  .queued-steer-button,
+  .queued-reject-button {
     display: grid;
     place-items: center;
     height: 1.3rem;
@@ -408,10 +442,19 @@
     font-weight: 700;
   }
 
+  .queued-reject-button {
+    padding: 0 0.42rem;
+    color: var(--ui-danger);
+    font-size: var(--text-xs);
+    font-weight: 700;
+  }
+
   .queued-icon-button:hover,
   .queued-icon-button:focus-visible,
   .queued-steer-button:hover,
   .queued-steer-button:focus-visible,
+  .queued-reject-button:hover,
+  .queued-reject-button:focus-visible,
   .queued-drag-handle:hover,
   .queued-drag-handle:focus-visible {
     outline: none;
@@ -421,7 +464,9 @@
   .queued-icon-button:hover,
   .queued-icon-button:focus-visible,
   .queued-steer-button:hover,
-  .queued-steer-button:focus-visible {
+  .queued-steer-button:focus-visible,
+  .queued-reject-button:hover,
+  .queued-reject-button:focus-visible {
     background: var(--ui-hover-bg);
   }
 
@@ -433,7 +478,8 @@
 
   .queued-icon-button:focus-visible,
   .queued-drag-handle:focus-visible,
-  .queued-steer-button:focus-visible {
+  .queued-steer-button:focus-visible,
+  .queued-reject-button:focus-visible {
     box-shadow: var(--ui-focus-ring);
   }
 </style>

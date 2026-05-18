@@ -177,10 +177,17 @@ export interface SendPromptResponse {
 }
 
 export type QueuedSurfaceMessageStatus = "queued" | "steering" | "dispatching";
+export type QueuedSurfaceMessageKind = "user_message" | "handler_handoff";
 
 export interface QueuedSurfaceMessage {
   id: string;
+  kind: QueuedSurfaceMessageKind;
   text: string;
+  title?: string;
+  summary?: string;
+  threadId?: string;
+  episodeId?: string;
+  sourceCommandId?: string;
   status: QueuedSurfaceMessageStatus;
   createdAt: string;
   updatedAt: string;
