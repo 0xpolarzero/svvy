@@ -66,8 +66,12 @@
 	let providers = $state<ProviderAuthInfo[]>([]);
 	let agentSettings = $state<AgentSettingsState | null>(null);
 	let appPreferences = $state<AppPreferences | null>(null);
-	let loading = $state(true);
+	let providersLoading = $state(true);
+	let agentSettingsLoading = $state(true);
+	let appPreferencesLoading = $state(true);
 	let error = $state<string | null>(null);
+	let agentSettingsError = $state<string | null>(null);
+	let appPreferencesError = $state<string | null>(null);
 	let searchQuery = $state("");
 	let editingProvider = $state<string | null>(null);
 	let confirmingProviderRemoval = $state<string | null>(null);
@@ -97,28 +101,53 @@
 		});
 	});
 
-	async function refreshProviders() {
+	async function refreshProviders(options: { showLoading?: boolean } = {}) {
+		if (options.showLoading) providersLoading = true;
 		error = null;
 		try {
 			providers = await rpc.request.listProviderAuths();
 		} catch (err) {
 			error = err instanceof Error ? err.message : "Failed to load providers";
+		} finally {
+			providersLoading = false;
 		}
 	}
 
-	async function refreshAgentSettings() {
-		if (!workspaceId) return;
-		agentSettings = await rpc.request.getAgentSettings({ workspaceId });
-		if (appPreferences) {
-			agentSettings.appPreferences = structuredClone(appPreferences);
+	async function refreshAgentSettings(options: { showLoading?: boolean } = {}) {
+		if (options.showLoading) agentSettingsLoading = true;
+		agentSettingsError = null;
+		if (!workspaceId) {
+			agentSettingsLoading = false;
+			return;
+		}
+		try {
+			agentSettings = await rpc.request.getAgentSettings({ workspaceId });
+			if (appPreferences) {
+				agentSettings.appPreferences = structuredClone(appPreferences);
+			}
+		} catch (err) {
+			agentSettingsError = err instanceof Error ? err.message : "Failed to load agent settings";
+		} finally {
+			agentSettingsLoading = false;
 		}
 	}
 
-	async function refreshAppPreferences() {
-		if (!workspaceId) return;
-		appPreferences = await rpc.request.getAppPreferences({ workspaceId });
-		if (agentSettings) {
-			agentSettings.appPreferences = structuredClone(appPreferences);
+	async function refreshAppPreferences(options: { showLoading?: boolean } = {}) {
+		if (options.showLoading) appPreferencesLoading = true;
+		appPreferencesError = null;
+		if (!workspaceId) {
+			appPreferencesLoading = false;
+			return;
+		}
+		try {
+			appPreferences = await rpc.request.getAppPreferences({ workspaceId });
+			if (agentSettings) {
+				agentSettings.appPreferences = structuredClone(appPreferences);
+			}
+		} catch (err) {
+			appPreferencesError = err instanceof Error ? err.message : "Failed to load app preferences";
+		} finally {
+			appPreferencesLoading = false;
 		}
 	}
 
@@ -225,9 +254,12 @@
 		].filter((group) => group.providers.length > 0);
 	});
 
-	onMount(async () => {
-		await Promise.all([refreshProviders(), refreshAppPreferences(), refreshAgentSettings()]);
-		loading = false;
+	onMount(() => {
+		void Promise.allSettled([
+			refreshProviders({ showLoading: true }),
+			refreshAppPreferences({ showLoading: true }),
+			refreshAgentSettings({ showLoading: true }),
+		]);
 	});
 
 	async function saveSessionAgent(key: SessionAgentKey, settings: SessionAgentSettings) {
@@ -415,8 +447,12 @@
 
 		<section class="settings-pane">
 			{#if activeSection === "general"}
-				{#if loading || !appPreferences}
+				{#if appPreferencesLoading}
 					<p class="loading">Loading settings...</p>
+				{:else if appPreferencesError}
+					<p class="error">{appPreferencesError}</p>
+				{:else if !appPreferences}
+					<p class="error">Settings are unavailable for this workspace.</p>
 				{:else}
 					<div class="settings-row-stack">
 						<article class="provider-row general-row">
@@ -493,7 +529,7 @@
 					</p>
 				</div>
 
-				{#if loading}
+				{#if providersLoading}
 					<p class="loading">Loading providers...</p>
 				{:else if error}
 					<p class="error">{error}</p>
@@ -600,105 +636,129 @@
 					</div>
 				{/if}
 			{/if}
-			{#if activeSection === "web" && appPreferences}
-				<div class="settings-section-note">
-					<ShieldIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-					<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web helpers.</p>
-				</div>
-				<div class="settings-row-stack">
-					{#each WEB_PROVIDER_OPTIONS as option (option.id ?? "none")}
-						{@const readiness = webProviderReady(option.id)}
-						{@const info = option.id ? providerInfo(option.id) : null}
-						<article class="provider-row">
-							<div class="provider-main">
-								<div class="provider-heading">
-									<input
-										type="radio"
-										name="web-provider"
-										checked={appPreferences.webProvider === option.id}
-										onchange={() => {
-											appPreferences.webProvider = option.id;
-											void saveAppPreferences(appPreferences);
-										}}
-									/>
-									<span class="provider-name">{option.label}</span>
-									<span class={`provider-status tone-${readiness.tone}`.trim()}>{readiness.text}</span>
-									{#if appPreferences.webProvider === option.id}
-										<span class="provider-status tone-info">Active</span>
+			{#if activeSection === "web"}
+				{#if appPreferencesLoading}
+					<p class="loading">Loading web settings...</p>
+				{:else if appPreferencesError}
+					<p class="error">{appPreferencesError}</p>
+				{:else if !appPreferences}
+					<p class="error">Web settings are unavailable for this workspace.</p>
+				{:else}
+					<div class="settings-section-note">
+						<ShieldIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+						<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web helpers.</p>
+					</div>
+					<div class="settings-row-stack">
+						{#each WEB_PROVIDER_OPTIONS as option (option.id ?? "none")}
+							{@const readiness = webProviderReady(option.id)}
+							{@const info = option.id ? providerInfo(option.id) : null}
+							<article class="provider-row">
+								<div class="provider-main">
+									<div class="provider-heading">
+										<input
+											type="radio"
+											name="web-provider"
+											checked={appPreferences.webProvider === option.id}
+											onchange={() => {
+												appPreferences.webProvider = option.id;
+												void saveAppPreferences(appPreferences);
+											}}
+										/>
+										<span class="provider-name">{option.label}</span>
+										<span class={`provider-status tone-${readiness.tone}`.trim()}>{readiness.text}</span>
+										{#if appPreferences.webProvider === option.id}
+											<span class="provider-status tone-info">Active</span>
+										{/if}
+									</div>
+									<p class="provider-meta">{option.summary}</p>
+									{#if option.id && saveMessage[option.id]}
+										<p class="save-msg">{saveMessage[option.id]}</p>
 									{/if}
 								</div>
-								<p class="provider-meta">{option.summary}</p>
-								{#if option.id && saveMessage[option.id]}
-									<p class="save-msg">{saveMessage[option.id]}</p>
-								{/if}
-							</div>
-							{#if option.id}
-								<div class="provider-actions">
-									{#if editingProvider === option.id}
-										<ProviderApiKeyForm
-											placeholder={`Paste ${option.label} API key...`}
-											onSave={(apiKey) => handleSaveApiKey(option.id, apiKey)}
-											onCancel={() => (editingProvider = null)}
-										/>
-									{:else}
-										{#if info?.hasKey && info.keyType !== "env"}
-											<Button variant="ghost" size="xs" class="row-action action-danger" onclick={() => handleRemove(option.id)}>
-												Remove
+								{#if option.id}
+									<div class="provider-actions">
+										{#if editingProvider === option.id}
+											<ProviderApiKeyForm
+												placeholder={`Paste ${option.label} API key...`}
+												onSave={(apiKey) => handleSaveApiKey(option.id, apiKey)}
+												onCancel={() => (editingProvider = null)}
+											/>
+										{:else}
+											{#if info?.hasKey && info.keyType !== "env"}
+												<Button variant="ghost" size="xs" class="row-action action-danger" onclick={() => handleRemove(option.id)}>
+													Remove
+												</Button>
+											{/if}
+											<Button
+												variant="ghost"
+												size="xs"
+												class="row-action"
+												onclick={() => {
+													editingProvider = option.id;
+												}}
+											>
+												<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+												{info?.hasKey ? "Key" : "Add key"}
 											</Button>
 										{/if}
-										<Button
-											variant="ghost"
-											size="xs"
-											class="row-action"
-											onclick={() => {
-												editingProvider = option.id;
-											}}
-										>
-											<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
-											{info?.hasKey ? "Key" : "Add key"}
-										</Button>
-									{/if}
-								</div>
-							{/if}
-						</article>
-					{/each}
-				</div>
+									</div>
+								{/if}
+							</article>
+						{/each}
+					</div>
+				{/if}
 			{/if}
-			{#if activeSection === "agents" && agentSettings}
-				<div class="settings-section-note">
-					<InfoIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-					<p>Session agent changes save directly to workspace settings.</p>
-				</div>
-				<div class="agent-list">
-					{#each ["defaultSession", "dumbOrchestrator", "namer"] as key (key)}
-						{@const settings = agentSettings.sessionAgents[key as SessionAgentKey]}
-						<AgentSettingsForm
-							title={sessionAgentLabels[key as SessionAgentKey]}
-							summary={sessionAgentSummaries[key as SessionAgentKey]}
-							{settings}
-							{availableModelOptions}
-							onSave={(nextSettings) => saveSessionAgent(key as SessionAgentKey, nextSettings as SessionAgentSettings)}
-						/>
-					{/each}
-				</div>
+			{#if activeSection === "agents"}
+				{#if agentSettingsLoading}
+					<p class="loading">Loading session agents...</p>
+				{:else if agentSettingsError}
+					<p class="error">{agentSettingsError}</p>
+				{:else if agentSettings}
+					<div class="settings-section-note">
+						<InfoIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+						<p>Session agent changes save directly to workspace settings.</p>
+					</div>
+					<div class="agent-list">
+						{#each ["defaultSession", "dumbOrchestrator", "namer"] as key (key)}
+							{@const settings = agentSettings.sessionAgents[key as SessionAgentKey]}
+							<AgentSettingsForm
+								title={sessionAgentLabels[key as SessionAgentKey]}
+								summary={sessionAgentSummaries[key as SessionAgentKey]}
+								{settings}
+								{availableModelOptions}
+								onSave={(nextSettings) => saveSessionAgent(key as SessionAgentKey, nextSettings as SessionAgentSettings)}
+							/>
+						{/each}
+					</div>
+				{:else}
+					<p class="error">Session agent settings are unavailable for this workspace.</p>
+				{/if}
 			{/if}
-			{#if activeSection === "workflow-agents" && agentSettings}
-				<div class="settings-search">
-					<Button variant="primary" size="sm" onclick={seedWorkflowAgents}>Seed agents.ts</Button>
-					<p class="settings-search-summary">Sync conventional workflow agents to .svvy/workflows/components/agents.ts</p>
-				</div>
-				<div class="agent-list">
-					{#each ["explorer", "implementer", "reviewer"] as key (key)}
-						{@const settings = agentSettings.workflowAgents[key as WorkflowAgentKey]}
-						<AgentSettingsForm
-							title={settings.label}
-							summary={workflowAgentSummaries[key as WorkflowAgentKey]}
-							{settings}
-							{availableModelOptions}
-							onSave={(nextSettings) => saveWorkflowAgent(key as WorkflowAgentKey, nextSettings as WorkflowAgentSettings)}
-						/>
-					{/each}
-				</div>
+			{#if activeSection === "workflow-agents"}
+				{#if agentSettingsLoading}
+					<p class="loading">Loading workflow agents...</p>
+				{:else if agentSettingsError}
+					<p class="error">{agentSettingsError}</p>
+				{:else if agentSettings}
+					<div class="settings-search">
+						<Button variant="primary" size="sm" onclick={seedWorkflowAgents}>Seed agents.ts</Button>
+						<p class="settings-search-summary">Sync conventional workflow agents to .svvy/workflows/components/agents.ts</p>
+					</div>
+					<div class="agent-list">
+						{#each ["explorer", "implementer", "reviewer"] as key (key)}
+							{@const settings = agentSettings.workflowAgents[key as WorkflowAgentKey]}
+							<AgentSettingsForm
+								title={settings.label}
+								summary={workflowAgentSummaries[key as WorkflowAgentKey]}
+								{settings}
+								{availableModelOptions}
+								onSave={(nextSettings) => saveWorkflowAgent(key as WorkflowAgentKey, nextSettings as WorkflowAgentSettings)}
+							/>
+						{/each}
+					</div>
+				{:else}
+					<p class="error">Workflow agent settings are unavailable for this workspace.</p>
+				{/if}
 			{/if}
 		</section>
 	</div>
