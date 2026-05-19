@@ -771,7 +771,9 @@
 							{:else if block.type === "thinking"}
 								<details class="thinking-block">
 									<summary>Reasoning</summary>
-									<pre>{thinkingDisplayText(block)}</pre>
+									<div class="thinking-markdown">
+										<AssistantMarkdown content={thinkingDisplayText(block)} isFinished={true} />
+									</div>
 								</details>
 							{:else if block.type === "toolCall"}
 								{@const projectedToolCall = conversation.toolCallsById.get(block.id)}
@@ -883,7 +885,9 @@
 						{:else if block.type === "thinking"}
 							<details class="thinking-block">
 								<summary>Reasoning</summary>
-								<pre>{thinkingDisplayText(block)}</pre>
+								<div class="thinking-markdown">
+									<AssistantMarkdown content={thinkingDisplayText(block)} isFinished={false} />
+								</div>
 							</details>
 						{:else if block.type === "toolCall"}
 							{@const params = parseArtifactsParams(block.arguments)}
@@ -1297,6 +1301,10 @@
 		background: transparent;
 	}
 
+	.thinking-block[open] {
+		margin-bottom: 0.72rem;
+	}
+
 	.system-prompt-block {
 		margin-top: 0;
 		padding-top: 0;
@@ -1311,14 +1319,36 @@
 		color: var(--ui-text-secondary);
 	}
 
-	.thinking-block pre {
+	.thinking-markdown {
 		margin-top: 0.55rem;
 		max-width: 100%;
-		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 		word-break: break-word;
 		font-size: var(--text-base);
 		line-height: 1.6;
+		color: var(--ui-text-secondary);
+	}
+
+	.thinking-markdown :global(.assistant-markdown) {
+		color: var(--ui-text-secondary);
+		font-size: inherit;
+		line-height: inherit;
+	}
+
+	.thinking-markdown :global(.assistant-markdown h1),
+	.thinking-markdown :global(.assistant-markdown h2),
+	.thinking-markdown :global(.assistant-markdown h3),
+	.thinking-markdown :global(.assistant-markdown h4),
+	.thinking-markdown :global(.assistant-markdown h5),
+	.thinking-markdown :global(.assistant-markdown h6) {
+		color: var(--ui-text-secondary);
+	}
+
+	.thinking-markdown :global(.assistant-markdown code) {
+		color: color-mix(in oklab, var(--ui-text-secondary) 92%, var(--ui-accent));
+	}
+
+	.thinking-markdown :global(.assistant-markdown pre code) {
 		color: var(--ui-text-secondary);
 	}
 
