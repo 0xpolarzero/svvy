@@ -2,6 +2,7 @@
 	import { getModels, getProviders, modelsAreEqual, type Model } from "@mariozechner/pi-ai";
 	import { onMount } from "svelte";
 	import { discoverModels } from "./model-discovery";
+	import { modelSupportsThinking } from "./model-thinking";
 	import { searchScore, formatModelCost, formatTokenCount } from "./chat-format";
 	import type { ChatStorage } from "./chat-storage";
 	import Button from "./ui/Button.svelte";
@@ -122,7 +123,7 @@
 		let visible = providerAllowlist.size > 0 ? entries.filter((entry) => providerAllowlist.has(entry.provider)) : [...entries];
 
 		if (filterThinking) {
-			visible = visible.filter((entry) => entry.model.reasoning);
+			visible = visible.filter((entry) => modelSupportsThinking(entry.model));
 		}
 		if (filterVision) {
 			visible = visible.filter((entry) => entry.model.input.includes("image"));
@@ -230,7 +231,7 @@
 								</div>
 								<p>
 									{entry.id}
-									{#if entry.model.reasoning}
+									{#if modelSupportsThinking(entry.model)}
 										· thinking
 									{/if}
 									{#if entry.model.input.includes("image")}

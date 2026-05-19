@@ -84,6 +84,18 @@ type ValidationWorkspace = {
   cleanup: () => void;
 };
 
+const PI_TOOL_CALLING_APIS = new Set([
+  "anthropic-messages",
+  "azure-openai-responses",
+  "bedrock-converse-stream",
+  "google-generative-ai",
+  "google-vertex",
+  "mistral-conversations",
+  "openai-codex-responses",
+  "openai-completions",
+  "openai-responses",
+]);
+
 function walkFiles(root: string): string[] {
   if (!existsSync(root)) {
     return [];
@@ -244,15 +256,7 @@ function readCapabilityFlags(model: {
   return [
     model.reasoning ? "reasoning" : null,
     model.input.includes("image") ? "vision" : null,
-    [
-      "anthropic-messages",
-      "google-generative-ai",
-      "mistral-conversations",
-      "openai-completions",
-      "openai-responses",
-    ].includes(model.api)
-      ? "tool-calling"
-      : null,
+    PI_TOOL_CALLING_APIS.has(model.api) ? "tool-calling" : null,
   ].filter((flag): flag is string => Boolean(flag));
 }
 

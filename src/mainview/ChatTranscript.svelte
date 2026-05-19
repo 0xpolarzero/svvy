@@ -107,6 +107,14 @@
 	let autoScroll = $state(true);
 	const resolvedSystemPrompt = $derived(systemPrompt?.trim() || null);
 	const streamingAssistant = $derived(streamMessage ?? null);
+	type AssistantContentBlock = AssistantMessage["content"][number];
+	function thinkingDisplayText(block: Extract<AssistantContentBlock, { type: "thinking" }>): string {
+		if (block.thinking.trim()) return block.thinking;
+		if (block.redacted) return "[redacted]";
+		if (block.thinkingSignature) return "Reasoning summary unavailable";
+		return "(empty)";
+	}
+
 	type TranscriptRow =
 		| { kind: "system"; key: string; systemPrompt: string }
 		| { kind: "semantic"; key: string; block: TranscriptSemanticBlock }
@@ -762,8 +770,8 @@
 								</div>
 							{:else if block.type === "thinking"}
 								<details class="thinking-block">
-									<summary>Reasoning trace</summary>
-									<pre>{block.thinking || "[redacted]"}</pre>
+									<summary>Reasoning</summary>
+									<pre>{thinkingDisplayText(block)}</pre>
 								</details>
 							{:else if block.type === "toolCall"}
 								{@const projectedToolCall = conversation.toolCallsById.get(block.id)}
@@ -874,8 +882,8 @@
 							</div>
 						{:else if block.type === "thinking"}
 							<details class="thinking-block">
-								<summary>Reasoning trace</summary>
-								<pre>{block.thinking || "[redacted]"}</pre>
+								<summary>Reasoning</summary>
+								<pre>{thinkingDisplayText(block)}</pre>
 							</details>
 						{:else if block.type === "toolCall"}
 							{@const params = parseArtifactsParams(block.arguments)}

@@ -254,7 +254,7 @@ Pi currently has its own standards discovery. It checks `AGENTS.md` and `CLAUDE.
 For every pi-backed `svvy` actor, the pi resource loader must receive:
 
 ```ts
-agentsFilesOverride: () => ({ agentsFiles: [] })
+agentsFilesOverride: () => ({ agentsFiles: [] });
 ```
 
 Runtime standards reach the model only through the `svvy`-composed system prompt.
@@ -779,17 +779,22 @@ Examples:
 
 Baseline decision:
 
-- `svvy` owns provider and model configuration
-- do not import provider settings from pi, Codex, Claude, plugins, MCP configs, or host package
-  manifests
-- do not load host provider adapters
-- do not trust host model registry metadata
-- do not apply host fallback, routing, retry, or reasoning settings
-- do not let extensions or packages add provider backends
+- `svvy` owns which provider credentials, actor defaults, and model selections are enabled for the
+  product
+- pi owns the normalized provider adapter implementation and built-in model metadata that `svvy`
+  uses for capability checks such as reasoning support, supported thinking levels, context-window
+  size, output-token limits, and image input support
+- do not import provider settings from Codex, Claude, plugins, MCP configs, or host package manifests
+- do not load ambient host provider adapters
+- do not apply ambient host fallback, routing, retry, or reasoning settings
+- do not let extensions or packages add provider backends unless a user explicitly enables that
+  resource category and source
 
-This category is already covered by `svvy` provider auth and settings. Supported providers, auth
-state, model lists, reasoning controls, context-window metadata, modality metadata, and actor defaults
-must come from `svvy` product state and product-owned provider integrations.
+This category is already covered by `svvy` provider auth and settings plus pi's explicit model
+registry and stream normalization surface. Supported provider choices and auth readiness come from
+`svvy` product state. Model lists, reasoning controls, supported thinking levels, context-window
+metadata, modality metadata, and provider request quirks come from pi's normalized `Model` metadata
+and pi runtime APIs rather than a parallel `svvy` provider/model table.
 
 Future support should be an explicit import or native provider integration, not ambient host
 compatibility.
@@ -797,7 +802,10 @@ compatibility.
 Pi-specific rule:
 
 - keep `noExtensions: true` so provider extensions cannot load
-- ignore pi provider, model, retry, fallback, and shell/runtime settings for actor construction
+- ignore pi user provider settings, retry/fallback settings, and shell/runtime settings for actor
+  construction
+- consume pi's explicit built-in model registry and normalized runtime stream events as the provider
+  capability source of truth
 - pass provider, model, reasoning, and actor defaults from `svvy` settings into pi session creation
   explicitly
 
@@ -989,8 +997,9 @@ Required checks:
 - no host commands or lifecycle hooks are loaded, listed, trusted, or executed
 - no host UI resources, themes, keybindings, renderer components, or interaction resources are
   loaded, listed, mapped, or rendered
-- no host provider adapters, model registries, model metadata, routing rules, fallback rules, or
-  reasoning settings are loaded or applied
+- no ambient host provider settings, provider adapters, routing rules, fallback rules, or reasoning
+  settings are loaded or applied; pi's explicit built-in model registry and stream adapters remain
+  the normalized provider capability layer used by `svvy`
 - no host credentials, OAuth sessions, MCP auth state, environment resolvers, shell secret resolvers,
   or host auth files are imported or used implicitly
 - no host execution policy, sandbox policy, approval policy, command policy, network policy, timeout,
@@ -1009,8 +1018,9 @@ Required checks:
 - Do not auto-load themes.
 - Do not support host UI resources, host themes, host keybindings, host widgets, host renderers, or
   host editor replacements.
-- Do not import host provider/model settings, model registries, provider adapters, fallback rules, or
-  reasoning settings.
+- Do not import ambient host provider/model settings, provider adapters, fallback rules, or reasoning
+  settings. Use pi's explicit built-in model registry and normalized stream adapters for provider
+  capability metadata and request-shape quirks.
 - Do not import host credentials, OAuth tokens, provider auth files, MCP auth state, environment
   resolvers, or shell-command secret resolvers.
 - Do not import host execution policy, sandbox settings, approval settings, command allowlists or

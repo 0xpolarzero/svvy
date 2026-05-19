@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   deleteSavedWorkflowLibraryPath,
+  listWorkflowModels,
   readSavedWorkflowLibraryReadModel,
 } from "./workflow-library";
 
@@ -16,6 +17,40 @@ afterEach(() => {
     const dir = tempDirs.pop();
     if (dir) rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe("workflow model discovery", () => {
+  it("uses pi model metadata for reasoning, vision, and Codex Responses tool-calling flags", () => {
+    const models = listWorkflowModels({
+      getProviders: () => ["openai-codex"] as never,
+      getModels: () =>
+        [
+          {
+            id: "gpt-5.3-codex",
+            name: "GPT-5.3 Codex",
+            api: "openai-codex-responses",
+            provider: "openai-codex",
+            baseUrl: "https://chatgpt.com/backend-api",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 272000,
+            maxTokens: 128000,
+          },
+        ] as never,
+      resolveAuthState: () => ({ connected: true, keyType: "oauth" }),
+    });
+
+    expect(models).toEqual([
+      {
+        providerId: "openai-codex",
+        modelId: "gpt-5.3-codex",
+        authAvailable: true,
+        authSource: "oauth",
+        capabilityFlags: ["reasoning", "vision", "tool-calling"],
+      },
+    ]);
+  });
 });
 
 function createWorkspace(): string {

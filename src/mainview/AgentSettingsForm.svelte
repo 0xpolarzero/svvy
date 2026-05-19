@@ -139,8 +139,9 @@
 			...form.state.values,
 			modelKey: value,
 		};
-		if (!reasoningLevels(nextValue).includes(nextValue.reasoningEffort)) {
-			nextValue.reasoningEffort = "medium";
+		const nextReasoningLevels = reasoningLevels(nextValue);
+		if (!nextReasoningLevels.includes(nextValue.reasoningEffort)) {
+			nextValue.reasoningEffort = nextReasoningLevels.includes("medium") ? "medium" : (nextReasoningLevels[0] ?? "off");
 		}
 		form.setFieldValue("modelKey", nextValue.modelKey);
 		form.setFieldValue("reasoningEffort", nextValue.reasoningEffort);
