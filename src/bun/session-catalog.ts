@@ -2864,7 +2864,7 @@ export class WorkspaceSessionCatalog {
       throw new Error(`Delegated handler thread not found: ${input.threadId}`);
     }
     if (thread.status !== "completed") {
-      throw new Error(`thread.resume can only resume completed handler threads.`);
+      throw new Error(`thread_resume can only resume completed handler threads.`);
     }
 
     this.structuredSessionStore.updateThread({
@@ -2874,7 +2874,7 @@ export class WorkspaceSessionCatalog {
     });
     this.structuredSessionStore.recordLifecycleEvent({
       sessionId: input.sessionId,
-      kind: "thread.resumed",
+      kind: "thread_resumed",
       subjectKind: "thread",
       subjectId: thread.id,
       data: {
@@ -3344,6 +3344,7 @@ export class WorkspaceSessionCatalog {
           options.provider,
           options.model,
         );
+        replaceLatestCommittedAssistantMessage(session, promptStartMessageCount, visibleMessage);
 
         if (visibleMessage.stopReason === "error" || visibleMessage.stopReason === "aborted") {
           publishPromptEvent({
@@ -3465,7 +3466,7 @@ export class WorkspaceSessionCatalog {
     try {
       const snapshot = this.structuredSessionStore.getSessionState(promptContext.sessionId);
       const turn = snapshot.turns.find((entry) => entry.id === promptContext.turnId) ?? null;
-      if (turn?.turnDecision === "thread.handoff") {
+      if (turn?.turnDecision === "thread_handoff") {
         return false;
       }
 
@@ -3791,7 +3792,7 @@ export class WorkspaceSessionCatalog {
     }
 
     const turn = snapshot.turns.find((entry) => entry.id === promptContext.turnId) ?? null;
-    if (!turn || turn.turnDecision === "thread.handoff" || turn.status !== "completed") {
+    if (!turn || turn.turnDecision === "thread_handoff" || turn.status !== "completed") {
       return;
     }
 
@@ -4247,6 +4248,19 @@ function replaceLatestCommittedUserMessage(
   }
 }
 
+function replaceLatestCommittedAssistantMessage(
+  session: ManagedSession,
+  promptStartMessageCount: number,
+  visibleMessage: AssistantMessage,
+): void {
+  const messages = session.session.agent.state.messages;
+  for (let index = messages.length - 1; index >= promptStartMessageCount; index -= 1) {
+    if (messages[index]?.role !== "assistant") continue;
+    messages[index] = structuredClone(visibleMessage) as AgentMessage;
+    return;
+  }
+}
+
 function isTerminalThreadStatus(
   status: StructuredSessionSnapshot["threads"][number]["status"],
 ): boolean {
@@ -4279,7 +4293,7 @@ function buildOrchestratorHandoffResumePrompt(
   return [
     "System event: A handler thread emitted a durable handoff.",
     `Handoff summary: ${summary}`,
-    "Use thread.list and thread.handoffs if durable delegated-thread state matters, then decide the next orchestrator action.",
+    "Use thread_list and thread_handoffs if durable delegated-thread state matters, then decide the next orchestrator action.",
   ].join("\n");
 }
 
@@ -4293,7 +4307,7 @@ function buildHandlerWorkflowAttentionPrompt(_input: {
 }): string {
   return [
     "System event: A supervised Smithers workflow now requires handler attention.",
-    "Use thread.current for current handler state and active workflow run ids, then inspect workflow details with smithers.* tools and decide the next handler action.",
+    "Use thread_current for current handler state and active workflow run ids, then inspect workflow details with smithers_* tools and decide the next handler action.",
   ].join("\n");
 }
 
@@ -4736,10 +4750,11 @@ function finalizeVisibleAssistantMessage(
   provider: string,
   model: string,
 ): AssistantMessage {
-  const visibleContent =
-    streamState.partial.content.length > 0
-      ? structuredClone(streamState.partial.content)
-      : sanitizeAssistantMessage(message, provider, model).content;
+  const sanitized = sanitizeAssistantMessage(message, provider, model);
+  const streamedContent = structuredClone(streamState.partial.content);
+  const visibleContent = hasVisibleAssistantContent(streamedContent)
+    ? streamedContent
+    : sanitized.content;
 
   return {
     ...message,
@@ -4751,6 +4766,14 @@ function finalizeVisibleAssistantMessage(
   };
 }
 
+function hasVisibleAssistantContent(content: AssistantMessage["content"]): boolean {
+  return content.some((block) => {
+    if (block.type === "text") return block.text.trim().length > 0;
+    if (block.type === "thinking") return block.thinking.trim().length > 0;
+    return block.type === "toolCall";
+  });
+}
+
 function sanitizeAssistantMessage(
   message: AssistantMessage,
   provider: string,
@@ -4759,11 +4782,15 @@ function sanitizeAssistantMessage(
   const content = message.content.filter(
     (block) => block.type === "text" || block.type === "thinking",
   );
+  const fallbackText =
+    message.errorMessage && (message.stopReason === "error" || message.stopReason === "aborted")
+      ? message.errorMessage
+      : "";
   return {
     ...message,
     provider,
     model,
-    content: content.length > 0 ? content : [{ type: "text", text: "" }],
+    content: content.length > 0 ? content : [{ type: "text", text: fallbackText }],
   };
 }
 

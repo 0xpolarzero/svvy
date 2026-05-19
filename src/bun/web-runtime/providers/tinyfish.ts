@@ -71,7 +71,7 @@ export class TinyFishWebProvider implements WebProvider {
     context: WebInvocationContext,
   ): Promise<WebProviderToolResult> {
     if (!this.apiKey) throw new Error("TinyFish API key is not configured.");
-    return toolName === "web.search"
+    return toolName === "web_search"
       ? this.search(input as SearchQueryParams)
       : this.fetch(input as FetchGetContentsParams, context);
   }
@@ -81,13 +81,13 @@ export class TinyFishWebProvider implements WebProvider {
       const response = await this.client().search.query(input);
       return textResult(JSON.stringify({ providerId: this.id, ...response }, null, 2), {
         providerId: this.id,
-        toolName: "web.search",
+        toolName: "web_search",
         status: "succeeded",
         query: input.query,
         resultCount: response.results.length,
         commandFacts: {
           providerId: this.id,
-          toolName: "web.search",
+          toolName: "web_search",
           status: "succeeded",
           query: input.query,
           page: response.page,
@@ -130,7 +130,7 @@ export class TinyFishWebProvider implements WebProvider {
         ),
         {
           providerId: this.id,
-          toolName: "web.fetch",
+          toolName: "web_fetch",
           status: "succeeded",
           url: urls[0],
           finalUrl: artifactSet.artifacts[0]?.finalUrl,
@@ -214,7 +214,7 @@ function createTinyFishFetchArtifactSet(
   };
   const commandFacts = {
     providerId: "tinyfish",
-    toolName: "web.fetch",
+    toolName: "web_fetch",
     status: "succeeded",
     url: artifacts[0]?.url,
     finalUrl: artifacts[0]?.finalUrl,

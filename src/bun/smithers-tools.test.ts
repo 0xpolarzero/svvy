@@ -78,13 +78,13 @@ function createHarness() {
   const seedTurn = store.startTurn({
     sessionId,
     surfacePiSessionId: sessionId,
-    requestSummary: "Open a handler thread for smithers.* tools",
+    requestSummary: "Open a handler thread for smithers_* tools",
   });
   const handlerThread = store.createThread({
     turnId: seedTurn.id,
     surfacePiSessionId: "pi-thread-smithers-tools",
     title: "Smithers tools handler",
-    objective: "Supervise workflows through smithers.* tools.",
+    objective: "Supervise workflows through smithers_* tools.",
   });
   store.finishTurn({
     turnId: seedTurn.id,
@@ -123,7 +123,7 @@ function createHarness() {
     sessionId,
     surfacePiSessionId: handlerThread.surfacePiSessionId,
     threadId: handlerThread.id,
-    requestSummary: "Supervise a workflow with smithers.* tools",
+    requestSummary: "Supervise a workflow with smithers_* tools",
   });
   const runtime: PromptExecutionRuntimeHandle = {
     current: createPromptExecutionContext({
@@ -132,7 +132,7 @@ function createHarness() {
       surfacePiSessionId: handlerThread.surfacePiSessionId,
       surfaceThreadId: handlerThread.id,
       surfaceKind: "handler",
-      promptText: "Supervise a workflow with smithers.* tools",
+      promptText: "Supervise a workflow with smithers_* tools",
       rootEpisodeKind: "workflow",
     }),
   };
@@ -425,7 +425,7 @@ function getTool(tools: ReturnType<typeof createSmithersTools>, name: string) {
   return tool as any;
 }
 
-describe("smithers.* tools", () => {
+describe("smithers_* tools", () => {
   it("launches, inspects, resolves, resumes, and reads a real approval workflow through the handler-thread tool surface", async () => {
     const { cwd, store, manager, runtime, sessionId, threadId, turnId } = createHarness();
     registerWorkflow(manager, createApprovalWorkflowDefinition(smithersDbPath(cwd)));
@@ -436,15 +436,15 @@ describe("smithers.* tools", () => {
       manager,
     });
 
-    const listWorkflows = getTool(tools, "smithers.list_workflows");
-    const runWorkflow = getTool(tools, "smithers.run_workflow");
-    const listRuns = getTool(tools, "smithers.list_runs");
-    const getRun = getTool(tools, "smithers.get_run");
-    const listPendingApprovals = getTool(tools, "smithers.list_pending_approvals");
-    const resolveApproval = getTool(tools, "smithers.resolve_approval");
-    const getNodeDetail = getTool(tools, "smithers.get_node_detail");
-    const listArtifacts = getTool(tools, "smithers.list_artifacts");
-    const getRunEvents = getTool(tools, "smithers.get_run_events");
+    const listWorkflows = getTool(tools, "smithers_list_workflows");
+    const runWorkflow = getTool(tools, "smithers_run_workflow");
+    const listRuns = getTool(tools, "smithers_list_runs");
+    const getRun = getTool(tools, "smithers_get_run");
+    const listPendingApprovals = getTool(tools, "smithers_list_pending_approvals");
+    const resolveApproval = getTool(tools, "smithers_resolve_approval");
+    const getNodeDetail = getTool(tools, "smithers_get_node_detail");
+    const listArtifacts = getTool(tools, "smithers_list_artifacts");
+    const getRunEvents = getTool(tools, "smithers_get_run_events");
 
     const workflows = await listWorkflows.execute("tool-list-workflows", {});
     expect(
@@ -498,7 +498,7 @@ describe("smithers.* tools", () => {
 
     let snapshot = store.getSessionState(sessionId);
     expect(snapshot.turns.find((entry) => entry.id === turnId)?.turnDecision).toBe(
-      "smithers.list_workflows",
+      "smithers_list_workflows",
     );
     expect(snapshot.threads.find((thread) => thread.id === threadId)).toMatchObject({
       id: threadId,
@@ -656,24 +656,24 @@ describe("smithers.* tools", () => {
     const commandToolNames = snapshot.commands.map((command) => command.toolName);
     expect(commandToolNames).toEqual(
       expect.arrayContaining([
-        "smithers.list_workflows",
-        "smithers.run_workflow",
-        "smithers.list_pending_approvals",
-        "smithers.get_run",
-        "smithers.resolve_approval",
-        "smithers.get_node_detail",
-        "smithers.list_artifacts",
-        "smithers.get_run_events",
-        "smithers.list_runs",
+        "smithers_list_workflows",
+        "smithers_run_workflow",
+        "smithers_list_pending_approvals",
+        "smithers_get_run",
+        "smithers_resolve_approval",
+        "smithers_get_node_detail",
+        "smithers_list_artifacts",
+        "smithers_get_run_events",
+        "smithers_list_runs",
       ]),
     );
 
     const runWorkflowCommands = snapshot.commands.filter(
-      (command) => command.toolName === "smithers.run_workflow",
+      (command) => command.toolName === "smithers_run_workflow",
     );
     expect(runWorkflowCommands).toHaveLength(2);
     expect(runWorkflowCommands[0]?.facts).toMatchObject({
-      smithersToolName: "smithers.run_workflow",
+      smithersToolName: "smithers_run_workflow",
       rawSmithersOperationName: "run_workflow",
       workflowId: "approval_gate",
       sourceScope: "saved",
@@ -686,7 +686,7 @@ describe("smithers.* tools", () => {
       postStatus: "running",
     });
     expect(runWorkflowCommands[1]?.facts).toMatchObject({
-      smithersToolName: "smithers.run_workflow",
+      smithersToolName: "smithers_run_workflow",
       rawSmithersOperationName: "run_workflow",
       workflowId: "approval_gate",
       sourceScope: "saved",
@@ -701,11 +701,11 @@ describe("smithers.* tools", () => {
     });
 
     const resolveApprovalCommand = snapshot.commands.find(
-      (command) => command.toolName === "smithers.resolve_approval",
+      (command) => command.toolName === "smithers_resolve_approval",
     );
     expect(resolveApprovalCommand?.facts).toMatchObject({
-      smithersToolName: "smithers.resolve_approval",
-      semanticSmithersToolName: "smithers.resolve_approval",
+      smithersToolName: "smithers_resolve_approval",
+      semanticSmithersToolName: "smithers_resolve_approval",
       rawSmithersOperationName: "resolve_approval",
       transport: "embedded-runtime",
       runId,
@@ -723,8 +723,8 @@ describe("smithers.* tools", () => {
       store,
       manager,
     });
-    const listRuns = getTool(tools, "smithers.list_runs");
-    const runWorkflow = getTool(tools, "smithers.run_workflow");
+    const listRuns = getTool(tools, "smithers_list_runs");
+    const runWorkflow = getTool(tools, "smithers_run_workflow");
 
     const ownLaunch = await runWorkflow.execute("tool-run-own-hello-world", {
       workflowId: "hello_world",
@@ -748,13 +748,13 @@ describe("smithers.* tools", () => {
     const secondarySeedTurn = store.startTurn({
       sessionId: secondarySessionId,
       surfacePiSessionId: secondarySessionId,
-      requestSummary: "Open a second handler thread for smithers.* tools",
+      requestSummary: "Open a second handler thread for smithers_* tools",
     });
     const secondaryHandlerThread = store.createThread({
       turnId: secondarySeedTurn.id,
       surfacePiSessionId: "pi-thread-smithers-tools-secondary",
       title: "Secondary Smithers tools handler",
-      objective: "Supervise workflows through smithers.* tools from another thread.",
+      objective: "Supervise workflows through smithers_* tools from another thread.",
     });
     store.finishTurn({
       turnId: secondarySeedTurn.id,
@@ -765,7 +765,7 @@ describe("smithers.* tools", () => {
       sessionId: secondarySessionId,
       surfacePiSessionId: secondaryHandlerThread.surfacePiSessionId,
       threadId: secondaryHandlerThread.id,
-      requestSummary: "Supervise a second hello world workflow with smithers.* tools",
+      requestSummary: "Supervise a second hello world workflow with smithers_* tools",
     });
     const secondaryRuntime: PromptExecutionRuntimeHandle = {
       current: createPromptExecutionContext({
@@ -774,7 +774,7 @@ describe("smithers.* tools", () => {
         surfacePiSessionId: secondaryHandlerThread.surfacePiSessionId,
         surfaceThreadId: secondaryHandlerThread.id,
         surfaceKind: "handler",
-        promptText: "Supervise a second hello world workflow with smithers.* tools",
+        promptText: "Supervise a second hello world workflow with smithers_* tools",
         rootEpisodeKind: "workflow",
       }),
     };
@@ -783,7 +783,7 @@ describe("smithers.* tools", () => {
       store,
       manager,
     });
-    const foreignRunWorkflow = getTool(secondaryTools, "smithers.run_workflow");
+    const foreignRunWorkflow = getTool(secondaryTools, "smithers_run_workflow");
     const foreignLaunch = await foreignRunWorkflow.execute("tool-run-foreign-hello-world", {
       workflowId: "hello_world",
       input: {
@@ -831,7 +831,7 @@ describe("smithers.* tools", () => {
     );
   });
 
-  it("delivers signals, diagnoses blockers, and inspects frames plus DevTools through the handler-thread smithers.* surface", async () => {
+  it("delivers signals, diagnoses blockers, and inspects frames plus DevTools through the handler-thread smithers_* surface", async () => {
     const { cwd, store, manager, runtime, sessionId, threadId } = createHarness();
     registerWorkflow(manager, createSignalWorkflowDefinition(smithersDbPath(cwd)));
 
@@ -841,15 +841,15 @@ describe("smithers.* tools", () => {
       manager,
     });
 
-    const runWorkflow = getTool(tools, "smithers.run_workflow");
-    const getRun = getTool(tools, "smithers.get_run");
-    const watchRun = getTool(tools, "smithers.watch_run");
-    const explainRun = getTool(tools, "smithers.explain_run");
-    const sendSignal = getTool(tools, "smithers.signals.send");
-    const listFrames = getTool(tools, "smithers.frames.list");
-    const getDevToolsSnapshot = getTool(tools, "smithers.getDevToolsSnapshot");
-    const streamDevTools = getTool(tools, "smithers.streamDevTools");
-    const getRunEvents = getTool(tools, "smithers.get_run_events");
+    const runWorkflow = getTool(tools, "smithers_run_workflow");
+    const getRun = getTool(tools, "smithers_get_run");
+    const watchRun = getTool(tools, "smithers_watch_run");
+    const explainRun = getTool(tools, "smithers_explain_run");
+    const sendSignal = getTool(tools, "smithers_signals_send");
+    const listFrames = getTool(tools, "smithers_frames_list");
+    const getDevToolsSnapshot = getTool(tools, "smithers_get_devtools_snapshot");
+    const streamDevTools = getTool(tools, "smithers_stream_devtools");
+    const getRunEvents = getTool(tools, "smithers_get_run_events");
 
     const launched = await runWorkflow.execute("tool-run-signal-workflow", {
       workflowId: "wait_for_signal",
@@ -989,11 +989,11 @@ describe("smithers.* tools", () => {
     expect(snapshotState.session.wait).toBeNull();
 
     const sendSignalCommand = snapshotState.commands.find(
-      (command) => command.toolName === "smithers.signals.send",
+      (command) => command.toolName === "smithers_signals_send",
     );
     expect(sendSignalCommand?.facts).toMatchObject({
-      smithersToolName: "smithers.signals.send",
-      semanticSmithersToolName: "smithers.signals.send",
+      smithersToolName: "smithers_signals_send",
+      semanticSmithersToolName: "smithers_signals_send",
       rawSmithersOperationName: "signals.send",
       transport: "embedded-runtime",
       runId,
@@ -1002,7 +1002,7 @@ describe("smithers.* tools", () => {
     });
   });
 
-  it("reads a real grouped transcript through smithers.get_chat_transcript", async () => {
+  it("reads a real grouped transcript through smithers_get_chat_transcript", async () => {
     const { cwd, store, manager, runtime } = createHarness();
     registerWorkflow(manager, createTranscriptWorkflowDefinition(smithersDbPath(cwd)));
 
@@ -1012,8 +1012,8 @@ describe("smithers.* tools", () => {
       manager,
     });
 
-    const runWorkflow = getTool(tools, "smithers.run_workflow");
-    const getChatTranscript = getTool(tools, "smithers.get_chat_transcript");
+    const runWorkflow = getTool(tools, "smithers_run_workflow");
+    const getChatTranscript = getTool(tools, "smithers_get_chat_transcript");
 
     const launched = await runWorkflow.execute("tool-run-transcript-workflow", {
       workflowId: "chat_transcript_probe",
@@ -1052,7 +1052,7 @@ describe("smithers.* tools", () => {
     ).toBe(true);
   });
 
-  it("exposes one stable smithers.run_workflow launcher and keeps workflow-specific schemas in discovery metadata", () => {
+  it("exposes one stable smithers_run_workflow launcher and keeps workflow-specific schemas in discovery metadata", () => {
     const { manager, runtime, store } = createHarness();
 
     const tools = createSmithersTools({
@@ -1061,9 +1061,9 @@ describe("smithers.* tools", () => {
       manager,
     });
 
-    expect(tools.find((tool) => tool.name === "smithers.run_workflow.hello_world")).toBeUndefined();
+    expect(tools.find((tool) => tool.name === "smithers_run_workflow.hello_world")).toBeUndefined();
 
-    const runWorkflowTool = getTool(tools, "smithers.run_workflow");
+    const runWorkflowTool = getTool(tools, "smithers_run_workflow");
     expect(runWorkflowTool.description).toContain("Supplying runId resumes exactly that run");
     expect(runWorkflowTool.description).toContain("Omitting runId requests a fresh launch");
     expect(runWorkflowTool.description).toContain(

@@ -1592,7 +1592,7 @@ export class SmithersRuntimeManager {
     ) {
       // The same terminal Smithers state can be observed more than once through the live
       // progress callback, the monitor's final flush, or later recovery reads. Once the
-      // handler has reconciled that terminal result and closed the span with thread.handoff,
+      // handler has reconciled that terminal result and closed the span with thread_handoff,
       // replaying it must not reopen the thread.
       this.clearThreadOwnedSessionWait(input.sessionId, input.threadId);
       return;
@@ -1646,7 +1646,7 @@ export class SmithersRuntimeManager {
         break;
       case "completed":
         // Workflow completion returns control to the handler. The delegated objective stays
-        // active until the handler explicitly closes the current span with thread.handoff.
+        // active until the handler explicitly closes the current span with thread_handoff.
         this.options.store.updateThread({
           threadId: input.threadId,
           status: "running-handler",
@@ -1930,7 +1930,7 @@ export class SmithersRuntimeManager {
     const workflowRun = this.findStructuredWorkflowRunBySmithersRunId(input.runId);
     if (!workflowRun) {
       throw new Error(
-        `Smithers run ${input.runId} is not owned by a svvy handler thread; cannot resume it from smithers.run_workflow.`,
+        `Smithers run ${input.runId} is not owned by a svvy handler thread; cannot resume it from smithers_run_workflow.`,
       );
     }
     if (workflowRun.sessionId !== input.sessionId) {

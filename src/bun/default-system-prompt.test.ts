@@ -29,8 +29,8 @@ describe("default system prompt", () => {
       expect(prompt).toContain("Do not revert, overwrite, rename, clean up");
       expect(prompt).toContain("Validate proportionally to risk");
       expect(prompt).toContain("When asked for review, use a code-review stance");
-      expect(prompt).toContain("Use cx.* for semantic code navigation");
-      expect(prompt).toContain("use cx.lang.list and cx.lang.add");
+      expect(prompt).toContain("Use cx_* for semantic code navigation");
+      expect(prompt).toContain("use cx_lang_list and cx_lang_add");
       expect(prompt).toContain("use bash when the work actually requires a shell command");
       expect(prompt).toContain("pi can run them in parallel");
       expect(prompt).toContain("Use read for visual inspection of local image files");
@@ -48,12 +48,12 @@ describe("default system prompt", () => {
     expect(DEFAULT_SYSTEM_PROMPT).toContain("interface SvvyApi");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_assets(");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_models(): Promise<ToolResult");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("api.cx");
-    expect(HANDLER_SYSTEM_PROMPT).toContain("workflow.* discovery");
-    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("workflow.* discovery");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("api.cx_");
+    expect(HANDLER_SYSTEM_PROMPT).toContain("workflow_* discovery");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("workflow_* discovery");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("Selected Web Provider: none");
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
-      "No `web.*` direct tools or `api.web` helpers are callable",
+      "No `web_search` or `web_fetch` direct tools or `api.web_*` helpers are callable",
     );
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "Loaded always-on prompt context: cx semantic code navigation.",
@@ -79,17 +79,17 @@ describe("default system prompt", () => {
 
   it("describes the adopted orchestrator and handler-thread tool split", () => {
     expect(DEFAULT_SYSTEM_PROMPT).toBe(buildSystemPrompt("orchestrator"));
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("delegate with thread.start");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("resume a completed handler with thread.resume");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("before thread.resume");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("delegate with thread_start");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("resume a completed handler with thread_resume");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("before thread_resume");
     expect(DEFAULT_SYSTEM_PROMPT).toContain('context: ["ci"]');
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
-      "Handler threads can supervise workflows through smithers.* tools",
+      "Handler threads can supervise workflows through smithers_* tools",
     );
-    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("return control with thread.handoff");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("return control with thread_handoff");
 
     expect(HANDLER_SYSTEM_PROMPT).toBe(buildSystemPrompt("handler"));
-    expect(HANDLER_SYSTEM_PROMPT).toContain("return control with thread.handoff");
+    expect(HANDLER_SYSTEM_PROMPT).toContain("return control with thread_handoff");
     expect(HANDLER_SYSTEM_PROMPT).toContain(
       "Loaded always-on prompt context: Smithers workflow supervision.",
     );
@@ -100,19 +100,19 @@ describe("default system prompt", () => {
       "Workflow waits, approvals, and resumes stay inside this handler thread.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain(
-      "Use `smithers.run_workflow({ workflowId, input })` for a fresh launch.",
+      "Use `smithers_run_workflow({ workflowId, input })` for a fresh launch.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain(
-      "Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
+      "Use `smithers_run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain("Omitting `runId` never silently resumes");
     expect(HANDLER_SYSTEM_PROMPT).toContain(
       "Different `workflowId` values can run concurrently under the same handler thread.",
     );
     expect(HANDLER_SYSTEM_PROMPT).toContain(
-      "Do not call thread.start from this surface in the adopted supervision model.",
+      "Do not call thread_start from this surface in the adopted supervision model.",
     );
-    expect(HANDLER_SYSTEM_PROMPT).not.toContain("thread.resume");
+    expect(HANDLER_SYSTEM_PROMPT).not.toContain("thread_resume");
     expect(HANDLER_SYSTEM_PROMPT).toContain(".svvy/workflows/components/agents.ts");
     expect(HANDLER_SYSTEM_PROMPT).toContain("explorer");
     expect(HANDLER_SYSTEM_PROMPT).toContain("implementer");
@@ -131,7 +131,7 @@ describe("default system prompt", () => {
     expect(EXECUTE_TYPESCRIPT_API_DECLARATION).not.toContain("workflow:");
   });
 
-  it("selects the active provider declaration for api.web", () => {
+  it("selects the active provider declaration for api.web_*", () => {
     const firecrawlPrompt = buildSystemPrompt("orchestrator", {
       webProvider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" }),
     });
@@ -159,7 +159,7 @@ describe("default system prompt", () => {
     );
     expect(HANDLER_WORKFLOW_AUTHORING_APPENDIX).not.toContain("interface WorkflowTaskAgentConfig");
     expect(HANDLER_WORKFLOW_AUTHORING_APPENDIX).not.toContain("interface SvvyApi");
-    expect(HANDLER_WORKFLOW_AUTHORING_APPENDIX).toContain("workflow.list_assets");
+    expect(HANDLER_WORKFLOW_AUTHORING_APPENDIX).toContain("workflow_list_assets");
   });
 
   it("injects optional prompt context only after that context is loaded", () => {
@@ -217,9 +217,9 @@ describe("default system prompt", () => {
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).toContain(
       "Work only within the task root or worktree provided by the workflow runtime.",
     );
-    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread.start");
-    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread.handoff");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread_start");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread_handoff");
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("request_context");
-    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("smithers.*");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("smithers_*");
   });
 });

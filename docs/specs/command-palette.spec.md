@@ -34,7 +34,7 @@ The command palette does not implement:
 
 - a standalone terminal, custom shell, readline loop, or alternate TUI stack outside pi
 - a second command execution runtime
-- a parallel workflow registry or `workflow.*` abstraction
+- a parallel workflow registry or `workflow_*` abstraction
 - direct Smithers execution from the shell outside the owning handler-thread model
 - direct Project CI execution outside normal orchestrator or handler-thread routing
 - file quick-open results before file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist
@@ -173,9 +173,9 @@ Rules:
 - opening an orchestrator session or handler-thread session uses normal live surface open behavior
 - opening a workflow task-agent projection session opens the existing workflow task-attempt inspector unless a future product decision promotes task agents to live interactive pane surfaces
 - Project CI run and configuration commands route through ordinary orchestrator or handler-thread turns
-- handler-thread actions target existing handler-thread surfaces or create handler work through `thread.start` only when the orchestrator model calls for delegation
+- handler-thread actions target existing handler-thread surfaces or create handler work through `thread_start` only when the orchestrator model calls for delegation
 - workflow inspector actions open inspection surfaces over durable workflow-run state and Smithers-native inspection APIs
-- Smithers operations remain handler-thread tools exposed under the `smithers.*` surface; the palette must not introduce a parallel `workflow.*` command system
+- Smithers operations remain handler-thread tools exposed under the `smithers_*` surface; the palette must not introduce a parallel `workflow_*` command system
 - settings and agent-setting commands open or update the product-owned settings surfaces when those features exist
 
 The command palette does not execute repository commands directly. Repository work still flows through pi-backed surfaces, normal turns, `execute_typescript`, handler threads, and Smithers-backed workflows.
@@ -243,7 +243,7 @@ Project CI:
 Handler threads:
 
 - the palette can open existing handler-thread surfaces
-- commands that need new delegated work still route through the orchestrator and `thread.start`
+- commands that need new delegated work still route through the orchestrator and `thread_start`
 
 Workflow inspectors:
 

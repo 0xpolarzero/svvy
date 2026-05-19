@@ -228,7 +228,7 @@ describe("structured session state write API", () => {
     const startWorkflow = store.createCommand({
       turnId: handlerTurn.id,
       threadId: handlerThread.id,
-      toolName: "workflow.start",
+      toolName: "workflow_start",
       executor: "smithers",
       visibility: "surface",
       title: "Start workflow",
@@ -289,7 +289,7 @@ describe("structured session state write API", () => {
     const resumeWorkflow = store.createCommand({
       turnId: handlerTurn.id,
       threadId: handlerThread.id,
-      toolName: "workflow.resume",
+      toolName: "workflow_resume",
       executor: "smithers",
       visibility: "surface",
       title: "Resume workflow",
@@ -861,7 +861,7 @@ describe("structured session state write API", () => {
     const workflowCommand = store.createCommand({
       turnId: handlerTurn.id,
       threadId: thread.id,
-      toolName: "workflow.start",
+      toolName: "workflow_start",
       executor: "smithers",
       visibility: "surface",
       title: "Start workflow",
@@ -1021,7 +1021,7 @@ describe("structured session state write API", () => {
     const launchCommand = store.createCommand({
       turnId: handlerTurn.id,
       threadId: thread.id,
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       executor: "smithers",
       visibility: "surface",
       title: "Run task workflow",
@@ -1188,7 +1188,7 @@ describe("structured session state write API", () => {
     const command = store.createCommand({
       turnId: turn.id,
       threadId: thread.id,
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       executor: "smithers",
       visibility: "surface",
       title: "Run identity workflow",

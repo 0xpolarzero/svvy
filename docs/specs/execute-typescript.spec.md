@@ -33,20 +33,20 @@ svvy ships the full cx API as native direct tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `cx.overview` | Inspect a semantic table of contents for a file or directory. |
-| `cx.symbols` | Search semantic symbols across the project. |
-| `cx.definition` | Read a symbol definition body without reading the full source file. |
-| `cx.references` | Find semantic references and callers for a symbol. |
-| `cx.lang.list` | List supported cx language grammars and installation state. |
-| `cx.lang.add` | Install one or more cx language grammars. |
-| `cx.lang.remove` | Remove one or more cx language grammars. |
-| `cx.cache.path` | Show the cx cache path for the workspace. |
-| `cx.cache.clean` | Clean the cx cache for the workspace. |
+| `cx_overview` | Inspect a semantic table of contents for a file or directory. |
+| `cx_symbols` | Search semantic symbols across the project. |
+| `cx_definition` | Read a symbol definition body without reading the full source file. |
+| `cx_references` | Find semantic references and callers for a symbol. |
+| `cx_lang_list` | List supported cx language grammars and installation state. |
+| `cx_lang_add` | Install one or more cx language grammars. |
+| `cx_lang_remove` | Remove one or more cx language grammars. |
+| `cx_cache_path` | Show the cx cache path for the workspace. |
+| `cx_cache_clean` | Clean the cx cache for the workspace. |
 
 Agents use this code-navigation ladder when the target language is supported:
 
 ```text
-cx.overview -> cx.symbols -> cx.definition / cx.references -> read / grep / find / ls
+cx_overview -> cx_symbols -> cx_definition / cx_references -> read / grep / find / ls
 ```
 
 ### Artifact Tools
@@ -55,9 +55,9 @@ Artifacts are first-class product state, so svvy provides artifact tools directl
 
 | Tool | Purpose |
 | --- | --- |
-| `artifact.write_text` | Persist a text artifact. |
-| `artifact.write_json` | Persist a JSON artifact. |
-| `artifact.attach_file` | Attach an existing file as artifact evidence. |
+| `artifact_write_text` | Persist a text artifact. |
+| `artifact_write_json` | Persist a JSON artifact. |
+| `artifact_attach_file` | Attach an existing file as artifact evidence. |
 
 Artifacts are for durable byproducts and evidence: logs, reports, large outputs, benchmark data, screenshots, workflow exports, or retained generated files that should be inspectable without becoming normal requested repository state.
 
@@ -67,14 +67,14 @@ Handler threads discover reusable workflow assets and workflow-authoring models 
 
 | Tool | Purpose |
 | --- | --- |
-| `workflow.list_assets` | List saved or artifact workflow definitions, prompts, and components. |
-| `workflow.list_models` | List provider/model options available for workflow task-agent authoring. |
+| `workflow_list_assets` | List saved or artifact workflow definitions, prompts, and components. |
+| `workflow_list_models` | List provider/model options available for workflow task-agent authoring. |
 
-Smithers runtime control remains on Smithers-native tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, and workflow wait/control tools. Workflow discovery tools only expose source-library metadata and model inventory.
+Smithers runtime control remains on Smithers-native tools such as `smithers_list_workflows`, `smithers_run_workflow`, `smithers_get_run`, and workflow wait/control tools. Workflow discovery tools only expose source-library metadata and model inventory.
 
-The orchestrator does not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow` through `execute_typescript`. When the orchestrator wants workflow action, it delegates by calling `thread.start`.
+The orchestrator does not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow_*` through `execute_typescript`. When the orchestrator wants workflow action, it delegates by calling `thread_start`.
 
-Workflow task agents do not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow` through `execute_typescript`. Their workflow context comes from the Smithers task attempt and their task-local instructions, not from workflow-supervision APIs.
+Workflow task agents do not receive direct workflow discovery tools, Smithers runtime tools, or `api.workflow_*` through `execute_typescript`. Their workflow context comes from the Smithers task attempt and their task-local instructions, not from workflow-supervision APIs.
 
 ### Web Tools
 
@@ -82,10 +82,10 @@ Web access is provided through provider-backed direct tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `web.search` | Search the public web through the active Web Provider. |
-| `web.fetch` | Fetch and extract a known public web page through the active Web Provider, writing fetched content to artifacts. |
+| `web_search` | Search the public web through the active Web Provider. |
+| `web_fetch` | Fetch and extract a known public web page through the active Web Provider, writing fetched content to artifacts. |
 
-The active provider is selected in settings. TinyFish and Firecrawl require their own API keys. By default no provider is selected, so `web.search`, `web.fetch`, and `api.web` are absent. The agent-facing schemas are generated from checked-in provider contracts so TinyFish and Firecrawl can each expose the shape that fits that provider best without fetching remote provider docs at runtime.
+The active provider is selected in settings. TinyFish and Firecrawl require their own API keys. By default no provider is selected, so `web_search`, `web_fetch`, and `api.web_*` are absent. The agent-facing schemas are generated from checked-in provider contracts so TinyFish and Firecrawl can each expose the shape that fits that provider best without fetching remote provider docs at runtime.
 
 Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
@@ -93,15 +93,15 @@ Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
 ### Orchestrator
 
-The orchestrator receives cx tools, direct coding tools, direct artifact tools, `execute_typescript`, and orchestration tools such as `thread.start` and `wait`. It uses direct tools for local bounded work and starts handler threads for larger owned work. It does not receive workflow discovery tools, Smithers tools, or `api.workflow`.
+The orchestrator receives cx tools, direct coding tools, direct artifact tools, `execute_typescript`, and orchestration tools such as `thread_start` and `wait`. It uses direct tools for local bounded work and starts handler threads for larger owned work. It does not receive workflow discovery tools, Smithers tools, or `api.workflow_*`.
 
 ### Handler
 
-Handler threads receive cx tools, direct coding tools, direct artifact tools, direct workflow discovery tools, `execute_typescript`, `request_context`, `thread.handoff`, wait tools, and Smithers supervision tools. Their `execute_typescript` SDK includes `api.workflow` for typed composition over workflow asset discovery and workflow-authoring model lookup. They inspect, edit, author, run, and reconcile workflows through their handler-owned direct and Smithers-native tool surface without relying on code mode as the primary I/O mechanism.
+Handler threads receive cx tools, direct coding tools, direct artifact tools, direct workflow discovery tools, `execute_typescript`, `request_context`, `thread_handoff`, wait tools, and Smithers supervision tools. Their `execute_typescript` SDK includes `api.workflow_*` for typed composition over workflow asset discovery and workflow-authoring model lookup. They inspect, edit, author, run, and reconcile workflows through their handler-owned direct and Smithers-native tool surface without relying on code mode as the primary I/O mechanism.
 
 ### Workflow Task Agent
 
-Workflow task agents receive task-local cx tools, direct coding tools, direct artifact tools, and `execute_typescript`. Their working directory is the Smithers task root or assigned worktree. They do not receive handler/orchestrator control tools, workflow discovery tools, Smithers supervision tools, or `api.workflow`.
+Workflow task agents receive task-local cx tools, direct coding tools, direct artifact tools, and `execute_typescript`. Their working directory is the Smithers task root or assigned worktree. They do not receive handler/orchestrator control tools, workflow discovery tools, Smithers supervision tools, or `api.workflow_*`.
 
 ## `execute_typescript` Input
 
@@ -131,7 +131,7 @@ The snippet can `return` any JSON-serializable value or a small diagnostic objec
 - Direct tools remain the preferred path for one-shot reads, edits, writes, and commands.
 - Code mode does not expose `edit` or `write`; file modification belongs to direct tools.
 - Code mode exposes only read-only cx operations.
-- Code mode does not expose Smithers runtime control. Handlers use direct `smithers.*` tools for Smithers supervision, not `api.smithers`.
+- Code mode does not expose Smithers runtime control. Handlers use direct `smithers_*` tools for Smithers supervision, not `api.smithers`.
 
 ## Injected API
 
@@ -224,25 +224,25 @@ The code-mode API duplicates these direct tools only:
 | `api.find` | `find` |
 | `api.ls` | `ls` |
 | `api.bash` | `bash` |
-| `api.cx.overview` | `cx.overview` |
-| `api.cx.symbols` | `cx.symbols` |
-| `api.cx.definition` | `cx.definition` |
-| `api.cx.references` | `cx.references` |
-| `api.cx.lang.list` | `cx.lang.list` |
-| `api.cx.cache.path` | `cx.cache.path` |
-| `api.artifact.write_text` | `artifact.write_text` |
-| `api.artifact.write_json` | `artifact.write_json` |
-| `api.artifact.attach_file` | `artifact.attach_file` |
-| `api.workflow.list_assets` | `workflow.list_assets`, handler only |
-| `api.workflow.list_models` | `workflow.list_models`, handler only |
-| `api.web.search` | `web.search`, only when a keyed web provider is ready |
-| `api.web.fetch` | `web.fetch`, only when a keyed web provider is ready |
+| `api.cx_overview` | `cx_overview` |
+| `api.cx_symbols` | `cx_symbols` |
+| `api.cx_definition` | `cx_definition` |
+| `api.cx_references` | `cx_references` |
+| `api.cx_lang_list` | `cx_lang_list` |
+| `api.cx_cache_path` | `cx_cache_path` |
+| `api.artifact_write_text` | `artifact_write_text` |
+| `api.artifact_write_json` | `artifact_write_json` |
+| `api.artifact_attach_file` | `artifact_attach_file` |
+| `api.workflow_list_assets` | `workflow_list_assets`, handler only |
+| `api.workflow_list_models` | `workflow_list_models`, handler only |
+| `api.web_search` | `web_search`, only when a keyed web provider is ready |
+| `api.web_fetch` | `web_fetch`, only when a keyed web provider is ready |
 
-`edit`, `write`, `cx.lang.add`, `cx.lang.remove`, and `cx.cache.clean` are not duplicated inside code mode. Agents call those tools directly so modifications to repository or cx runtime state stay explicit in the transcript and command stream.
+`edit`, `write`, `cx_lang_add`, `cx_lang_remove`, and `cx_cache_clean` are not duplicated inside code mode. Agents call those tools directly so modifications to repository or cx runtime state stay explicit in the transcript and command stream.
 
-`api.workflow` is generated only for handler-thread actors. It is a typed composition surface for workflow asset discovery and workflow-authoring model lookup. It is not a Smithers runtime-control surface, and it is absent for orchestrators and workflow task agents.
+`api.workflow_*` is generated only for handler-thread actors. It is a typed composition surface for workflow asset discovery and workflow-authoring model lookup. It is not a Smithers runtime-control surface, and it is absent for orchestrators and workflow task agents.
 
-`api.web` is an optional code-mode API block. It is generated only when the active Web Provider is selected and ready with its API key. Its concrete input and output types are generated from the active provider's checked-in direct-tool contracts. Changing providers or key state regenerates the `api.web` declaration before the next turn. It is meant for batching, filtering, aggregation, and artifact evidence over multiple independent searches or fetches. One-shot web lookups should use the direct `web.*` tools. `api.web.fetch` follows the same deterministic artifact-backed behavior as direct `web.fetch`: fetched page bodies are written to artifacts and the result returns artifact references. If no provider is ready, `api.web` is absent and snippets that reference it fail typecheck.
+`api.web_*` helpers are an optional code-mode API block. It is generated only when the active Web Provider is selected and ready with its API key. Its concrete input and output types are generated from the active provider's checked-in direct-tool contracts. Changing providers or key state regenerates the `api.web_*` declaration before the next turn. It is meant for batching, filtering, aggregation, and artifact evidence over multiple independent searches or fetches. One-shot web lookups should use the direct `web_search` or `web_fetch` tools. `api.web_fetch` follows the same deterministic artifact-backed behavior as direct `web_fetch`: fetched page bodies are written to artifacts and the result returns artifact references. If no provider is ready, `api.web_*` helpers are absent and snippets that reference it fail typecheck.
 
 ## Examples
 
@@ -269,9 +269,9 @@ return {
 This example is valid only in a handler-thread `execute_typescript` turn.
 
 ```ts
-const prompts = await api.workflow.list_assets({ kind: "prompt", scope: "saved" });
-const components = await api.workflow.list_assets({ kind: "component", scope: "saved" });
-const models = await api.workflow.list_models();
+const prompts = await api.workflow_list_assets({ kind: "prompt", scope: "saved" });
+const components = await api.workflow_list_assets({ kind: "component", scope: "saved" });
+const models = await api.workflow_list_models();
 
 return {
   promptCount: prompts.details.assets.length,
@@ -283,13 +283,13 @@ return {
 ### Semantic Navigation Batch
 
 ```ts
-const overview = await api.cx.overview({ path: "src/bun" });
-const symbols = await api.cx.symbols({ kind: "function", name: "create*" });
+const overview = await api.cx_overview({ path: "src/bun" });
+const symbols = await api.cx_symbols({ kind: "function", name: "create*" });
 const definitions = await Promise.all(
   symbols.details.json && Array.isArray(symbols.details.json)
     ? symbols.details.json
         .slice(0, 3)
-        .map((entry: any) => api.cx.definition({ name: String(entry.name), from: entry.file }))
+        .map((entry: any) => api.cx_definition({ name: String(entry.name), from: entry.file }))
     : [],
 );
 
@@ -308,7 +308,7 @@ const output = result.content
   .map((entry) => entry.text)
   .join("\n");
 
-await api.artifact.write_text({
+await api.artifact_write_text({
   name: "execute-typescript-test-output.txt",
   text: output,
 });

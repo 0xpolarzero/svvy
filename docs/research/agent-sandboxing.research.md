@@ -927,7 +927,7 @@ The research suggests several product decisions still need explicit resolution:
 
 1. When should `svvy` prefer local worktree execution versus remote task sandboxes?
 2. Will `execute_typescript` be a host API over the local machine, a guest API inside the sandbox, or a policy front-end that can target both?
-3. Will handler threads own sandbox lifecycle directly, or will Smithers own the sandbox and expose it through `smithers.*` tools?
+3. Will handler threads own sandbox lifecycle directly, or will Smithers own the sandbox and expose it through `smithers_*` tools?
 4. What is the minimum viable secret-brokering model for the first shipped version?
 5. Which operations are never permitted from workflow task agents regardless of approval state?
 6. What is the default sync mode for code changes produced by autonomous workflows?

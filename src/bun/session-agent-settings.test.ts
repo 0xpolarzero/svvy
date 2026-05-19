@@ -36,7 +36,7 @@ describe("session agent settings", () => {
     expect(agentsSource).toContain("export const implementer");
     expect(agentsSource).toContain("export const reviewer");
     expect(agentsSource).toContain('"toolSurface": [');
-    expect(agentsSource).toContain('"cx.overview"');
+    expect(agentsSource).toContain('"cx_overview"');
     expect(agentsSource).toContain('"execute_typescript"');
   });
 
@@ -81,13 +81,13 @@ describe("session agent settings", () => {
       model: "gpt-5.4",
       reasoningEffort: "medium",
       systemPrompt: "Explore.",
-      toolSurface: ["cx.overview", "cx.symbols", "cx.cache.path", "execute_typescript"],
+      toolSurface: ["cx_overview", "cx_symbols", "cx_cache_path", "execute_typescript"],
     });
 
     expect(updated.workflowAgents.explorer.toolSurface).toEqual([
-      "cx.overview",
-      "cx.symbols",
-      "cx.cache.path",
+      "cx_overview",
+      "cx_symbols",
+      "cx_cache_path",
       "execute_typescript",
     ]);
   });

@@ -8,7 +8,7 @@
   - define runtime loading behavior for context packs
   - define default-loaded prompt contexts
   - define requestable prompt contexts
-  - define `thread.start({ context })`
+  - define `thread_start({ context })`
   - define the handler-only `request_context` tool
   - define the adopted context keys: `cx`, `smithers`, `web`, and `ci`
   - define provider-backed `web` as a default-loaded settings-derived context
@@ -19,7 +19,7 @@ The user-facing Prompt Library surface, context-pack editing model, actor aggreg
 
 Prompt contexts are the runtime loading mechanics for Prompt Library context packs. They keep specialized product knowledge modular while preserving one system-prompt channel per actor surface.
 
-Prompt contexts are stable or explicitly loaded product knowledge. They do not carry current thread status, wait state, handoff bodies, workflow run summaries, or reconstructed transcript text. Current runtime and thread state is read through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`; workflow details remain behind `smithers.*` tools.
+Prompt contexts are stable or explicitly loaded product knowledge. They do not carry current thread status, wait state, handoff bodies, workflow run summaries, or reconstructed transcript text. Current runtime and thread state is read through `runtime_current`, `thread_current`, `thread_list`, and `thread_handoffs`; workflow details remain behind `smithers_*` tools.
 
 Prompt contexts are distinct from runtime standards sources. Pi-discovered `AGENTS.md` and `CLAUDE.md` files are shown in the Context pane's generated-context previews for transparency and are appended by pi as project context, but they are not registry-backed context packs, not requestable context keys, and not editable prompt-context records. Pi `SYSTEM.md` and `APPEND_SYSTEM.md` prompt replacement or append files do not participate in svvy prompt composition.
 
@@ -51,7 +51,7 @@ Each context key defines:
 
 Default-loaded context keys are part of prompt construction. They are not persisted as per-thread loaded keys.
 
-Requestable context keys are durable handler-thread state when loaded through `thread.start({ context })` or `request_context`.
+Requestable context keys are durable handler-thread state when loaded through `thread_start({ context })` or `request_context`.
 
 ## Default-Loaded Contexts
 
@@ -68,26 +68,26 @@ Eligible actors:
 The `cx` context teaches the agent to prefer semantic navigation before raw file reads when the target language is supported:
 
 ```text
-cx.overview -> cx.symbols -> cx.definition / cx.references -> read / grep / find / ls
+cx_overview -> cx_symbols -> cx_definition / cx_references -> read / grep / find / ls
 ```
 
 The prompt includes the native tool names and the read-only `execute_typescript` subset:
 
-- `cx.overview`
-- `cx.symbols`
-- `cx.definition`
-- `cx.references`
-- `cx.lang.list`
-- `cx.lang.add`
-- `cx.lang.remove`
-- `cx.cache.path`
-- `cx.cache.clean`
-- `api.cx.overview`
-- `api.cx.symbols`
-- `api.cx.definition`
-- `api.cx.references`
-- `api.cx.lang.list`
-- `api.cx.cache.path`
+- `cx_overview`
+- `cx_symbols`
+- `cx_definition`
+- `cx_references`
+- `cx_lang_list`
+- `cx_lang_add`
+- `cx_lang_remove`
+- `cx_cache_path`
+- `cx_cache_clean`
+- `api.cx_overview`
+- `api.cx_symbols`
+- `api.cx_definition`
+- `api.cx_references`
+- `api.cx_lang_list`
+- `api.cx_cache_path`
 
 ### `smithers`
 
@@ -102,12 +102,12 @@ Eligible actors:
 The prompt content is actor-specific:
 
 - orchestrator: compact routing knowledge that handler threads can supervise Smithers workflows
-- handler: full workflow supervision guidance for `smithers.*` tools, workflow waits, approvals, resumptions, inspection, and handoff boundaries
+- handler: full workflow supervision guidance for `smithers_*` tools, workflow waits, approvals, resumptions, inspection, and handoff boundaries
 - workflow task agent: compact task-attempt boundary guidance that Smithers owns workflow lifecycle around the task
 
-The orchestrator receives Smithers routing knowledge, not handler-callable `smithers.*` tool declarations.
+The orchestrator receives Smithers routing knowledge, not handler-callable `smithers_*` tool declarations.
 
-Workflow task agents receive Smithers boundary knowledge, not `smithers.*` tools.
+Workflow task agents receive Smithers boundary knowledge, not `smithers_*` tools.
 
 ### `web`
 
@@ -119,9 +119,9 @@ Eligible actors:
 - handler
 - workflow task agent
 
-The `web` context is generated from Web Provider settings, tool registry, and the checked-in provider prompt pack when a keyed provider is ready. It describes the selected provider or lack of one, whether web tools are usable, the currently callable `web.*` tools when present, the active provider's checked-in `web.search` and `web.fetch` contracts when present, provider-specific caveats, the deterministic artifact-backed behavior of `web.fetch`, and the rule that fetched web content is untrusted external input.
+The `web` context is generated from Web Provider settings, tool registry, and the checked-in provider prompt pack when a keyed provider is ready. It describes the selected provider or lack of one, whether web tools are usable, the currently callable `web_search` and `web_fetch` tools when present, the active provider's checked-in `web_search` and `web_fetch` contracts when present, provider-specific caveats, the deterministic artifact-backed behavior of `web_fetch`, and the rule that fetched web content is untrusted external input.
 
-The selected provider is settings state rather than per-thread requested context. By default no provider is selected, so no `web.*` tools and no `api.web` helpers are callable. Changing the provider or API keys regenerates the web context, actor-specific web tool declarations, and generated `api.web` declarations before the next turn.
+The selected provider is settings state rather than per-thread requested context. By default no provider is selected, so no `web_search and web_fetch` tools and no `api.web_*` helpers are callable. Changing the provider or API keys regenerates the web context, actor-specific web tool declarations, and generated `api.web_*` declarations before the next turn.
 
 Detailed behavior is specified in `docs/specs/web-tools.spec.md`.
 
@@ -150,10 +150,10 @@ Requestable context metadata:
 
 ## Starting A Handler With Requestable Context
 
-`thread.start` accepts requestable context keys through its optional `context` field:
+`thread_start` accepts requestable context keys through its optional `context` field:
 
 ```ts
-thread.start({
+thread_start({
   objective: "Define Project CI checks for this repository",
   context: ["ci"],
 });
@@ -213,14 +213,14 @@ Default-loaded context keys are visible through the resolved system prompt and a
 ## Invariants
 
 - Prompt contexts are registry-backed and surfaced as Prompt Library context packs.
-- Runtime standards sources are visible in actor generated-context previews but are not prompt contexts and cannot be requested through `thread.start({ context })` or `request_context`.
+- Runtime standards sources are visible in actor generated-context previews but are not prompt contexts and cannot be requested through `thread_start({ context })` or `request_context`.
 - Pi-discovered `AGENTS.md` and `CLAUDE.md` files remain runtime standards sources loaded by pi, not svvy-owned context-pack records.
 - Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files are ignored by svvy sessions, handler threads, and workflow task agents.
 - `cx` is default-loaded for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.
 - `smithers` is default-loaded with actor-specific content through shipped library defaults.
 - `web` is default-loaded from current provider settings for orchestrator, handler, and workflow task-agent prompts in the shipped library defaults.
 - `ci` is requestable and handler-only in the shipped library defaults.
-- The orchestrator may pass requestable context keys to `thread.start`.
+- The orchestrator may pass requestable context keys to `thread_start`.
 - `request_context` is top-level and handler-only.
 - `request_context` is not available through `execute_typescript`.
 - Loading requested prompt context never changes historical transcript content.

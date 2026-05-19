@@ -49,10 +49,10 @@ Workflow-inspector UI work remains explicitly out of scope for this section and 
 - [x] Run a simple composed scripted task through `execute_typescript`. Commit(s): `76cc8f3`
 - [x] Build a POC artifact and tracing pipeline for code-mode execution. Commit(s): `76cc8f3`
 - [x] Capture code-mode logs and nested command traces as artifacts and structured command records. Commit(s): `76cc8f3`, `fe53a3b`, `59fc34e`
-- [x] Keep only `thread.start`, `thread.handoff`, and `wait` as `svvy`-native control tools while exposing Smithers workflow operations through Smithers-native bridge tools. Commit(s): `a02bd48`
+- [x] Keep only `thread_start`, `thread_handoff`, and `wait` as `svvy`-native control tools while exposing Smithers workflow operations through Smithers-native bridge tools. Commit(s): `a02bd48`
 - [x] Keep the code-mode API bounded to duplicated direct tools that benefit from typed composition. Commit(s): `76cc8f3`, `29d8452`
 - [x] Expose native cx semantic navigation plus PI-backed file, search, edit, write, and bash tools as the normal coding-agent work surface. Commit(s): `76cc8f3`, `29d8452`
-- [x] Expose read-only cx navigation through the generated `execute_typescript` `api.cx` subset for typed composition. Commit(s): `673837a`
+- [x] Expose read-only cx navigation through the generated `execute_typescript` `api.cx_*` subset for typed composition. Commit(s): `673837a`
 - [x] Record direct tool calls and nested code-mode calls in the shared structured command model. Commit(s): `76cc8f3`, `29d8452`
 - [x] Persist normalized child-command facts for nested `api.*` calls while the parent `execute_typescript` attempt remains the main semantic unit. Commit(s): `76cc8f3`, `fe53a3b`, `59fc34e`
 - [x] Surface parent rollups and trace inspector detail without promoting child commands to top-level cards. Commit(s): `5b0a223`
@@ -63,10 +63,10 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 
 - [x] Define Web Provider settings for TinyFish and Firecrawl, including default no-provider state, readiness state, and secret storage for provider API keys. Commit(s): `788ecb1`, `c479f72`
 - [x] Build the `src/bun/web-runtime/` provider boundary with shared contracts, provider registry, prompt-context generation, tool adapters, and TinyFish SDK integration. Commit(s): `788ecb1`, `540e886`
-- [x] Expose provider-shaped direct `web.search` and deterministic artifact-backed `web.fetch` tools from TinyFish SDK contracts or checked-in Firecrawl contracts and prompt packs only when the selected provider is ready, with structured command facts and no API-key leakage. Commit(s): `788ecb1`, `540e886`
+- [x] Expose provider-shaped direct `web_search` and deterministic artifact-backed `web_fetch` tools from TinyFish SDK contracts or checked-in Firecrawl contracts and prompt packs only when the selected provider is ready, with structured command facts and no API-key leakage. Commit(s): `788ecb1`, `540e886`
 - [x] Generate always-loaded web prompt context from the active provider, including unavailable-provider guidance when the selected provider is missing required setup. Commit(s): `788ecb1`, `c479f72`, `540e886`
 - [x] Regenerate active actor tool declarations, `list_tools` output, and web prompt context after provider or key changes before the next turn. Commit(s): `788ecb1`, `c479f72`, `540e886`
-- [x] Add generated `execute_typescript` `api.web.search` and artifact-backed `api.web.fetch` helpers from the active provider's direct-tool contracts only when the selected keyed provider is ready. Commit(s): `788ecb1`, `540e886`
+- [x] Add generated `execute_typescript` `api.web_search` and artifact-backed `api.web_fetch` helpers from the active provider's direct-tool contracts only when the selected keyed provider is ready. Commit(s): `788ecb1`, `540e886`
 - [x] Keep self-hosted web fallback out of current scope unless explicitly adopted later, with self-hosted Firecrawl and OrioSearch retained only as heavier reference directions. Commit(s): `c479f72`, `540e886`
 
 ## 3. Turn Decisions And Delegation
@@ -74,8 +74,8 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Persist a per-turn top-level decision for orchestrator and handler-thread surfaces, using one shared model across routing and supervision. Commit(s): `d323012`
 - [x] Build a POC turn flow from message targeting to surface turn creation and command recording. Commit(s): `fff54d7`, `f53c9b8`
 - [x] Implement direct surface targeting so a pane send goes to either the orchestrator surface or a handler-thread surface. Commit(s): `f53c9b8`
-- [x] Add `thread.start` as the orchestrator-side delegation primitive. Commit(s): `f53c9b8`
-- [x] Implement minimal orchestrator routing for local reply, local `execute_typescript`, clarification, and `thread.start`. Commit(s): `d323012`
+- [x] Add `thread_start` as the orchestrator-side delegation primitive. Commit(s): `f53c9b8`
+- [x] Implement minimal orchestrator routing for local reply, local `execute_typescript`, clarification, and `thread_start`. Commit(s): `d323012`
 - [x] Re-enter orchestrator control from the handler-thread latest handoff, using durable thread state plus the latest handoff episode instead of raw transcript scanning. Commit(s): `d323012`, `fdaf460`
 
 ## 4. Handler Threads
@@ -85,15 +85,15 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Let handler threads receive direct user messages through the same surface model as the orchestrator. Commit(s): `f53c9b8`
 - [x] Make handler-thread wait and resume happen inside the thread itself instead of bouncing through the orchestrator by default. Commit(s): `f53c9b8`
 - [x] Keep handed-back handler threads directly interactive for follow-up chat without forcing a new thread. Commit(s): `ba5c3f0`
-- [x] Let a handed-back thread move from completed back to the correct active state when objective work resumes, including explicit orchestrator re-engagement through `thread.resume`, distinguishing handler-active from workflow-active supervision. Commit(s): `f53c9b8`, `a02bd48`
+- [x] Let a handed-back thread move from completed back to the correct active state when objective work resumes, including explicit orchestrator re-engagement through `thread_resume`, distinguishing handler-active from workflow-active supervision. Commit(s): `f53c9b8`, `a02bd48`
 - [x] Preserve earlier handoff points in thread history when the same thread later returns control again. Commit(s): `d323012`
 - [x] Allow the orchestrator to inspect a handler thread on demand without making that the default reconciliation path. Commit(s): `ba5c3f0`
-- [x] Make `thread.handoff` the explicit handler-thread handoff path so ordinary handler replies stay interactive and multi-turn. Commit(s): `fdaf460`
+- [x] Make `thread_handoff` the explicit handler-thread handoff path so ordinary handler replies stay interactive and multi-turn. Commit(s): `fdaf460`
 - [x] Load the orchestrator and handler-thread instructions through pi's true `systemPrompt` channel before sending each real user message. Commit(s): `8a41d08`
 - [x] Surface the active system prompt as a collapsible transcript item while keeping committed conversation history in pi session history rather than role-labelled prompt reconstruction. Commit(s): `8a41d08`
 - [x] Slice generated capability declarations by actor so the orchestrator prompt receives only orchestrator-callable tools while handler-thread prompts receive only handler-callable tools. Commit(s): `a02bd48`
-- [x] Teach the orchestrator prompt that workflow actions require delegation into a handler thread instead of exposing `smithers.*` directly in the orchestrator API block. Commit(s): `a02bd48`
-- [x] Teach handler-thread prompts that the orchestrator owns delegation and reconciliation while omitting orchestrator-only tool declarations such as `thread.start` unless nested delegation is explicitly adopted. Commit(s): `a02bd48`
+- [x] Teach the orchestrator prompt that workflow actions require delegation into a handler thread instead of exposing `smithers_*` directly in the orchestrator API block. Commit(s): `a02bd48`
+- [x] Teach handler-thread prompts that the orchestrator owns delegation and reconciliation while omitting orchestrator-only tool declarations such as `thread_start` unless nested delegation is explicitly adopted. Commit(s): `a02bd48`
 
 ## 5. Workflow Supervision Foundations
 
@@ -114,7 +114,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Persist durable reconnect cursors plus pending-versus-delivered handler-attention state on workflow runs so restart recovery and wake-up dedupe do not depend on process memory. Commit(s): `2f874a7`
 - [x] Emit explicit Smithers bridge lifecycle events for workflow projection, reconnect bootstrap, and handler-attention delivery. Commit(s): `2f874a7`
 - [x] Bootstrap workflow supervision from durable run state on session restore, rebuilding runtime ownership from workflow-run records and replaying only undelivered handler attention. Commit(s): `2f874a7`
-- [x] Keep `thread.handoff`, Smithers read APIs, selectors, and renderer reads free of lifecycle repair writes. Commit(s): `2f874a7`
+- [x] Keep `thread_handoff`, Smithers read APIs, selectors, and renderer reads free of lifecycle repair writes. Commit(s): `2f874a7`
 - [x] Guarantee that a workflow-run failure or cancellation moves the handler thread into troubleshooting before any later user-directed closure or handoff. Commit(s): `a02bd48`
 - [x] Derive workflow-run execution status, wait kind, heartbeat, finished timestamp, and summary from Smithers durable run state for runtime policy, handler tools, and workspace read models, while keeping `workflow_run` as the svvy ownership, cursor, attention, and product-link binding row. Commit(s): 59d7daf01f
 
@@ -125,19 +125,19 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Persist every authored short-lived workflow under `.svvy/artifacts/workflows/<artifact_workflow_id>/` with `definitions/`, `prompts/`, `components/`, `entries/`, and `metadata.json`. Commit(s): `dc1da8c`
 - [x] Define the saved workflow library layout under `.svvy/workflows/definitions/`, `.svvy/workflows/prompts/`, `.svvy/workflows/components/`, and `.svvy/workflows/entries/`. Commit(s): `37afcb3`, `4515233`
 - [x] Define the discovery metadata contract compiled from JSDoc headers in `ts` or `tsx` files and frontmatter in `mdx` prompt files. Commit(s): `37afcb3`, `4515233`
-- [x] Expose handler-owned `workflow.list_assets` directly and duplicate it as handler-only `api.workflow.list_assets(...)` for code-mode composition. Commit(s): `4515233`
-- [x] Expose handler-owned `workflow.list_models` directly and duplicate it as handler-only `api.workflow.list_models()` for code-mode composition. Commit(s): `4515233`
+- [x] Expose handler-owned `workflow_list_assets` directly and duplicate it as handler-only `api.workflow_list_assets(...)` for code-mode composition. Commit(s): `4515233`
+- [x] Expose handler-owned `workflow_list_models` directly and duplicate it as handler-only `api.workflow_list_models()` for code-mode composition. Commit(s): `4515233`
 - [x] Build a POC saved definition plus saved entry that are reused by a new short-lived artifact entry with different prompts, workflow agents, or config bound at authoring time. Commit(s): `37afcb3`
 - [x] Keep authored workflows artifact-only by default until the handler explicitly writes reusable files into `.svvy/workflows/`. Commit(s): `0b2d1ff`
 - [x] Run automatic saved-workflow validation after direct `write` or `edit` operations under `.svvy/workflows/...`, surfacing diagnostics through structured command records. Commit(s): `0b2d1ff`
-- [x] Surface all runnable saved and artifact entries through `smithers.list_workflows` and `smithers.run_workflow({ workflowId, input, runId? })`, with `smithers.list_workflows` returning each entry's explicit launch contract, `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `workflowId` filter support rather than relying on inferred import graphs. Commit(s): `4515233`, `dc1da8c`
+- [x] Surface all runnable saved and artifact entries through `smithers_list_workflows` and `smithers_run_workflow({ workflowId, input, runId? })`, with `smithers_list_workflows` returning each entry's explicit launch contract, `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `workflowId` filter support rather than relying on inferred import graphs. Commit(s): `4515233`, `dc1da8c`
 - [x] Persist workflow agent files as ordinary saved workflow components that handlers discover by path and inspect through file reads. Commit(s): `4515233`
 
 ## 7. Project CI Lane
 
 - [x] Build a POC prompt context registry with `ci` as the first key. Commit(s): `2a5dbbe`
 - [x] Add the handler-only `request_context({ keys })` tool and persist loaded context keys on handler threads. Commit(s): `2a5dbbe`
-- [x] Extend `thread.start` so the orchestrator can preload requestable context with `context: ["ci"]`. Commit(s): `2a5dbbe`
+- [x] Extend `thread_start` so the orchestrator can preload requestable context with `context: ["ci"]`. Commit(s): `2a5dbbe`
 - [x] Make Project CI configuration happen organically through normal handler-thread work, with `context: ["ci"]` preloaded for first-turn CI authoring or requested later through `request_context({ keys: ["ci"] })`, instead of a setup launcher or CI-specific runtime. Commit(s): `2a5dbbe`
 - [x] Define the conventional Project CI saved-workflow layout under `.svvy/workflows/{definitions,prompts,components,entries}/ci/`, without implying a shipped or auto-created default CI entry. Commit(s): `2a5dbbe`
 - [x] Extend runnable workflow entry discovery with optional `productKind` and `resultSchema` metadata. Commit(s): `2a5dbbe`
@@ -246,7 +246,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [x] Persist generated top-level session titles, title-generation lifecycle state, and the first-turn trigger so app restart cannot duplicate or lose title generation. Commit(s): `354db28`
 - [x] Block manual session rename while a title-generation job is pending or running, then release the lock after success, failure, or cancellation. Commit(s): `354db28`
 - [x] Freeze auto-titling after manual rename or after the first successful generated title. Commit(s): `354db28`
-- [x] Generate handler-thread titles with the same `namer` session agent used for top-level sessions, using the orchestrator-supplied `thread.start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
+- [x] Generate handler-thread titles with the same `namer` session agent used for top-level sessions, using the orchestrator-supplied `thread_start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
 
 ## 13. Composer Mention Links
 
@@ -289,7 +289,7 @@ Current product decisions for this section are specified in `docs/specs/prompt-l
 - [x] Render actor aggregate recipes for orchestrator, handler, and workflow task-agent prompts, linking instruction and context-pack rows back to their editable blocks and showing generated rows as scrollable code previews with editor links to generated context files. Commit(s): `118fd39c9f`
 - [ ] Store user-named Context Library snapshots plus durable surface bindings with resolved prompt hashes and runtime standards hashes so historical sessions, handler threads, and workflow task-agent attempts remain inspectable after app restart.
 - [ ] Add stale-prompt diff and remaining action controls for existing orchestrator and handler-thread surfaces, including grouped semantic diff, raw text diff, and keep-current dismissal.
-- [ ] Route `thread.start({ context })` and handler-side `request_context({ keys })` through requestable Context Library context packs while preserving durable loaded context keys on handler threads.
+- [ ] Route `thread_start({ context })` and handler-side `request_context({ keys })` through requestable Context Library context packs while preserving durable loaded context keys on handler threads.
 
 ## 14A. Ambient Agent Resources
 

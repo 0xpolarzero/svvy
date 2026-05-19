@@ -6,15 +6,15 @@ describe("cx tools", () => {
     const tools = createCxTools({ cwd: "/workspace", runner: createRunner() });
 
     expect(tools.map((tool) => tool.name)).toEqual([
-      "cx.overview",
-      "cx.symbols",
-      "cx.definition",
-      "cx.references",
-      "cx.lang.list",
-      "cx.lang.add",
-      "cx.lang.remove",
-      "cx.cache.path",
-      "cx.cache.clean",
+      "cx_overview",
+      "cx_symbols",
+      "cx_definition",
+      "cx_references",
+      "cx_lang_list",
+      "cx_lang_add",
+      "cx_lang_remove",
+      "cx_cache_path",
+      "cx_cache_clean",
     ]);
   });
 
@@ -28,7 +28,7 @@ describe("cx tools", () => {
       }),
     });
 
-    const result = await getTool(tools, "cx.symbols").execute("tool-call-1", {
+    const result = await getTool(tools, "cx_symbols").execute("tool-call-1", {
       kind: "function",
       name: "ma*",
       limit: 5,
@@ -50,7 +50,7 @@ describe("cx tools", () => {
       runner: createRunner(() => ({ exitCode: 2, stderr: "missing grammar" })),
     });
 
-    await expect(getTool(tools, "cx.overview").execute("tool-call-1", {})).rejects.toThrow(
+    await expect(getTool(tools, "cx_overview").execute("tool-call-1", {})).rejects.toThrow(
       "missing grammar",
     );
   });

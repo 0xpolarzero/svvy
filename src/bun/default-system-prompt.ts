@@ -30,8 +30,8 @@ export function buildExecuteTypescriptPromptSection(
       : "batching, looping, filtering, aggregation, bash-backed inspection, or artifact evidence";
   const duplicatedTools =
     actor === "handler"
-      ? "read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, the read-only cx.* subset, and workflow.* discovery"
-      : "read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, and the read-only cx.* subset";
+      ? "read, grep, find, ls, bash, artifact_* tools, web_search and web_fetch when a keyed web provider is ready, the read-only cx_* subset, and workflow_* discovery"
+      : "read, grep, find, ls, bash, artifact_* tools, web_search and web_fetch when a keyed web provider is ready, and the read-only cx_* subset";
   return [
     `Use execute_typescript only when a small TypeScript program is genuinely useful for ${compositionUses}.`,
     "When you call execute_typescript, write plain TypeScript against the injected `api` object and `console`.",
@@ -61,35 +61,35 @@ const COMMON_INSTRUCTION_BODY = [
   "Treat the worktree as shared user state. Do not revert, overwrite, rename, clean up, or otherwise erase changes you did not make unless the user explicitly asks.",
   "Validate proportionally to risk: use focused checks for touched behavior when practical, broaden checks for shared contracts or user-facing flows, and say plainly when validation is skipped or blocked.",
   "When asked for review, use a code-review stance: lead with concrete, actionable bugs or regressions, include tight file and line evidence, and avoid filling the review with style preferences.",
-  "Use the available direct tools for ordinary repository work. Use cx.* for semantic code navigation before reading whole files when cx can cover the language; use cx.lang.list and cx.lang.add when a relevant grammar may be available but is not installed.",
+  "Use the available direct tools for ordinary repository work. Use cx_* for semantic code navigation before reading whole files when cx can cover the language; use cx_lang_list and cx_lang_add when a relevant grammar may be available but is not installed.",
   "When multiple tool calls are independent, issue them together in the same assistant message so pi can run them in parallel; use sequential calls only when a later call depends on an earlier result.",
   "Use edit for targeted changes to existing files and write only for new files or intentional full rewrites.",
   "Prefer read, grep, find, and ls over bash for file exploration; use bash when the work actually requires a shell command.",
   "Use read for visual inspection of local image files as well as text files; image reads return image attachments to the model.",
   "Use list_tools when you need to inspect the exact callable tool surface for the current actor.",
-  "Use runtime.current only when you need to confirm which svvy runtime actor and surface you are operating in.",
-  "Use thread.list when delegated thread state matters, and use thread.handoffs when reconciling or checking durable handoff episodes.",
+  "Use runtime_current only when you need to confirm which svvy runtime actor and surface you are operating in.",
+  "Use thread_list when delegated thread state matters, and use thread_handoffs when reconciling or checking durable handoff episodes.",
   "Do not expect runtime, thread, handoff, or workflow state to be repeated in user messages.",
   "Create artifacts only for durable byproducts or evidence that should remain inspectable but should not normally be placed in the repository; use write/edit for requested workspace files and prose for small answers.",
 ].join("\n\n");
 
 const ORCHESTRATOR_INSTRUCTION_BODY = [
-  "This surface is the orchestrator. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, delegate with thread.start, resume a completed handler with thread.resume, or enter wait.",
+  "This surface is the orchestrator. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, delegate with thread_start, resume a completed handler with thread_resume, or enter wait.",
   "The orchestrator delegates objectives into handler threads. It does not directly supervise Smithers workflow runs.",
-  "Handler threads can supervise workflows through smithers.* tools, but those tool declarations are not callable from this surface.",
-  "Use thread.list and thread.handoffs before thread.resume when an existing completed handler thread may already have the right context for follow-up work.",
+  "Handler threads can supervise workflows through smithers_* tools, but those tool declarations are not callable from this surface.",
+  "Use thread_list and thread_handoffs before thread_resume when an existing completed handler thread may already have the right context for follow-up work.",
   "If a delegated objective needs workflow authoring or saving reusable workflow assets, delegate that work to a handler thread instead of trying to do it from the orchestrator surface.",
   buildOrchestratorContextRoutingPrompt(),
 ].join("\n\n");
 
 const HANDLER_INSTRUCTION_BODY = [
-  "This surface is a delegated handler thread. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, supervise workflows through smithers.* tools, enter wait, or return control with thread.handoff.",
+  "This surface is a delegated handler thread. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, supervise workflows through smithers_* tools, enter wait, or return control with thread_handoff.",
   "Ordinary replies inside a handler thread do not close it or emit handoff episodes.",
-  "Use thread.handoff only when the current objective span is ready to hand control back to the orchestrator with durable state.",
-  "Workflow waits, approvals, and resumes stay inside this handler thread. Do not call thread.handoff while a supervised workflow on this thread is still running or waiting; resolve it, wait for the needed input, or cancel it first.",
-  "Do not call thread.start from this surface in the adopted supervision model.",
-  "Use thread.current when the current objective, wait state, active workflow ownership, loaded prompt context, or prior handoff state matters.",
-  "Do not infer current workflow details from prompt context; call Smithers tools using active workflow run ids from thread.current.",
+  "Use thread_handoff only when the current objective span is ready to hand control back to the orchestrator with durable state.",
+  "Workflow waits, approvals, and resumes stay inside this handler thread. Do not call thread_handoff while a supervised workflow on this thread is still running or waiting; resolve it, wait for the needed input, or cancel it first.",
+  "Do not call thread_start from this surface in the adopted supervision model.",
+  "Use thread_current when the current objective, wait state, active workflow ownership, loaded prompt context, or prior handoff state matters.",
+  "Do not infer current workflow details from prompt context; call Smithers tools using active workflow run ids from thread_current.",
   "When workflow help is justified, use this decision order: direct tool work, then saved runnable entries, then artifact-workflow authoring, and save reusable pieces only on explicit request through normal workspace writes into `.svvy/workflows/...`.",
   "When authoring Smithers workflow tasks, inspect `.svvy/workflows/components/agents.ts` and reuse its `explorer`, `implementer`, or `reviewer` exports when one matches the task. If none fit, define a task-specific agent in the artifact workflow. Add or revise saved workflow agent components only when the user explicitly wants reusable workspace infrastructure.",
   buildOptionalPromptContextRegistryPrompt(),
@@ -107,42 +107,42 @@ const CX_CONTEXT_BODY = [
   "cx is the semantic code-navigation layer for repository inspection. Prefer cx for structural exploration before reading full files when cx can cover the language.",
   "",
   "Use this escalation order for code navigation:",
-  "- `cx.overview` for a directory or file table of contents.",
-  "- `cx.symbols` to search project symbols by kind, name glob, or file.",
-  "- `cx.definition` to inspect a symbol body without reading the full file.",
-  "- `cx.references` to find callers and usage sites.",
-  "- `cx.lang.list` when you need to check whether a grammar is available or installed.",
-  "- `cx.lang.add` when a relevant grammar is available but missing and semantic navigation would materially help the task.",
+  "- `cx_overview` for a directory or file table of contents.",
+  "- `cx_symbols` to search project symbols by kind, name glob, or file.",
+  "- `cx_definition` to inspect a symbol body without reading the full file.",
+  "- `cx_references` to find callers and usage sites.",
+  "- `cx_lang_list` when you need to check whether a grammar is available or installed.",
+  "- `cx_lang_add` when a relevant grammar is available but missing and semantic navigation would materially help the task.",
   "- `read`, `grep`, `find`, or `ls` when semantic navigation is insufficient, when raw text is required, or when cx cannot cover the target language.",
   "",
   "cx command behavior:",
-  "- `cx.overview` accepts a path and can include full per-file detail for directories.",
-  "- `cx.symbols` supports `kind`, `name`, `file`, pagination, and JSON output through the native tool result.",
-  "- `cx.definition` supports `name`, `kind`, `from`, pagination, and `maxLines` for large bodies.",
-  "- `cx.references` supports `name`, `file`, `unique`, pagination, and JSON output through the native tool result.",
-  "- `cx.lang.list`, `cx.lang.add`, `cx.lang.remove`, `cx.cache.path`, and `cx.cache.clean` manage grammars and cache state.",
+  "- `cx_overview` accepts a path and can include full per-file detail for directories.",
+  "- `cx_symbols` supports `kind`, `name`, `file`, pagination, and JSON output through the native tool result.",
+  "- `cx_definition` supports `name`, `kind`, `from`, pagination, and `maxLines` for large bodies.",
+  "- `cx_references` supports `name`, `file`, `unique`, pagination, and JSON output through the native tool result.",
+  "- `cx_lang_list`, `cx_lang_add`, `cx_lang_remove`, `cx_cache_path`, and `cx_cache_clean` manage grammars and cache state.",
   "",
-  "Use top-level `cx.*` tools for ordinary semantic navigation. Inside `execute_typescript`, use only the read-only `api.cx.*` subset when TypeScript control flow is needed for batching or aggregation.",
+  "Use top-level `cx_*` tools for ordinary semantic navigation. Inside `execute_typescript`, use only the read-only `api.cx_*` subset when TypeScript control flow is needed for batching or aggregation.",
 ].join("\n");
 
 const SMITHERS_ORCHESTRATOR_CONTEXT_BODY = [
   "Loaded always-on prompt context: Smithers workflow routing.",
   "",
-  "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers.*` tool declarations.",
+  "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers_*` tool declarations.",
   "",
-  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`, or use `thread.resume` when a completed handler thread already has the right delegated context for follow-up work.",
+  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread_start`, or use `thread_resume` when a completed handler thread already has the right delegated context for follow-up work.",
 ].join("\n");
 
 const SMITHERS_HANDLER_CONTEXT_BODY = [
   "Loaded always-on prompt context: Smithers workflow supervision.",
   "",
-  "Handler threads supervise Smithers workflow runs through native `smithers.*` tools. Use direct tools for simple repository work, then saved runnable entries, then artifact workflow authoring when a workflow graph is the right unit of work.",
+  "Handler threads supervise Smithers workflow runs through native `smithers_*` tools. Use direct tools for simple repository work, then saved runnable entries, then artifact workflow authoring when a workflow graph is the right unit of work.",
   "",
-  "Use `smithers.list_workflows` to discover runnable saved and artifact entries. Use `smithers.run_workflow({ workflowId, input })` for a fresh launch. Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run. Omitting `runId` never silently resumes; if this handler already owns a nonterminal run with the same `workflowId`, the call is rejected. Different `workflowId` values can run concurrently under the same handler thread.",
+  "Use `smithers_list_workflows` to discover runnable saved and artifact entries. Use `smithers_run_workflow({ workflowId, input })` for a fresh launch. Use `smithers_run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run. Omitting `runId` never silently resumes; if this handler already owns a nonterminal run with the same `workflowId`, the call is rejected. Different `workflowId` values can run concurrently under the same handler thread.",
   "",
-  "Use Smithers inspection and control tools for supervision: `smithers.get_run`, `smithers.watch_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, `smithers.get_chat_transcript`, `smithers.get_run_events`, `smithers.runs.cancel`, `smithers.signals.send`, `smithers.frames.list`, `smithers.getDevToolsSnapshot`, and `smithers.streamDevTools`.",
+  "Use Smithers inspection and control tools for supervision: `smithers_get_run`, `smithers_watch_run`, `smithers_explain_run`, `smithers_list_pending_approvals`, `smithers_resolve_approval`, `smithers_get_node_detail`, `smithers_list_artifacts`, `smithers_get_chat_transcript`, `smithers_get_run_events`, `smithers_runs_cancel`, `smithers_signals_send`, `smithers_frames_list`, `smithers_get_devtools_snapshot`, and `smithers_stream_devtools`.",
   "",
-  "Workflow waits, approvals, retries, repairs, and resumptions stay inside the supervising handler thread. Call `thread.handoff` only after the current objective span is no longer running or waiting on an owned workflow run.",
+  "Workflow waits, approvals, retries, repairs, and resumptions stay inside the supervising handler thread. Call `thread_handoff` only after the current objective span is no longer running or waiting on an owned workflow run.",
 ].join("\n");
 
 const SMITHERS_WORKFLOW_TASK_CONTEXT_BODY = [
@@ -174,8 +174,8 @@ function buildCommonInstructions(actor: SvvyActorKind): string[] {
   return common.filter(
     (instruction) =>
       !instruction.includes("handoff episodes") &&
-      !instruction.includes("runtime.current") &&
-      !instruction.includes("thread.list") &&
+      !instruction.includes("runtime_current") &&
+      !instruction.includes("thread_list") &&
       !instruction.includes("runtime, thread, handoff, or workflow state"),
   );
 }

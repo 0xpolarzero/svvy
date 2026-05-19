@@ -65,7 +65,7 @@ function createRuntime(
   };
 }
 
-describe("thread.resume tool", () => {
+describe("thread_resume tool", () => {
   it("records a command and delegates durable resume enqueueing to the catalog bridge", async () => {
     const store = createStore();
     const runtime = createRuntime(store);
@@ -92,7 +92,7 @@ describe("thread.resume tool", () => {
     });
 
     const snapshot = store.getSessionState("session-thread-resume-tool");
-    const command = snapshot.commands.find((entry) => entry.toolName === "thread.resume");
+    const command = snapshot.commands.find((entry) => entry.toolName === "thread_resume");
 
     expect(observedCommandId as string | null).toBe(command?.id ?? null);
     expect(result.details).toMatchObject({
@@ -128,6 +128,6 @@ describe("thread.resume tool", () => {
         threadId: "thread-resume-001",
         message: "Continue.",
       }),
-    ).rejects.toThrow("thread.resume can only run from the orchestrator surface.");
+    ).rejects.toThrow("thread_resume can only run from the orchestrator surface.");
   });
 });

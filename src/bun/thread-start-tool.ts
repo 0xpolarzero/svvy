@@ -13,7 +13,7 @@ import {
   type OptionalPromptContextKey,
 } from "./prompt-contexts";
 
-export const START_THREAD_TOOL_NAME = "thread.start";
+export const START_THREAD_TOOL_NAME = "thread_start";
 
 export const startThreadParamsSchema = Type.Object(
   {
@@ -76,7 +76,7 @@ export function createStartThreadTool(options: {
 
       options.store.setTurnDecision({
         turnId: runtime.turnId,
-        decision: "thread.start",
+        decision: "thread_start",
         onlyIfPending: true,
       });
 

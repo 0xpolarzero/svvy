@@ -14,10 +14,10 @@ import {
 
 const SPECIALIZED_TOOL_NAMES = new Set([
   "execute_typescript",
-  "thread.start",
-  "thread.resume",
+  "thread_start",
+  "thread_resume",
   "request_context",
-  "thread.handoff",
+  "thread_handoff",
   "wait",
   RUNTIME_CURRENT_TOOL_NAME,
   THREAD_CURRENT_TOOL_NAME,
@@ -49,7 +49,7 @@ export function createToolExecutionCommandTracker(options: {
     handleToolExecutionStart(input) {
       if (
         SPECIALIZED_TOOL_NAMES.has(input.toolName) ||
-        input.toolName.startsWith("smithers.") ||
+        input.toolName.startsWith("smithers_") ||
         commandIdByToolCallId.has(input.toolCallId)
       ) {
         return;
@@ -129,21 +129,21 @@ function inferVisibility(toolName: string): StructuredCommandVisibility {
       "grep",
       "find",
       "ls",
-      "workflow.list_assets",
-      "workflow.list_models",
-      "web.search",
+      "workflow_list_assets",
+      "workflow_list_models",
+      "web_search",
     ].includes(toolName)
   ) {
     return "trace";
   }
   if (
     [
-      "cx.overview",
-      "cx.symbols",
-      "cx.definition",
-      "cx.references",
-      "cx.lang.list",
-      "cx.cache.path",
+      "cx_overview",
+      "cx_symbols",
+      "cx_definition",
+      "cx_references",
+      "cx_lang_list",
+      "cx_cache_path",
     ].includes(toolName)
   ) {
     return "trace";

@@ -244,24 +244,23 @@ describe("execute_typescript tool", () => {
     });
 
     const typechecked = await tool.execute("tool-call-workflow-typecheck-denied", {
-      typescriptCode: 'return await api.workflow.list_assets({ scope: "saved" });',
+      typescriptCode: 'return await api.workflow_list_assets({ scope: "saved" });',
     });
     expect(typechecked.details.success).toBe(false);
     expect(typechecked.details.error?.stage).toBe("typecheck");
     expect(typechecked.details.error?.message).toContain("workflow");
 
     const dynamic = await tool.execute("tool-call-workflow-runtime-denied", {
-      typescriptCode:
-        'return await (api as unknown as { workflow: { list_assets(input?: unknown): Promise<unknown> } }).workflow.list_assets({ scope: "saved" });',
+      typescriptCode: 'return await (api as any).workflow_list_assets({ scope: "saved" });',
     });
     expect(dynamic.details.success).toBe(false);
     expect(dynamic.details.error?.stage).toBe("runtime");
     expect(dynamic.details.error?.message).toBe(
-      "execute_typescript api.workflow is not available for orchestrator actors.",
+      "execute_typescript api.workflow_* helpers are not available for orchestrator actors.",
     );
     const snapshot = store.getSessionState("session-orchestrator-workflow-denied");
     expect(snapshot.commands.map((command) => command.toolName)).not.toContain(
-      "workflow.list_assets",
+      "workflow_list_assets",
     );
   });
 
@@ -291,10 +290,10 @@ describe("execute_typescript tool", () => {
     const result = await tool.execute("tool-call-3", {
       typescriptCode: [
         'const file = await api.read({ path: "notes.txt" });',
-        'const overview = await api.cx.overview({ path: "." });',
+        'const overview = await api.cx_overview({ path: "." });',
         'const status = await api.bash({ command: "printf clean" });',
-        'const assets = await api.workflow.list_assets({ kind: "prompt", scope: "saved" });',
-        "const artifact = await api.artifact.write_text({",
+        'const assets = await api.workflow_list_assets({ kind: "prompt", scope: "saved" });',
+        "const artifact = await api.artifact_write_text({",
         '  name: "summary.md",',
         '  text: `${file.content[0]?.type === "text" ? file.content[0].text.split("\\n")[0] : ""}:${status.content[0]?.type === "text" ? status.content[0].text.trim() : ""}`',
         "});",
@@ -329,16 +328,16 @@ describe("execute_typescript tool", () => {
     expect(parentCommand?.summary).toContain("Discovered 1 workflow asset");
     expect(childCommands.map((command) => command.toolName)).toEqual([
       "read",
-      "cx.overview",
+      "cx_overview",
       "bash",
-      "workflow.list_assets",
-      "artifact.write_text",
+      "workflow_list_assets",
+      "artifact_write_text",
     ]);
     expect(childCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           parentCommandId: parentCommand!.id,
-          toolName: "cx.overview",
+          toolName: "cx_overview",
           executor: "execute_typescript",
           visibility: "trace",
           status: "succeeded",
@@ -370,7 +369,7 @@ describe("execute_typescript tool", () => {
         }),
         expect.objectContaining({
           parentCommandId: parentCommand!.id,
-          toolName: "artifact.write_text",
+          toolName: "artifact_write_text",
           executor: "execute_typescript",
           visibility: "summary",
           status: "succeeded",
@@ -387,7 +386,7 @@ describe("execute_typescript tool", () => {
     ]);
   });
 
-  it("exposes api.web and records artifact-backed fetch child facts", async () => {
+  it("exposes api.web_* and records artifact-backed fetch child facts", async () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web", workspaceCwd);
     const runtime = createRuntime(store, "session-web", "Fetch web evidence");
@@ -414,7 +413,7 @@ describe("execute_typescript tool", () => {
 
     const result = await tool.execute("tool-call-web", {
       typescriptCode: [
-        'const fetched = await api.web.fetch({ url: "https://example.com/reference" });',
+        'const fetched = await api.web_fetch({ url: "https://example.com/reference" });',
         "const artifactPath = fetched.details.artifacts?.[0]?.path;",
         "if (!artifactPath) throw new Error('missing artifact path');",
         "const body = await api.read({ path: artifactPath });",
@@ -424,21 +423,21 @@ describe("execute_typescript tool", () => {
 
     expect(result.details.success).toBe(true);
     const snapshot = store.getSessionState("session-web");
-    const webFetch = snapshot.commands.find((command) => command.toolName === "web.fetch");
+    const webFetch = snapshot.commands.find((command) => command.toolName === "web_fetch");
     expect(webFetch).toMatchObject({
       executor: "execute_typescript",
       status: "succeeded",
       visibility: "summary",
       facts: expect.objectContaining({
         providerId: "firecrawl",
-        toolName: "web.fetch",
+        toolName: "web_fetch",
         artifactPaths: expect.arrayContaining([expect.stringContaining("web-fetch")]),
         metadataArtifactId: expect.any(String),
       }),
     });
     expect(snapshot.commands.map((command) => command.toolName)).toEqual([
       "execute_typescript",
-      "web.fetch",
+      "web_fetch",
       "read",
     ]);
     expect(snapshot.artifacts.map((artifact) => artifact.name)).toEqual([
@@ -448,7 +447,7 @@ describe("execute_typescript tool", () => {
     ]);
   });
 
-  it("typechecks api.web against the selected provider contract", async () => {
+  it("typechecks api.web_* against the selected provider contract", async () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web-types", workspaceCwd);
     const runtime = createRuntime(store, "session-web-types", "Check web provider typing");
@@ -471,19 +470,19 @@ describe("execute_typescript tool", () => {
 
     const accepted = await tool.execute("tool-call-web-types-ok", {
       typescriptCode:
-        'return await api.web.search({ query: "docs", scrapeOptions: { formats: ["markdown"], onlyMainContent: true } });',
+        'return await api.web_search({ query: "docs", scrapeOptions: { formats: ["markdown"], onlyMainContent: true } });',
     });
     expect(accepted.details.success).toBe(true);
 
     const rejected = await tool.execute("tool-call-web-types-bad", {
-      typescriptCode: 'return await api.web.search({ query: "docs", site: "example.com" });',
+      typescriptCode: 'return await api.web_search({ query: "docs", site: "example.com" });',
     });
     expect(rejected.details.success).toBe(false);
     expect(rejected.details.error?.stage).toBe("typecheck");
     expect(rejected.details.error?.message).toContain("site");
   });
 
-  it("typechecks api.web against the TinyFish SDK fetch contract", async () => {
+  it("typechecks api.web_* against the TinyFish SDK fetch contract", async () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web-tinyfish-types", workspaceCwd);
     const runtime = createRuntime(store, "session-web-tinyfish-types", "Check TinyFish web typing");
@@ -518,12 +517,12 @@ describe("execute_typescript tool", () => {
     try {
       const accepted = await tool.execute("tool-call-tinyfish-web-types-ok", {
         typescriptCode:
-          'const result = await api.web.fetch({ urls: ["https://example.com/docs"], links: true }); return result.details.providerId;',
+          'const result = await api.web_fetch({ urls: ["https://example.com/docs"], links: true }); return result.details.providerId;',
       });
       expect(accepted.details.success).toBe(true);
 
       const rejected = await tool.execute("tool-call-tinyfish-web-types-bad", {
-        typescriptCode: 'return await api.web.fetch({ url: "https://example.com/docs" });',
+        typescriptCode: 'return await api.web_fetch({ url: "https://example.com/docs" });',
       });
       expect(rejected.details.success).toBe(false);
       expect(rejected.details.error?.stage).toBe("typecheck");
@@ -554,7 +553,7 @@ describe("execute_typescript tool", () => {
 
     const result = await tool.execute("tool-call-tinyfish-live-fetch", {
       typescriptCode: [
-        'const fetched = await api.web.fetch({ urls: ["https://example.com"], format: "markdown" });',
+        'const fetched = await api.web_fetch({ urls: ["https://example.com"], format: "markdown" });',
         "const artifactPath = fetched.details.artifacts?.[0]?.path;",
         "if (!artifactPath) throw new Error('missing TinyFish fetch artifact path');",
         "const body = await api.read({ path: artifactPath });",
@@ -569,13 +568,13 @@ describe("execute_typescript tool", () => {
 
     expect(result.details.success).toBe(true);
     const snapshot = store.getSessionState("session-web-tinyfish-live");
-    const webFetch = snapshot.commands.find((command) => command.toolName === "web.fetch");
+    const webFetch = snapshot.commands.find((command) => command.toolName === "web_fetch");
     expect(webFetch).toMatchObject({
       executor: "execute_typescript",
       status: "succeeded",
       facts: expect.objectContaining({
         providerId: "tinyfish",
-        toolName: "web.fetch",
+        toolName: "web_fetch",
         url: "https://example.com/",
         artifactPaths: expect.arrayContaining([expect.stringContaining("web-fetch")]),
         metadataArtifactId: expect.any(String),
@@ -594,7 +593,7 @@ describe("execute_typescript tool", () => {
     expect(JSON.stringify(snapshot)).not.toContain(tinyfishApiKey);
   }, 30000);
 
-  it("omits api.web when no keyed provider is configured", async () => {
+  it("omits api.web_* when no keyed provider is configured", async () => {
     const workspaceCwd = createWorkspaceRoot();
     const store = createStore("session-web-absent", workspaceCwd);
     const runtime = createRuntime(store, "session-web-absent", "Check missing web provider");
@@ -605,7 +604,7 @@ describe("execute_typescript tool", () => {
     });
 
     const result = await tool.execute("tool-call-web-absent", {
-      typescriptCode: 'return await api.web.search({ query: "docs" });',
+      typescriptCode: 'return await api.web_search({ query: "docs" });',
     });
 
     expect(result.details.success).toBe(false);

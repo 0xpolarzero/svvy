@@ -72,7 +72,7 @@ function createOrchestratorRuntime(
   };
 }
 
-describe("thread.start tool", () => {
+describe("thread_start tool", () => {
   it("passes optional prompt context through to handler-thread creation", async () => {
     const store = createStore();
     const runtime = createOrchestratorRuntime(store);
@@ -112,7 +112,7 @@ describe("thread.start tool", () => {
     });
 
     const snapshot = store.getSessionState("session-thread-start-tool");
-    const command = snapshot.commands.find((entry) => entry.toolName === "thread.start");
+    const command = snapshot.commands.find((entry) => entry.toolName === "thread_start");
 
     expect(observedContextKeys as unknown).toEqual(["ci"]);
     expect(observedLoadedByCommandId as unknown).toBe(command?.id);

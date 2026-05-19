@@ -197,26 +197,24 @@ export interface SvvyApi {
     timeout?: number;
   }): Promise<ToolResult<BashToolDetails | undefined>>;
 
-  cx: {
-    overview(input?: CxOverviewInput): Promise<ToolResult<CxCommandDetails>>;
-    symbols(input?: CxSymbolsInput): Promise<ToolResult<CxCommandDetails>>;
-    definition(input: CxDefinitionInput): Promise<ToolResult<CxCommandDetails>>;
-    references(input: CxReferencesInput): Promise<ToolResult<CxCommandDetails>>;
-    lang: {
-      list(): Promise<ToolResult<CxCommandDetails>>;
-    };
-    cache: {
-      path(): Promise<ToolResult<CxCommandDetails>>;
-    };
-  };
+  cx_overview(input?: CxOverviewInput): Promise<ToolResult<CxCommandDetails>>;
+  cx_symbols(input?: CxSymbolsInput): Promise<ToolResult<CxCommandDetails>>;
+  cx_definition(input: CxDefinitionInput): Promise<ToolResult<CxCommandDetails>>;
+  cx_references(input: CxReferencesInput): Promise<ToolResult<CxCommandDetails>>;
+  cx_lang_list(): Promise<ToolResult<CxCommandDetails>>;
+  cx_cache_path(): Promise<ToolResult<CxCommandDetails>>;
 
-  artifact: {
-    write_text(input: { name: string; text: string }): Promise<ToolResult<ArtifactWriteResult>>;
-    write_json(input: {
-      name: string;
-      value: unknown;
-      pretty?: boolean;
-    }): Promise<ToolResult<ArtifactWriteResult>>;
-    attach_file(input: { path: string; name?: string }): Promise<ToolResult<ArtifactWriteResult>>;
-  };
+  artifact_write_text(input: {
+    name: string;
+    text: string;
+  }): Promise<ToolResult<ArtifactWriteResult>>;
+  artifact_write_json(input: {
+    name: string;
+    value: unknown;
+    pretty?: boolean;
+  }): Promise<ToolResult<ArtifactWriteResult>>;
+  artifact_attach_file(input: {
+    path: string;
+    name?: string;
+  }): Promise<ToolResult<ArtifactWriteResult>>;
 }

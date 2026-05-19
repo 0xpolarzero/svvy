@@ -13,7 +13,9 @@ describe("web runtime", () => {
     const noProviderPrompt = buildWebPromptContext("orchestrator");
     expect(noProviderPrompt).toContain("Selected Web Provider: none");
     expect(noProviderPrompt).toContain("Web tools available: no");
-    expect(noProviderPrompt).toContain("No `web.*` direct tools or `api.web` helpers");
+    expect(noProviderPrompt).toContain(
+      "No `web_search` or `web_fetch` direct tools or `api.web_*` helpers",
+    );
 
     const tinyfish = createWebProvider({ provider: "tinyfish" });
     expect(tinyfish!.checkReady()).toMatchObject({
@@ -28,7 +30,7 @@ describe("web runtime", () => {
     );
     const prompt = buildWebPromptContext("orchestrator", configured);
     expect(prompt).toContain("Selected Web Provider: Firecrawl");
-    expect(prompt).toContain("web.fetch");
+    expect(prompt).toContain("web_fetch");
     expect(prompt).toContain("artifact-backed");
     expect(prompt).not.toContain("fc-secret-value");
   });
@@ -48,7 +50,7 @@ describe("web runtime", () => {
       provider: createWebProvider({ provider: "firecrawl" }, { firecrawlApiKey: "fc-key" })!,
       store: { createArtifact: () => ({ id: "artifact" }) },
     });
-    expect(available.map((tool) => tool.name)).toEqual(["web.search", "web.fetch"]);
+    expect(available.map((tool) => tool.name)).toEqual(["web_search", "web_fetch"]);
     expect(JSON.stringify(available[0]?.parameters)).toContain("scrapeOptions");
   });
 
@@ -85,7 +87,7 @@ describe("web runtime", () => {
           },
         },
       });
-      const fetchTool = tools.find((tool) => tool.name === "web.fetch");
+      const fetchTool = tools.find((tool) => tool.name === "web_fetch");
       expect(fetchTool).toBeTruthy();
       const result = await fetchTool!.execute("structured-command:web-command", {
         url: "https://example.com/docs",
@@ -99,7 +101,7 @@ describe("web runtime", () => {
       );
       expect(result.details.commandFacts).toMatchObject({
         providerId: "firecrawl",
-        toolName: "web.fetch",
+        toolName: "web_fetch",
         metadataArtifactId: "artifact-2",
       });
 
@@ -169,7 +171,7 @@ describe("web runtime", () => {
           },
         },
       });
-      const fetchTool = tools.find((tool) => tool.name === "web.fetch");
+      const fetchTool = tools.find((tool) => tool.name === "web_fetch");
       expect(fetchTool?.parameters).toMatchObject({
         properties: {
           urls: { type: "array", minItems: 1, maxItems: 10 },
@@ -192,7 +194,7 @@ describe("web runtime", () => {
       ).toEqual(["A", "B"]);
       expect(result.details.commandFacts).toMatchObject({
         providerId: "tinyfish",
-        toolName: "web.fetch",
+        toolName: "web_fetch",
         metadataArtifactId: "artifact-3",
         fetchErrorCount: 1,
       });

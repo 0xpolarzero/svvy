@@ -89,8 +89,8 @@ export type CxRunner = (input: {
 export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
   return [
     createCxTool({
-      name: "cx.overview",
-      label: "cx.overview",
+      name: "cx_overview",
+      label: "cx_overview",
       description: "Inspect a semantic table of contents for a file or directory.",
       parameters: overviewSchema,
       options,
@@ -103,8 +103,8 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       },
     }),
     createCxTool({
-      name: "cx.symbols",
-      label: "cx.symbols",
+      name: "cx_symbols",
+      label: "cx_symbols",
       description: "Search semantic symbols across the project.",
       parameters: symbolsSchema,
       options,
@@ -120,8 +120,8 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       },
     }),
     createCxTool({
-      name: "cx.definition",
-      label: "cx.definition",
+      name: "cx_definition",
+      label: "cx_definition",
       description: "Read a symbol definition body without reading the full source file.",
       parameters: definitionSchema,
       options,
@@ -137,8 +137,8 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       },
     }),
     createCxTool({
-      name: "cx.references",
-      label: "cx.references",
+      name: "cx_references",
+      label: "cx_references",
       description: "Find semantic references and callers for a symbol.",
       parameters: referencesSchema,
       options,
@@ -153,16 +153,16 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       },
     }),
     createCxTool({
-      name: "cx.lang.list",
-      label: "cx.lang.list",
+      name: "cx_lang_list",
+      label: "cx_lang_list",
       description: "List supported cx language grammars and installation state.",
       parameters: emptySchema,
       options,
       buildArgs: () => ["lang", "list"],
     }),
     createCxTool({
-      name: "cx.lang.add",
-      label: "cx.lang.add",
+      name: "cx_lang_add",
+      label: "cx_lang_add",
       description: "Install one or more cx language grammars.",
       parameters: languageMutationSchema,
       options,
@@ -173,8 +173,8 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       ],
     }),
     createCxTool({
-      name: "cx.lang.remove",
-      label: "cx.lang.remove",
+      name: "cx_lang_remove",
+      label: "cx_lang_remove",
       description: "Remove one or more cx language grammars.",
       parameters: languageMutationSchema,
       options,
@@ -185,16 +185,16 @@ export function createCxTools(options: CxToolOptions): AgentTool<any>[] {
       ],
     }),
     createCxTool({
-      name: "cx.cache.path",
-      label: "cx.cache.path",
+      name: "cx_cache_path",
+      label: "cx_cache_path",
       description: "Show the cx cache path used for this workspace.",
       parameters: emptySchema,
       options,
       buildArgs: () => ["cache", "path"],
     }),
     createCxTool({
-      name: "cx.cache.clean",
-      label: "cx.cache.clean",
+      name: "cx_cache_clean",
+      label: "cx_cache_clean",
       description: "Clean the cx cache for this workspace.",
       parameters: emptySchema,
       options,
@@ -264,7 +264,7 @@ async function runCxCommand(input: {
 }): Promise<CxCommandResult> {
   const cxBin = process.env.SVVY_CX_BIN || Bun.which("cx");
   if (!cxBin) {
-    throw new Error("cx runtime binary not found for cx.* tools.");
+    throw new Error("cx runtime binary not found for cx_* tools.");
   }
   const cacheDir = process.env.CX_CACHE_DIR || join(input.cwd, ".svvy", "cx-cache");
   mkdirSync(cacheDir, { recursive: true });

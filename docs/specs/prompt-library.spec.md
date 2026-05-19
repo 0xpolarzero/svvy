@@ -327,7 +327,7 @@ type ContextPack = {
 
 `defaultLoadedActors` controls which actors receive the context pack by default.
 
-`requestableByActors` controls which actors can request the context pack through product mechanisms such as `thread.start({ context })`, `request_context`, or future workflow-level prompt-context loading.
+`requestableByActors` controls which actors can request the context pack through product mechanisms such as `thread_start({ context })`, `request_context`, or future workflow-level prompt-context loading.
 
 The MVP may expose `requestableByActors` as read-only if the current runtime only supports handler-side context requests. The data model should still account for it so the UI language stays true:
 
@@ -697,7 +697,7 @@ This applies to:
 - sessions created from the sidebar
 - sessions created from command palette unmatched command-mode text
 - forked sessions
-- delegated handler threads from `thread.start`
+- delegated handler threads from `thread_start`
 - workflow task-agent attempts created by Smithers supervision
 
 Forking a session creates a new session that uses the latest prompt revision by default unless a future explicit "preserve old prompt revision" action is introduced.
@@ -921,7 +921,7 @@ Runtime mechanics still distinguish:
 - context packs loaded by default for actors
 - context packs requestable by actors later
 
-For MVP, existing `thread.start({ context: ["ci"] })` and handler-side `request_context({ keys: ["ci"] })` map to the `Project CI` context pack.
+For MVP, existing `thread_start({ context: ["ci"] })` and handler-side `request_context({ keys: ["ci"] })` map to the `Project CI` context pack.
 
 The Context pane must make this clear:
 
@@ -988,7 +988,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 
 ### Phase 4: Runtime Integration Completion
 
-- Route `thread.start({ context })` and `request_context` through requestable context packs.
+- Route `thread_start({ context })` and `request_context` through requestable context packs.
 - Show requested context packs in handler-thread metadata.
 - Ensure provider, generated contract, and tool-declaration changes produce hash drift warnings when they alter exact prompt output.
 - Ensure runtime standards content, order, addition, and removal produce hash drift warnings when they alter exact prompt output.

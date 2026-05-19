@@ -170,7 +170,7 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
         messages: [
           createUserMessage(
             [
-              "Discover the available smithers.* tools on your own.",
+              "Discover the available smithers_* tools on your own.",
               "Use them to run a real signal workflow that requires diagnosis.",
               "Then run a real transcript-producing workflow and inspect it with transcript, node, artifact, frame, and DevTools tools.",
               "Hand back a concise report with concrete evidence.",
@@ -216,7 +216,7 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
 
     const snapshot = getStructuredSessionState(catalog, workspaceSessionId);
     const handoffCommand = snapshot.commands.find(
-      (command) => command.toolName === "thread.handoff",
+      (command) => command.toolName === "thread_handoff",
     );
     if (!handoffCommand) {
       throw new Error(
@@ -269,49 +269,49 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
       messages: handlerState.messages,
     });
 
-    expect(handlerTranscript).toContain("smithers.list_workflows");
-    expect(handlerTranscript).toContain("smithers.run_workflow");
-    expect(handlerTranscript).toContain("smithers.explain_run");
-    expect(handlerTranscript).toContain("smithers.watch_run");
-    expect(handlerTranscript).toContain("smithers.signals.send");
+    expect(handlerTranscript).toContain("smithers_list_workflows");
+    expect(handlerTranscript).toContain("smithers_run_workflow");
+    expect(handlerTranscript).toContain("smithers_explain_run");
+    expect(handlerTranscript).toContain("smithers_watch_run");
+    expect(handlerTranscript).toContain("smithers_signals_send");
     expect(handlerTranscript).toContain("wait_for_signal");
     expect(handlerTranscript).toContain("chat_transcript_probe");
-    expect(handlerTranscript).toContain("smithers.get_chat_transcript");
-    expect(handlerTranscript).toContain("smithers.get_node_detail");
-    expect(handlerTranscript).toContain("smithers.list_artifacts");
-    expect(handlerTranscript).toContain("smithers.frames.list");
-    expect(handlerTranscript).toContain("smithers.getDevToolsSnapshot");
-    expect(handlerTranscript).toContain("smithers.streamDevTools");
-    expect(handlerTranscript).toContain("thread.handoff");
+    expect(handlerTranscript).toContain("smithers_get_chat_transcript");
+    expect(handlerTranscript).toContain("smithers_get_node_detail");
+    expect(handlerTranscript).toContain("smithers_list_artifacts");
+    expect(handlerTranscript).toContain("smithers_frames_list");
+    expect(handlerTranscript).toContain("smithers_get_devtools_snapshot");
+    expect(handlerTranscript).toContain("smithers_stream_devtools");
+    expect(handlerTranscript).toContain("thread_handoff");
     expect(handlerTranscript).toContain("deploy.completed");
     expect(handlerTranscript).toContain("Summarize the transcript probe");
 
     const handlerToolCalls = collectAssistantToolCallNames(handlerState.messages);
     expect(handlerToolCalls).toEqual(
       expect.arrayContaining([
-        "smithers.list_workflows",
-        "smithers.run_workflow",
-        "smithers.explain_run",
-        "smithers.watch_run",
-        "smithers.signals.send",
-        "smithers.get_chat_transcript",
-        "smithers.get_node_detail",
-        "smithers.list_artifacts",
-        "smithers.frames.list",
-        "smithers.getDevToolsSnapshot",
-        "smithers.streamDevTools",
-        "thread.handoff",
+        "smithers_list_workflows",
+        "smithers_run_workflow",
+        "smithers_explain_run",
+        "smithers_watch_run",
+        "smithers_signals_send",
+        "smithers_get_chat_transcript",
+        "smithers_get_node_detail",
+        "smithers_list_artifacts",
+        "smithers_frames_list",
+        "smithers_get_devtools_snapshot",
+        "smithers_stream_devtools",
+        "thread_handoff",
       ]),
     );
     const launchedWorkflowIds = snapshot.commands
-      .filter((command) => command.toolName === "smithers.run_workflow")
+      .filter((command) => command.toolName === "smithers_run_workflow")
       .map((command) => command.facts?.workflowId)
       .filter((workflowId): workflowId is string => typeof workflowId === "string");
     expect(launchedWorkflowIds).toEqual(
       expect.arrayContaining(["wait_for_signal", "chat_transcript_probe"]),
     );
 
-    const explainRunResult = findToolResultMessage(handlerState.messages, "smithers.explain_run");
+    const explainRunResult = findToolResultMessage(handlerState.messages, "smithers_explain_run");
     expect(explainRunResult?.details).toMatchObject({
       diagnosis: {
         status: "waiting-event",
@@ -321,7 +321,7 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
 
     const chatTranscriptResult = findToolResultMessage(
       handlerState.messages,
-      "smithers.get_chat_transcript",
+      "smithers_get_chat_transcript",
     );
     expect(chatTranscriptResult).toBeTruthy();
     const chatTranscriptDetails = chatTranscriptResult?.details as
@@ -333,7 +333,7 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
 
     const nodeDetailResult = findToolResultMessage(
       handlerState.messages,
-      "smithers.get_node_detail",
+      "smithers_get_node_detail",
     );
     expect(nodeDetailResult).toBeTruthy();
     const nodeDetail = nodeDetailResult?.details as
@@ -342,17 +342,17 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
     expect(nodeDetail?.node?.nodeId).toBe("assistant");
     expect(nodeDetail?.attempts?.length ?? 0).toBeGreaterThan(0);
 
-    const artifactResult = findToolResultMessage(handlerState.messages, "smithers.list_artifacts");
+    const artifactResult = findToolResultMessage(handlerState.messages, "smithers_list_artifacts");
     expect(artifactResult).toBeTruthy();
 
-    const frameResult = findToolResultMessage(handlerState.messages, "smithers.frames.list");
+    const frameResult = findToolResultMessage(handlerState.messages, "smithers_frames_list");
     expect(frameResult).toBeTruthy();
     const frames = frameResult?.details as { frames?: unknown[] } | undefined;
     expect(frames?.frames?.length ?? 0).toBeGreaterThan(0);
 
     const devToolsSnapshotResult = findToolResultMessage(
       handlerState.messages,
-      "smithers.getDevToolsSnapshot",
+      "smithers_get_devtools_snapshot",
     );
     expect(devToolsSnapshotResult).toBeTruthy();
     const devToolsSnapshot = devToolsSnapshotResult?.details as
@@ -368,7 +368,7 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
 
     const devToolsStreamResult = findToolResultMessage(
       handlerState.messages,
-      "smithers.streamDevTools",
+      "smithers_stream_devtools",
     );
     expect(devToolsStreamResult).toBeTruthy();
     const devToolsStream = devToolsStreamResult?.details as
@@ -382,51 +382,51 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
     );
     expect(commandNames).toEqual(
       expect.arrayContaining([
-        "thread.start",
-        "smithers.list_workflows",
-        "smithers.run_workflow",
-        "smithers.explain_run",
-        "smithers.watch_run",
-        "smithers.signals.send",
-        "smithers.get_chat_transcript",
-        "smithers.get_node_detail",
-        "smithers.list_artifacts",
-        "smithers.frames.list",
-        "smithers.getDevToolsSnapshot",
-        "smithers.streamDevTools",
-        "thread.handoff",
+        "thread_start",
+        "smithers_list_workflows",
+        "smithers_run_workflow",
+        "smithers_explain_run",
+        "smithers_watch_run",
+        "smithers_signals_send",
+        "smithers_get_chat_transcript",
+        "smithers_get_node_detail",
+        "smithers_list_artifacts",
+        "smithers_frames_list",
+        "smithers_get_devtools_snapshot",
+        "smithers_stream_devtools",
+        "thread_handoff",
       ]),
     );
 
     const orchestratorRequest = stub.requests.find(
       (request) =>
-        hasAvailableTool(request, "thread.start") &&
-        !availableToolNames(request).some((name) => name.startsWith("smithers.")),
+        hasAvailableTool(request, "thread_start") &&
+        !availableToolNames(request).some((name) => name.startsWith("smithers_")),
     );
     expect(orchestratorRequest).toBeTruthy();
-    expect(availableToolNames(orchestratorRequest)).toContain("thread.start");
-    expect(availableToolNames(orchestratorRequest)).not.toContain("smithers.run_workflow");
+    expect(availableToolNames(orchestratorRequest)).toContain("thread_start");
+    expect(availableToolNames(orchestratorRequest)).not.toContain("smithers_run_workflow");
 
     const handlerRequest = stub.requests.find(
       (request) =>
-        hasAvailableTool(request, "smithers.list_workflows") &&
-        (getLatestUserText(request.messages).includes("Discover the available smithers.* tools") ||
+        hasAvailableTool(request, "smithers_list_workflows") &&
+        (getLatestUserText(request.messages).includes("Discover the available smithers_* tools") ||
           getLatestUserText(request.messages).includes(
-            "Discover the smithers.* supervision surface",
+            "Discover the smithers_* supervision surface",
           )),
     );
     expect(handlerRequest).toBeTruthy();
     expect(availableToolNames(handlerRequest)).toEqual(
       expect.arrayContaining([
-        "smithers.list_workflows",
-        "smithers.run_workflow",
-        "smithers.watch_run",
-        "smithers.explain_run",
-        "smithers.signals.send",
-        "smithers.get_chat_transcript",
-        "smithers.frames.list",
-        "smithers.getDevToolsSnapshot",
-        "smithers.streamDevTools",
+        "smithers_list_workflows",
+        "smithers_run_workflow",
+        "smithers_watch_run",
+        "smithers_explain_run",
+        "smithers_signals_send",
+        "smithers_get_chat_transcript",
+        "smithers_frames_list",
+        "smithers_get_devtools_snapshot",
+        "smithers_stream_devtools",
       ]),
     );
   } finally {
@@ -737,18 +737,18 @@ function startAutonomousWorkflowSupervisionProofStub(): AutonomousProofStub {
         }
 
         if (
-          toolNames.includes("thread.start") &&
-          !toolNames.some((name) => name.startsWith("smithers."))
+          toolNames.includes("thread_start") &&
+          !toolNames.some((name) => name.startsWith("smithers_"))
         ) {
-          if (!hasToolCall(toolCalls, "thread.start")) {
+          if (!hasToolCall(toolCalls, "thread_start")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.start",
+              toolName: "thread_start",
               args: {
                 objective:
-                  "Discover the smithers.* supervision surface, run a waiting signal workflow and a transcript-producing workflow, inspect them, and hand back evidence.",
+                  "Discover the smithers_* supervision surface, run a waiting signal workflow and a transcript-producing workflow, inspect them, and hand back evidence.",
               },
             });
           }
@@ -760,7 +760,7 @@ function startAutonomousWorkflowSupervisionProofStub(): AutonomousProofStub {
           });
         }
 
-        if (toolNames.some((name) => name.startsWith("smithers."))) {
+        if (toolNames.some((name) => name.startsWith("smithers_"))) {
           return respondAsAutonomousHandler({
             payload,
             responseId,
@@ -796,16 +796,16 @@ function respondAsAutonomousHandler(input: {
   toolCallCounter: () => string;
 }): Response {
   const toolNames = availableToolNames(input.payload);
-  if (!toolNames.includes("smithers.run_workflow")) {
-    throw new Error("Expected the stable smithers.run_workflow tool.");
+  if (!toolNames.includes("smithers_run_workflow")) {
+    throw new Error("Expected the stable smithers_run_workflow tool.");
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.list_workflows")) {
+  if (!hasToolCall(input.toolCalls, "smithers_list_workflows")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.list_workflows",
+      toolName: "smithers_list_workflows",
       args: {},
     });
   }
@@ -821,7 +821,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       args: {
         workflowId: "wait_for_signal",
         input: {
@@ -850,7 +850,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.watch_run",
+      toolName: "smithers_watch_run",
       args: {
         runId: signalRunId,
         timeoutMs: 1_500,
@@ -858,24 +858,24 @@ function respondAsAutonomousHandler(input: {
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.explain_run")) {
+  if (!hasToolCall(input.toolCalls, "smithers_explain_run")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.explain_run",
+      toolName: "smithers_explain_run",
       args: {
         runId: signalRunId,
       },
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.signals.send")) {
+  if (!hasToolCall(input.toolCalls, "smithers_signals_send")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.signals.send",
+      toolName: "smithers_signals_send",
       args: {
         runId: signalRunId,
         signalName: "deploy.completed",
@@ -893,7 +893,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       args: {
         workflowId: "wait_for_signal",
         input: {
@@ -909,7 +909,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.watch_run",
+      toolName: "smithers_watch_run",
       args: {
         runId: signalRunId,
         timeoutMs: 10_000,
@@ -922,7 +922,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.get_run_events",
+      toolName: "smithers_get_run_events",
       args: {
         runId: signalRunId,
         types: ["RunFinished"],
@@ -941,7 +941,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       args: {
         workflowId: "chat_transcript_probe",
         input: {
@@ -966,7 +966,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.watch_run",
+      toolName: "smithers_watch_run",
       args: {
         runId: taskRunId,
         timeoutMs: 20_000,
@@ -974,12 +974,12 @@ function respondAsAutonomousHandler(input: {
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.get_chat_transcript")) {
+  if (!hasToolCall(input.toolCalls, "smithers_get_chat_transcript")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.get_chat_transcript",
+      toolName: "smithers_get_chat_transcript",
       args: {
         runId: taskRunId,
         all: true,
@@ -992,7 +992,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.get_node_detail",
+      toolName: "smithers_get_node_detail",
       args: {
         runId: taskRunId,
         nodeId: "assistant",
@@ -1005,7 +1005,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.list_artifacts",
+      toolName: "smithers_list_artifacts",
       args: {
         runId: taskRunId,
       },
@@ -1017,7 +1017,7 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.frames.list",
+      toolName: "smithers_frames_list",
       args: {
         runId: taskRunId,
         limit: 20,
@@ -1025,24 +1025,24 @@ function respondAsAutonomousHandler(input: {
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.getDevToolsSnapshot")) {
+  if (!hasToolCall(input.toolCalls, "smithers_get_devtools_snapshot")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.getDevToolsSnapshot",
+      toolName: "smithers_get_devtools_snapshot",
       args: {
         runId: taskRunId,
       },
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "smithers.streamDevTools")) {
+  if (!hasToolCall(input.toolCalls, "smithers_stream_devtools")) {
     return createToolCallResponse({
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "smithers.streamDevTools",
+      toolName: "smithers_stream_devtools",
       args: {
         runId: taskRunId,
         afterSeq: 0,
@@ -1052,17 +1052,17 @@ function respondAsAutonomousHandler(input: {
     });
   }
 
-  if (!hasToolCall(input.toolCalls, "thread.handoff")) {
-    const signalDiagnosis = findLatestToolResult(input.toolResults, "smithers.explain_run")?.parsed;
+  if (!hasToolCall(input.toolCalls, "thread_handoff")) {
+    const signalDiagnosis = findLatestToolResult(input.toolResults, "smithers_explain_run")?.parsed;
     const taskTranscript = findLatestToolResult(
       input.toolResults,
-      "smithers.get_chat_transcript",
+      "smithers_get_chat_transcript",
     )?.parsed;
-    const nodeDetail = findLatestToolResult(input.toolResults, "smithers.get_node_detail")?.parsed;
-    const frames = findLatestToolResult(input.toolResults, "smithers.frames.list")?.parsed;
+    const nodeDetail = findLatestToolResult(input.toolResults, "smithers_get_node_detail")?.parsed;
+    const frames = findLatestToolResult(input.toolResults, "smithers_frames_list")?.parsed;
     const devToolsSnapshot = findLatestToolResult(
       input.toolResults,
-      "smithers.getDevToolsSnapshot",
+      "smithers_get_devtools_snapshot",
     )?.parsed;
     const signalDiagnosisRecord = signalDiagnosis ?? null;
     const signalDiagnosisDetails =
@@ -1092,18 +1092,18 @@ function respondAsAutonomousHandler(input: {
       responseId: input.responseId,
       model: input.payload.model,
       toolCallId: input.toolCallCounter(),
-      toolName: "thread.handoff",
+      toolName: "thread_handoff",
       args: {
         kind: "workflow",
         title: "workflow supervision proof completed",
         summary:
           "Diagnosed the signal wait, delivered the signal, then inspected the task workflow transcript and graph.",
         body: [
-          `smithers.explain_run diagnosed a waiting-event blocker on signal \`${blockerSignalName ?? "unknown"}\`.`,
-          "smithers.signals.send delivered the signal and the resumed wait_for_signal run finished.",
-          `smithers.get_chat_transcript captured the task agent reply: ${latestAssistantTranscript?.text ?? "missing transcript reply"}`,
-          `smithers.get_node_detail reported ${taskToolCallCount} workflow-task tool call(s) for the transcript probe node.`,
-          `smithers.frames.list returned ${frameCount} frame(s) and smithers.getDevToolsSnapshot returned frame ${devToolsFrameNo}.`,
+          `smithers_explain_run diagnosed a waiting-event blocker on signal \`${blockerSignalName ?? "unknown"}\`.`,
+          "smithers_signals_send delivered the signal and the resumed wait_for_signal run finished.",
+          `smithers_get_chat_transcript captured the task agent reply: ${latestAssistantTranscript?.text ?? "missing transcript reply"}`,
+          `smithers_get_node_detail reported ${taskToolCallCount} workflow-task tool call(s) for the transcript probe node.`,
+          `smithers_frames_list returned ${frameCount} frame(s) and the DevTools snapshot returned frame ${devToolsFrameNo}.`,
           "The transcript workflow produced a durable task transcript the handler could inspect directly.",
         ].join("\n\n"),
       },
@@ -1351,7 +1351,7 @@ function runWorkflowCallsByWorkflowId(
 ): ToolCallRecord[] {
   return toolCalls.filter(
     (toolCall) =>
-      toolCall.name === "smithers.run_workflow" && toolCall.args.workflowId === workflowId,
+      toolCall.name === "smithers_run_workflow" && toolCall.args.workflowId === workflowId,
   );
 }
 
@@ -1380,21 +1380,21 @@ function watchRunResultsFor(
   runId: string,
 ): ToolResultRecord[] {
   return toolCalls
-    .filter((toolCall) => toolCall.name === "smithers.watch_run" && toolCall.args.runId === runId)
+    .filter((toolCall) => toolCall.name === "smithers_watch_run" && toolCall.args.runId === runId)
     .map((toolCall) => findToolResultByCallId(toolResults, toolCall.id))
     .filter((result): result is ToolResultRecord => Boolean(result));
 }
 
 function hasRunEventsFor(toolCalls: ToolCallRecord[], runId: string): boolean {
   return toolCalls.some(
-    (toolCall) => toolCall.name === "smithers.get_run_events" && toolCall.args.runId === runId,
+    (toolCall) => toolCall.name === "smithers_get_run_events" && toolCall.args.runId === runId,
   );
 }
 
 function hasNodeDetailFor(toolCalls: ToolCallRecord[], runId: string, nodeId: string): boolean {
   return toolCalls.some(
     (toolCall) =>
-      toolCall.name === "smithers.get_node_detail" &&
+      toolCall.name === "smithers_get_node_detail" &&
       toolCall.args.runId === runId &&
       toolCall.args.nodeId === nodeId,
   );
@@ -1402,12 +1402,12 @@ function hasNodeDetailFor(toolCalls: ToolCallRecord[], runId: string, nodeId: st
 
 function hasArtifactListFor(toolCalls: ToolCallRecord[], runId: string): boolean {
   return toolCalls.some(
-    (toolCall) => toolCall.name === "smithers.list_artifacts" && toolCall.args.runId === runId,
+    (toolCall) => toolCall.name === "smithers_list_artifacts" && toolCall.args.runId === runId,
   );
 }
 
 function hasFramesListFor(toolCalls: ToolCallRecord[], runId: string): boolean {
   return toolCalls.some(
-    (toolCall) => toolCall.name === "smithers.frames.list" && toolCall.args.runId === runId,
+    (toolCall) => toolCall.name === "smithers_frames_list" && toolCall.args.runId === runId,
   );
 }

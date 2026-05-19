@@ -25,15 +25,15 @@ export type StructuredTurnDecision =
   | "edit"
   | "write"
   | "bash"
-  | `artifact.${string}`
-  | `workflow.${string}`
+  | `artifact_${string}`
+  | `workflow_${string}`
   | "clarify"
-  | "thread.start"
-  | "thread.resume"
+  | "thread_start"
+  | "thread_resume"
   | "request_context"
-  | "thread.handoff"
+  | "thread_handoff"
   | "wait"
-  | `smithers.${string}`;
+  | `smithers_${string}`;
 export type StructuredThreadStatus =
   | "idle"
   | "running-handler"

@@ -163,7 +163,7 @@ type CreateSmithersToolsOptions = {
 export function createSmithersTools(options: CreateSmithersToolsOptions): AgentTool<any>[] {
   return [
     createSmithersTool({
-      name: "smithers.list_workflows",
+      name: "smithers_list_workflows",
       label: "Smithers Workflows",
       description:
         "List runnable saved and artifact Smithers workflow entries available to the current handler thread.",
@@ -192,7 +192,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
     }),
     createRunWorkflowTool(options),
     createSmithersTool({
-      name: "smithers.list_runs",
+      name: "smithers_list_runs",
       label: "List Runs",
       description: "List recent Smithers workflow runs with svvy ownership metadata when known.",
       parameters: listRunsParamsSchema,
@@ -217,7 +217,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.get_run",
+      name: "smithers_get_run",
       label: "Get Run",
       description: "Inspect one Smithers run summary.",
       parameters: getRunParamsSchema,
@@ -237,7 +237,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.watch_run",
+      name: "smithers_watch_run",
       label: "Watch Run",
       description: "Watch a Smithers run until it reaches a terminal state or a timeout expires.",
       parameters: watchRunParamsSchema,
@@ -259,7 +259,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.explain_run",
+      name: "smithers_explain_run",
       label: "Explain Run",
       description:
         "Explain why a Smithers run is blocked, waiting, stale, or otherwise attention-worthy.",
@@ -276,7 +276,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.list_pending_approvals",
+      name: "smithers_list_pending_approvals",
       label: "Pending Approvals",
       description: "List pending Smithers approvals for one run or across all monitored runs.",
       parameters: listPendingApprovalsParamsSchema,
@@ -301,7 +301,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.resolve_approval",
+      name: "smithers_resolve_approval",
       label: "Resolve Approval",
       description: "Approve or deny a pending Smithers approval.",
       parameters: resolveApprovalParamsSchema,
@@ -341,7 +341,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.get_node_detail",
+      name: "smithers_get_node_detail",
       label: "Node Detail",
       description: "Inspect attempts, tool calls, and validated output for a Smithers node.",
       parameters: getNodeDetailParamsSchema,
@@ -361,7 +361,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.list_artifacts",
+      name: "smithers_list_artifacts",
       label: "Run Artifacts",
       description: "Inspect Smithers workflow outputs and rendered frames for one run.",
       parameters: listArtifactsParamsSchema,
@@ -381,7 +381,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.get_chat_transcript",
+      name: "smithers_get_chat_transcript",
       label: "Chat Transcript",
       description: "Read the structured workflow chat transcript grouped by attempts.",
       parameters: getChatTranscriptParamsSchema,
@@ -402,7 +402,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.get_run_events",
+      name: "smithers_get_run_events",
       label: "Run Events",
       description: "Read raw Smithers lifecycle events with sequence pagination.",
       parameters: getRunEventsParamsSchema,
@@ -428,7 +428,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.signals.send",
+      name: "smithers_signals_send",
       label: "Send Signal",
       description: "Deliver a durable signal to a waiting Smithers run.",
       parameters: sendSignalParamsSchema,
@@ -463,7 +463,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.frames.list",
+      name: "smithers_frames_list",
       label: "List Frames",
       description: "Inspect rendered Smithers workflow frames for one run.",
       parameters: listFramesParamsSchema,
@@ -486,7 +486,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.getDevToolsSnapshot",
+      name: "smithers_get_devtools_snapshot",
       label: "DevTools Snapshot",
       description: "Read a Smithers DevTools graph snapshot for a workflow run.",
       parameters: getDevToolsSnapshotParamsSchema,
@@ -505,7 +505,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.streamDevTools",
+      name: "smithers_stream_devtools",
       label: "Stream DevTools",
       description:
         "Collect a bounded Smithers DevTools snapshot-plus-delta stream for workflow inspection.",
@@ -528,7 +528,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       },
     }),
     createSmithersTool({
-      name: "smithers.runs.cancel",
+      name: "smithers_runs_cancel",
       label: "Cancel Run",
       description: "Request cancellation for an active Smithers run.",
       parameters: getRunParamsSchema,
@@ -562,7 +562,7 @@ function createRunWorkflowTool(
     label: "Run Workflow",
     name: SMITHERS_RUN_WORKFLOW_TOOL_NAME,
     description:
-      "Launch or explicitly resume one runnable Smithers workflow entry under the current handler thread using a workflowId discovered through smithers.list_workflows. Supplying runId resumes exactly that run. Omitting runId requests a fresh launch and never silently resumes; svvy rejects the call if this handler already owns a nonterminal run with the same workflowId.",
+      "Launch or explicitly resume one runnable Smithers workflow entry under the current handler thread using a workflowId discovered through smithers_list_workflows. Supplying runId resumes exactly that run. Omitting runId requests a fresh launch and never silently resumes; svvy rejects the call if this handler already owns a nonterminal run with the same workflowId.",
     parameters: runWorkflowParamsSchema,
     execute: async (_toolCallId, params) => {
       const runtime = requireActiveRuntime(options.runtime, SMITHERS_RUN_WORKFLOW_TOOL_NAME);
@@ -726,7 +726,7 @@ function createRunWorkflowTool(
 }
 
 function createSmithersTool<TSchema extends TypeBoxSchema>(input: {
-  name: `smithers.${string}`;
+  name: `smithers_${string}`;
   label: string;
   description: string;
   parameters: TSchema;
@@ -787,7 +787,7 @@ function createSmithersTool<TSchema extends TypeBoxSchema>(input: {
       const facts = {
         smithersToolName: input.name,
         semanticSmithersToolName: input.name,
-        rawSmithersOperationName: input.name.replace(/^smithers\./, ""),
+        rawSmithersOperationName: toRawSmithersOperationName(input.name),
         transport: "embedded-runtime",
         args: params,
         ...input.afterExecute?.({ params, before, result }),
@@ -810,6 +810,23 @@ function createSmithersTool<TSchema extends TypeBoxSchema>(input: {
       };
     },
   };
+}
+
+function toRawSmithersOperationName(toolName: string): string {
+  switch (toolName) {
+    case "smithers_signals_send":
+      return "signals.send";
+    case "smithers_frames_list":
+      return "frames.list";
+    case "smithers_runs_cancel":
+      return "runs.cancel";
+    case "smithers_get_devtools_snapshot":
+      return "getDevToolsSnapshot";
+    case "smithers_stream_devtools":
+      return "streamDevTools";
+    default:
+      return toolName.replace(/^smithers_/, "");
+  }
 }
 
 function requireActiveRuntime(

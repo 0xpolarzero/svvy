@@ -32,20 +32,20 @@ export function createWebTools(options: {
   const contracts = options.provider.getToolContracts();
   return [
     {
-      name: "web.search",
-      label: "web.search",
+      name: "web_search",
+      label: "web_search",
       description: contracts.search.description,
       parameters: contracts.search.inputSchema,
       execute: async (toolCallId, input, signal) =>
-        invokeProviderTool(options, "web.search", toolCallId, input, signal),
+        invokeProviderTool(options, "web_search", toolCallId, input, signal),
     },
     {
-      name: "web.fetch",
-      label: "web.fetch",
+      name: "web_fetch",
+      label: "web_fetch",
       description: contracts.fetch.description,
       parameters: contracts.fetch.inputSchema,
       execute: async (toolCallId, input, signal) =>
-        invokeProviderTool(options, "web.fetch", toolCallId, input, signal),
+        invokeProviderTool(options, "web_fetch", toolCallId, input, signal),
     },
   ];
 }

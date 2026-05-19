@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { RunnableWorkflowRegistryEntry } from "./workflow-authoring-contract";
 
-export const SMITHERS_RUN_WORKFLOW_TOOL_NAME = "smithers.run_workflow";
+export const SMITHERS_RUN_WORKFLOW_TOOL_NAME = "smithers_run_workflow";
 
 export type RunnableWorkflowLaunchContract = {
   workflowId: string;
@@ -65,7 +65,7 @@ function assertValidWorkflowId(workflowId: string): void {
 function ensureRootObjectSchema(schema: JsonObject, workflowId: string): void {
   if (schema.type !== "object") {
     throw new Error(
-      `Runnable Smithers workflow ${workflowId} must expose an object launch schema so svvy can validate smithers.run_workflow input precisely before launch.`,
+      `Runnable Smithers workflow ${workflowId} must expose an object launch schema so svvy can validate smithers_run_workflow input precisely before launch.`,
     );
   }
 }

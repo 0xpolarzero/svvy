@@ -23,7 +23,7 @@ Use these terms consistently:
 - **Project CI**: the dedicated product lane for configuring and running the repository's repeatable confidence checks.
 - **CI lane**: the product projection for Project CI status, configured entries, latest run, check results, and linked workflow artifacts.
 - **CI status surface**: the UI surface or panel that renders the CI lane. It may route user requests into normal handler threads, but it is not a separate setup launcher or runtime.
-- **CI prompt context**: the optional context loaded by `thread.start({ context: ["ci"] })` or by a handler calling `request_context({ keys: ["ci"] })`.
+- **CI prompt context**: the optional context loaded by `thread_start({ context: ["ci"] })` or by a handler calling `request_context({ keys: ["ci"] })`.
 - **CI entry**: a normal Smithers runnable saved workflow entry that declares `productKind = "project-ci"`.
 - **CI run**: one `svvy` product projection row for a Smithers workflow run launched from a CI entry.
 - **CI check result**: one structured check inside a CI run, such as typecheck, test, lint, build, integration, or manual check.
@@ -109,7 +109,7 @@ This is the normal `svvy` orchestrator.
 
 There is no CI-specific orchestrator.
 
-There is also no special CI-specific `thread.start` tool.
+There is also no special CI-specific `thread_start` tool.
 
 The orchestrator may:
 
@@ -152,7 +152,7 @@ A handler with `ci` context may run Project CI entries through Smithers.
 
 The `ci` context may be loaded in either of two ways:
 
-- the orchestrator starts the handler with `thread.start({ objective, context: ["ci"] })`
+- the orchestrator starts the handler with `thread_start({ objective, context: ["ci"] })`
 - an existing handler calls `request_context({ keys: ["ci"] })`
 
 Loading the same context key more than once is idempotent.
@@ -161,8 +161,8 @@ Loading the same context key more than once is idempotent.
 
 Normal handler threads may:
 
-- discover configured CI entries with `smithers.list_workflows`
-- run a configured CI entry with `smithers.run_workflow`
+- discover configured CI entries with `smithers_list_workflows`
+- run a configured CI entry with `smithers_run_workflow`
 - inspect CI run state and artifacts
 - mention CI status in a handoff when relevant
 - call `request_context({ keys: ["ci"] })` if they need to configure or modify Project CI
@@ -295,7 +295,7 @@ export function createRunnableEntry(input: { dbPath: string }) {
 }
 ```
 
-`smithers.list_workflows` must return `productKind` and `resultSchema` metadata for entries that declare them.
+`smithers_list_workflows` must return `productKind` and `resultSchema` metadata for entries that declare them.
 
 Entries without `productKind = "project-ci"` are ordinary workflow entries.
 
@@ -527,8 +527,8 @@ An inspected handler thread should show CI detail only when that thread launched
    - `.svvy/workflows/entries/ci/project-ci.tsx`
 10. Saved-workflow validation runs automatically after the writes.
 11. The handler fixes any saved-workflow validation diagnostics.
-12. The handler calls `smithers.list_workflows` and confirms `project_ci` is listed with `productKind = "project-ci"`.
-13. The handler calls `smithers.run_workflow({ workflowId: "project_ci", input: { scope: "fast", reason: "initial configuration" } })`.
+12. The handler calls `smithers_list_workflows` and confirms `project_ci` is listed with `productKind = "project-ci"`.
+13. The handler calls `smithers_run_workflow({ workflowId: "project_ci", input: { scope: "fast", reason: "initial configuration" } })`.
 14. The workflow returns output that validates against `resultSchema`.
 15. The runtime records one `ci_run` plus one `ci_check_result` per returned check.
 16. The CI status surface leaves `not-configured` and shows the latest Project CI result.
@@ -539,15 +539,15 @@ An inspected handler thread should show CI detail only when that thread launched
 2. The orchestrator delegates to a normal handler thread.
 3. The handler implements the feature through direct work or Smithers workflows.
 4. The handler wants final confidence.
-5. The handler calls `smithers.list_workflows({ productKind: "project-ci" })`.
-6. If a CI entry exists, the handler calls `smithers.run_workflow({ workflowId: "project_ci", input: { scope: "fast", reason: "post-implementation" } })`.
+5. The handler calls `smithers_list_workflows({ productKind: "project-ci" })`.
+6. If a CI entry exists, the handler calls `smithers_run_workflow({ workflowId: "project_ci", input: { scope: "fast", reason: "post-implementation" } })`.
 7. The runtime records CI state only if the terminal output validates against the CI result schema.
 8. The handler includes the CI outcome in its handoff.
 
 ### No CI Configured
 
 1. A normal handler wants confidence checks.
-2. The handler calls `smithers.list_workflows({ productKind: "project-ci" })`.
+2. The handler calls `smithers_list_workflows({ productKind: "project-ci" })`.
 3. No entries are returned.
 4. The handler asks the user whether to configure Project CI or run explicit one-off commands.
 5. If the current thread should configure Project CI, the handler calls `request_context({ keys: ["ci"] })`.
@@ -561,7 +561,7 @@ The CI authoring context is loaded only through the optional `ci` prompt context
 Normal handler prompts should only include this small rule:
 
 ```text
-If Project CI only needs to be run, discover configured CI entries with smithers.list_workflows filtered to productKind "project-ci" and run one through smithers.run_workflow. If Project CI needs to be configured or modified, call request_context({ keys: ["ci"] }) before authoring CI assets.
+If Project CI only needs to be run, discover configured CI entries with smithers_list_workflows filtered to productKind "project-ci" and run one through smithers_run_workflow. If Project CI needs to be configured or modified, call request_context({ keys: ["ci"] }) before authoring CI assets.
 ```
 
 That rule is intentionally short.

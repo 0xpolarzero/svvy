@@ -31,7 +31,7 @@ const WORKFLOW_AUTHORING_HANDLER_PROMPT = [
   "If they do not fit cleanly, author a short-lived artifact workflow.",
 ].join(" ");
 const WORKFLOW_AUTHORING_RUN_PROMPT =
-  "Run the artifact workflow you just authored, use smithers.get_run as needed until it finishes, and then hand the result back.";
+  "Run the artifact workflow you just authored, use smithers_get_run as needed until it finishes, and then hand the result back.";
 const WORKFLOW_AUTHORING_SAVE_SHORTCUT_PROMPT = [
   "Inspect the workflow work owned by this thread.",
   "If there are reusable saved workflow files worth keeping, write them directly into `.svvy/workflows/...` using the direct write or edit tools.",
@@ -81,12 +81,12 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
             "Open a handler thread dedicated to running the saved hello_world fixture workflow.",
           )
         ) {
-          if (!hasToolCall(toolCalls, "thread.start")) {
+          if (!hasToolCall(toolCalls, "thread_start")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.start",
+              toolName: "thread_start",
               args: {
                 objective:
                   "Run the saved hello_world fixture workflow, monitor it to completion, and hand the result back to the orchestrator.",
@@ -106,12 +106,12 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
             "Run the saved hello_world fixture workflow, let workflow supervision wake this handler when it finishes, and then hand the result back.",
           )
         ) {
-          if (!hasToolCall(toolCalls, "smithers.list_workflows")) {
+          if (!hasToolCall(toolCalls, "smithers_list_workflows")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.list_workflows",
+              toolName: "smithers_list_workflows",
               args: {},
             });
           }
@@ -121,7 +121,7 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.run_workflow",
+              toolName: "smithers_run_workflow",
               args: {
                 workflowId: "hello_world",
                 input: {
@@ -146,12 +146,12 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
             "Run the saved hello_world fixture workflow, wait for it to finish, and hand the result back.",
           )
         ) {
-          if (!hasToolCall(toolCalls, "smithers.list_workflows")) {
+          if (!hasToolCall(toolCalls, "smithers_list_workflows")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.list_workflows",
+              toolName: "smithers_list_workflows",
               args: {},
             });
           }
@@ -161,7 +161,7 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.run_workflow",
+              toolName: "smithers_run_workflow",
               args: {
                 workflowId: "hello_world",
                 input: {
@@ -174,11 +174,11 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
           const launchedRun = findLatestRunWorkflowResult(toolResults, toolCalls, "hello_world");
           const runId = readStringProperty(launchedRun?.parsed, "runId");
           if (!runId) {
-            throw new Error("Expected smithers.run_workflow hello_world result to include runId.");
+            throw new Error("Expected smithers_run_workflow hello_world result to include runId.");
           }
 
           const latestRunStatus = readStringProperty(
-            findLatestToolResult(toolResults, "smithers.get_run")?.parsed,
+            findLatestToolResult(toolResults, "smithers_get_run")?.parsed,
             "status",
           );
 
@@ -187,19 +187,19 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.get_run",
+              toolName: "smithers_get_run",
               args: {
                 runId,
               },
             });
           }
 
-          if (!hasToolCall(toolCalls, "thread.handoff")) {
+          if (!hasToolCall(toolCalls, "thread_handoff")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.handoff",
+              toolName: "thread_handoff",
               args: helloWorldHandoffArgs(),
             });
           }
@@ -227,11 +227,11 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
           const launchedRun = findLatestRunWorkflowResult(toolResults, toolCalls, "hello_world");
           const runId = readStringProperty(launchedRun?.parsed, "runId");
           if (!runId) {
-            throw new Error("Expected smithers.run_workflow hello_world result to include runId.");
+            throw new Error("Expected smithers_run_workflow hello_world result to include runId.");
           }
 
           const latestRunStatus = readStringProperty(
-            findLatestToolResult(toolResults, "smithers.get_run")?.parsed,
+            findLatestToolResult(toolResults, "smithers_get_run")?.parsed,
             "status",
           );
 
@@ -240,19 +240,19 @@ export function startWorkflowSupervisionChatStub(): WorkflowSupervisionChatStub 
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.get_run",
+              toolName: "smithers_get_run",
               args: {
                 runId,
               },
             });
           }
 
-          if (!hasToolCall(toolCalls, "thread.handoff")) {
+          if (!hasToolCall(toolCalls, "thread_handoff")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.handoff",
+              toolName: "thread_handoff",
               args: helloWorldHandoffArgs(),
             });
           }
@@ -307,12 +307,12 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
 
       try {
         if (latestUserText.includes(WORKFLOW_AUTHORING_OPEN_THREAD_PROMPT)) {
-          if (!hasToolCall(toolCalls, "thread.start")) {
+          if (!hasToolCall(toolCalls, "thread_start")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.start",
+              toolName: "thread_start",
               args: {
                 objective:
                   "Check direct work, inspect saved runnable entries and reusable assets, author and run an artifact workflow when needed, and only save reusable workflow files if explicitly asked.",
@@ -328,12 +328,12 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
         }
 
         if (latestUserText.includes(WORKFLOW_AUTHORING_HANDLER_PROMPT)) {
-          if (countToolCalls(toolCalls, "smithers.list_workflows") === 0) {
+          if (countToolCalls(toolCalls, "smithers_list_workflows") === 0) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.list_workflows",
+              toolName: "smithers_list_workflows",
               args: {},
             });
           }
@@ -384,7 +384,7 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.run_workflow",
+              toolName: "smithers_run_workflow",
               args: {
                 workflowId: WORKFLOW_AUTHORING_ARTIFACT_WORKFLOW_ID,
                 input: {
@@ -402,12 +402,12 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
           const runId = readStringProperty(launchedRun?.parsed, "runId");
           if (!runId) {
             throw new Error(
-              "Expected smithers.run_workflow workflow_authoring_proof_draft result to include runId.",
+              "Expected smithers_run_workflow workflow_authoring_proof_draft result to include runId.",
             );
           }
 
           const latestRunStatus = readStringProperty(
-            findLatestToolResult(toolResults, "smithers.get_run")?.parsed,
+            findLatestToolResult(toolResults, "smithers_get_run")?.parsed,
             "status",
           );
 
@@ -416,19 +416,19 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.get_run",
+              toolName: "smithers_get_run",
               args: {
                 runId,
               },
             });
           }
 
-          if (!hasToolCall(toolCalls, "thread.handoff")) {
+          if (!hasToolCall(toolCalls, "thread_handoff")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.handoff",
+              toolName: "thread_handoff",
               args: workflowAuthoringArtifactHandoffArgs(),
             });
           }
@@ -500,7 +500,7 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.handoff",
+              toolName: "thread_handoff",
               args: workflowAuthoringSaveHandoffArgs(),
             });
           }
@@ -525,12 +525,12 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
           const runId = readStringProperty(launchedRun?.parsed, "runId");
           if (!runId) {
             throw new Error(
-              "Expected smithers.run_workflow workflow_authoring_proof_draft result to include runId.",
+              "Expected smithers_run_workflow workflow_authoring_proof_draft result to include runId.",
             );
           }
 
           const latestRunStatus = readStringProperty(
-            findLatestToolResult(toolResults, "smithers.get_run")?.parsed,
+            findLatestToolResult(toolResults, "smithers_get_run")?.parsed,
             "status",
           );
 
@@ -539,19 +539,19 @@ export function startWorkflowAuthoringSavedWritesChatStub(): WorkflowSupervision
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "smithers.get_run",
+              toolName: "smithers_get_run",
               args: {
                 runId,
               },
             });
           }
 
-          if (!hasToolCall(toolCalls, "thread.handoff")) {
+          if (!hasToolCall(toolCalls, "thread_handoff")) {
             return createToolCallResponse({
               responseId,
               model: payload.model,
               toolCallId: `call-${++toolCallCounter}`,
-              toolName: "thread.handoff",
+              toolName: "thread_handoff",
               args: workflowAuthoringArtifactHandoffArgs(),
             });
           }
@@ -598,8 +598,8 @@ function helloWorldHandoffArgs(): Record<string, unknown> {
     summary:
       "Ran the saved hello_world fixture workflow and verified that it finished successfully.",
     body: [
-      "Launched the saved hello_world fixture workflow through smithers.run_workflow.",
-      "Observed the Smithers run until it reported finished through smithers.get_run.",
+      "Launched the saved hello_world fixture workflow through smithers_run_workflow.",
+      "Observed the Smithers run until it reported finished through smithers_get_run.",
       "The workflow completed successfully and is ready for orchestrator follow-up.",
     ].join("\n\n"),
   };
@@ -612,9 +612,9 @@ function workflowAuthoringArtifactHandoffArgs(): Record<string, unknown> {
     summary:
       "Authored and ran a short-lived artifact workflow without creating reusable saved workflow files.",
     body: [
-      "Checked runnable saved entries through smithers.list_workflows before authoring.",
-      "Inspected reusable saved assets and models inside execute_typescript through api.workflow.list_assets(...) and api.workflow.list_models().",
-      `Authored ${WORKFLOW_AUTHORING_ARTIFACT_WORKFLOW_ID} under ${WORKFLOW_AUTHORING_ARTIFACT_ROOT}/ and launched it through smithers.run_workflow with workflowId ${WORKFLOW_AUTHORING_ARTIFACT_WORKFLOW_ID}.`,
+      "Checked runnable saved entries through smithers_list_workflows before authoring.",
+      "Inspected reusable saved assets and models inside execute_typescript through api.workflow_list_assets(...) and api.workflow_list_models().",
+      `Authored ${WORKFLOW_AUTHORING_ARTIFACT_WORKFLOW_ID} under ${WORKFLOW_AUTHORING_ARTIFACT_ROOT}/ and launched it through smithers_run_workflow with workflowId ${WORKFLOW_AUTHORING_ARTIFACT_WORKFLOW_ID}.`,
       "No reusable .svvy/workflows files were written before an explicit save request arrived.",
     ].join("\n\n"),
   };
@@ -801,14 +801,14 @@ function hasRunWorkflowCall(toolCalls: ToolCallRecord[], workflowId: string): bo
 
 function hasThreadHandoffCallWithSummary(toolCalls: ToolCallRecord[], summary: string): boolean {
   return toolCalls.some(
-    (toolCall) => toolCall.name === "thread.handoff" && toolCall.args.summary === summary,
+    (toolCall) => toolCall.name === "thread_handoff" && toolCall.args.summary === summary,
   );
 }
 
 function countRunWorkflowCalls(toolCalls: ToolCallRecord[], workflowId: string): number {
   return toolCalls.filter(
     (toolCall) =>
-      toolCall.name === "smithers.run_workflow" && toolCall.args.workflowId === workflowId,
+      toolCall.name === "smithers_run_workflow" && toolCall.args.workflowId === workflowId,
   ).length;
 }
 
@@ -837,7 +837,7 @@ function findLatestRunWorkflowResult(
     toolCalls
       .filter(
         (toolCall) =>
-          toolCall.name === "smithers.run_workflow" && toolCall.args.workflowId === workflowId,
+          toolCall.name === "smithers_run_workflow" && toolCall.args.workflowId === workflowId,
       )
       .map((toolCall) => toolCall.id),
   );
@@ -1062,10 +1062,10 @@ function buildWorkflowAuthoringDefinitionFileText(): string {
 
 function buildWorkflowAuthoringArtifactCode(): string {
   return [
-    'const savedDefinitions = await api.workflow.list_assets({ kind: "definition", scope: "saved" });',
-    'const savedPrompts = await api.workflow.list_assets({ kind: "prompt", scope: "saved" });',
-    'const savedComponents = await api.workflow.list_assets({ kind: "component", scope: "saved" });',
-    "const models = await api.workflow.list_models();",
+    'const savedDefinitions = await api.workflow_list_assets({ kind: "definition", scope: "saved" });',
+    'const savedPrompts = await api.workflow_list_assets({ kind: "prompt", scope: "saved" });',
+    'const savedComponents = await api.workflow_list_assets({ kind: "component", scope: "saved" });',
+    "const models = await api.workflow_list_models();",
     "const directWorkFits = false;",
     "const savedRunnableFits = false;",
     "const chosenModel = models.details.models.find((model) => model.authAvailable) ?? models.details.models[0] ?? {",

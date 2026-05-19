@@ -4,7 +4,7 @@ import type { Static } from "typebox";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type { StructuredSessionStateStore } from "./structured-session-state";
 
-export const RESUME_THREAD_TOOL_NAME = "thread.resume";
+export const RESUME_THREAD_TOOL_NAME = "thread_resume";
 
 export const resumeThreadParamsSchema = Type.Object(
   {
@@ -19,7 +19,7 @@ export type ResumeThreadParams = Static<typeof resumeThreadParamsSchema>;
 const RESUME_THREAD_DESCRIPTION = [
   "Resume an existing completed delegated handler thread when the orchestrator needs more help from the same specialist context.",
   "This records the orchestrator decision, reopens the handler thread as running, queues the message on that handler surface, and returns once the resume request is durable.",
-  "Use thread.list or thread.handoffs first when you need to identify the right thread.",
+  "Use thread_list or thread_handoffs first when you need to identify the right thread.",
 ].join(" ");
 
 export interface ThreadResumeBridge {

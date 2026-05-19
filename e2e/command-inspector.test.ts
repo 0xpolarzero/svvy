@@ -141,7 +141,7 @@ async function seedStructuredCommandInspector(input: {
       turnId: turn.id,
       threadId: thread.id,
       parentCommandId: parentCommand.id,
-      toolName: "artifact.write_text",
+      toolName: "artifact_write_text",
       executor: "execute_typescript",
       visibility: "summary",
       title: "Create summary.md",

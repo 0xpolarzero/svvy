@@ -301,7 +301,7 @@ test("drives a real delegated workflow run through the app and routes workflow a
           expect((await inspector.textContent()) ?? "").toContain("Workflow Runs");
           expect((await inspector.textContent()) ?? "").toContain("svvy-hello-world");
           expect((await inspector.textContent()) ?? "").toContain("svvy-hello-world is completed");
-          expect((await inspector.textContent()) ?? "").toContain("smithers.run_workflow");
+          expect((await inspector.textContent()) ?? "").toContain("smithers_run_workflow");
 
           await page.locator(".ui-dialog-close").click({ force: true });
           await inspector.waitFor({ state: "hidden" });
@@ -328,17 +328,17 @@ test("drives a real delegated workflow run through the app and routes workflow a
       "Open a handler thread dedicated to running the saved hello_world fixture workflow.",
     ),
   );
-  expect(toolNames(orchestratorRequest)).toContain("thread.start");
-  expect(toolNames(orchestratorRequest)).not.toContain("smithers.run_workflow");
+  expect(toolNames(orchestratorRequest)).toContain("thread_start");
+  expect(toolNames(orchestratorRequest)).not.toContain("smithers_run_workflow");
 
   const handlerRequest = stub.requests.find((request) =>
     latestUserText(request).includes(
       "Run the saved hello_world fixture workflow, let workflow supervision wake this handler when it finishes, and then hand the result back.",
     ),
   );
-  expect(toolNames(handlerRequest)).toContain("smithers.run_workflow");
-  expect(toolNames(handlerRequest)).toContain("thread.handoff");
-  expect(toolNames(handlerRequest)).not.toContain("thread.start");
+  expect(toolNames(handlerRequest)).toContain("smithers_run_workflow");
+  expect(toolNames(handlerRequest)).toContain("thread_handoff");
+  expect(toolNames(handlerRequest)).not.toContain("thread_start");
 
   const workflowAttentionRequest = stub.requests.find((request) =>
     latestUserText(request).includes(
@@ -346,9 +346,9 @@ test("drives a real delegated workflow run through the app and routes workflow a
     ),
   );
   expect(workflowAttentionRequest).toBeTruthy();
-  expect(toolNames(workflowAttentionRequest)).toContain("smithers.get_run");
-  expect(toolNames(workflowAttentionRequest)).toContain("thread.handoff");
-  expect(toolNames(workflowAttentionRequest)).not.toContain("thread.start");
+  expect(toolNames(workflowAttentionRequest)).toContain("smithers_get_run");
+  expect(toolNames(workflowAttentionRequest)).toContain("thread_handoff");
+  expect(toolNames(workflowAttentionRequest)).not.toContain("thread_start");
 });
 
 test("drives a real delegated workflow run through the app with z.ai loaded from workspace .env", async () => {
@@ -396,10 +396,10 @@ test("drives a real delegated workflow run through the app with z.ai loaded from
           page,
           [
             "Run the saved hello_world fixture workflow with input message `hello from the real provider workflow supervision e2e`.",
-            "Use smithers.* tools only as needed.",
+            "Use smithers_* tools only as needed.",
             "Do not call execute_typescript.",
-            "Stay in the thread until smithers.get_run reports the workflow is finished.",
-            "Then call thread.handoff with title `hello_world completed` and kind `workflow`.",
+            "Stay in the thread until smithers_get_run reports the workflow is finished.",
+            "Then call thread_handoff with title `hello_world completed` and kind `workflow`.",
           ].join(" "),
         );
 
@@ -418,7 +418,7 @@ test("drives a real delegated workflow run through the app with z.ai loaded from
         await waitForVisible(inspector, 60_000);
         expect((await inspector.textContent()) ?? "").toContain("Workflow Runs");
         expect((await inspector.textContent()) ?? "").toContain("svvy-hello-world");
-        expect((await inspector.textContent()) ?? "").toContain("smithers.run_workflow");
+        expect((await inspector.textContent()) ?? "").toContain("smithers_run_workflow");
 
         await page.locator(".ui-dialog-close").click({ force: true });
         await inspector.waitFor({ state: "hidden" });

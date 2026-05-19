@@ -137,7 +137,7 @@ describe("thread handoff tool", () => {
         summary: "Finished the delegated work.",
         body: "Finished the delegated work and handed it back.",
       }),
-    ).rejects.toThrow("thread.handoff can only run during an active prompt.");
+    ).rejects.toThrow("thread_handoff can only run during an active prompt.");
   });
 
   it("records a handoff command, creates an episode, completes the thread, and clears thread wait", async () => {
@@ -165,11 +165,11 @@ describe("thread handoff tool", () => {
 
     const snapshot = store.getSessionState("session-thread-handoff-tool");
     expect(snapshot.turns[0]).toMatchObject({
-      turnDecision: "thread.handoff",
+      turnDecision: "thread_handoff",
     });
     expect(snapshot.commands).toEqual([
       expect.objectContaining({
-        toolName: "thread.handoff",
+        toolName: "thread_handoff",
         executor: "handler",
         visibility: "surface",
         status: "succeeded",
@@ -226,7 +226,7 @@ describe("thread handoff tool", () => {
       turnId: runtime.current!.turnId,
       surfacePiSessionId: runtime.current!.surfacePiSessionId,
       threadId: handlerThreadId,
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       executor: "smithers",
       visibility: "surface",
       title: "Run hello_world",
@@ -265,7 +265,7 @@ describe("thread handoff tool", () => {
       turnDecision: "pending",
     });
     expect(
-      snapshot.commands.find((command) => command.toolName === "thread.handoff"),
+      snapshot.commands.find((command) => command.toolName === "thread_handoff"),
     ).toMatchObject({
       status: "failed",
     });
@@ -291,7 +291,7 @@ describe("thread handoff tool", () => {
         turnId: runtime.current!.turnId,
         surfacePiSessionId: runtime.current!.surfacePiSessionId,
         threadId: handlerThreadId,
-        toolName: "smithers.run_workflow",
+        toolName: "smithers_run_workflow",
         executor: "smithers",
         visibility: "surface",
         title: "Run hello_world",
@@ -336,7 +336,7 @@ describe("thread handoff tool", () => {
 
       const snapshot = store.getSessionState("session-thread-handoff-tool");
       expect(snapshot.turns[0]).toMatchObject({
-        turnDecision: "thread.handoff",
+        turnDecision: "thread_handoff",
       });
       expect(snapshot.threads.find((thread) => thread.id === handlerThreadId)).toMatchObject({
         status: "completed",

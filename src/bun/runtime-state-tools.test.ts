@@ -37,7 +37,7 @@ describe("runtime state tools", () => {
     });
   });
 
-  it("fails thread.current outside a handler and returns compact current handler state inside a handler", async () => {
+  it("fails thread_current outside a handler and returns compact current handler state inside a handler", async () => {
     const { runtime, store, thread, workflow } = createRuntimeFixture();
     const tool = createThreadCurrentTool({ runtime, store });
 
@@ -179,7 +179,7 @@ function createRuntimeFixture() {
     turnId: turn.id,
     surfacePiSessionId: handlerSurfaceId,
     threadId: thread.id,
-    toolName: "smithers.run_workflow",
+    toolName: "smithers_run_workflow",
     executor: "smithers",
     visibility: "surface",
     title: "Run workflow",

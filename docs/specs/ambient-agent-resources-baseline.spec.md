@@ -297,9 +297,9 @@ Examples:
 - `read_file`
 - `write_file`
 - `bash`
-- `web.search`
-- `thread.start`
-- `smithers.run_workflow`
+- `web_search`
+- `thread_start`
+- `smithers_run_workflow`
 - `execute_typescript`
 - MCP tools
 - extension-provided tools

@@ -57,7 +57,7 @@ export class FirecrawlWebProvider implements WebProvider {
     context: WebInvocationContext,
   ): Promise<WebProviderToolResult> {
     if (!this.apiKey) throw new Error("Firecrawl API key is not configured.");
-    return toolName === "web.search"
+    return toolName === "web_search"
       ? this.search(input as Record<string, unknown> & { query: string }, context)
       : this.fetch(input as Record<string, unknown> & { url: string }, context);
   }
@@ -80,13 +80,13 @@ export class FirecrawlWebProvider implements WebProvider {
     const results = readFirecrawlResults(json);
     return textResult(JSON.stringify({ providerId: this.id, results }, null, 2), {
       providerId: this.id,
-      toolName: "web.search",
+      toolName: "web_search",
       status: "succeeded",
       query: input.query,
       resultCount: results.length,
       commandFacts: {
         providerId: this.id,
-        toolName: "web.search",
+        toolName: "web_search",
         status: "succeeded",
         query: input.query,
         resultCount: results.length,
@@ -139,7 +139,7 @@ export class FirecrawlWebProvider implements WebProvider {
       ),
       {
         providerId: this.id,
-        toolName: "web.fetch",
+        toolName: "web_fetch",
         status: "succeeded",
         url,
         finalUrl: readString(data.url) ?? url,

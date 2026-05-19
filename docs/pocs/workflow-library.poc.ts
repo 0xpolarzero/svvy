@@ -5,9 +5,9 @@
  * - saved reusable assets live under `.svvy/workflows/{definitions,prompts,components}`
  * - runnable saved entries live under `.svvy/workflows/entries`
  * - artifact workflows live under `.svvy/artifacts/workflows/<id>/{...,entries,metadata.json}`
- * - `workflow.list_assets(...)` and `workflow.list_models()` are authoring-time discovery APIs inside `execute_typescript`
- * - `smithers.list_workflows` is reserved for runnable entries and lists both saved and artifact entries
- * - launch goes through a minimal bridge-shaped `smithers.*` seam rather than a trace-local helper
+ * - `workflow_list_assets(...)` and `workflow_list_models()` are authoring-time discovery APIs inside `execute_typescript`
+ * - `smithers_list_workflows` is reserved for runnable entries and lists both saved and artifact entries
+ * - launch goes through a minimal bridge-shaped `smithers_*` seam rather than a trace-local helper
  * - runnable entries publish explicit grouped asset refs instead of relying on inferred import graphs
  * - writing reusable saved workflow files happens through ordinary repo writes into `.svvy/workflows/...`
  * - direct writes under `.svvy/workflows/...` return validation feedback through structured command output
@@ -63,7 +63,7 @@ type RunnableWorkflowEntry = {
   label: string;
   summary: string;
   sourceScope: AssetScope;
-  launchToolName: `smithers.run_workflow.${string}`;
+  launchToolName: `smithers_run_workflow_${string}`;
   launchInputSchema: Record<string, unknown>;
   entryPath: string;
   assetPaths: string[];
@@ -504,7 +504,7 @@ async function listRunnableWorkflows(workspaceRoot: string): Promise<RunnableWor
       label,
       summary,
       sourceScope,
-      launchToolName: `smithers.run_workflow.${workflowId}` as const,
+      launchToolName: `smithers_run_workflow.${workflowId}` as const,
       launchInputSchema: z.toJSONSchema(launchSchema as any, { io: "input" }) as Record<
         string,
         unknown
@@ -1171,7 +1171,7 @@ async function runSavedEntryScenario(workspaceRoot: string): Promise<ScenarioRes
   const bridge = createSmithersBridgePoc(workspaceRoot);
   const workflows = await bridge.listWorkflows();
   trace.push({
-    toolName: "smithers.list_workflows",
+    toolName: "smithers_list_workflows",
     args: {},
     result: {
       workflowIds: workflows.map((workflow) => workflow.id),
@@ -1243,7 +1243,7 @@ async function runArtifactAuthoringScenario(
     args: { purpose: "discover saved definitions before reading promising files" },
     childCalls: [
       {
-        toolName: "workflow.list_assets",
+        toolName: "workflow_list_assets",
         args: { kind: "definition", scope: "saved" },
         result: summarizeAssets(definitionAssets),
       },
@@ -1260,7 +1260,7 @@ async function runArtifactAuthoringScenario(
     args: { purpose: "discover saved prompts before reading promising files" },
     childCalls: [
       {
-        toolName: "workflow.list_assets",
+        toolName: "workflow_list_assets",
         args: { kind: "prompt", scope: "saved" },
         result: summarizeAssets(promptAssets),
       },
@@ -1277,7 +1277,7 @@ async function runArtifactAuthoringScenario(
     args: { purpose: "discover saved components before reading promising files" },
     childCalls: [
       {
-        toolName: "workflow.list_assets",
+        toolName: "workflow_list_assets",
         args: { kind: "component", scope: "saved" },
         result: summarizeAssets(savedComponents),
       },
@@ -1324,7 +1324,7 @@ async function runArtifactAuthoringScenario(
     },
     childCalls: [
       {
-        toolName: "workflow.list_models",
+        toolName: "workflow_list_models",
         args: {},
         result: models,
       },
@@ -1389,7 +1389,7 @@ async function runArtifactAuthoringScenario(
     },
     childCalls: [
       {
-        toolName: "workflow.list_assets",
+        toolName: "workflow_list_assets",
         args: { kind: "component", scope: "both" },
         result: summarizeAssets(allComponents),
       },
@@ -1399,7 +1399,7 @@ async function runArtifactAuthoringScenario(
 
   const workflows = await bridge.listWorkflows();
   trace.push({
-    toolName: "smithers.list_workflows",
+    toolName: "smithers_list_workflows",
     args: {},
     result: {
       workflowIds: workflows.map((workflow) => workflow.id),
@@ -1530,7 +1530,7 @@ async function runExplicitSaveScenario(
     },
     childCalls: [
       {
-        toolName: "workflow.list_assets",
+        toolName: "workflow_list_assets",
         args: { scope: "saved", pathPrefix: ".svvy/workflows/" },
         result: summarizeAssets(savedAssets),
       },
@@ -1540,7 +1540,7 @@ async function runExplicitSaveScenario(
 
   const workflows = await bridge.listWorkflows();
   trace.push({
-    toolName: "smithers.list_workflows",
+    toolName: "smithers_list_workflows",
     args: {},
     result: {
       workflowIds: workflows.map((workflow) => workflow.id),

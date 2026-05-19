@@ -225,6 +225,6 @@ This shape is a product projection contract, not a replacement for Smithers' own
 
 - Do not make the workflow inspector the default orchestration or reconciliation path.
 - Do not ask the orchestrator to ingest raw workflow trees by default.
-- Do not introduce a `workflow.*` abstraction parallel to Smithers-native tool names.
+- Do not introduce a `workflow_*` abstraction parallel to Smithers-native tool names.
 - Do not depend on repo-root Smithers authoring workspace assets.
 - Do not make graph layout the first implementation target.

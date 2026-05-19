@@ -141,16 +141,12 @@ type ExecuteTypescriptToolOptions = {
 };
 
 type ExecuteTypescriptApi = SvvyApi & {
-  workflow?: {
-    list_assets(input?: unknown): Promise<unknown>;
-    list_models(): Promise<unknown>;
-  };
-  web?: {
-    search(input: unknown): Promise<unknown>;
-    fetch(input: unknown): Promise<unknown>;
-  };
+  workflow_list_assets?(input?: unknown): Promise<unknown>;
+  workflow_list_models?(): Promise<unknown>;
+  web_search?(input: unknown): Promise<unknown>;
+  web_fetch?(input: unknown): Promise<unknown>;
 };
-type CxApiToolResult = Awaited<ReturnType<ExecuteTypescriptApi["cx"]["overview"]>>;
+type CxApiToolResult = Awaited<ReturnType<ExecuteTypescriptApi["cx_overview"]>>;
 
 type ExecuteTypescriptCommandFacts = Record<string, unknown>;
 
@@ -748,146 +744,132 @@ function createExecuteTypescriptApi(input: {
         visibility: "summary",
         facts: () => ({ command: params.command, timeout: params.timeout }),
       }),
-    cx: {
-      overview: (params = {}) =>
-        invokeTool<CxApiToolResult>({
-          tool: getTool("cx.overview"),
-          params,
-          title: "cx overview",
-          summary: `cx overview ${params.path ?? "."}`,
-          facts: readCxFacts,
-        }),
-      symbols: (params = {}) =>
-        invokeTool<CxApiToolResult>({
-          tool: getTool("cx.symbols"),
-          params,
-          title: "cx symbols",
-          summary: "cx symbols",
-          facts: readCxFacts,
-        }),
-      definition: (params) =>
-        invokeTool<CxApiToolResult>({
-          tool: getTool("cx.definition"),
-          params,
-          title: "cx definition",
-          summary: `cx definition ${params.name}`,
-          facts: readCxFacts,
-        }),
-      references: (params) =>
-        invokeTool<CxApiToolResult>({
-          tool: getTool("cx.references"),
-          params,
-          title: "cx references",
-          summary: `cx references ${params.name}`,
-          facts: readCxFacts,
-        }),
-      lang: {
-        list: () =>
-          invokeTool<CxApiToolResult>({
-            tool: getTool("cx.lang.list"),
-            params: {},
-            title: "cx lang list",
-            summary: "cx lang list",
-            facts: readCxFacts,
-          }),
-      },
-      cache: {
-        path: () =>
-          invokeTool<CxApiToolResult>({
-            tool: getTool("cx.cache.path"),
-            params: {},
-            title: "cx cache path",
-            summary: "cx cache path",
-            facts: readCxFacts,
-          }),
-      },
-    },
-    artifact: {
-      write_text: (params) =>
-        invokeTool({
-          tool: getTool("artifact.write_text"),
-          params,
-          title: "Write artifact",
-          summary: `Write artifact ${params.name}`,
-          visibility: "summary",
-          facts: (result) => readToolResultDetails(result),
-        }),
-      write_json: (params) =>
-        invokeTool({
-          tool: getTool("artifact.write_json"),
-          params,
-          title: "Write JSON artifact",
-          summary: `Write JSON artifact ${params.name}`,
-          visibility: "summary",
-          facts: (result) => readToolResultDetails(result),
-        }),
-      attach_file: (params) =>
-        invokeTool({
-          tool: getTool("artifact.attach_file"),
-          params,
-          title: "Attach artifact",
-          summary: `Attach ${params.path}`,
-          visibility: "summary",
-          facts: (result) => readToolResultDetails(result),
-        }),
-    },
+    cx_overview: (params = {}) =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_overview"),
+        params,
+        title: "cx overview",
+        summary: `cx overview ${params.path ?? "."}`,
+        facts: readCxFacts,
+      }),
+    cx_symbols: (params = {}) =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_symbols"),
+        params,
+        title: "cx symbols",
+        summary: "cx symbols",
+        facts: readCxFacts,
+      }),
+    cx_definition: (params) =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_definition"),
+        params,
+        title: "cx definition",
+        summary: `cx definition ${params.name}`,
+        facts: readCxFacts,
+      }),
+    cx_references: (params) =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_references"),
+        params,
+        title: "cx references",
+        summary: `cx references ${params.name}`,
+        facts: readCxFacts,
+      }),
+    cx_lang_list: () =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_lang_list"),
+        params: {},
+        title: "cx lang list",
+        summary: "cx lang list",
+        facts: readCxFacts,
+      }),
+    cx_cache_path: () =>
+      invokeTool<CxApiToolResult>({
+        tool: getTool("cx_cache_path"),
+        params: {},
+        title: "cx cache path",
+        summary: "cx cache path",
+        facts: readCxFacts,
+      }),
+    artifact_write_text: (params) =>
+      invokeTool({
+        tool: getTool("artifact_write_text"),
+        params,
+        title: "Write artifact",
+        summary: `Write artifact ${params.name}`,
+        visibility: "summary",
+        facts: (result) => readToolResultDetails(result),
+      }),
+    artifact_write_json: (params) =>
+      invokeTool({
+        tool: getTool("artifact_write_json"),
+        params,
+        title: "Write JSON artifact",
+        summary: `Write JSON artifact ${params.name}`,
+        visibility: "summary",
+        facts: (result) => readToolResultDetails(result),
+      }),
+    artifact_attach_file: (params) =>
+      invokeTool({
+        tool: getTool("artifact_attach_file"),
+        params,
+        title: "Attach artifact",
+        summary: `Attach ${params.path}`,
+        visibility: "summary",
+        facts: (result) => readToolResultDetails(result),
+      }),
   };
   if (canUseExecuteTypescriptApiNamespace(input.actor, "workflow")) {
-    api.workflow = {
-      list_assets: (params = {}) =>
-        invokeTool({
-          tool: getTool("workflow.list_assets"),
-          params,
-          title: "List workflow assets",
-          summary: "List workflow assets",
-          facts: (result) => {
-            const details = readToolResultDetails(result);
-            const assets = Array.isArray(details.assets) ? details.assets : [];
-            return { assetCount: assets.length };
-          },
-        }),
-      list_models: () =>
-        invokeTool({
-          tool: getTool("workflow.list_models"),
-          params: {},
-          title: "List workflow models",
-          summary: "List workflow models",
-          facts: (result) => {
-            const details = readToolResultDetails(result);
-            const models = Array.isArray(details.models) ? details.models : [];
-            return { modelCount: models.length };
-          },
-        }),
-    };
+    api.workflow_list_assets = (params = {}) =>
+      invokeTool({
+        tool: getTool("workflow_list_assets"),
+        params,
+        title: "List workflow assets",
+        summary: "List workflow assets",
+        facts: (result) => {
+          const details = readToolResultDetails(result);
+          const assets = Array.isArray(details.assets) ? details.assets : [];
+          return { assetCount: assets.length };
+        },
+      });
+    api.workflow_list_models = () =>
+      invokeTool({
+        tool: getTool("workflow_list_models"),
+        params: {},
+        title: "List workflow models",
+        summary: "List workflow models",
+        facts: (result) => {
+          const details = readToolResultDetails(result);
+          const models = Array.isArray(details.models) ? details.models : [];
+          return { modelCount: models.length };
+        },
+      });
   }
 
-  const webSearchTool = toolByName.get("web.search");
-  const webFetchTool = toolByName.get("web.fetch");
+  const webSearchTool = toolByName.get("web_search");
+  const webFetchTool = toolByName.get("web_fetch");
   if (!webSearchTool || !webFetchTool) {
     return guardExecuteTypescriptApi(api, input.actor, assertNamespaceAllowed);
   }
 
-  api.web = {
-    search: (params: unknown) => {
-      return invokeTool({
-        tool: webSearchTool,
-        params,
-        title: "Web search",
-        summary: `Web search ${readUnknownProperty(params, "query")}`.trim(),
-        facts: (result) => readCommandFacts(result),
-      });
-    },
-    fetch: (params: unknown) => {
-      return invokeTool({
-        tool: webFetchTool,
-        params,
-        title: "Web fetch",
-        summary: `Web fetch ${readWebFetchSummary(params)}`.trim(),
-        visibility: "summary",
-        facts: (result) => readCommandFacts(result),
-      });
-    },
-  };
+  api.web_search = (params: unknown) =>
+    invokeTool({
+      tool: webSearchTool,
+      params,
+      title: "Web search",
+      summary: `Web search ${readUnknownProperty(params, "query")}`.trim(),
+      facts: (result) => readCommandFacts(result),
+    });
+  api.web_fetch = (params: unknown) =>
+    invokeTool({
+      tool: webFetchTool,
+      params,
+      title: "Web fetch",
+      summary: `Web fetch ${readWebFetchSummary(params)}`.trim(),
+      visibility: "summary",
+      facts: (result) => readCommandFacts(result),
+    });
   return guardExecuteTypescriptApi(api, input.actor, assertNamespaceAllowed);
 }
 
@@ -898,6 +880,13 @@ function guardExecuteTypescriptApi(
 ): ExecuteTypescriptApi {
   return new Proxy(api, {
     get(target, property, receiver) {
+      if (typeof property === "string" && isWorkflowExecuteTypescriptApiProperty(property)) {
+        if (!canUseExecuteTypescriptApiNamespace(actor, "workflow")) {
+          throw new Error(
+            `execute_typescript api.workflow_* helpers are not available for ${actor} actors.`,
+          );
+        }
+      }
       if (typeof property === "string" && isExecuteTypescriptApiNamespace(property)) {
         assertNamespaceAllowed(property);
       }
@@ -924,6 +913,10 @@ function isExecuteTypescriptApiNamespace(value: string): value is ExecuteTypescr
     value === "workflow" ||
     value === "web"
   );
+}
+
+function isWorkflowExecuteTypescriptApiProperty(value: string): boolean {
+  return value === "workflow_list_assets" || value === "workflow_list_models";
 }
 
 function readUnknownProperty(value: unknown, key: string): string {
@@ -1059,9 +1052,9 @@ function buildExecuteTypescriptParentRollup(input: {
       case "find":
         searchCount += 1;
         break;
-      case "artifact.write_text":
-      case "artifact.write_json":
-      case "artifact.attach_file": {
+      case "artifact_write_text":
+      case "artifact_write_json":
+      case "artifact_attach_file": {
         artifactCount += 1;
         const artifactId = readFactString(activity.facts, "artifactId");
         if (artifactId) {
@@ -1075,18 +1068,18 @@ function buildExecuteTypescriptParentRollup(input: {
           bashFailureCount += 1;
         }
         break;
-      case "cx.overview":
-      case "cx.symbols":
-      case "cx.definition":
-      case "cx.references":
-      case "cx.lang.list":
-      case "cx.cache.path":
+      case "cx_overview":
+      case "cx_symbols":
+      case "cx_definition":
+      case "cx_references":
+      case "cx_lang_list":
+      case "cx_cache_path":
         cxCount += 1;
         break;
-      case "workflow.list_assets":
+      case "workflow_list_assets":
         workflowAssetCount += readFactNumber(activity.facts, "assetCount") ?? 0;
         break;
-      case "workflow.list_models":
+      case "workflow_list_models":
         workflowModelCount += readFactNumber(activity.facts, "modelCount") ?? 0;
         break;
       default:

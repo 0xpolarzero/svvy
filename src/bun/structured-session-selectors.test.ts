@@ -720,7 +720,7 @@ describe("structured session selectors", () => {
         {
           id: "command-summary-child",
           parentCommandId: "command-parent",
-          toolName: "artifact.write_text",
+          toolName: "artifact_write_text",
           visibility: "summary",
           title: "Create summary.md",
           summary: "Created summary.md.",
@@ -809,7 +809,7 @@ describe("structured session selectors", () => {
       summaryChildren: [
         {
           commandId: "command-summary-child",
-          toolName: "artifact.write_text",
+          toolName: "artifact_write_text",
           status: "succeeded",
           title: "Create summary.md",
           summary: "Created summary.md.",
@@ -1080,7 +1080,7 @@ describe("structured session selectors", () => {
           id: "command-handler-child",
           threadId: "thread-handler",
           parentCommandId: "command-handler-parent",
-          toolName: "artifact.write_text",
+          toolName: "artifact_write_text",
           visibility: "summary",
           title: "Write parser test",
           summary: "Created parser regression coverage.",
@@ -1264,7 +1264,7 @@ describe("structured session selectors", () => {
           summaryChildren: [
             {
               commandId: "command-handler-child",
-              toolName: "artifact.write_text",
+              toolName: "artifact_write_text",
               status: "succeeded",
               title: "Write parser test",
               summary: "Created parser regression coverage.",

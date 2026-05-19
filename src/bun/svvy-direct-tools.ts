@@ -131,8 +131,8 @@ function createArtifactWriteTextTool(
   options: DirectToolOptions,
 ): AgentTool<typeof artifactWriteTextSchema> {
   return createArtifactTool({
-    name: "artifact.write_text",
-    label: "artifact.write_text",
+    name: "artifact_write_text",
+    label: "artifact_write_text",
     description:
       "Write a UTF-8 artifact for durable byproducts or evidence that should not be a normal repository file.",
     parameters: artifactWriteTextSchema,
@@ -147,8 +147,8 @@ function createArtifactWriteJsonTool(
   options: DirectToolOptions,
 ): AgentTool<typeof artifactWriteJsonSchema> {
   return createArtifactTool({
-    name: "artifact.write_json",
-    label: "artifact.write_json",
+    name: "artifact_write_json",
+    label: "artifact_write_json",
     description:
       "Write a JSON artifact for durable structured byproducts or evidence that should not be a normal repository file.",
     parameters: artifactWriteJsonSchema,
@@ -163,8 +163,8 @@ function createArtifactAttachFileTool(
   options: DirectToolOptions,
 ): AgentTool<typeof artifactAttachFileSchema> {
   return {
-    name: "artifact.attach_file",
-    label: "artifact.attach_file",
+    name: "artifact_attach_file",
+    label: "artifact_attach_file",
     description:
       "Attach an existing workspace file as durable artifact evidence without treating it as a requested repository deliverable.",
     parameters: artifactAttachFileSchema,
@@ -226,8 +226,8 @@ function createWorkflowListAssetsTool(
   options: DirectToolOptions,
 ): AgentTool<typeof workflowListAssetsSchema> {
   return {
-    name: "workflow.list_assets",
-    label: "workflow.list_assets",
+    name: "workflow_list_assets",
+    label: "workflow_list_assets",
     description:
       "List reusable saved or artifact workflow source assets for handler-side workflow authoring.",
     parameters: workflowListAssetsSchema,
@@ -242,8 +242,8 @@ function createWorkflowListModelsTool(
   options: DirectToolOptions,
 ): AgentTool<typeof workflowListModelsSchema> {
   return {
-    name: "workflow.list_models",
-    label: "workflow.list_models",
+    name: "workflow_list_models",
+    label: "workflow_list_models",
     description: "List provider/model options available for workflow task-agent authoring.",
     parameters: workflowListModelsSchema,
     async execute() {

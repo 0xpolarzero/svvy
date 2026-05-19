@@ -87,7 +87,7 @@ type CommandRecord = {
 type EpisodeRecord = {
   id: string;
   threadId: string;
-  // Provenance only: a command may be the thread.handoff action or the most relevant underlying work command,
+  // Provenance only: a command may be the thread_handoff action or the most relevant underlying work command,
   // but commands still keep their own summaries and do not emit episodes themselves.
   sourceCommandId: string | null;
   title: string;
@@ -293,7 +293,7 @@ const state: StructuredSessionState = {
       threadId: null,
       workflowRunId: null,
       parentCommandId: null,
-      toolName: "thread.start",
+      toolName: "thread_start",
       executor: "orchestrator",
       visibility: "surface",
       status: "succeeded",
@@ -313,7 +313,7 @@ const state: StructuredSessionState = {
       threadId: "thread-1",
       workflowRunId: "run-1",
       parentCommandId: null,
-      toolName: "smithers.run_workflow.authored_design_workflow",
+      toolName: "smithers_run_workflow.authored_design_workflow",
       executor: "handler",
       visibility: "surface",
       status: "waiting",
@@ -333,7 +333,7 @@ const state: StructuredSessionState = {
       threadId: "thread-1",
       workflowRunId: "run-2",
       parentCommandId: null,
-      toolName: "smithers.run_workflow.authored_design_workflow_v2",
+      toolName: "smithers_run_workflow.authored_design_workflow_v2",
       executor: "handler",
       visibility: "surface",
       status: "succeeded",

@@ -42,7 +42,7 @@
 	};
 
 	const WEB_PROVIDER_OPTIONS: Array<{ id: WebProviderId | null; label: string; summary: string }> = [
-		{ id: null, label: "None", summary: "Do not expose web tools or api.web helpers." },
+		{ id: null, label: "None", summary: "Do not expose web tools or api.web_* helpers." },
 		{ id: "tinyfish", label: "TinyFish", summary: "TinyFish Search and Fetch with a stored TinyFish API key." },
 		{ id: "firecrawl", label: "Firecrawl", summary: "Firecrawl Search and Scrape with a stored Firecrawl API key." },
 	];
@@ -646,7 +646,7 @@
 				{:else}
 					<div class="settings-section-note">
 						<ShieldIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-						<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web helpers.</p>
+						<p>Select TinyFish or Firecrawl and configure an API key. Until a selected provider is ready, svvy exposes no web tools or api.web_* helpers.</p>
 					</div>
 					<div class="settings-row-stack">
 						{#each WEB_PROVIDER_OPTIONS as option (option.id ?? "none")}

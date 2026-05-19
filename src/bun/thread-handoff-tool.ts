@@ -7,7 +7,7 @@ import type {
   StructuredSessionStateStore,
 } from "./structured-session-state";
 
-export const THREAD_HANDOFF_TOOL_NAME = "thread.handoff";
+export const THREAD_HANDOFF_TOOL_NAME = "thread_handoff";
 
 const handoffKindSchema = Type.Union([
   Type.Literal("analysis"),
@@ -109,7 +109,7 @@ export function createThreadHandoffTool(options: {
 
         options.store.setTurnDecision({
           turnId: runtime.turnId,
-          decision: "thread.handoff",
+          decision: "thread_handoff",
         });
 
         options.store.finishCommand({
@@ -254,5 +254,5 @@ function buildActiveWorkflowHandoffError(
         `${workflowRun.workflowId} (${workflowRun.smithersRunId}, ${workflowRun.status})`,
     )
     .join(", ");
-  return `thread.handoff cannot complete the current objective span while unresolved workflow runs still exist: ${details}. The handler keeps ownership until those runs are resolved inside the thread. Resume, repair, cancel, or explicitly close the workflow state before handing control back.`;
+  return `thread_handoff cannot complete the current objective span while unresolved workflow runs still exist: ${details}. The handler keeps ownership until those runs are resolved inside the thread. Resume, repair, cancel, or explicitly close the workflow state before handing control back.`;
 }

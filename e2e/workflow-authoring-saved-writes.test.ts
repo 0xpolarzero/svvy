@@ -19,7 +19,7 @@ const AUTHOR_ARTIFACT_PROMPT = [
   "If they do not fit cleanly, author a short-lived artifact workflow.",
 ].join(" ");
 const RUN_ARTIFACT_PROMPT =
-  "Run the artifact workflow you just authored, use smithers.get_run as needed until it finishes, and then hand the result back.";
+  "Run the artifact workflow you just authored, use smithers_get_run as needed until it finishes, and then hand the result back.";
 const SAVE_SHORTCUT_PROMPT = [
   "Inspect the workflow work owned by this thread.",
   "If there are reusable saved workflow files worth keeping, write them directly into `.svvy/workflows/...` using the direct write or edit tools.",
@@ -345,7 +345,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
           }
           expect(
             collectAvailableToolNames(requestsMatching(stub.requests, AUTHOR_ARTIFACT_PROMPT)),
-          ).toContain("smithers.run_workflow");
+          ).toContain("smithers_run_workflow");
           {
             const authoringRequests = requestsMatching(stub.requests, AUTHOR_ARTIFACT_PROMPT);
             const authoringToolCalls = collectAssistantToolCalls(authoringRequests);
@@ -373,7 +373,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
           );
           expect(
             collectAvailableToolNames(requestsMatching(stub.requests, RUN_ARTIFACT_PROMPT)),
-          ).toContain("smithers.run_workflow");
+          ).toContain("smithers_run_workflow");
           await waitForCondition(
             "artifact workflow run tool call",
             () =>
@@ -388,7 +388,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
             () =>
               collectAssistantToolCalls(stub.requests)
                 .map((toolCall) => toolCall.name)
-                .includes("smithers.get_run"),
+                .includes("smithers_get_run"),
             60_000,
           );
           await waitForCondition(
@@ -396,7 +396,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
             () =>
               collectAssistantToolCalls(stub.requests)
                 .map((toolCall) => toolCall.name)
-                .includes("thread.handoff"),
+                .includes("thread_handoff"),
             60_000,
           );
           await Bun.sleep(500);
@@ -413,7 +413,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
           await waitForVisible(inspector);
           const inspectorText = (await inspector.textContent()) ?? "";
           expect(inspectorText).toContain("Workflow Runs");
-          expect(inspectorText).toContain("smithers.run_workflow");
+          expect(inspectorText).toContain("smithers_run_workflow");
           expect(inspectorText).toContain(ARTIFACT_WORKFLOW_ID);
           expect(inspectorText).toContain("1 workflow");
 
@@ -427,7 +427,7 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
             () =>
               collectAssistantToolCalls(requestsMatching(stub.requests, SAVE_SHORTCUT_PROMPT))
                 .map((toolCall) => toolCall.name)
-                .includes("thread.handoff"),
+                .includes("thread_handoff"),
             60_000,
           );
           await closeDialogIfVisible(page);
@@ -482,16 +482,16 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
   const orchestratorRequests = requestsMatching(stub.requests, OPEN_THREAD_PROMPT);
   expect(orchestratorRequests.length).toBeGreaterThan(0);
   const orchestratorToolSurface = collectAvailableToolNames(orchestratorRequests);
-  expect(orchestratorToolSurface).toContain("thread.start");
-  expect(orchestratorToolSurface.some((name) => name.startsWith("smithers."))).toBe(false);
+  expect(orchestratorToolSurface).toContain("thread_start");
+  expect(orchestratorToolSurface.some((name) => name.startsWith("smithers_"))).toBe(false);
   expect(
     collectAssistantToolCalls(orchestratorRequests).some(
-      (toolCall) => toolCall.name === "thread.start",
+      (toolCall) => toolCall.name === "thread_start",
     ),
   ).toBe(true);
   expect(
     collectAssistantToolCalls(orchestratorRequests).some((toolCall) =>
-      toolCall.name.startsWith("smithers."),
+      toolCall.name.startsWith("smithers_"),
     ),
   ).toBe(false);
 
@@ -499,23 +499,23 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
   expect(authoringRequests.length).toBeGreaterThan(0);
   const authoringToolSurface = collectAvailableToolNames(authoringRequests);
   expect(authoringToolSurface).toContain("execute_typescript");
-  expect(authoringToolSurface).toContain("smithers.list_workflows");
-  expect(authoringToolSurface).toContain("smithers.run_workflow");
-  expect(authoringToolSurface.some((name) => name.startsWith("smithers.run_workflow."))).toBe(
+  expect(authoringToolSurface).toContain("smithers_list_workflows");
+  expect(authoringToolSurface).toContain("smithers_run_workflow");
+  expect(authoringToolSurface.some((name) => name.startsWith("smithers_run_workflow."))).toBe(
     false,
   );
-  expect(authoringToolSurface).not.toContain("thread.start");
+  expect(authoringToolSurface).not.toContain("thread_start");
 
   const authoringToolCalls = collectAssistantToolCalls(authoringRequests);
   expect(authoringToolCalls.map((toolCall) => toolCall.name)).toEqual(
-    expect.arrayContaining(["smithers.list_workflows", "execute_typescript"]),
+    expect.arrayContaining(["smithers_list_workflows", "execute_typescript"]),
   );
 
   const artifactExecuteToolCall = findFirstToolCall(authoringToolCalls, "execute_typescript");
   const artifactTypescriptCode =
     readStringProperty(artifactExecuteToolCall?.parsedArguments, "typescriptCode") ?? "";
-  expect(artifactTypescriptCode).toContain("api.workflow.list_assets");
-  expect(artifactTypescriptCode).toContain("api.workflow.list_models()");
+  expect(artifactTypescriptCode).toContain("api.workflow_list_assets");
+  expect(artifactTypescriptCode).toContain("api.workflow_list_models()");
   expect(artifactTypescriptCode).toContain(ARTIFACT_ROOT_RELATIVE);
   expect(artifactTypescriptCode).toContain("write");
   expect(artifactTypescriptCode).not.toContain(
@@ -535,13 +535,13 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
     ),
   ).toBe(ARTIFACT_WORKFLOW_DIR);
   const discoveredWorkflows = readWorkflowIdsFromListWorkflows(
-    findLatestToolResult(authoringRequests, authoringToolCalls, "smithers.list_workflows"),
+    findLatestToolResult(authoringRequests, authoringToolCalls, "smithers_list_workflows"),
   );
   expect(discoveredWorkflows.length).toBeGreaterThan(0);
 
   const runRequests = requestsMatching(stub.requests, RUN_ARTIFACT_PROMPT);
   expect(runRequests.length).toBeGreaterThan(0);
-  expect(collectAvailableToolNames(runRequests)).toContain("smithers.run_workflow");
+  expect(collectAvailableToolNames(runRequests)).toContain("smithers_run_workflow");
   const globalToolCalls = collectAssistantToolCalls(stub.requests);
   const artifactRunWorkflowCall =
     findRunWorkflowToolCalls(globalToolCalls, ARTIFACT_WORKFLOW_ID)[0] ?? null;
@@ -556,12 +556,12 @@ test("proves artifact-only workflow authoring by default and explicit saved writ
   expect(saveRequests.length).toBeGreaterThan(0);
   const saveToolSurface = collectAvailableToolNames(saveRequests);
   expect(saveToolSurface).toContain("write");
-  expect(saveToolSurface).not.toContain("thread.start");
+  expect(saveToolSurface).not.toContain("thread_start");
   expect(saveToolSurface.some((name) => name.includes("saveAssets"))).toBe(false);
 
   const saveToolCalls = collectAssistantToolCalls(saveRequests);
   expect(saveToolCalls.map((toolCall) => toolCall.name)).toEqual(
-    expect.arrayContaining(["write", "thread.handoff"]),
+    expect.arrayContaining(["write", "thread_handoff"]),
   );
   expect(saveToolCalls.some((toolCall) => toolCall.name.includes("saveAssets"))).toBe(false);
 
@@ -717,7 +717,7 @@ function findRunWorkflowToolCalls(
 ): StubAssistantToolCall[] {
   return toolCalls.filter(
     (toolCall) =>
-      toolCall.name === "smithers.run_workflow" &&
+      toolCall.name === "smithers_run_workflow" &&
       readStringProperty(toolCall.parsedArguments, "workflowId") === workflowId,
   );
 }

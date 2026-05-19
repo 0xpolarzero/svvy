@@ -20,10 +20,8 @@ export function buildHandlerWorkflowDeclaration(): string {
   return [
     "/** Handler-only workflow discovery helpers. */",
     "interface SvvyApi {",
-    "  workflow: {",
-    "    list_assets(input?: WorkflowListAssetsInput): Promise<ToolResult<WorkflowListAssetsDetails>>;",
-    "    list_models(): Promise<ToolResult<WorkflowListModelsDetails>>;",
-    "  };",
+    "  workflow_list_assets(input?: WorkflowListAssetsInput): Promise<ToolResult<WorkflowListAssetsDetails>>;",
+    "  workflow_list_models(): Promise<ToolResult<WorkflowListModelsDetails>>;",
     "}",
   ].join("\n");
 }
@@ -37,10 +35,8 @@ export function buildActiveWebDeclaration(webProvider: WebProvider): string {
     contracts.fetch.inputTypeDeclaration,
     contracts.fetch.outputTypeDeclaration,
     "interface SvvyApi {",
-    "  web: {",
-    "    search(input: ActiveWebSearchInput): Promise<ToolResult<ActiveWebSearchOutput>>;",
-    "    fetch(input: ActiveWebFetchInput): Promise<ToolResult<ActiveWebFetchOutput>>;",
-    "  };",
+    "  web_search(input: ActiveWebSearchInput): Promise<ToolResult<ActiveWebSearchOutput>>;",
+    "  web_fetch(input: ActiveWebFetchInput): Promise<ToolResult<ActiveWebFetchOutput>>;",
     "}",
   ].join("\n");
 }

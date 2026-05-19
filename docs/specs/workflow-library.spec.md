@@ -8,7 +8,7 @@
   - define the workspace-owned workflow library shape under `.svvy/workflows/`
   - define the authored artifact-workflow shape under `.svvy/artifacts/workflows/`
   - define handler-side workflow authoring guidance, generated contracts, and discovery
-  - define the runnable entry contract consumed by `smithers.list_workflows`
+  - define the runnable entry contract consumed by `smithers_list_workflows`
   - define optional product metadata and result schemas for special product lanes such as Project CI
   - define how saved workflow files are written and validated
 
@@ -39,9 +39,9 @@ The product should optimize for:
 
 The naming rule is:
 
-- `workflow.*` is the handler's authoring-time discovery surface
+- `workflow_*` is the handler's authoring-time discovery surface
 - `write` and `edit` are the handler's file-modification surface for saved workflow files
-- `smithers.*` is the handler's launch and supervision surface
+- `smithers_*` is the handler's launch and supervision surface
 
 This split is intentional.
 
@@ -178,7 +178,7 @@ Examples:
 - workflow building blocks
 - workflow agent values or factories
 
-Workflow agent files are ordinary component files that export values conforming to the generated `WorkflowTaskAgentConfig` contract. The canonical config fields are `provider`, `model`, `reasoningEffort`, `systemPrompt`, and `toolSurface`; `thinkingLevel` is not a workflow task-agent config alias. The conventional saved workflow agents live in `.svvy/workflows/components/agents.ts` and export `explorer`, `implementer`, and `reviewer`. App settings seed and synchronize those three conventional exports by writing the component file directly; workflow discovery and validation still treat it as a normal saved component asset. The renderer edits conventional workflow-agent settings through TanStack Form so provider/model/reasoning/prompt validation, dirty state, pending state, reset, and async save errors are local UI state before Bun-side validation writes the component file. Workflow definitions and entries use Smithers `AgentLike` values for adaptive task execution, with the workflow agent configuration describing the svvy task-agent model, prompt, reasoning, and task-local tool surface. At runtime, `toolSurface` is selected from the generated ordered task-tool registry, `cx.*` tools remain valid documented task-local tools, and `list_tools` is added as the required actor-local inspection tool outside the configurable surface.
+Workflow agent files are ordinary component files that export values conforming to the generated `WorkflowTaskAgentConfig` contract. The canonical config fields are `provider`, `model`, `reasoningEffort`, `systemPrompt`, and `toolSurface`; `thinkingLevel` is not a workflow task-agent config alias. The conventional saved workflow agents live in `.svvy/workflows/components/agents.ts` and export `explorer`, `implementer`, and `reviewer`. App settings seed and synchronize those three conventional exports by writing the component file directly; workflow discovery and validation still treat it as a normal saved component asset. The renderer edits conventional workflow-agent settings through TanStack Form so provider/model/reasoning/prompt validation, dirty state, pending state, reset, and async save errors are local UI state before Bun-side validation writes the component file. Workflow definitions and entries use Smithers `AgentLike` values for adaptive task execution, with the workflow agent configuration describing the svvy task-agent model, prompt, reasoning, and task-local tool surface. At runtime, `toolSurface` is selected from the generated ordered task-tool registry, `cx_*` tools remain valid documented task-local tools, and `list_tools` is added as the required actor-local inspection tool outside the configurable surface.
 
 Conventional workflow-agent settings are app-visible settings, but their component-file synchronization is workspace-affecting behavior. Any request that writes or validates `.svvy/workflows/components/agents.ts` must carry the target `workspaceId` and resolve that workspace's runtime from the request, not from the active workspace.
 
@@ -188,9 +188,9 @@ A handler lists component assets and reads candidate component files before usin
 
 Entry files are launchable workflow wrappers under `entries/`.
 
-They are not returned by `workflow.list_assets`.
+They are not returned by `workflow_list_assets`.
 
-They are returned by `smithers.list_workflows`.
+They are returned by `smithers_list_workflows`.
 
 ## Discovery Metadata Contract
 
@@ -242,7 +242,7 @@ For saved entries, every grouped asset ref must resolve to `.svvy/workflows/...`
 
 For artifact entries, grouped refs may mix saved-library paths and artifact-local paths.
 
-The flat `assetPaths` value returned by `smithers.list_workflows` is derived from the union of the grouped refs.
+The flat `assetPaths` value returned by `smithers_list_workflows` is derived from the union of the grouped refs.
 
 `entryPath` is derived from the file location in the registry, not handwritten inside the module.
 
@@ -266,12 +266,12 @@ The adopted handler-side workflow-authoring flow is:
 
 1. A handler thread decides that direct bounded work is not enough and a workflow is justified.
 2. The handler uses its injected generated workflow-authoring contract, guide, and examples first.
-3. The handler calls `workflow.list_assets` as needed.
+3. The handler calls `workflow_list_assets` as needed.
 4. The handler reads promising saved definitions, prompts, or component files through ordinary file reads before relying on implementation details.
 5. The handler reads `.svvy/workflows/components/agents.ts` when a Smithers task needs a reusable explorer, implementer, or reviewer.
-6. The handler optionally calls `workflow.list_models` when it must create or revise a workflow agent.
+6. The handler optionally calls `workflow_list_models` when it must create or revise a workflow agent.
 7. The handler authors a short-lived artifact workflow under `.svvy/artifacts/workflows/<artifact_workflow_id>/`, including artifact-local workflow agents when the conventional saved agents are not a good fit.
-8. The handler calls `smithers.list_workflows`, inspects the artifact entry, and launches it through `smithers.run_workflow({ workflowId, input, runId? })`.
+8. The handler calls `smithers_list_workflows`, inspects the artifact entry, and launches it through `smithers_run_workflow({ workflowId, input, runId? })`.
 9. If the user explicitly asks to keep reusable workflow files, the handler writes those files directly into `.svvy/workflows/...` through `write` or `edit`.
 10. The handler reads the returned validation feedback in structured command output and keeps editing until the final saved workflow state validates cleanly.
 
@@ -281,13 +281,13 @@ The adopted handler-side workflow-authoring flow is:
 
 Handlers discover reusable assets through:
 
-- `workflow.list_assets(input)`
+- `workflow_list_assets(input)`
 
 This is the primary discovery surface for saved and artifact authoring assets.
 
-The direct tool schema is the exact input and output contract for this method. The same shape is duplicated as `api.workflow.list_assets(...)` inside code mode.
+The direct tool schema is the exact input and output contract for this method. The same shape is duplicated as `api.workflow_list_assets(...)` inside code mode.
 
-`workflow.list_assets` returns the enforced asset identity metadata plus a workspace-relative `path`.
+`workflow_list_assets` returns the enforced asset identity metadata plus a workspace-relative `path`.
 
 Each returned asset has:
 
@@ -304,19 +304,19 @@ Supported filters are:
 - `pathPrefix`
 - `scope`: `saved | artifact | both`
 
-Runnable entries are discovered through `smithers.list_workflows`.
+Runnable entries are discovered through `smithers_list_workflows`.
 
 ### Provider And Model Discovery
 
 Handlers use:
 
-- `workflow.list_models()`
+- `workflow_list_models()`
 
-The direct tool schema is the exact result contract for model discovery. The same shape is duplicated as `api.workflow.list_models()` inside code mode.
+The direct tool schema is the exact result contract for model discovery. The same shape is duplicated as `api.workflow_list_models()` inside code mode.
 
 ### Runnable Workflow Discovery
 
-`smithers.list_workflows` is reserved for runnable workflow entries.
+`smithers_list_workflows` is reserved for runnable workflow entries.
 
 It should list all runnable entries:
 
@@ -333,21 +333,21 @@ Each returned runnable workflow entry includes the handler-visible launch contra
 
 This preserves the intended split:
 
-- `workflow.*` for authoring-time asset discovery
+- `workflow_*` for authoring-time asset discovery
 - `write` and `edit` for saved-library writes
-- `smithers.*` for launch and supervision
+- `smithers_*` for launch and supervision
 
 ### Workflow Launch Surface
 
-`smithers.run_workflow` is the stable handler launch surface.
+`smithers_run_workflow` is the stable handler launch surface.
 
 Handlers call:
 
-- `smithers.run_workflow({ workflowId, input, runId? })`
+- `smithers_run_workflow({ workflowId, input, runId? })`
 
 Where:
 
-- `workflowId` selects a runnable entry returned by `smithers.list_workflows`
+- `workflowId` selects a runnable entry returned by `smithers_list_workflows`
 - `input` is validated against that entry's `launchInputSchema`
 - supplied `runId` is used only when the handler intends to resume that exact Smithers run and Smithers still considers the run resumable
 - omitted `runId` requests a fresh launch and never silently resumes an existing run
@@ -423,7 +423,7 @@ Handler-thread instructions should say:
 - mix saved definitions, prompts, and components freely when that produces a clearer workflow than reusing one saved entry unchanged
 - read `.svvy/workflows/components/agents.ts` before creating new workflow agents and reuse `explorer`, `implementer`, or `reviewer` when one clearly fits
 - define task-specific workflow agents inside the current artifact workflow when the conventional saved agents do not fit
-- call `workflow.list_models` only when no saved workflow agent fits or the user explicitly wants a different provider or model
+- call `workflow_list_models` only when no saved workflow agent fits or the user explicitly wants a different provider or model
 - write reusable saved workflow files only on explicit request
 - rely on the returned validation feedback after writes under `.svvy/workflows/...`
 - discover and run configured Project CI entries when CI is needed
@@ -436,14 +436,14 @@ The adopted decision order is:
 1. if direct bounded work is enough, do that
 2. otherwise, if a saved runnable entry clearly fits, run it
 3. otherwise author a short-lived artifact workflow, usually reusing saved definitions, prompts, and components
-4. run the authored artifact entry through `smithers.run_workflow({ workflowId, input, runId? })`
+4. run the authored artifact entry through `smithers_run_workflow({ workflowId, input, runId? })`
 5. write reusable saved workflow files only on explicit request
 
 Project CI is a special product lane over this same library.
 
-Normal handlers may select a configured Project CI entry through `smithers.list_workflows({ productKind: "project-ci" })`.
+Normal handlers may select a configured Project CI entry through `smithers_list_workflows({ productKind: "project-ci" })`.
 
-CI configuration is owned by whichever handler thread has loaded the optional `ci` prompt context, either from `thread.start({ context: ["ci"] })` or from `request_context({ keys: ["ci"] })`.
+CI configuration is owned by whichever handler thread has loaded the optional `ci` prompt context, either from `thread_start({ context: ["ci"] })` or from `request_context({ keys: ["ci"] })`.
 
 ## Out Of Scope
 

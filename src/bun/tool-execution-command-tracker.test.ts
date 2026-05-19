@@ -199,12 +199,12 @@ describe("tool execution command tracker", () => {
 
     tracker.handleToolExecutionStart({
       toolCallId: "tool-call-cx-overview",
-      toolName: "cx.overview",
+      toolName: "cx_overview",
       args: { path: "src" },
     });
     tracker.handleToolExecutionEnd({
       toolCallId: "tool-call-cx-overview",
-      toolName: "cx.overview",
+      toolName: "cx_overview",
       result: {
         content: [{ type: "text", text: '[{"file":"src/index.ts"}]' }],
       },
@@ -212,12 +212,12 @@ describe("tool execution command tracker", () => {
     });
     tracker.handleToolExecutionStart({
       toolCallId: "tool-call-cx-clean",
-      toolName: "cx.cache.clean",
+      toolName: "cx_cache_clean",
       args: {},
     });
     tracker.handleToolExecutionEnd({
       toolCallId: "tool-call-cx-clean",
-      toolName: "cx.cache.clean",
+      toolName: "cx_cache_clean",
       result: {
         content: [{ type: "text", text: "cleaned" }],
       },
@@ -227,13 +227,13 @@ describe("tool execution command tracker", () => {
     const snapshot = store.getSessionState("session-tool-tracker");
     expect(snapshot.commands).toEqual([
       expect.objectContaining({
-        toolName: "cx.overview",
+        toolName: "cx_overview",
         executor: "orchestrator",
         visibility: "trace",
         status: "succeeded",
       }),
       expect.objectContaining({
-        toolName: "cx.cache.clean",
+        toolName: "cx_cache_clean",
         executor: "orchestrator",
         visibility: "summary",
         status: "succeeded",
@@ -250,12 +250,12 @@ describe("tool execution command tracker", () => {
 
     tracker.handleToolExecutionStart({
       toolCallId: "tool-call-3",
-      toolName: "thread.start",
+      toolName: "thread_start",
       args: { objective: "Inspect the workspace" },
     });
     tracker.handleToolExecutionEnd({
       toolCallId: "tool-call-3",
-      toolName: "thread.start",
+      toolName: "thread_start",
       result: {
         content: [{ type: "text", text: '{"threadId":"thread-2"}' }],
       },
@@ -266,7 +266,7 @@ describe("tool execution command tracker", () => {
     expect(snapshot.commands).toHaveLength(0);
   });
 
-  it("ignores thread.handoff because the handler-thread tool owns its structured writes", () => {
+  it("ignores thread_handoff because the handler-thread tool owns its structured writes", () => {
     const store = createStore();
     const { promptContext } = createHandlerPromptContext(store);
     const tracker = createToolExecutionCommandTracker({
@@ -276,7 +276,7 @@ describe("tool execution command tracker", () => {
 
     tracker.handleToolExecutionStart({
       toolCallId: "tool-call-handoff",
-      toolName: "thread.handoff",
+      toolName: "thread_handoff",
       args: {
         summary: "Delivered the delegated result.",
         body: "Delivered the delegated result and handed control back.",
@@ -284,7 +284,7 @@ describe("tool execution command tracker", () => {
     });
     tracker.handleToolExecutionEnd({
       toolCallId: "tool-call-handoff",
-      toolName: "thread.handoff",
+      toolName: "thread_handoff",
       result: {
         content: [{ type: "text", text: '{"episodeId":"episode-2"}' }],
       },

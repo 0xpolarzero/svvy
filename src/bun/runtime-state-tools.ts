@@ -12,10 +12,10 @@ import type {
   StructuredWorkflowRunRecord,
 } from "./structured-session-state";
 
-export const RUNTIME_CURRENT_TOOL_NAME = "runtime.current";
-export const THREAD_CURRENT_TOOL_NAME = "thread.current";
-export const THREAD_LIST_TOOL_NAME = "thread.list";
-export const THREAD_HANDOFFS_TOOL_NAME = "thread.handoffs";
+export const RUNTIME_CURRENT_TOOL_NAME = "runtime_current";
+export const THREAD_CURRENT_TOOL_NAME = "thread_current";
+export const THREAD_LIST_TOOL_NAME = "thread_list";
+export const THREAD_HANDOFFS_TOOL_NAME = "thread_handoffs";
 
 const emptyParamsSchema = Type.Object({}, { additionalProperties: false });
 

@@ -147,7 +147,7 @@ describe("structured session state SQLite persistence", () => {
     const firstCommand = first.store.createCommand({
       turnId: handlerTurn.id,
       threadId: handlerThread.id,
-      toolName: "workflow.start",
+      toolName: "workflow_start",
       executor: "smithers",
       visibility: "surface",
       title: "Start workflow",
@@ -167,7 +167,7 @@ describe("structured session state SQLite persistence", () => {
     const secondCommand = first.store.createCommand({
       turnId: handlerTurn.id,
       threadId: handlerThread.id,
-      toolName: "workflow.resume",
+      toolName: "workflow_resume",
       executor: "smithers",
       visibility: "surface",
       title: "Resume workflow",
@@ -481,7 +481,7 @@ describe("structured session state SQLite persistence", () => {
     const betaCommand = store.createCommand({
       turnId: betaHandlerTurn.id,
       threadId: betaThread.id,
-      toolName: "workflow.start",
+      toolName: "workflow_start",
       executor: "smithers",
       visibility: "surface",
       title: "Start beta workflow",

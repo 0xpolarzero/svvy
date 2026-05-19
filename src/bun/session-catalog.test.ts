@@ -509,7 +509,7 @@ async function seedDurableWorkflowSession(input: {
       turnId: handler.turnId,
       surfacePiSessionId: handler.surfacePiSessionId,
       threadId: handler.threadId,
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       executor: "smithers",
       visibility: "surface",
       title: "Run durable workflow",
@@ -886,6 +886,57 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("commits provider errors as visible assistant text when pi records empty content", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "Error Surface" }, DEFAULTS);
+      const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
+      const promptPrototype = Object.getPrototypeOf(managed.session) as {
+        prompt(promptText: string): Promise<void>;
+      };
+      const promptSpy = spyOn(promptPrototype, "prompt").mockImplementation(async function (
+        this: PromptableSession,
+        promptText: string,
+      ) {
+        appendMessagesToSession(this, [
+          userMessage(promptText),
+          {
+            ...assistantMessage("", {
+              stopReason: "error",
+              errorMessage: "Provider validation failed.",
+            }),
+            content: [],
+          } as AssistantMessage,
+        ]);
+      });
+
+      try {
+        await catalog.sendPrompt({
+          ...DEFAULTS,
+          target: created.target,
+          messages: [userMessage("Trigger provider validation.")],
+          onEvent: () => {},
+        });
+
+        const messages = managed.session.agent.state.messages;
+        const latestAssistant = messages.findLast(
+          (message): message is AssistantMessage => message.role === "assistant",
+        );
+        expect(latestAssistant?.stopReason).toBe("error");
+        expect(latestAssistant?.errorMessage).toBe("Provider validation failed.");
+        expect(latestAssistant?.content).toEqual([
+          { type: "text", text: "Provider validation failed." },
+        ]);
+      } finally {
+        promptSpy.mockRestore();
+      }
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("restores workflow supervision with pending handler attention delivery when a tracked session opens", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
@@ -902,7 +953,7 @@ describe("WorkspaceSessionCatalog", () => {
         turnId: handler.turnId,
         surfacePiSessionId: handler.surfacePiSessionId,
         threadId: handler.threadId,
-        toolName: "smithers.run_workflow",
+        toolName: "smithers_run_workflow",
         executor: "smithers",
         visibility: "surface",
         title: "Run tracked workflow",
@@ -1872,17 +1923,17 @@ describe("WorkspaceSessionCatalog", () => {
       const orchestratorTools = getActiveToolNames(orchestratorManaged);
       expect(orchestratorTools).toEqual(
         expect.arrayContaining([
-          "runtime.current",
-          "thread.list",
-          "thread.handoffs",
-          "thread.start",
-          "thread.resume",
+          "runtime_current",
+          "thread_list",
+          "thread_handoffs",
+          "thread_start",
+          "thread_resume",
           "wait",
         ]),
       );
-      expect(orchestratorTools).not.toContain("thread.current");
-      expect(orchestratorTools).not.toContain("thread.handoff");
-      expect(orchestratorTools.some((name) => name.startsWith("smithers."))).toBe(false);
+      expect(orchestratorTools).not.toContain("thread_current");
+      expect(orchestratorTools).not.toContain("thread_handoff");
+      expect(orchestratorTools.some((name) => name.startsWith("smithers_"))).toBe(false);
 
       const handler = await createHandlerThreadHarness(catalog, created.target.workspaceSessionId, {
         title: "Tool Surface Handler",
@@ -1893,19 +1944,19 @@ describe("WorkspaceSessionCatalog", () => {
       const handlerTools = getActiveToolNames(handlerManaged);
       expect(handlerTools).toEqual(
         expect.arrayContaining([
-          "runtime.current",
-          "thread.current",
-          "thread.list",
-          "thread.handoffs",
-          "thread.handoff",
+          "runtime_current",
+          "thread_current",
+          "thread_list",
+          "thread_handoffs",
+          "thread_handoff",
           "request_context",
           "wait",
-          "smithers.list_workflows",
-          "smithers.run_workflow",
+          "smithers_list_workflows",
+          "smithers_run_workflow",
         ]),
       );
-      expect(handlerTools).not.toContain("thread.start");
-      expect(handlerTools).not.toContain("thread.resume");
+      expect(handlerTools).not.toContain("thread_start");
+      expect(handlerTools).not.toContain("thread_resume");
     } finally {
       await catalog.dispose();
     }
@@ -1933,7 +1984,7 @@ describe("WorkspaceSessionCatalog", () => {
         turnId: turn.id,
         surfacePiSessionId: created.target.surfacePiSessionId,
         threadId: orchestratorThread.id,
-        toolName: "thread.start",
+        toolName: "thread_start",
         executor: "orchestrator",
         visibility: "surface",
         title: "Start Project CI handler",
@@ -2495,7 +2546,7 @@ describe("WorkspaceSessionCatalog", () => {
           turnId: turn.id,
           surfacePiSessionId: handlerThread.surfacePiSessionId,
           threadId: handlerThread.id,
-          toolName: "thread.handoff",
+          toolName: "thread_handoff",
           executor: "handler",
           visibility: "surface",
           title: "Hand off",
@@ -2633,7 +2684,7 @@ describe("WorkspaceSessionCatalog", () => {
         const command = store.createCommand({
           turnId: turn.id,
           surfacePiSessionId: created.target.surfacePiSessionId,
-          toolName: "thread.resume",
+          toolName: "thread_resume",
           executor: "orchestrator",
           visibility: "surface",
           title: "Resume handler",
@@ -2723,7 +2774,7 @@ describe("WorkspaceSessionCatalog", () => {
           turnId: turn.id,
           surfacePiSessionId: handlerThread.surfacePiSessionId,
           threadId: handlerThread.id,
-          toolName: "thread.handoff",
+          toolName: "thread_handoff",
           executor: "handler",
           visibility: "surface",
           title: "Hand off",
@@ -3178,7 +3229,7 @@ describe("WorkspaceSessionCatalog", () => {
         turnId: handlerA.turnId,
         surfacePiSessionId: handlerA.surfacePiSessionId,
         threadId: handlerA.threadId,
-        toolName: "smithers.run_workflow",
+        toolName: "smithers_run_workflow",
         executor: "smithers",
         visibility: "surface",
         title: "Run workflow A",
@@ -3260,7 +3311,7 @@ describe("WorkspaceSessionCatalog", () => {
         expect(handlerAPrompts[0]).toBe(
           [
             "System event: A supervised Smithers workflow now requires handler attention.",
-            "Use thread.current for current handler state and active workflow run ids, then inspect workflow details with smithers.* tools and decide the next handler action.",
+            "Use thread_current for current handler state and active workflow run ids, then inspect workflow details with smithers_* tools and decide the next handler action.",
           ].join("\n"),
         );
         expect(handlerAPrompts[0]).not.toContain("smithers-run-workflow-a");

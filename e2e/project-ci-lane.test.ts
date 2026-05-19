@@ -276,7 +276,7 @@ async function seedProjectCiState(input: {
     const preloadCommand = store.createCommand({
       turnId: turn.id,
       threadId: orchestratorThread.id,
-      toolName: "thread.start",
+      toolName: "thread_start",
       executor: "orchestrator",
       visibility: "surface",
       title: "Start Project CI handler",
@@ -306,7 +306,7 @@ async function seedProjectCiState(input: {
     const runCommand = store.createCommand({
       turnId: turn.id,
       threadId: handlerThread.id,
-      toolName: "smithers.run_workflow",
+      toolName: "smithers_run_workflow",
       executor: "smithers",
       visibility: "surface",
       title: "Run Project CI",

@@ -2,7 +2,7 @@ import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { TSchema } from "typebox";
 
 export type WebProviderId = "tinyfish" | "firecrawl";
-export type WebToolName = "web.search" | "web.fetch";
+export type WebToolName = "web_search" | "web_fetch";
 export type WebProviderErrorCategory =
   | "provider_not_configured"
   | "provider_authentication_failed"

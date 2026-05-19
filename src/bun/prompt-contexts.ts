@@ -20,42 +20,42 @@ const CX_CONTEXT_PROMPT = [
   "cx is the semantic code-navigation layer for repository inspection. Prefer cx for structural exploration before reading full files when cx can cover the language.",
   "",
   "Use this escalation order for code navigation:",
-  "- `cx.overview` for a directory or file table of contents.",
-  "- `cx.symbols` to search project symbols by kind, name glob, or file.",
-  "- `cx.definition` to inspect a symbol body without reading the full file.",
-  "- `cx.references` to find callers and usage sites.",
-  "- `cx.lang.list` when you need to check whether a grammar is available or installed.",
-  "- `cx.lang.add` when a relevant grammar is available but missing and semantic navigation would materially help the task.",
+  "- `cx_overview` for a directory or file table of contents.",
+  "- `cx_symbols` to search project symbols by kind, name glob, or file.",
+  "- `cx_definition` to inspect a symbol body without reading the full file.",
+  "- `cx_references` to find callers and usage sites.",
+  "- `cx_lang_list` when you need to check whether a grammar is available or installed.",
+  "- `cx_lang_add` when a relevant grammar is available but missing and semantic navigation would materially help the task.",
   "- `read`, `grep`, `find`, or `ls` when semantic navigation is insufficient, when raw text is required, or when cx cannot cover the target language.",
   "",
   "cx command behavior:",
-  "- `cx.overview` accepts a path and can include full per-file detail for directories.",
-  "- `cx.symbols` supports `kind`, `name`, `file`, pagination, and JSON output through the native tool result.",
-  "- `cx.definition` supports `name`, `kind`, `from`, pagination, and `maxLines` for large bodies.",
-  "- `cx.references` supports `name`, `file`, `unique`, pagination, and JSON output through the native tool result.",
-  "- `cx.lang.list`, `cx.lang.add`, `cx.lang.remove`, `cx.cache.path`, and `cx.cache.clean` manage grammars and cache state.",
+  "- `cx_overview` accepts a path and can include full per-file detail for directories.",
+  "- `cx_symbols` supports `kind`, `name`, `file`, pagination, and JSON output through the native tool result.",
+  "- `cx_definition` supports `name`, `kind`, `from`, pagination, and `maxLines` for large bodies.",
+  "- `cx_references` supports `name`, `file`, `unique`, pagination, and JSON output through the native tool result.",
+  "- `cx_lang_list`, `cx_lang_add`, `cx_lang_remove`, `cx_cache_path`, and `cx_cache_clean` manage grammars and cache state.",
   "",
-  "Use top-level `cx.*` tools for ordinary semantic navigation. Inside `execute_typescript`, use only the read-only `api.cx.*` subset when TypeScript control flow is needed for batching or aggregation.",
+  "Use top-level `cx_*` tools for ordinary semantic navigation. Inside `execute_typescript`, use only the read-only `api.cx_*` subset when TypeScript control flow is needed for batching or aggregation.",
 ].join("\n");
 
 const SMITHERS_ORCHESTRATOR_CONTEXT_PROMPT = [
   "Loaded always-on prompt context: Smithers workflow routing.",
   "",
-  "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers.*` tool declarations.",
+  "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers_*` tool declarations.",
   "",
-  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`, or use `thread.resume` when a completed handler thread already has the right delegated context for follow-up work.",
+  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread_start`, or use `thread_resume` when a completed handler thread already has the right delegated context for follow-up work.",
 ].join("\n");
 
 const SMITHERS_HANDLER_CONTEXT_PROMPT = [
   "Loaded always-on prompt context: Smithers workflow supervision.",
   "",
-  "Handler threads supervise Smithers workflow runs through native `smithers.*` tools. Use direct tools for simple repository work, then saved runnable entries, then artifact workflow authoring when a workflow graph is the right unit of work.",
+  "Handler threads supervise Smithers workflow runs through native `smithers_*` tools. Use direct tools for simple repository work, then saved runnable entries, then artifact workflow authoring when a workflow graph is the right unit of work.",
   "",
-  "Use `smithers.list_workflows` to discover runnable saved and artifact entries. Use `smithers.run_workflow({ workflowId, input })` for a fresh launch. Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run. Omitting `runId` never silently resumes; if this handler already owns a nonterminal run with the same `workflowId`, the call is rejected. Different `workflowId` values can run concurrently under the same handler thread.",
+  "Use `smithers_list_workflows` to discover runnable saved and artifact entries. Use `smithers_run_workflow({ workflowId, input })` for a fresh launch. Use `smithers_run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run. Omitting `runId` never silently resumes; if this handler already owns a nonterminal run with the same `workflowId`, the call is rejected. Different `workflowId` values can run concurrently under the same handler thread.",
   "",
-  "Use Smithers inspection and control tools for supervision: `smithers.get_run`, `smithers.watch_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, `smithers.get_chat_transcript`, `smithers.get_run_events`, `smithers.runs.cancel`, `smithers.signals.send`, `smithers.frames.list`, `smithers.getDevToolsSnapshot`, and `smithers.streamDevTools`.",
+  "Use Smithers inspection and control tools for supervision: `smithers_get_run`, `smithers_watch_run`, `smithers_explain_run`, `smithers_list_pending_approvals`, `smithers_resolve_approval`, `smithers_get_node_detail`, `smithers_list_artifacts`, `smithers_get_chat_transcript`, `smithers_get_run_events`, `smithers_runs_cancel`, `smithers_signals_send`, `smithers_frames_list`, `smithers_get_devtools_snapshot`, and `smithers_stream_devtools`.",
   "",
-  "Workflow waits, approvals, retries, repairs, and resumptions stay inside the supervising handler thread. Call `thread.handoff` only after the current objective span is no longer running or waiting on an owned workflow run.",
+  "Workflow waits, approvals, retries, repairs, and resumptions stay inside the supervising handler thread. Call `thread_handoff` only after the current objective span is no longer running or waiting on an owned workflow run.",
 ].join("\n");
 
 const SMITHERS_WORKFLOW_TASK_CONTEXT_PROMPT = [
@@ -79,7 +79,7 @@ const CI_CONTEXT_PROMPT = [
   "- Use stable `checkId` values such as `typecheck`, `unit_tests`, `eslint`, `build`, `integration`, `docs`, or repository-specific ids.",
   "- Use open check `kind` strings; recommended kinds are `typecheck`, `test`, `lint`, `build`, `integration`, `docs`, and `manual`.",
   "- After writing saved workflow files, rely on the returned saved-workflow validation feedback and keep editing until the final saved workflow state validates cleanly.",
-  '- Confirm the entry appears through `smithers.list_workflows({ productKind: "project-ci" })`, then run it with `smithers.run_workflow`.',
+  '- Confirm the entry appears through `smithers_list_workflows({ productKind: "project-ci" })`, then run it with `smithers_run_workflow`.',
   "",
   "Project CI recording rules are strict:",
   '- Project CI records are created only from entries declaring `productKind = "project-ci"`.',
@@ -135,14 +135,14 @@ export function buildAlwaysLoadedPromptContext(
 export function buildOptionalPromptContextRegistryPrompt(): string {
   return [
     "Available optional prompt context keys:",
-    '- `ci`: Project CI authoring guidance. If Project CI only needs to be run, discover configured CI entries with `smithers.list_workflows({ productKind: "project-ci" })` and run one through `smithers.run_workflow`. If Project CI needs to be configured or modified, call `request_context({ keys: ["ci"] })` before authoring CI assets.',
+    '- `ci`: Project CI authoring guidance. If Project CI only needs to be run, discover configured CI entries with `smithers_list_workflows({ productKind: "project-ci" })` and run one through `smithers_run_workflow`. If Project CI needs to be configured or modified, call `request_context({ keys: ["ci"] })` before authoring CI assets.',
   ].join("\n");
 }
 
 export function buildOrchestratorContextRoutingPrompt(): string {
   return [
     "Optional prompt context routing:",
-    '- `ci` is available for Project CI authoring. When a delegated objective clearly needs Project CI configuration or modification from the first handler turn, pass `context: ["ci"]` to `thread.start`.',
+    '- `ci` is available for Project CI authoring. When a delegated objective clearly needs Project CI configuration or modification from the first handler turn, pass `context: ["ci"]` to `thread_start`.',
   ].join("\n");
 }
 

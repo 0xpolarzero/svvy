@@ -47,10 +47,10 @@ flowchart TD
     subgraph Tools["Tool Surface"]
         DirectTools["PI-backed direct tools"]
         Generic["execute_typescript"]
-        ThreadStart["thread.start"]
+        ThreadStart["thread_start"]
         RequestContext["request_context"]
-        ThreadHandoff["thread.handoff"]
-        SmithersTools["Smithers-native workflow tools (`smithers.*`)"]
+        ThreadHandoff["thread_handoff"]
+        SmithersTools["Smithers-native workflow tools (`smithers_*`)"]
         Wait["wait"]
         DirectReply["Direct reply"]
     end
@@ -61,12 +61,12 @@ flowchart TD
         Api["Injected api.* SDK"]
         ApiRead["api.read / api.grep / api.find / api.ls"]
         ApiBash["api.bash"]
-        ApiArtifact["api.artifact.*"]
-        ApiWorkflow["api.workflow.*"]
+        ApiArtifact["api.artifact_* tools"]
+        ApiWorkflow["api.workflow_*"]
     end
 
     subgraph Runtime["Runtime Handlers"]
-        RuntimeHandler["svvy runtime handles execute_typescript, thread.start, request_context, thread.handoff, and wait"]
+        RuntimeHandler["svvy runtime handles execute_typescript, thread_start, request_context, thread_handoff, and wait"]
         SmithersBridge["Bun-owned Smithers bridge handles Smithers-native workflow tools"]
         ResumeHandler["Runtime resumes the supervising handler thread when a workflow run changes state"]
     end
@@ -75,7 +75,7 @@ flowchart TD
         Commands["Record commands and parent-child linkage"]
         Events["Append lifecycle events"]
         Artifacts["Persist file-backed artifacts and SQLite metadata"]
-        State["Update turns, commands, threads, loaded optional prompt context keys, workflow runs, CI run/check result records, artifacts, wait state, and any episodes emitted by thread.handoff"]
+        State["Update turns, commands, threads, loaded optional prompt context keys, workflow runs, CI run/check result records, artifacts, wait state, and any episodes emitted by thread_handoff"]
     end
 
     subgraph ReadModels["Read Models"]
@@ -147,12 +147,12 @@ The orchestrator typically chooses among:
 - direct reply
 - cx semantic navigation and direct tools
 - `execute_typescript`
-- `thread.start`
+- `thread_start`
 - `wait`
 
 It normally does **not** supervise every workflow pause, rerun, and repair step itself.
 
-The orchestrator prompt should know that handler threads can use Smithers workflow tools, but it should not receive the `smithers.*` callable schema in its own generated prompt block.
+The orchestrator prompt should know that handler threads can use Smithers workflow tools, but it should not receive the `smithers_*` callable schema in its own generated prompt block.
 
 Instead, it opens a handler thread for that delegated objective.
 
@@ -163,15 +163,15 @@ Inside a handler thread, the normal choices are:
 - direct reply
 - cx semantic navigation and direct tools
 - `execute_typescript`
-- `thread.handoff`
-- Smithers-native workflow tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, `smithers.explain_run`, and `smithers.resolve_approval`
+- `thread_handoff`
+- Smithers-native workflow tools such as `smithers_list_workflows`, `smithers_run_workflow`, `smithers_get_run`, `smithers_explain_run`, and `smithers_resolve_approval`
 - `wait`
 
-The workflow tool surface should mirror Smithers semantics rather than a svvy-defined `workflow.*` alias layer. Runnable entry discovery belongs to `smithers.list_workflows({ workflowId? })`, which returns each entry's `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `launchInputSchema`. Fresh launch and explicit resume belong to the stable `smithers.run_workflow({ workflowId, input, runId? })` tool, with `input` validated against the workflow's real TypeScript or Zod launch schema rather than handwritten prompt prose or repo inspection. Supplying `runId` resumes exactly that run; omitting `runId` requests a fresh launch, never silently resumes, and is rejected when the same handler already owns a nonterminal run with the same `workflowId`. Different `workflowId` values can run concurrently under one handler thread. Those Smithers-native commands are supervision helpers inside the handler-thread lifecycle, not evidence that the repo-root `workflows/` authoring package is the shipped product runtime.
+The workflow tool surface should mirror Smithers semantics rather than a svvy-defined `workflow_*` alias layer. Runnable entry discovery belongs to `smithers_list_workflows({ workflowId? })`, which returns each entry's `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `launchInputSchema`. Fresh launch and explicit resume belong to the stable `smithers_run_workflow({ workflowId, input, runId? })` tool, with `input` validated against the workflow's real TypeScript or Zod launch schema rather than handwritten prompt prose or repo inspection. Supplying `runId` resumes exactly that run; omitting `runId` requests a fresh launch, never silently resumes, and is rejected when the same handler already owns a nonterminal run with the same `workflowId`. Different `workflowId` values can run concurrently under one handler thread. Those Smithers-native commands are supervision helpers inside the handler-thread lifecycle, not evidence that the repo-root `workflows/` authoring package is the shipped product runtime.
 
-The agent does not get raw Smithers internals or direct CLI access. It gets `svvy`-registered `smithers.*` tools that call the Bun-owned Smithers bridge.
+The agent does not get raw Smithers internals or direct CLI access. It gets `svvy`-registered `smithers_*` tools that call the Bun-owned Smithers bridge.
 
-The handler-thread prompt may know that the orchestrator can delegate and reconcile work, but it should not receive orchestrator-only tool declarations such as `thread.start` unless nested delegation is explicitly adopted later.
+The handler-thread prompt may know that the orchestrator can delegate and reconcile work, but it should not receive orchestrator-only tool declarations such as `thread_start` unless nested delegation is explicitly adopted later.
 
 The handler thread may:
 
@@ -181,7 +181,7 @@ The handler thread may:
 - rerun after repair
 - resume after clarification
 - stay in normal multi-turn chat for ordinary replies
-- call `thread.handoff` when it wants to return control to the orchestrator with a durable episode
+- call `thread_handoff` when it wants to return control to the orchestrator with a durable episode
 
 ### 4. Workflow Task Agents Are Lower-Level Workers
 
@@ -198,7 +198,7 @@ The adopted direction is:
 - use a PI-backed workflow task agent by default when a workflow task needs an adaptive agent
 - give that workflow task agent a minimal `svvy` workflow-task prompt rather than the orchestrator or handler-thread prompt
 - expose task-local direct tools plus `execute_typescript` for typed composition
-- do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents or mention those unavailable controls in their base prompt
+- do not expose `thread_start`, `thread_handoff`, `wait`, or `smithers_*` to workflow task agents or mention those unavailable controls in their base prompt
 - do not load ambient pi built-in tools or workspace-discovered extension tools into workflow task agents
 - execute workflow task agents from Smithers' current task root or worktree rather than from the workspace runtime DB root
 - preserve structured message history, step boundaries, and usage across retries and hijack handoff instead of flattening task-agent continuation into plain text
@@ -222,9 +222,9 @@ After a handler thread launches or resumes a Smithers run through the Bun bridge
 
 The handler thread then decides what to do next.
 
-The orchestrator only receives delegated handoff results when the handler thread explicitly emits them through `thread.handoff`.
+The orchestrator only receives delegated handoff results when the handler thread explicitly emits them through `thread_handoff`.
 
-When that happens, `thread.handoff` first records the durable handoff episode and closes the current objective span. The runtime then queues a typed orchestrator notification to reconcile the latest durable handoff instead of waiting for another user-authored orchestrator message.
+When that happens, `thread_handoff` first records the durable handoff episode and closes the current objective span. The runtime then queues a typed orchestrator notification to reconcile the latest durable handoff instead of waiting for another user-authored orchestrator message.
 
 ### 6. Explicit Handoff Episodes
 
@@ -237,11 +237,11 @@ The supervising handler thread may manage:
 
 Ordinary replies inside the thread do not emit episodes and do not close the delegated objective.
 
-When the handler thread wants to hand control back, it calls `thread.handoff`.
+When the handler thread wants to hand control back, it calls `thread_handoff`.
 
-Each `thread.handoff` emits one ordered handoff episode and marks the current objective span terminal, while the thread surface itself stays interactive for later follow-up.
+Each `thread_handoff` emits one ordered handoff episode and marks the current objective span terminal, while the thread surface itself stays interactive for later follow-up.
 
-If the orchestrator later needs more help from the same delegated context, it should use `thread.resume` to re-engage the completed handler thread for a new active span instead of creating an unrelated replacement thread by default.
+If the orchestrator later needs more help from the same delegated context, it should use `thread_resume` to re-engage the completed handler thread for a new active span instead of creating an unrelated replacement thread by default.
 
 That explicit handoff is the default reconciliation unit.
 
@@ -270,7 +270,7 @@ The first adopted context key is `ci`.
 The orchestrator can preload context for a delegated objective:
 
 ```ts
-thread.start({
+thread_start({
   objective: "Define Project CI checks for this repository",
   context: ["ci"],
 });
@@ -299,9 +299,9 @@ No runtime path infers CI from arbitrary workflow output, command names, logs, o
 - Direct tools are the default coding-agent work surface.
 - cx semantic navigation is part of the native direct-tool surface and is the preferred first step for supported code navigation.
 - `api.bash` duplicates the direct `bash` tool inside `execute_typescript` when typed composition needs shell-backed inspection.
-- `api.cx.overview`, `api.cx.symbols`, `api.cx.definition`, `api.cx.references`, `api.cx.lang.list`, and `api.cx.cache.path` duplicate the read-only cx subset inside `execute_typescript`.
-- `thread.start`, `thread.handoff`, and `wait` remain `svvy`-native control tools.
-- workflow supervision should use Smithers-native bridge tools such as `smithers.run_workflow`, `smithers.get_run`, and `smithers.resolve_approval`.
+- `api.cx_overview`, `api.cx_symbols`, `api.cx_definition`, `api.cx_references`, `api.cx_lang_list`, and `api.cx_cache_path` duplicate the read-only cx subset inside `execute_typescript`.
+- `thread_start`, `thread_handoff`, and `wait` remain `svvy`-native control tools.
+- workflow supervision should use Smithers-native bridge tools such as `smithers_run_workflow`, `smithers_get_run`, and `smithers_resolve_approval`.
 - the Smithers-native tool surface targets product-runtime runnable workflows rather than the repo authoring workspace under `workflows/`.
 - capability declarations are actor-specific: the orchestrator gets only orchestrator-callable tools, and handler threads get only handler-callable tools.
 - workflow task agents are another actor class below handler threads and should receive only task-local cx tools, direct tools, and `execute_typescript`, with no ambient pi extension-tool leakage.

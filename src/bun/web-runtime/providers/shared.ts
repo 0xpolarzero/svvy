@@ -15,7 +15,7 @@ export function assertPublicWebUrl(value: string): string {
     throw providerError("invalid_url", `Invalid URL: ${value}`);
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw providerError("invalid_url", "web.fetch only supports public http(s) URLs.");
+    throw providerError("invalid_url", "web_fetch only supports public http(s) URLs.");
   }
   const hostname = url.hostname.toLowerCase();
   if (
@@ -29,7 +29,7 @@ export function assertPublicWebUrl(value: string): string {
   ) {
     throw providerError(
       "invalid_url",
-      "web.fetch cannot access localhost or private-network URLs.",
+      "web_fetch cannot access localhost or private-network URLs.",
     );
   }
   return url.href;
@@ -158,7 +158,7 @@ export function createFetchArtifacts(input: {
   };
   const commandFacts = {
     providerId: input.providerId,
-    toolName: "web.fetch",
+    toolName: "web_fetch",
     status: "succeeded",
     url: input.url,
     finalUrl: input.finalUrl,

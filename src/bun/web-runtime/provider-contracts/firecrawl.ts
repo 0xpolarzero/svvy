@@ -50,7 +50,7 @@ export const firecrawlFetchInputSchema = Type.Object(
 
 export const FIRECRAWL_TOOL_CONTRACTS: WebProviderToolContracts = {
   search: {
-    name: "web.search",
+    name: "web_search",
     description:
       "Search with Firecrawl Search. Supports Firecrawl-specific source/category filters and optional scrapeOptions.",
     inputSchema: firecrawlSearchInputSchema,
@@ -61,7 +61,7 @@ export const FIRECRAWL_TOOL_CONTRACTS: WebProviderToolContracts = {
       'interface ActiveWebSearchOutput  { providerId: "firecrawl"; results: Array<{ title?: string; url: string; description?: string; markdown?: string; metadata?: Record<string, unknown> }>; warnings?: string[] };',
   },
   fetch: {
-    name: "web.fetch",
+    name: "web_fetch",
     description:
       "Scrape a known URL with Firecrawl scrape-shaped options and write fetched page bodies to svvy artifacts.",
     inputSchema: firecrawlFetchInputSchema,

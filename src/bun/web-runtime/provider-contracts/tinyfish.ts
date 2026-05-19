@@ -42,7 +42,7 @@ export const tinyfishFetchInputSchema = z.toJSONSchema(
 
 export const TINYFISH_TOOL_CONTRACTS: WebProviderToolContracts = {
   search: {
-    name: "web.search",
+    name: "web_search",
     description: "Query TinyFish Search using the official TinyFish TypeScript SDK schema.",
     inputSchema: tinyfishSearchInputSchema,
     outputTypeName: "TinyFishWebSearchOutput",
@@ -52,7 +52,7 @@ export const TINYFISH_TOOL_CONTRACTS: WebProviderToolContracts = {
       'interface ActiveWebSearchOutput { providerId: "tinyfish"; query: string; page: number; totalResults: number; results: Array<{ position: number; site_name: string; snippet: string; title: string; url: string }> };',
   },
   fetch: {
-    name: "web.fetch",
+    name: "web_fetch",
     description:
       "Fetch rendered page content through the official TinyFish TypeScript SDK and write fetched bodies to svvy artifacts.",
     inputSchema: tinyfishFetchInputSchema,

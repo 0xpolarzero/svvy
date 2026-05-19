@@ -43,7 +43,7 @@ function createSessionSummary(): WorkspaceSessionSummary {
         summaryChildren: [
           {
             commandId: "command-summary-child",
-            toolName: "artifact.write_text",
+            toolName: "artifact_write_text",
             status: "succeeded",
             title: "Create summary.md",
             summary: "Created summary.md.",
@@ -81,7 +81,7 @@ function createInspector(): WorkspaceCommandInspector {
     summaryChildren: [
       {
         commandId: "command-summary-child",
-        toolName: "artifact.write_text",
+        toolName: "artifact_write_text",
         visibility: "summary",
         status: "succeeded",
         title: "Create summary.md",

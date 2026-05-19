@@ -37,7 +37,7 @@ This spec does not claim that the runtime implementation already satisfies the d
 - Recovery is backend-first. Durable state, Smithers projection, prompt locks, queues, title jobs, handler starts, handoffs, and wait state are recovered before the UI decides that a surface is idle and user-ready.
 - Recovery uses transactional claims over durable work rows. Process-local flags, renderer focus, and panel identity never decide whether backend work resumes.
 - Smithers execution facts stay in Smithers. Recovery re-reads Smithers durable state by Smithers identifiers, reconnects monitors or cursors, and projects only `svvy` product facts.
-- `svvy` does not create a parallel `workflow.*` recovery abstraction. Workflow recovery uses Smithers-native identifiers and Smithers-native operation names where agent or bridge surfaces are involved.
+- `svvy` does not create a parallel `workflow_*` recovery abstraction. Workflow recovery uses Smithers-native identifiers and Smithers-native operation names where agent or bridge surfaces are involved.
 
 ## Ownership Boundaries
 
@@ -281,7 +281,7 @@ The UI should expose that state as a recovery issue for the affected surface rat
 
 - App-global auth, OAuth, provider-key, and preference migration.
 - A renderer-owned recovery loop.
-- A second workflow abstraction under `workflow.*`.
+- A second workflow abstraction under `workflow_*`.
 - Duplicating Smithers run/node/attempt/wait/approval/timer/output/event/transcript/artifact state into `svvy`.
 - Exact-once pi prompt delivery without pi accepted-message idempotency or receipts.
 - Replaying native app-menu actions after restart.

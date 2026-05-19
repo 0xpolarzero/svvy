@@ -23,23 +23,23 @@ describe("prompt contexts", () => {
     expect(buildAlwaysLoadedPromptContext("orchestrator")).toContain(
       "Loaded always-on prompt context: Smithers workflow routing.",
     );
-    expect(buildAlwaysLoadedPromptContext("orchestrator")).toContain("thread.resume");
+    expect(buildAlwaysLoadedPromptContext("orchestrator")).toContain("thread_resume");
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
       "Loaded always-on prompt context: Smithers workflow supervision.",
     );
     expect(buildAlwaysLoadedPromptContext("workflow-task")).toContain(
       "Loaded always-on prompt context: Smithers task-agent boundary.",
     );
-    expect(buildAlwaysLoadedPromptContext("handler")).toContain("cx.overview");
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain("cx_overview");
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
-      "cx.lang.add` when a relevant grammar is available but missing",
+      "cx_lang_add` when a relevant grammar is available but missing",
     );
-    expect(buildAlwaysLoadedPromptContext("handler")).toContain("api.cx.*");
+    expect(buildAlwaysLoadedPromptContext("handler")).toContain("api.cx_*");
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
-      "Use `smithers.run_workflow({ workflowId, input })` for a fresh launch.",
+      "Use `smithers_run_workflow({ workflowId, input })` for a fresh launch.",
     );
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
-      "Use `smithers.run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
+      "Use `smithers_run_workflow({ workflowId, input, runId })` only when you intend to resume that exact run.",
     );
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
       "Omitting `runId` never silently resumes",
@@ -74,6 +74,6 @@ describe("prompt contexts", () => {
 
     expect(unloaded).toBeUndefined();
     expect(loaded).toContain("Loaded optional prompt context: Project CI.");
-    expect(loaded).toContain('smithers.list_workflows({ productKind: "project-ci" })');
+    expect(loaded).toContain('smithers_list_workflows({ productKind: "project-ci" })');
   });
 });

@@ -15,7 +15,7 @@ export function createDefaultWorkflowTaskAgentConfig(
     reasoningEffort: input.reasoningEffort ?? DEFAULT_AGENT_SETTINGS.reasoningEffort,
     systemPrompt: WORKFLOW_TASK_SYSTEM_PROMPT,
     toolSurface: WORKFLOW_TASK_TOOL_REGISTRY.filter(
-      (toolName) => toolName !== "web.search" && toolName !== "web.fetch",
+      (toolName) => toolName !== "web_search" && toolName !== "web_fetch",
     ),
   };
 }
