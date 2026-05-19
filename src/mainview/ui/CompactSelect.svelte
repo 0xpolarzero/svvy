@@ -240,6 +240,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.35;
+    padding-block: 0.08rem;
+    margin-block: -0.08rem;
   }
 
   .compact-select-caret {
