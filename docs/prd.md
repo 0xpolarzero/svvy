@@ -607,7 +607,7 @@ That live runtime owns:
 - the resolved system prompt
 - the current prompt execution context
 - one prompt lock for that surface
-- a surface-local queue of user-authored follow-up messages waiting for the prompt lock to release
+- a surface-local durable queue manager for prompt-bearing and control work, with blocked follow-ups waiting for the prompt lock to release
 
 Live surface runtime is separate from both durable workspace state and Dockview layout state.
 
@@ -616,7 +616,7 @@ request. A surface may keep streaming with zero, one, or many attached panels, a
 mid-stream renders the committed transcript, pending user message, and current assistant stream from
 the surface snapshot.
 
-Queued surface work is structured product state, not committed transcript history until a prompt-bearing item is delivered as the next real user message for the same `surfacePiSessionId`. If the user submits from a composer while the target surface is already running, `svvy` queues that message for the same surface, keeps the active turn undisturbed, and starts the next normal turn only after the current turn settles or is cancelled. Ordinary composer submit is follow-up queueing; the explicit queued-row `Steer` action is the separate control for pi/Codex-style steering at the next safe active-turn boundary. A steered row remains visible in a locked state until pi accepts it into the active turn or `svvy` restores it after rejection. Handler handoffs and prompt-refresh control work use the same surface queue so they are ordered with user messages. A `prompt_refresh` row updates the surface's prompt binding before later prompt-bearing items run, without creating transcript content or prompt history. Queued work survives panel changes and duplicated panel views because it belongs to the surface, not to a Dockview panel.
+Queued surface work is structured product state, not committed transcript history until a prompt-bearing item is delivered as the next real user message for the same `surfacePiSessionId`. If the user submits from a composer while the target surface is idle, `svvy` still durably enqueues the message, but the queue manager atomically claims it before publishing renderer-visible queued state, so the first visible state is pending or active work. If the target surface is already running, `svvy` queues that message for the same surface, keeps the active turn undisturbed, and starts the next normal turn only after the current turn settles or is cancelled. Ordinary composer submit is queue-managed delivery; the explicit queued-row `Steer` action is the separate control for pi/Codex-style steering at the next safe active-turn boundary. A steered row remains visible in a locked state until pi accepts it into the active turn or `svvy` restores it after rejection. Handler handoffs and prompt-refresh control work use the same surface queue so they are ordered with user messages. A `prompt_refresh` row updates the surface's prompt binding before later prompt-bearing items run, without creating transcript content or prompt history. Queued work survives panel changes and duplicated panel views because it belongs to the surface, not to a Dockview panel.
 
 ### Dockview Panel And Layout State
 

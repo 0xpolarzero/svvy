@@ -817,7 +817,7 @@ The queued item kind is `prompt_refresh`.
 Rules:
 
 - if the surface has an active prompt or existing queued work, the update is queued and applies in order after earlier active work completes
-- if the surface is idle and has no queued work, the update applies immediately without rendering a transient queue row
+- if the surface is idle and has no queued work, the update is durably enqueued and atomically claimed before any transient queue row can render
 - if user messages or handler handoffs are already queued, `prompt_refresh` runs in its queue order before later prompt-bearing items
 - the next user turn or handler handoff delivered after the refresh uses the latest context library composition
 - the update records a structured lifecycle event

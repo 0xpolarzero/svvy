@@ -3,19 +3,19 @@
 ## Status
 
 - Date: 2026-05-15
-- Status: adopted product direction for queued follow-up user messages
-- Scope: composer sends that target an already-running orchestrator or handler-thread surface
+- Status: adopted product direction for durable surface queue work
+- Scope: composer sends and surface-control work that target orchestrator or handler-thread surfaces
 
 ## Purpose
 
-`svvy` needs a clear way for a user to add a follow-up while a surface is still running.
+`svvy` needs a clear way for every prompt-bearing or surface-control item to pass through one ordered surface queue, whether the surface is currently idle or already running.
 
-The product goal is not concurrent turns, hidden steering, or a second terminal-like input loop. The goal is a visible, ordered, surface-local queue:
+The product goal is not concurrent turns, hidden steering, or a second terminal-like input loop. The goal is a durable, ordered, surface-local queue manager:
 
 - the running turn keeps ownership until it settles or is cancelled
 - the user's submitted follow-up is accepted instead of lost
-- the queued follow-up remains visible and editable before delivery
-- the queued follow-up starts the next real turn on that same surface
+- blocked follow-ups remain visible and editable before delivery
+- idle submissions are claimed before a renderer-visible queued state and start the next real turn on that same surface
 
 ## Reading Rules
 
@@ -66,16 +66,16 @@ Local pi references:
 
 ## Adopted Product Behavior
 
-`svvy` treats ordinary composer submits as queued follow-up user messages. The queue row also exposes an explicit `Steer` action for the uncommon case where the user wants that queued text delivered through pi/Codex-style steering at the next safe boundary of the active turn.
+`svvy` treats ordinary composer submits as durable surface queue work. The visible queue row also exposes an explicit `Steer` action for the uncommon case where the user wants blocked queued text delivered through pi/Codex-style steering at the next safe boundary of the active turn.
 
 The queue is generic surface work, not only composer text. Every interactive surface accepts `user_message`, `prompt_refresh`, `initial_handler_start`, and `workflow_attention` queue items. The orchestrator additionally accepts `handler_handoff` notification items created after `thread.handoff` records a durable handoff episode. A `handler_handoff` item waits in the orchestrator queue with user messages and is delivered as orchestrator reconciliation input. Dismissing or deleting the notification cancels only the queue row; it does not roll back the durable handoff episode or return a tool error to the handler.
 
-A `prompt_refresh` item is a surface-local control item created by the stale-context warning's `Update system prompt` action. It is always written as durable surface queue work, even when the target surface is idle and has no queued work. When the surface lock is free, "immediate" means the row is durably enqueued and claimed by the shared queue runner in the same scheduler tick. A prompt refresh is ordered with the rest of the surface queue, but it is not sent to the agent and does not create transcript or prompt-history content. When delivered, it refreshes the surface's prompt binding to the latest Context Library, generated contracts, and runtime standards before later prompt-bearing queue items run.
+A `prompt_refresh` item is a surface-local control item created by the stale-context warning's `Update system prompt` action. It is always written as durable surface queue work, even when the target surface is idle and has no queued work. When the surface lock is free, "immediate" means the row is durably enqueued and claimed by the shared queue runner before any renderer-visible queued state. A prompt refresh is ordered with the rest of the surface queue, but it is not sent to the agent and does not create transcript or prompt-history content. When delivered, it refreshes the surface's prompt binding to the latest Context Library, generated contracts, and runtime standards before later prompt-bearing queue items run.
 
 When a user submits from a composer:
 
-- if the target surface is idle, the message is durably enqueued and then claimed by the backend queue runner as the next normal turn
-- if the target surface already has an active turn, the message is queued for that same surface
+- if the target surface is idle, the message is durably enqueued and atomically claimed by the backend queue runner before any renderer-visible queued state
+- if the target surface already has an active turn, the message remains visible and editable in the queue for that same surface
 - the active turn continues until it naturally settles or is cancelled
 - the queued message starts the next real turn only after the active turn settles and the surface prompt lock is released
 
@@ -121,9 +121,9 @@ type QueuedMessageStatus =
 
 Lifecycle rules:
 
-- `queued`: accepted while a surface was active and waiting for the current turn to settle
+- `queued`: durably accepted and waiting because the surface lock or earlier queue work is ahead of it
 - `steering`: selected for pi steering, locked in the UI, and waiting for pi accept/reject
-- `dispatching`: selected as the next message for the surface and being submitted through pi
+- `dispatching`: selected as the next item for the surface and being submitted or applied; it is durable queue state, but it is not projected as visible queue UI once represented as pending or active surface work
 - `delivered`: committed as the next real user message in pi's session history
 - `cancelled`: removed by the user before delivery or dropped because the owning surface was explicitly closed in a way that discards queued work
 
@@ -142,10 +142,9 @@ The durable record should keep:
 
 ## Delivery Semantics
 
-When the current turn settles, the owning surface wakes the queue runner for its `surfacePiSessionId`.
-Queue delivery is owned by that surface runtime, not by any Dockview pane, workspace tab, or visual
-instance. Waking the runner is idempotent; if a runner is already scheduled or active for the
-surface, additional wakes do not start another delivery loop.
+When a surface item is submitted or the current turn settles, the owning surface wakes the queue runner for its `surfacePiSessionId`. Queue delivery is owned by that surface runtime, not by any Dockview pane, workspace tab, or visual instance. Waking the runner is idempotent; if a runner is already scheduled or active for the surface, additional wakes do not start another delivery loop.
+
+If the surface lock is free at submit time, enqueue and claim happen as one queue-manager transition before publishing a renderer-visible queue projection. The first visible surface state for that item is pending or active work, not a transient queued row.
 
 If the queue has at least one queued item:
 
@@ -194,7 +193,7 @@ Projection should make clear:
 - whether the current surface is running, waiting, or ready
 - whether a message is queued for normal follow-up or has been selected for steering
 
-Queued rows render as a compact vertical list directly above attachment chips and the textarea. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `user_message` rows expose drag reorder, `Steer`, edit, and delete. Editable `handler_handoff` rows expose drag reorder, `Steer`, and dismiss/delete; they do not expose text edit or restore-to-composer because their prompt is derived from durable handoff metadata at delivery time, and dismissal does not alter the recorded handoff. Editable `prompt_refresh` rows are labelled `Update instructions`, expose cancel, and omit edit, restore, and steer because they are control work rather than agent input. Drag-hover reorder previews are local renderer state; the durable queue order changes only when the user drops a row into a final changed position. Locked `steering` or `dispatching` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, dismissed, steered again, or reordered.
+Queued rows render as a compact vertical list directly above attachment chips and the textarea only while they are blocked queue work, such as active-surface follow-ups or items behind earlier queue work. Rows use single-line ellipsized message text, centered controls, and dense workbench row sizing. Editable `user_message` rows expose drag reorder, `Steer`, edit, and delete. Editable `handler_handoff` rows expose drag reorder, `Steer`, and dismiss/delete; they do not expose text edit or restore-to-composer because their prompt is derived from durable handoff metadata at delivery time, and dismissal does not alter the recorded handoff. Editable `prompt_refresh` rows are labelled `Update instructions`, expose cancel, and omit edit, restore, and steer because they are control work rather than agent input. Drag-hover reorder previews are local renderer state; the durable queue order changes only when the user drops a row into a final changed position. Locked `steering` rows remain in place but replace the controls with a status indicator and cannot be edited, deleted, dismissed, steered again, or reordered. `dispatching` rows are durable backend state and do not render as queue rows once claimed for pending or active surface work.
 
 Sidebar rows may show a compact queued-count badge for an open surface, but queued messages do not change the row's lifecycle status to running or waiting by themselves.
 
@@ -224,7 +223,7 @@ Recovery must not infer queued messages from transcript text. The queue is struc
 
 Tests should cover:
 
-- idle send writes a durable queue row before the row is claimed for immediate dispatch
+- idle send writes and claims a durable queue row before any renderer-visible queued state, then surfaces as pending or active work
 - active-surface send creates a queued message and leaves the active turn alone
 - queued messages deliver FIFO after the prompt lock releases
 - queued messages stay surface-local across orchestrator and handler-thread surfaces

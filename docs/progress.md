@@ -263,12 +263,13 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 
 Current product decisions for this section are specified in `docs/specs/queued-messages.spec.md`.
 
-- [ ] Persist queued user messages as structured surface-local product state keyed by `workspaceSessionId`, `surfacePiSessionId`, optional `threadId`, and FIFO queue position.
+- [ ] Persist durable surface queue items as structured surface-local product state keyed by `workspaceSessionId`, `surfacePiSessionId`, optional `threadId`, kind, and FIFO queue position.
 - [ ] When a composer submits to an active orchestrator or handler-thread surface, queue the message for that same surface instead of steering the current turn, interrupting tool work, starting a concurrent turn, or retargeting to the focused panel.
 - [ ] Deliver queued messages as the next real pi user message after the owning surface prompt lock releases, creating a normal turn record and preserving prompt history as a single queue-time submission.
-- [ ] Project queued messages near the owning surface composer, including count, order, remove, restore-to-composer, delivery failure, and duplicated-panel consistency.
+- [ ] Project blocked queue items near the owning surface composer, including count, order, remove, restore-to-composer, delivery failure, and duplicated-panel consistency, while idle-surface items first appear as pending or active work after atomic claim.
 - [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
-- [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
+- [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId` and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
+- [ ] Land idle-surface queue-manager claim before renderer-visible queued state so idle sends and idle prompt refreshes first appear as pending or active surface work.
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
 - [x] Represent handler handoffs as durable episode records that schedule typed orchestrator reconciliation notifications; notification dismissal does not roll back the handoff or return a handler tool error. Commit(s): 7739c2c824
 - [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): 61ba639d6a

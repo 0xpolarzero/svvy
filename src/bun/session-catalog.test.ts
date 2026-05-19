@@ -1641,6 +1641,10 @@ describe("WorkspaceSessionCatalog", () => {
   it("applies an idle prompt refresh through the durable surface queue", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
 
     try {
       const created = await catalog.createSession({ title: "Idle Prompt Refresh" }, DEFAULTS);
@@ -1651,9 +1655,15 @@ describe("WorkspaceSessionCatalog", () => {
 
       const refreshed = await catalog.queuePromptRefresh({ target: created.target });
 
-      expect(refreshed.snapshot?.queuedMessages.map((message) => message.kind)).toEqual([
-        "prompt_refresh",
-      ]);
+      expect(refreshed.snapshot?.queuedMessages).toEqual([]);
+      expect(
+        surfaceSyncs.some(
+          (payload) =>
+            payload.reason === "surface.updated" &&
+            payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
+            payload.snapshot?.queuedMessages.some((message) => message.kind === "prompt_refresh"),
+        ),
+      ).toBe(false);
       await waitFor(
         () =>
           getStructuredSessionStore(catalog)
@@ -1669,6 +1679,7 @@ describe("WorkspaceSessionCatalog", () => {
           .queuedMessages?.map((message) => message.status),
       ).toEqual(["delivered"]);
     } finally {
+      catalog.setSurfaceSyncListener(null);
       await catalog.dispose();
     }
   });
@@ -1721,7 +1732,6 @@ describe("WorkspaceSessionCatalog", () => {
         const refresh = await catalog.queuePromptRefresh({ target: created.target });
         expect(refresh.snapshot?.queuedMessages.map((message) => message.kind)).toEqual([
           "prompt_refresh",
-          "user_message",
         ]);
 
         await catalog.sendPrompt({
@@ -2133,6 +2143,10 @@ describe("WorkspaceSessionCatalog", () => {
   it("keeps prompt locks independent across surfaces", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
 
     try {
       const created = await catalog.createSession({ title: "Independent Locks" }, DEFAULTS);
@@ -2204,6 +2218,18 @@ describe("WorkspaceSessionCatalog", () => {
             .getSessionState(created.target.workspaceSessionId)
             .queuedMessages?.filter((message) => message.status === "queued"),
         ).toHaveLength(1);
+        expect(
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "surface.updated" &&
+              payload.target.surfacePiSessionId === handler.target.surfacePiSessionId &&
+              payload.snapshot?.queuedMessages.some(
+                (message) =>
+                  message.status === "queued" &&
+                  message.text === "Keep working on the delegated fix.",
+              ),
+          ),
+        ).toBe(true);
 
         await catalog.sendPrompt({
           ...DEFAULTS,
@@ -2235,13 +2261,18 @@ describe("WorkspaceSessionCatalog", () => {
         handlerPromptSpy.mockRestore();
       }
     } finally {
+      catalog.setSurfaceSyncListener(null);
       await catalog.dispose();
     }
   });
 
-  it("runs one queued prompt drain per surface and shows the dispatching row", async () => {
+  it("claims idle sends before publishing a visible queued row", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const surfaceSyncs: SurfaceSyncMessage[] = [];
+    catalog.setSurfaceSyncListener((payload) => {
+      surfaceSyncs.push(payload);
+    });
 
     try {
       const created = await catalog.createSession({ title: "Queued Drain" }, DEFAULTS);
@@ -2273,17 +2304,8 @@ describe("WorkspaceSessionCatalog", () => {
           ...DEFAULTS,
           target: created.target,
           messages: [queuedPrompt],
-          queueOnly: true,
           onEvent: () => {},
         });
-
-        const wakeSurfaceQueue = (
-          catalog as unknown as {
-            wakeSurfaceQueue(target: PromptTarget): void;
-          }
-        ).wakeSurfaceQueue.bind(catalog);
-        wakeSurfaceQueue(created.target);
-        wakeSurfaceQueue(created.target);
 
         await waitFor(() => {
           const queue =
@@ -2297,8 +2319,26 @@ describe("WorkspaceSessionCatalog", () => {
         });
 
         const snapshot = await catalog.openSurface(created.target);
-        expect(snapshot.queuedMessages.map((message) => message.status)).toEqual(["dispatching"]);
+        expect(snapshot.queuedMessages).toEqual([]);
         expect(userMessageText(snapshot.pendingUserMessage)).toBe("Run the queued turn.");
+        expect(
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "surface.updated" &&
+              payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
+              payload.snapshot?.queuedMessages.some((message) => message.status === "queued"),
+          ),
+        ).toBe(false);
+        expect(
+          surfaceSyncs.some(
+            (payload) =>
+              payload.reason === "background.started" &&
+              payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
+              userMessageText(payload.snapshot?.pendingUserMessage ?? null) ===
+                "Run the queued turn." &&
+              payload.snapshot?.queuedMessages.length === 0,
+          ),
+        ).toBe(true);
 
         queuedPromptGate.resolve();
         await waitFor(
@@ -2317,6 +2357,7 @@ describe("WorkspaceSessionCatalog", () => {
         promptSpy.mockRestore();
       }
     } finally {
+      catalog.setSurfaceSyncListener(null);
       await catalog.dispose();
     }
   });
@@ -2936,7 +2977,7 @@ describe("WorkspaceSessionCatalog", () => {
         await waitFor(() =>
           surfaceSyncs.some(
             (payload) =>
-              payload.reason === "surface.updated" &&
+              payload.reason === "prompt.settled" &&
               payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId &&
               payload.snapshot?.pendingUserMessage === null &&
               payload.snapshot.messages.some(
