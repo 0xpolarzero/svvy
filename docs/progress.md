@@ -317,7 +317,10 @@ Current product decisions for this section are specified in `docs/specs/workflow
 
 ## 16. Recovery And Test Coverage
 
+Current product decisions for workspace-runtime restart and crash recovery are specified in `docs/specs/workspace-runtime-recovery.spec.md`.
+
 - [x] Build a POC restart or resume flow that restores multiple open surfaces and panel bindings from durable state. Commit(s): `7f84f06`
+- [ ] Implement one workspace-runtime recovery coordinator with durable scheduler records, transactional claims, Smithers-first projection bootstrap, per-surface queue and handoff recovery, initial handler auto-start recovery, title job recovery, Project CI projection recovery, and backend-owned recovery events/logs.
 - [x] Restore pending clarification and waiting state after app restart. Commit(s): `7f84f06`
 - [x] Restore active workflow-run state after app restart. Commit(s): `7f84f06`
 - [x] Restore pending handler attention queues and per-surface prompt-lock state after app restart. Commit(s): `7f84f06`

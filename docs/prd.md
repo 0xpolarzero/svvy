@@ -501,6 +501,7 @@ It must not replace pi with a second agent shell.
 - delegated handler thread creation and supervision policy
 - session, turn, queued-message, thread, workflow-run, command, episode, artifact, Project CI, and wait models
 - reconciliation
+- workspace-runtime restart and crash recovery coordination for `svvy`-owned product work
 - desktop UI product semantics
 - read models and selectors that drive the app
 
@@ -520,7 +521,7 @@ Smithers is not:
 - the main conversation substrate
 - the owner of session-level routing decisions
 
-When `svvy` needs workflow lifecycle state, the intended seam is write-driven projection from explicit Smithers bridge events, Smithers tool-boundary writes, and official Smithers bootstrap or reconnect control-plane reads that immediately persist workflow-run and thread facts into structured state.
+When `svvy` needs workflow lifecycle state, the intended seam is write-driven projection from explicit Smithers bridge events, Smithers tool-boundary writes, and official Smithers bootstrap or reconnect control-plane reads that immediately persist workflow-run and thread facts into structured state. Restart recovery must use that same seam: Smithers remains the source of workflow execution, wait, approval, timer, output, transcript, event, artifact, and task-attempt facts, while `svvy` recovers only its product bindings, monitor cursors, attention delivery, Project CI projection, and UI/read-model facts.
 
 Those lifecycle producers are first-class product behavior, not temporary fallback. Operator inspection reads may observe workflow state, but they must not mutate durable lifecycle state as a side effect.
 
@@ -1076,9 +1077,11 @@ On restart, the workspace shell should restore useful stable UI state:
 - open Dockview panels and panel-to-surface bindings
 - focused panel
 - panel-local scroll and display preferences
-- selected inspector target per panel when the target still exists
+- explicit static inspector pane targets when the target still exists
 
 It should not restore transient menus or popovers, unsaved inline edits, composer draft text, selected transcript text, temporary search highlights, or stale live stream and tool-running state.
+
+Backend recovery is separate from workspace shell UI restore. Each acquired workspace runtime owns one durable recovery coordinator for that workspace's sessions, pi surfaces, queues, initial handler starts, handoff accept/reject work, waits, title jobs, Smithers monitor reconnect, workflow attention, Project CI projection, and recovery observability. The coordinator uses durable owner scopes, idempotency keys, and transactional claims rather than active workspace, focused tab, focused panel, process cwd, or renderer state. App-global startup and workspace-tab restore decide which runtimes exist; they do not drain workspace queues or repair workspace product work directly.
 
 ## Workflow Inspection
 

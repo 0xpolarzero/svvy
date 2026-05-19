@@ -52,7 +52,7 @@ For each issue, record:
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Fixed |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Fixed |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Fixed |
-| AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Researched |
+| AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Specified |
 | AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Researched |
 | AUD-026 | P1 | Workflow inspector live mode polls and rebuilds too much state | `34a6`, `2a4e`, `3eed`, `1291` | Researched |
 | AUD-027 | P1 | Structured-state selectors materialize large snapshots with insufficient indexes/read models | `2a4e`, `34a6`, `209c`, `3eed` | Researched |
@@ -1043,6 +1043,8 @@ Relevant code:
 
 ### AUD-024 - Restart recovery lacks one durable scheduler for active prompts, initial starts, queues, and workflow monitors
 
+**Disposition:** Specified. The adopted design is now captured in `docs/specs/workspace-runtime-recovery.spec.md`: recovery is scoped to each acquired workspace runtime, uses durable scheduler records and transactional claims, bootstraps Smithers projection before surface work, and keeps UI restore as a consumer of backend snapshots/events rather than the recovery owner.
+
 **Impact:** Medium-high cross-cutting reliability issue.
 
 **Precise issue:** Several restart-sensitive flows have local repair logic, but there is no single durable scheduler that owns recovery of in-flight or pending work across prompts, queues, initial handler starts, handoff reconciliation, and workflow supervision.
@@ -1075,7 +1077,7 @@ Responsibilities:
 - Concurrent startup/open-surface paths do not double-run recovery.
 - Recovery order is deterministic where dependencies exist, especially workflow attention before handler/orchestrator prompt resume.
 
-**Documentation impact:** Add or update a recovery section in structured-session/workspace-runtime docs.
+**Documentation impact:** `docs/specs/workspace-runtime-recovery.spec.md` defines the adopted workspace-runtime recovery coordinator design. Runtime behavior remains implementation work.
 
 **Confidence:** Medium-high. This section consolidates confirmed restart gaps rather than introducing a separate newly probed call site.
 

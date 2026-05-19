@@ -240,6 +240,14 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     ],
   },
   {
+    id: "workspace-runtime-recovery",
+    name: "Workspace Runtime Recovery Coordinator",
+    status: "in-progress",
+    summary:
+      "Defines one backend-owned recovery coordinator per acquired workspace runtime, with duplicate same-cwd tabs sharing recovery state, app-wide auth/preferences kept outside workspace recovery, Smithers durable-state bootstrap before surface work, durable scheduler records with transactional claims and idempotency keys for prompts, queues, initial handler starts, handoffs, waits, title jobs, workflow attention, Project CI projection, and recovery observability, while renderer layout restore remains only a consumer of backend snapshots.",
+    sourceSpecs: ["docs/specs/workspace-runtime-recovery.spec.md"],
+  },
+  {
     id: "structured-session-state",
     name: "Structured Session State Overlay",
     status: "in-progress",
