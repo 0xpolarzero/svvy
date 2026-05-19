@@ -8,6 +8,7 @@ import {
   createPromptExecutionContext,
   type PromptExecutionRuntimeHandle,
 } from "./prompt-execution-context";
+import { createDefaultPromptLibraryState } from "./default-system-prompt";
 import { createSmithersTools } from "./smithers-tools";
 import { createStructuredSessionStateStore } from "./structured-session-state";
 import { SmithersRuntimeManager, type TestWorkflowDefinition } from "./smithers-runtime/manager";
@@ -98,6 +99,7 @@ function createHarness() {
       provider: "openai",
       model: "gpt-5.4",
       reasoningEffort: "medium",
+      promptLibraryState: createDefaultPromptLibraryState(),
     }),
   });
   managers.push(manager);
@@ -113,6 +115,7 @@ function createHarness() {
       provider: "openai",
       model: "gpt-5.4",
       reasoningEffort: "medium",
+      promptLibraryState: createDefaultPromptLibraryState(),
     }),
   );
 

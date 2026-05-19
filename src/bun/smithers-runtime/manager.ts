@@ -28,6 +28,7 @@ import type {
   StructuredProjectCiCheckStatus,
   StructuredProjectCiStatus,
 } from "../structured-session-state";
+import type { PromptLibraryState } from "../../shared/prompt-library";
 import {
   compileRunnableWorkflowLaunchContract,
   type RunnableWorkflowLaunchContract,
@@ -46,6 +47,7 @@ type WorkflowTaskAgentDefaults = {
   provider: string;
   model: string;
   reasoningEffort: ThinkingLevel;
+  promptLibraryState?: PromptLibraryState;
 };
 
 type WorkflowMonitor = {

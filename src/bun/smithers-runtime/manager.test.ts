@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import React from "react";
 import * as PiCodingAgent from "@mariozechner/pi-coding-agent";
 import { createStructuredSessionStateStore } from "../structured-session-state";
+import { createDefaultPromptLibraryState } from "../default-system-prompt";
 import { SmithersRuntimeManager, type TestWorkflowDefinition } from "./manager";
 import {
   createExecuteTypescriptTaskTestWorkflow,
@@ -65,6 +66,7 @@ function createManagerHarness(input: {
       provider: "openai",
       model: "gpt-5.4",
       reasoningEffort: "medium",
+      promptLibraryState: createDefaultPromptLibraryState(),
     }),
     onStructuredStateChanged: async (nextSessionId) => {
       input.structuredStateChanges.push(nextSessionId);
@@ -152,6 +154,7 @@ function createWorkspaceFixture(
       provider: "openai",
       model: "gpt-5.4",
       reasoningEffort: "medium",
+      promptLibraryState: createDefaultPromptLibraryState(),
     }),
   );
 
@@ -3256,6 +3259,7 @@ describe("SmithersRuntimeManager", () => {
         provider: "openai",
         model: "gpt-5.4",
         reasoningEffort: "medium",
+        promptLibraryState: createDefaultPromptLibraryState(),
       }),
       onHandlerAttention: async (event) => {
         handlerAttentions.push(event.reason);
@@ -3275,6 +3279,7 @@ describe("SmithersRuntimeManager", () => {
         provider: "openai",
         model: "gpt-5.4",
         reasoningEffort: "medium",
+        promptLibraryState: createDefaultPromptLibraryState(),
       }),
     );
 

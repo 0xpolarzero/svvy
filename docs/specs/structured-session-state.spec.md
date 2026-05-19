@@ -1044,8 +1044,9 @@ Write responsibility is:
 - ordinary orchestrator-turn writes, including turn decisions, and root command writes belong to the `svvy` runtime
 - `thread.start` writes any preloaded requested context-pack keys before the handler's first turn runs, then dispatches that first handler turn without waiting for the user to manually send a message in the new thread
 - handler-thread turn writes, including turn decisions, and command writes belong to the `svvy` runtime over pi thread surfaces
-- `request_context` writes loaded requested context-pack keys for the current handler thread and is idempotent per `threadId + contextKey`
+- `request_context` writes loaded requested context-pack keys for the current handler thread, is idempotent per `threadId + contextKey`, and marks the live handler surface for prompt recreation before the next handler turn
 - workflow-run writes belong to the Smithers bridge
+- workflow-task-attempt projection stores svvy-owned product metadata such as `meta.promptBinding` on the exact Smithers attempt address while leaving Smithers-owned run, node, attempt, retry, wait, output, usage, and transcript facts in Smithers durable state
 - Project CI writes belong to the runtime or bridge path that handles terminal Smithers runs from entries declaring `productKind = "project-ci"` and validates their terminal output against the declared CI result schema
 - wait writes belong to the `svvy` runtime
 - runtime-state read tools (`runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`) read durable structured state and the active prompt runtime binding without creating command records or writing lifecycle facts

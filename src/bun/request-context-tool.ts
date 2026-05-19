@@ -27,6 +27,11 @@ const REQUEST_CONTEXT_DESCRIPTION = [
 export function createRequestContextTool(options: {
   runtime: PromptExecutionRuntimeHandle;
   store: StructuredSessionStateStore;
+  onContextLoaded?: (event: {
+    surfacePiSessionId: string;
+    threadId: string;
+    contextKeys: string[];
+  }) => void | Promise<void>;
 }): AgentTool<typeof requestContextParamsSchema, Record<string, unknown>> {
   return {
     label: "Request Context",
@@ -71,13 +76,19 @@ export function createRequestContextTool(options: {
             loadedByCommandId: command.id,
           });
         });
+        const loadedContextKeys = loaded.map((entry) => entry.contextKey);
+        await options.onContextLoaded?.({
+          surfacePiSessionId: runtime.surfacePiSessionId,
+          threadId: runtime.surfaceThreadId,
+          contextKeys: loadedContextKeys,
+        });
 
         options.store.finishCommand({
           commandId: command.id,
           status: "succeeded",
-          summary: `Loaded prompt context: ${loaded.map((entry) => entry.contextKey).join(", ")}.`,
+          summary: `Loaded prompt context: ${loadedContextKeys.join(", ")}.`,
           facts: {
-            contextKeys: loaded.map((entry) => entry.contextKey),
+            contextKeys: loadedContextKeys,
             versions: Object.fromEntries(
               loaded.map((entry) => [entry.contextKey, entry.contextVersion]),
             ),
@@ -90,13 +101,13 @@ export function createRequestContextTool(options: {
               type: "text",
               text: JSON.stringify({
                 ok: true,
-                loadedContextKeys: loaded.map((entry) => entry.contextKey),
+                loadedContextKeys,
               }),
             },
           ],
           details: {
             ok: true,
-            loadedContextKeys: loaded.map((entry) => entry.contextKey),
+            loadedContextKeys,
           },
         };
       } catch (error) {

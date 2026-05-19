@@ -684,6 +684,10 @@ The `resolvedPromptHash` records the exact prompt text used at the binding point
 
 The optional `resolvedPromptTextArtifactId` allows later inspection without depending on reconstructing an old generated contract from current code. The implementation may store the prompt text in structured prompt-revision tables instead of an artifact, but the product must preserve enough information to display what was used.
 
+Workflow task-agent prompt configuration is an overlay, not a replacement. If a workflow task-agent config supplies a custom prompt, `svvy` appends it under a task-agent override section after the generated svvy workflow-task base prompt. The base prompt remains mandatory because it carries the task-local actor contract, generated callable API, Smithers ownership boundaries, and runtime standards binding.
+
+The task-attempt prompt binding is written to `workflowTaskAttempt.meta.promptBinding` when the task-local runtime first binds the exact Smithers attempt identity. That binding must be keyed by Smithers `(runId, nodeId, iteration, attempt)`, not by resume-handle recency or transcript inference.
+
 ## New Session Invariant
 
 Every new top-level session, handler thread, and workflow task agent must use the latest applicable prompt revision at creation time.
@@ -703,6 +707,8 @@ Forking a session creates a new session that uses the latest prompt revision by 
 Existing surfaces keep their bound prompt revision until the user updates them.
 
 The app must not silently mutate an existing surface's system prompt in the middle of active work.
+
+`request_context` is the exception that changes future handler prompt inputs by explicit agent action. Loading optional context writes durable thread context keys and marks the live handler surface for prompt recreation before its next turn, so the next pi turn receives the newly loaded context through the real system-prompt channel.
 
 When the current context library differs from the prompt binding on an existing surface, the top of that surface shows a compact warning:
 

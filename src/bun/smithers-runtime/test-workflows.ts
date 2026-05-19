@@ -3,6 +3,7 @@ import React from "react";
 import { createSmithers, type AgentLike } from "smithers-orchestrator";
 import { z } from "zod";
 import type { TestWorkflowDefinition } from "./manager";
+import type { PromptLibraryState } from "../../shared/prompt-library";
 import {
   bundledWorkflowRuntimeStoredInputSchema,
   readBundledWorkflowLaunchInput,
@@ -82,6 +83,7 @@ export function createExecuteTypescriptTaskTestWorkflow(input: {
   provider: string;
   model: string;
   reasoningEffort: ThinkingLevel;
+  promptLibraryState: PromptLibraryState;
 }): TestWorkflowDefinition {
   const launchSchema = z.object({
     objective: z.string().min(1),
@@ -121,6 +123,7 @@ export function createExecuteTypescriptTaskTestWorkflow(input: {
       model: input.model,
       reasoningEffort: input.reasoningEffort,
     }),
+    promptLibraryState: input.promptLibraryState,
   });
 
   return {

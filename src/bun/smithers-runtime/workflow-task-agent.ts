@@ -12,8 +12,10 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AgentLike } from "smithers-orchestrator";
 import { getToolContext } from "smithers-orchestrator/tools";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import type { PromptLibraryState } from "../../shared/prompt-library";
 import { resolveApiKey } from "../auth-store";
 import {
   EXECUTE_TYPESCRIPT_TOOL_NAME,
@@ -45,6 +47,7 @@ type WorkflowTaskAgentOptions = {
   artifactDir: string;
   store: StructuredSessionStateStore;
   config?: WorkflowTaskAgentConfig;
+  promptLibraryState: PromptLibraryState;
 };
 
 type WorkflowTaskAgentGenerateArgs = {
@@ -80,6 +83,15 @@ type SmithersTaskAttemptIdentity = {
   attempt: number;
 };
 
+type WorkflowTaskPromptBinding = {
+  actor: "workflow-task";
+  promptRevisionId: string;
+  resolvedPromptHash: string;
+  resolvedPromptTextArtifactId: string | null;
+  boundExternalSourceHashes: string[];
+  boundAt: string;
+};
+
 const taskAttemptIdentityByResumeHandle = new Map<string, SmithersTaskAttemptIdentity>();
 
 export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): AgentLike {
@@ -106,10 +118,16 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
           firecrawlApiKey: resolveApiKey("firecrawl"),
         },
       );
+      const baseSystemPrompt = buildSystemPrompt("workflow-task", {
+        promptLibraryState: options.promptLibraryState,
+        workspaceKey: options.workspaceRoot,
+        webProvider,
+      });
+      const configSystemPrompt = config.systemPrompt.trim();
       const resolvedSystemPrompt =
-        config.systemPrompt === WORKFLOW_TASK_SYSTEM_PROMPT
-          ? buildSystemPrompt("workflow-task", { webProvider })
-          : config.systemPrompt;
+        !configSystemPrompt || configSystemPrompt === WORKFLOW_TASK_SYSTEM_PROMPT
+          ? baseSystemPrompt
+          : `${baseSystemPrompt}\n\n## Workflow Task Agent Override\n${configSystemPrompt}`;
       const model = getModel(
         config.provider as Parameters<typeof getModel>[0],
         config.model as Parameters<typeof getModel>[1],
@@ -153,6 +171,11 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         appendSystemPromptOverride: () => [],
       });
       await resourceLoader.reload();
+      const promptBinding = buildWorkflowTaskPromptBinding({
+        promptLibraryState: options.promptLibraryState,
+        resolvedSystemPrompt,
+        resourceLoader,
+      });
 
       const sessionIdentity = {
         surfacePiSessionId: sessionManager.getSessionId(),
@@ -172,6 +195,7 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         getSurfacePiSessionId: () => sessionIdentity.surfacePiSessionId,
         getResumeHandle: () => resumeHandleRef.current,
         getSmithersIdentity: () => smithersIdentity,
+        getPromptBinding: () => promptBinding,
         setProjectionContext: (projection) => {
           projectionContextRef.current = projection;
         },
@@ -517,6 +541,7 @@ function createWorkflowTaskExecuteTypescriptTool(input: {
   getSurfacePiSessionId: () => string;
   getResumeHandle: () => string | null;
   getSmithersIdentity: () => SmithersTaskAttemptIdentity | null;
+  getPromptBinding: () => WorkflowTaskPromptBinding;
   setProjectionContext: (projection: WorkflowTaskAttemptProjectionContext) => void;
   webProvider: ReturnType<typeof createWebProvider>;
 }): AgentTool<typeof executeTypescriptParamsSchema, ExecuteTypescriptResult> {
@@ -533,6 +558,7 @@ function createWorkflowTaskExecuteTypescriptTool(input: {
         surfacePiSessionId: input.getSurfacePiSessionId(),
         agentResume: input.getResumeHandle(),
         smithersIdentity: input.getSmithersIdentity(),
+        promptBinding: input.getPromptBinding(),
       });
       input.setProjectionContext(projection);
       const result = await runExecuteTypescript({
@@ -621,6 +647,7 @@ async function waitForWorkflowTaskAttemptProjection(input: {
   surfacePiSessionId: string;
   agentResume: string | null;
   smithersIdentity: SmithersTaskAttemptIdentity | null;
+  promptBinding: WorkflowTaskPromptBinding;
   timeoutMs?: number;
 }): Promise<WorkflowTaskAttemptProjectionContext> {
   if (!input.smithersIdentity) {
@@ -640,6 +667,10 @@ async function waitForWorkflowTaskAttemptProjection(input: {
       ? input.store.findWorkflowRunBySmithersRunId(smithersAttempt.runId)
       : null;
     if (workflowRun && smithersAttempt) {
+      const smithersMeta =
+        parseTaskAttemptMeta(smithersAttempt.metaJson) ??
+        parseTaskAttemptMeta(smithersAttempt.heartbeatDataJson) ??
+        {};
       const attempt = input.store.upsertWorkflowTaskAttempt({
         workflowRunId: workflowRun.id,
         smithersRunId: smithersAttempt.runId,
@@ -669,9 +700,10 @@ async function waitForWorkflowTaskAttemptProjection(input: {
           readTaskAttemptMetaString(smithersAttempt.metaJson, "agentEngine") ??
           readTaskAttemptMetaString(smithersAttempt.heartbeatDataJson, "agentEngine"),
         agentResume,
-        meta:
-          parseTaskAttemptMeta(smithersAttempt.metaJson) ??
-          parseTaskAttemptMeta(smithersAttempt.heartbeatDataJson),
+        meta: {
+          ...smithersMeta,
+          promptBinding: input.promptBinding,
+        },
         startedAt: new Date(smithersAttempt.startedAtMs).toISOString(),
         finishedAt:
           typeof smithersAttempt.finishedAtMs === "number"
@@ -776,6 +808,31 @@ function parseTaskAttemptMeta(metaJson: string | null | undefined): Record<strin
   } catch {
     return null;
   }
+}
+
+function buildWorkflowTaskPromptBinding(input: {
+  promptLibraryState: PromptLibraryState;
+  resolvedSystemPrompt: string;
+  resourceLoader: {
+    getAgentsFiles(): { agentsFiles: Array<{ path: string; content: string }> };
+  };
+}): WorkflowTaskPromptBinding {
+  return {
+    actor: "workflow-task",
+    promptRevisionId: String(input.promptLibraryState.revision),
+    resolvedPromptHash: hashContent(input.resolvedSystemPrompt),
+    resolvedPromptTextArtifactId: null,
+    boundExternalSourceHashes: input.resourceLoader
+      .getAgentsFiles()
+      .agentsFiles.map(
+        (source) => `${source.path.replaceAll("\\", "/")}:${hashContent(source.content)}`,
+      ),
+    boundAt: new Date().toISOString(),
+  };
+}
+
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
 }
 
 function readTaskAttemptMetaString(

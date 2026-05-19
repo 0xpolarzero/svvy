@@ -49,7 +49,7 @@ For each issue, record:
 | AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Fixed |
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Adopted |
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Fixed |
-| AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Researched |
+| AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Fixed |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Researched |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Researched |
 | AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Researched |
@@ -970,7 +970,11 @@ Relevant code:
 
 **Documentation impact:** Update workflow task-agent prompt semantics and task-attempt provenance specs.
 
-**Confidence:** High for custom-prompt replacement and request-context risk. Medium-high for metadata gap. Medium for duplicate resume ambiguity until exact live cases are tested.
+**Disposition:** Fixed. Workflow task-agent custom prompts now append under a workflow-task override section while preserving the svvy workflow-task base prompt and generated callable contract. Task-local command bootstrap writes `meta.promptBinding` onto the exact workflow-task-attempt projection keyed by Smithers `(runId, nodeId, iteration, attempt)`, including prompt revision id, resolved prompt hash, runtime standards hashes, and binding timestamp. Handler-side `request_context` now marks the retained managed handler surface for prompt recreation before its next turn, so newly loaded context reaches pi through the system-prompt channel instead of only being stored durably.
+
+**Verified by:** `bun test src/bun/request-context-tool.test.ts src/bun/smithers-runtime/workflow-task-agent.test.ts`.
+
+**Confidence:** High. The fixed path is covered by focused request-context and workflow task-agent tests.
 
 ### AUD-022 - Dockview transcript panels omit semantic blocks and action callbacks
 

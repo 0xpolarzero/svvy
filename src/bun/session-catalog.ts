@@ -242,6 +242,7 @@ interface CreateManagedSessionOptions {
   promptLibraryRevision?: number;
   sessionMode?: SessionMode;
   sessionAgentKey?: SessionAgentKey;
+  onRequestContextLoaded?: (surfacePiSessionId: string) => void;
 }
 
 interface VisibleStreamState {
@@ -320,6 +321,7 @@ export class WorkspaceSessionCatalog {
         provider: DEFAULT_AGENT_SETTINGS.provider,
         model: DEFAULT_AGENT_SETTINGS.model,
         reasoningEffort: DEFAULT_AGENT_SETTINGS.reasoningEffort,
+        promptLibraryState: this.promptLibraryStore.getState(),
       }),
       onStructuredStateChanged: async (sessionId) => {
         await this.emitStructuredStateSync(sessionId);
@@ -1677,6 +1679,7 @@ export class WorkspaceSessionCatalog {
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
       awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
+      onRequestContextLoaded: this.markPromptRefreshRequired.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
     nextSession.retainCount = session.retainCount;
@@ -1713,10 +1716,18 @@ export class WorkspaceSessionCatalog {
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
       awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
+      onRequestContextLoaded: this.markPromptRefreshRequired.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
     this.managedSurfaces.set(session.sessionId, session);
     return session;
+  }
+
+  private markPromptRefreshRequired(surfacePiSessionId: string): void {
+    const session = this.managedSurfaces.get(surfacePiSessionId);
+    if (session) {
+      session.recreateOnNextPrompt = true;
+    }
   }
 
   private async disposeManagedSurfaceIfUnused(
@@ -3779,6 +3790,9 @@ async function createManagedSession(
   const requestContextTool = createRequestContextTool({
     runtime: promptExecutionRuntime,
     store: options.structuredSessionStore,
+    onContextLoaded: ({ surfacePiSessionId }) => {
+      options.onRequestContextLoaded?.(surfacePiSessionId);
+    },
   });
   const buildHandlerTools = () =>
     [

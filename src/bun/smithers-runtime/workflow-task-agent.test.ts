@@ -10,6 +10,7 @@ import {
   createStructuredSessionStateStore,
   type StructuredSessionStateStore,
 } from "../structured-session-state";
+import { buildSystemPrompt, createDefaultPromptLibraryState } from "../default-system-prompt";
 import { createWorkflowTaskAgent } from "./workflow-task-agent";
 import { createDefaultWorkflowTaskAgentConfig } from "./workflow-task-agent-config";
 
@@ -37,6 +38,7 @@ type Fixture = {
   store: StructuredSessionStateStore;
   workflowRunId: string;
   smithersRunId: string;
+  promptLibraryState: ReturnType<typeof createDefaultPromptLibraryState>;
 };
 
 function createFixture(): Fixture {
@@ -46,6 +48,7 @@ function createFixture(): Fixture {
   const taskRoot = join(root, "worktree");
   const agentDir = join(root, "agent");
   const artifactDir = join(workspaceRoot, ".svvy", "smithers-runtime", "artifacts", "task-agent");
+  const promptLibraryState = createDefaultPromptLibraryState("2026-04-22T08:00:00.000Z", 42);
   mkdirSync(workspaceRoot, { recursive: true });
   mkdirSync(taskRoot, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
@@ -141,6 +144,7 @@ function createFixture(): Fixture {
     store,
     workflowRunId: workflowRun.id,
     smithersRunId: workflowRun.smithersRunId,
+    promptLibraryState,
   };
 }
 
@@ -327,6 +331,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     const stdoutChunks: string[] = [];
@@ -406,6 +411,9 @@ describe("workflow task agent", () => {
       "artifact.attach_file",
       "execute_typescript",
     ]);
+    expect(createAgentSessionOptions?.resourceLoader?.getSystemPrompt()).toBe(
+      buildSystemPrompt("workflow-task", { promptLibraryState: fixture.promptLibraryState }),
+    );
     expect(readFileSync(join(fixture.taskRoot, "task-root-output.txt"), "utf8")).toBe(
       "task-root-ok",
     );
@@ -440,12 +448,84 @@ describe("workflow task agent", () => {
       },
     });
     expect(snapshot.workflowTaskAttempts[0]?.meta).toMatchObject({
+      promptBinding: {
+        actor: "workflow-task",
+        promptRevisionId: "42",
+        resolvedPromptHash: expect.any(String),
+        resolvedPromptTextArtifactId: null,
+        boundExternalSourceHashes: expect.any(Array),
+        boundAt: expect.any(String),
+      },
       contextBudget: {
         usedTokens: 12,
       },
     });
     expect(stdoutChunks[0]).toContain('{"status":"completed"');
     expect(stepMessages.length).toBeGreaterThan(0);
+
+    createAgentSessionSpy.mockRestore();
+  });
+
+  it("layers custom task-agent prompts over the svvy workflow-task base prompt", async () => {
+    const fixture = createFixture();
+    const createAgentSessionSpy = spyOn(PiCodingAgent, "createAgentSession");
+    const customPrompt = "Follow the workflow-specific checklist exactly.";
+    let loadedSystemPrompt = "";
+
+    createAgentSessionSpy.mockImplementation(async (options: any) => {
+      loadedSystemPrompt = options.resourceLoader.getSystemPrompt();
+      const stateMessages: any[] = [];
+      return {
+        session: {
+          agent: {
+            state: {
+              messages: stateMessages,
+            },
+            prompt: async (messages: any[]) => {
+              stateMessages.push(...messages, createAssistantMessage('{"ok":true}'));
+            },
+          },
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
+          subscribe() {
+            return () => {};
+          },
+          async abort() {},
+          dispose() {},
+        },
+      } as any;
+    });
+
+    const agent = createWorkflowTaskAgent({
+      workspaceRoot: fixture.workspaceRoot,
+      agentDir: fixture.agentDir,
+      artifactDir: fixture.artifactDir,
+      store: fixture.store,
+      config: {
+        ...createDefaultWorkflowTaskAgentConfig(),
+        systemPrompt: customPrompt,
+      },
+      promptLibraryState: fixture.promptLibraryState,
+    });
+
+    await runWithToolContext(
+      {
+        db: {} as never,
+        runId: fixture.smithersRunId,
+        nodeId: "task",
+        iteration: 0,
+        attempt: 1,
+        rootDir: fixture.taskRoot,
+        allowNetwork: false,
+        maxOutputBytes: 8192,
+        timeoutMs: 30_000,
+        seq: 0,
+      },
+      async () => await agent.generate({ prompt: "Hello" }),
+    );
+
+    expect(loadedSystemPrompt.startsWith(buildSystemPrompt("workflow-task"))).toBe(true);
+    expect(loadedSystemPrompt).toContain("## Workflow Task Agent Override");
+    expect(loadedSystemPrompt).toContain(customPrompt);
 
     createAgentSessionSpy.mockRestore();
   });
@@ -494,6 +574,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     await runWithToolContext(
@@ -551,6 +632,7 @@ describe("workflow task agent", () => {
         ...createDefaultWorkflowTaskAgentConfig(),
         toolSurface: ["execute_typescript"],
       },
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     await runWithToolContext(
@@ -626,6 +708,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     await runWithToolContext(
@@ -681,6 +764,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     await expect(
@@ -766,6 +850,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     const result = (await runWithToolContext(
@@ -856,6 +941,7 @@ describe("workflow task agent", () => {
       artifactDir: fixture.artifactDir,
       store: fixture.store,
       config: createDefaultWorkflowTaskAgentConfig(),
+      promptLibraryState: fixture.promptLibraryState,
     });
 
     await expect(

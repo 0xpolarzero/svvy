@@ -229,6 +229,8 @@ Smithers owns the task agent's:
 
 That projection should treat the Smithers task attempt as a real product row addressable from the UI, not as transcript-only internal noise. It is still not the execution attempt record of truth. Smithers owns the attempt identity, attempt lifecycle, retry state, output validation, approval waits, timer waits, usage, and task-agent transcript. `svvy` stores the Smithers attempt address plus product links and projection metadata so the handler, inspector, and UI can re-read Smithers detail by exact `runId`, `nodeId`, `iteration`, and `attempt`.
 
+`svvy` also stores svvy-owned prompt binding metadata on that projection row. `meta.promptBinding` records the workflow-task actor, bound Context Library revision, resolved prompt hash, runtime standards hashes, optional resolved prompt artifact id, and binding timestamp for the exact Smithers attempt. This is provenance for svvy's prompt channel, not a copy of Smithers execution state.
+
 ### Handler Attention
 
 Handler attention means a workflow state transition now requires another handler-thread decision.
@@ -284,6 +286,7 @@ The adopted direction is:
 
 - when a product workflow needs an adaptive coding agent, use a PI-backed workflow task agent by default
 - configure that task agent with a `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
+- treat workflow-specific custom task prompts as overlays appended to the base workflow-task prompt, not replacements for svvy's task-agent contract
 - expose only task-local cx tools, direct tools, and `execute_typescript` to that actor
 - the default adopted task-agent tool surface is task-local cx semantic navigation, direct tools, and code mode for typed composition
 - project each Smithers task attempt into a `svvy` workflow-task-attempt UI row with exact Smithers identifiers and attach any `svvy` command or artifact projections to that row instead of leaving product navigation in a local ephemeral trace

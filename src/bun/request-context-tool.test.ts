@@ -95,9 +95,17 @@ describe("request_context tool", () => {
   it("loads optional prompt context idempotently on the current handler thread", async () => {
     const store = createStore();
     const runtime = createHandlerRuntime(store);
+    const loadedEvents: Array<{
+      surfacePiSessionId: string;
+      threadId: string;
+      contextKeys: string[];
+    }> = [];
     const tool = createRequestContextTool({
       runtime,
       store,
+      onContextLoaded: (event) => {
+        loadedEvents.push(event);
+      },
     });
 
     const first = await tool.execute("tool-call-3", { keys: ["ci"] });
@@ -111,6 +119,18 @@ describe("request_context tool", () => {
       ok: true,
       loadedContextKeys: ["ci"],
     });
+    expect(loadedEvents).toEqual([
+      {
+        surfacePiSessionId: runtime.current!.surfacePiSessionId,
+        threadId: runtime.current!.surfaceThreadId!,
+        contextKeys: ["ci"],
+      },
+      {
+        surfacePiSessionId: runtime.current!.surfacePiSessionId,
+        threadId: runtime.current!.surfaceThreadId!,
+        contextKeys: ["ci"],
+      },
+    ]);
 
     const snapshot = store.getSessionState("session-request-context-tool");
     expect(snapshot.turns[0]).toMatchObject({
