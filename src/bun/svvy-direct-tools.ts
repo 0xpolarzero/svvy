@@ -9,7 +9,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
-import type { Static, TSchema } from "@sinclair/typebox";
+import type { Static, TSchema } from "typebox";
 import { basename } from "node:path";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type { WorkflowLibrary } from "./smithers-runtime/workflow-library";
@@ -120,7 +120,7 @@ export function createSvvyDirectTools(options: DirectToolOptions): DirectToolSet
 }
 
 function createReadToolWithImageGuidance(cwd: string): AgentTool<any> {
-  const tool = createReadTool(cwd);
+  const tool = createReadTool(cwd) as AgentTool<any>;
   return {
     ...tool,
     description: `${tool.description} Use this same read tool for visual inspection of local image files; image files are returned to the model as image attachments.`,

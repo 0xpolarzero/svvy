@@ -1,5 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { TSchema } from "@sinclair/typebox";
+import type { TSchema } from "typebox";
 
 export type WebProviderId = "tinyfish" | "firecrawl";
 export type WebToolName = "web.search" | "web.fetch";

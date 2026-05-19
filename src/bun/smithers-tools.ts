@@ -1,6 +1,6 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
-import type { Static, TSchema as TypeBoxSchema } from "@sinclair/typebox";
+import type { Static, TSchema as TypeBoxSchema } from "typebox";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type { StructuredSessionStateStore } from "./structured-session-state";
 import { SmithersRuntimeManager } from "./smithers-runtime/manager";
@@ -555,7 +555,9 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
   ];
 }
 
-function createRunWorkflowTool(options: CreateSmithersToolsOptions): AgentTool<any> {
+function createRunWorkflowTool(
+  options: CreateSmithersToolsOptions,
+): AgentTool<typeof runWorkflowParamsSchema> {
   return {
     label: "Run Workflow",
     name: SMITHERS_RUN_WORKFLOW_TOOL_NAME,

@@ -327,7 +327,7 @@ Pi risk:
 
 Baseline pi rule:
 
-- create sessions with `tools: []`
+- create sessions with pi built-in tools disabled
 - pass only `svvy`-owned `customTools`
 - keep extension resources disabled so no extension tools can appear
 - keep generated declarations derived from the `svvy` registry, not pi discovery
@@ -975,7 +975,7 @@ Required checks:
 - orchestrator loader uses the default-deny shape
 - handler-thread loader uses the default-deny shape
 - workflow task-agent loader uses the default-deny shape
-- sessions pass `tools: []`
+- sessions use pi's built-in-tool suppression path and do not inherit pi default tools
 - sessions pass only `svvy`-owned `customTools`
 - no actor loader passes additional resource paths
 - no actor loader passes extension factories

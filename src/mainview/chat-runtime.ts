@@ -5,6 +5,7 @@ import {
   type AssistantMessage,
   type ImageContent,
   type Message,
+  type Model,
   type TextContent,
 } from "@mariozechner/pi-ai";
 import {
@@ -169,7 +170,7 @@ export interface ChatPaneState {
 export type ChatPaneLayoutState = WorkspaceDockviewLayoutState;
 
 export interface ChatSurfaceController {
-  agent: Agent;
+  agent: SurfaceAgent;
   target: PromptTarget;
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
@@ -196,6 +197,23 @@ interface ChatSurfaceControllerInternal extends ChatSurfaceController {
   applyStreamPatch: (patch: SurfaceStreamPatch) => void;
   dispose: () => void;
 }
+
+type SurfaceAgentState = Agent["state"] & {
+  isStreaming: boolean;
+  streamMessage?: AgentMessage | null;
+  streamingMessage?: AgentMessage;
+  error?: string;
+  errorMessage?: string;
+};
+
+export type SurfaceAgent = Agent & {
+  readonly state: SurfaceAgentState;
+  setSystemPrompt: (systemPrompt: string) => void;
+  setModel: (model: Model<any>) => void;
+  setThinkingLevel: (level: Agent["state"]["thinkingLevel"]) => void;
+  replaceMessages: (messages: AgentMessage[]) => void;
+  setTools: (tools: Agent["state"]["tools"]) => void;
+};
 
 export interface ChatRuntimeRpcClient {
   request: {
@@ -499,7 +517,41 @@ function convertToLlm(messages: AgentMessage[]): Message[] {
   });
 }
 
-function applySurfaceSnapshotToAgent(agent: Agent, payload: ConversationSurfaceSnapshot): void {
+function installSurfaceAgentMutators(agent: Agent): SurfaceAgent {
+  const surfaceAgent = agent as SurfaceAgent;
+  surfaceAgent.setSystemPrompt = (systemPrompt) => {
+    surfaceAgent.state.systemPrompt = systemPrompt;
+  };
+  surfaceAgent.setModel = (model) => {
+    surfaceAgent.state.model = model;
+  };
+  surfaceAgent.setThinkingLevel = (level) => {
+    surfaceAgent.state.thinkingLevel = level;
+  };
+  surfaceAgent.replaceMessages = (messages) => {
+    surfaceAgent.state.messages = messages;
+  };
+  surfaceAgent.setTools = (tools) => {
+    surfaceAgent.state.tools = tools;
+  };
+  return surfaceAgent;
+}
+
+function setSurfaceAgentStreamState(
+  agent: SurfaceAgent,
+  input: { isStreaming: boolean; streamMessage?: AgentMessage | null; error?: string },
+): void {
+  agent.state.isStreaming = input.isStreaming;
+  agent.state.streamMessage = input.streamMessage ?? null;
+  agent.state.streamingMessage = input.streamMessage ?? undefined;
+  agent.state.error = input.error;
+  agent.state.errorMessage = input.error;
+}
+
+function applySurfaceSnapshotToAgent(
+  agent: SurfaceAgent,
+  payload: ConversationSurfaceSnapshot,
+): void {
   const currentTools = [...agent.state.tools];
   agent.reset();
   agent.sessionId = payload.target.surfacePiSessionId;
@@ -512,8 +564,10 @@ function applySurfaceSnapshotToAgent(agent: Agent, payload: ConversationSurfaceS
   );
   agent.setThinkingLevel(payload.reasoningEffort);
   agent.replaceMessages(buildDisplayMessages(payload));
-  agent.state.streamMessage = payload.streamMessage ? structuredClone(payload.streamMessage) : null;
-  agent.state.isStreaming = payload.promptStatus === "streaming";
+  setSurfaceAgentStreamState(agent, {
+    isStreaming: payload.promptStatus === "streaming",
+    streamMessage: payload.streamMessage ? structuredClone(payload.streamMessage) : null,
+  });
   agent.setTools(currentTools);
 }
 
@@ -523,16 +577,17 @@ function ensureStreamContentIndex(message: AssistantMessage, contentIndex: numbe
   }
 }
 
-function applySurfaceStreamPatchToAgent(agent: Agent, patch: SurfaceStreamPatch): void {
+function applySurfaceStreamPatchToAgent(agent: SurfaceAgent, patch: SurfaceStreamPatch): void {
   if (patch.type === "clear") {
-    agent.state.streamMessage = null;
-    agent.state.isStreaming = false;
+    setSurfaceAgentStreamState(agent, { isStreaming: false, streamMessage: null });
     return;
   }
 
   if (patch.type === "start") {
-    agent.state.streamMessage = structuredClone(patch.message);
-    agent.state.isStreaming = true;
+    setSurfaceAgentStreamState(agent, {
+      isStreaming: true,
+      streamMessage: structuredClone(patch.message),
+    });
     return;
   }
 
@@ -581,24 +636,31 @@ function applySurfaceStreamPatchToAgent(agent: Agent, patch: SurfaceStreamPatch)
   }
 }
 
-function createInitialAgent(snapshot: ConversationSurfaceSnapshot, streamFn: StreamFn): Agent {
-  const agent = new Agent({
-    initialState: {
-      systemPrompt: snapshot.systemPrompt,
-      model: getModel(
-        snapshot.provider as Parameters<typeof getModel>[0],
-        snapshot.model as Parameters<typeof getModel>[1],
-      ),
-      thinkingLevel: snapshot.reasoningEffort,
-      messages: buildDisplayMessages(snapshot),
-      streamMessage: snapshot.streamMessage ? structuredClone(snapshot.streamMessage) : null,
-      isStreaming: snapshot.promptStatus === "streaming",
-      tools: [],
-    },
-    convertToLlm,
-    streamFn,
-  });
+function createInitialAgent(
+  snapshot: ConversationSurfaceSnapshot,
+  streamFn: StreamFn,
+): SurfaceAgent {
+  const agent = installSurfaceAgentMutators(
+    new Agent({
+      initialState: {
+        systemPrompt: snapshot.systemPrompt,
+        model: getModel(
+          snapshot.provider as Parameters<typeof getModel>[0],
+          snapshot.model as Parameters<typeof getModel>[1],
+        ),
+        thinkingLevel: snapshot.reasoningEffort,
+        messages: buildDisplayMessages(snapshot),
+        tools: [],
+      },
+      convertToLlm,
+      streamFn,
+    }),
+  );
   agent.sessionId = snapshot.target.surfacePiSessionId;
+  setSurfaceAgentStreamState(agent, {
+    isStreaming: snapshot.promptStatus === "streaming",
+    streamMessage: snapshot.streamMessage ? structuredClone(snapshot.streamMessage) : null,
+  });
   return agent;
 }
 
@@ -611,7 +673,7 @@ function buildDisplayMessages(snapshot: ConversationSurfaceSnapshot): AgentMessa
 }
 
 class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
-  agent: Agent;
+  agent: SurfaceAgent;
   target: PromptTarget;
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
@@ -885,8 +947,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.promptDispatchInFlight = true;
     this.promptStatus = "streaming";
-    this.agent.state.isStreaming = true;
-    this.agent.state.streamMessage = null;
+    setSurfaceAgentStreamState(this.agent, { isStreaming: true, streamMessage: null });
     this.agent.replaceMessages(
       buildDisplayMessages({ ...this.snapshotFromState(), pendingUserMessage: userMessage }),
     );
@@ -901,10 +962,12 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       this.agent.sessionId = response.target.surfacePiSessionId;
     } catch (error) {
       const failure = createFailureMessage(error, provider, model, "error");
-      this.agent.state.error = failure.errorMessage;
       this.promptStatus = "idle";
-      this.agent.state.isStreaming = false;
-      this.agent.state.streamMessage = null;
+      setSurfaceAgentStreamState(this.agent, {
+        isStreaming: false,
+        streamMessage: null,
+        error: failure.errorMessage,
+      });
       throw error;
     } finally {
       this.promptDispatchInFlight = false;

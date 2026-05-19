@@ -5,7 +5,7 @@ import {
   type FetchResult,
   type SearchResult,
 } from "@tiny-fish/sdk";
-import type { TSchema } from "@sinclair/typebox";
+import type { TSchema } from "typebox";
 import { z } from "zod";
 import type { WebProviderToolContracts } from "../contracts";
 

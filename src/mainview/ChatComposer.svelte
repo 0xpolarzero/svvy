@@ -8,7 +8,7 @@
 	import SquareIcon from "@lucide/svelte/icons/square";
 	import XIcon from "@lucide/svelte/icons/x";
 	import { onMount, tick } from "svelte";
-	import { supportsXhigh, type Model } from "@mariozechner/pi-ai";
+	import type { Model } from "@mariozechner/pi-ai";
 	import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 	import type { ContextBudget } from "../shared/context-budget";
 	import {
@@ -33,6 +33,7 @@
 	import CompactSelect from "./ui/CompactSelect.svelte";
 	import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
 	import { getModelComboboxValue, type ModelComboboxOption } from "./model-options";
+	import { getSupportedThinkingLevels } from "./model-thinking";
 	import QueuedMessagesStrip from "./QueuedMessagesStrip.svelte";
 	import type { QueuedPrompt } from "./chat-runtime";
 	import type { ComposerAttachment } from "../shared/workspace-contract";
@@ -67,8 +68,6 @@
 		pickWorkspaceAttachments: () => Promise<ComposerAttachment[]>;
 		importComposerAttachments: (files: File[]) => Promise<ComposerAttachment[]>;
 	};
-
-	const BASE_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
 
 	let {
 		currentModel,
@@ -115,9 +114,7 @@
 	let caretPosition = $state(0);
 	let dismissedMentionQueryKey = $state<string | null>(null);
 	let workspacePathTargetKey = $state("");
-	const availableThinkingLevels = $derived(
-		currentModel && supportsXhigh(currentModel) ? [...BASE_LEVELS, "xhigh"] : BASE_LEVELS,
-	);
+	const availableThinkingLevels = $derived(getSupportedThinkingLevels(currentModel));
 	const thinkingOptions = $derived(
 		availableThinkingLevels.map((level) => ({ value: level, label: level })),
 	);

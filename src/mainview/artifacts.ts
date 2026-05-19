@@ -28,7 +28,14 @@ export interface ArtifactsSnapshot {
   logsByFilename: Record<string, string>;
 }
 
-const artifactCommandSchema = Type.Union(ARTIFACT_COMMANDS.map((command) => Type.Literal(command)));
+const artifactCommandSchema = Type.Union([
+  Type.Literal("create"),
+  Type.Literal("update"),
+  Type.Literal("rewrite"),
+  Type.Literal("get"),
+  Type.Literal("delete"),
+  Type.Literal("logs"),
+]);
 
 export const artifactsParamsSchema = Type.Object({
   command: artifactCommandSchema,
@@ -325,6 +332,7 @@ export class ArtifactsController {
       case "logs":
         return this.getLogs(params);
     }
+    throw new Error(`Unsupported artifact command: ${params.command}`);
   }
 
   private setArtifact(filename: string, content: string): ArtifactRecord {
@@ -414,6 +422,7 @@ export class ArtifactsController {
       case "logs":
         return { mutated: false, needsHtmlRefresh: false };
     }
+    throw new Error(`Unsupported artifact command: ${params.command}`);
   }
 
   private async createArtifact(params: ArtifactsParams, options: ExecuteOptions): Promise<string> {

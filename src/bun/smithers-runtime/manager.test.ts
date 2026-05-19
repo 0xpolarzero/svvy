@@ -3436,7 +3436,7 @@ describe("SmithersRuntimeManager", () => {
       expect(readFileSync(outputPath, "utf8")).toBe("workflow-validated");
 
       const [createAgentSessionOptions] = createAgentSessionSpy.mock.calls[0] ?? [];
-      expect(createAgentSessionOptions?.tools).toEqual([]);
+      expect(createAgentSessionOptions?.noTools).toBe("builtin");
       expect(
         createAgentSessionOptions?.customTools?.map((tool: { name: string }) => tool.name),
       ).toEqual([

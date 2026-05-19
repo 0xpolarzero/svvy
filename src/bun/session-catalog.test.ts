@@ -70,7 +70,6 @@ type PromptableSession = {
   clearQueue(): { steering: string[]; followUp: string[] };
   abort(): Promise<void>;
   agent: {
-    appendMessage(message: Message): void;
     state: {
       messages: Message[];
       systemPrompt?: string;
@@ -184,7 +183,7 @@ function assistantMessage(
 function appendMessagesToSession(session: PromptableSession, messages: readonly Message[]): void {
   for (const message of messages) {
     session.sessionManager.appendMessage(message);
-    session.agent.appendMessage(message);
+    session.agent.state.messages = [...session.agent.state.messages, message];
   }
 }
 

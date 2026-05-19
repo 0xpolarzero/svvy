@@ -223,7 +223,7 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         settingsManager,
         model,
         thinkingLevel: config.reasoningEffort,
-        tools: [],
+        noTools: "builtin",
         customTools: createCustomToolDefinitions(
           selectWorkflowTaskAgentTools({
             configuredToolSurface: config.toolSurface,

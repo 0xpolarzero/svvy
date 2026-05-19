@@ -4064,7 +4064,7 @@ async function createManagedSession(
     settingsManager,
     model: resolvedModel,
     thinkingLevel: restoredDefaults.thinkingLevel,
-    tools: [],
+    noTools: "builtin",
     customTools,
     resourceLoader,
   });

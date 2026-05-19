@@ -1,6 +1,6 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
-import type { Static } from "@sinclair/typebox";
+import type { Static } from "typebox";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type { StructuredSessionStateStore } from "./structured-session-state";
 

@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { createForm } from "@tanstack/svelte-form";
-	import { supportsXhigh, type Model } from "@mariozechner/pi-ai";
+	import type { Model } from "@mariozechner/pi-ai";
 	import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 	import { onDestroy } from "svelte";
 	import type {
 		SessionAgentSettings,
 		WorkflowAgentSettings,
 	} from "../shared/agent-settings";
+	import { getSupportedThinkingLevels } from "./model-thinking";
 	import Button from "./ui/Button.svelte";
 
 	type EditableAgentSettings = SessionAgentSettings | WorkflowAgentSettings;
@@ -24,8 +25,6 @@
 		availableModelOptions: ModelOption[];
 		onSave: (settings: EditableAgentSettings) => Promise<EditableAgentSettings | void>;
 	};
-
-	const BASE_REASONING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high"];
 
 	let { title, summary, settings, availableModelOptions, onSave }: Props = $props();
 	let saveMessage = $state("");
@@ -62,8 +61,7 @@
 	}
 
 	function reasoningLevels(value: AgentFormValue): ThinkingLevel[] {
-		const model = selectedModel(value);
-		return model && supportsXhigh(model) ? [...BASE_REASONING_LEVELS, "xhigh"] : BASE_REASONING_LEVELS;
+		return getSupportedThinkingLevels(selectedModel(value));
 	}
 
 	function modelLabel(option: ModelOption): string {

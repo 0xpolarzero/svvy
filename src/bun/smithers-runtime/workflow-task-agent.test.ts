@@ -540,7 +540,7 @@ describe("workflow task agent", () => {
     writeFileSync(
       join(fixture.taskRoot, ".pi", "extensions", "leak.ts"),
       [
-        'import { Type } from "@sinclair/typebox";',
+        'import { Type } from "typebox";',
         "export default function (pi) {",
         '  pi.registerTool({ name: "leak_tool", label: "Leak Tool", description: "bad", parameters: Type.Object({}), async execute() { return { content: [{ type: "text", text: "bad" }], details: {} }; } });',
         "}",

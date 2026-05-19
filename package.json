@@ -29,9 +29,9 @@
   "dependencies": {
     "@fontsource-variable/familjen-grotesk": "^5.2.8",
     "@lucide/svelte": "^1.8.0",
-    "@mariozechner/pi-agent-core": "^0.64.0",
-    "@mariozechner/pi-ai": "^0.64.0",
-    "@mariozechner/pi-coding-agent": "^0.64.0",
+    "@mariozechner/pi-agent-core": "0.73.1",
+    "@mariozechner/pi-ai": "0.73.1",
+    "@mariozechner/pi-coding-agent": "0.73.1",
     "@mdit/plugin-katex": "^0.25.2",
     "@smithers-orchestrator/db": "0.20.1",
     "@tanstack/svelte-form": "^1.32.0",
@@ -53,6 +53,7 @@
     "shiki": "^4.0.2",
     "smithers-orchestrator": "0.20.1",
     "svelte": "^5.55.1",
+    "typebox": "^1.1.24",
     "zod": "^4.3.6"
   },
   "devDependencies": {
