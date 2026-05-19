@@ -36,6 +36,7 @@ describe("session agent settings", () => {
     expect(agentsSource).toContain("export const implementer");
     expect(agentsSource).toContain("export const reviewer");
     expect(agentsSource).toContain('"toolSurface": [');
+    expect(agentsSource).toContain('"cx.overview"');
     expect(agentsSource).toContain('"execute_typescript"');
   });
 
@@ -64,6 +65,31 @@ describe("session agent settings", () => {
     expect(agentsSource).toContain('"model": "claude-sonnet-4"');
     expect(agentsSource).toContain('"reasoningEffort": "high"');
     expect(store.getState().workflowAgents.reviewer.systemPrompt).toBe("Review strictly.");
+  });
+
+  it("preserves canonical cx tools when normalizing workflow agent settings", () => {
+    const root = mkdtempSync(join(tmpdir(), "svvy-workflow-agent-cx-settings-"));
+    const store = createSessionAgentSettingsStore({
+      cwd: root,
+      agentDir: join(root, ".agent"),
+    });
+
+    const updated = store.setWorkflowAgent("explorer", {
+      id: "explorer",
+      label: "Explorer",
+      provider: "openai",
+      model: "gpt-5.4",
+      reasoningEffort: "medium",
+      systemPrompt: "Explore.",
+      toolSurface: ["cx.overview", "cx.symbols", "cx.cache.path", "execute_typescript"],
+    });
+
+    expect(updated.workflowAgents.explorer.toolSurface).toEqual([
+      "cx.overview",
+      "cx.symbols",
+      "cx.cache.path",
+      "execute_typescript",
+    ]);
   });
 
   it("persists preferred external editor preferences", () => {

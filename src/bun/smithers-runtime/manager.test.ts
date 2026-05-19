@@ -64,7 +64,7 @@ function createManagerHarness(input: {
     getTaskAgentDefaults: () => ({
       provider: "openai",
       model: "gpt-5.4",
-      thinkingLevel: "medium",
+      reasoningEffort: "medium",
     }),
     onStructuredStateChanged: async (nextSessionId) => {
       input.structuredStateChanges.push(nextSessionId);
@@ -151,7 +151,7 @@ function createWorkspaceFixture(
       store,
       provider: "openai",
       model: "gpt-5.4",
-      thinkingLevel: "medium",
+      reasoningEffort: "medium",
     }),
   );
 
@@ -1242,10 +1242,12 @@ describe("SmithersRuntimeManager", () => {
     expect(nodeDetail.node.outputTable).toBeTruthy();
     expect(nodeDetail.attempts.length).toBeGreaterThan(0);
 
-    const artifacts = await manager.listArtifacts({ runId: launched.runId, limit: 10 });
-    expect(artifacts.outputs.map((entry: { nodeId: string }) => entry.nodeId)).toEqual(
-      expect.arrayContaining(["greeting", "result"]),
-    );
+    const artifacts = await manager.listArtifacts({ runId: launched.runId });
+    expect(artifacts).toMatchObject({
+      artifacts: expect.any(Array),
+    });
+    expect(artifacts).not.toHaveProperty("outputs");
+    expect(artifacts).not.toHaveProperty("frames");
   });
 
   it("cancels a paused approval run by terminalizing it like Smithers server cancellation", async () => {
@@ -2177,7 +2179,7 @@ describe("SmithersRuntimeManager", () => {
     await restoredManager.resolveApproval({
       runId: launched.runId,
       nodeId: "publish-gate",
-      decision: "approve",
+      action: "approve",
       note: "Approved after restart.",
     });
     const resumeCommand = createWorkflowCommand({
@@ -2458,7 +2460,7 @@ describe("SmithersRuntimeManager", () => {
     await manager.resolveApproval({
       runId: launched.runId,
       nodeId: "publish-gate",
-      decision: "approve",
+      action: "approve",
       note: "Ship it.",
     });
 
@@ -2963,7 +2965,6 @@ describe("SmithersRuntimeManager", () => {
       timedOut: true,
       finalRun: {
         status: "waiting-event",
-        waitKind: "event",
       },
     });
 
@@ -3054,7 +3055,7 @@ describe("SmithersRuntimeManager", () => {
 
     const devToolsStream = await manager.streamDevTools({
       runId: launched.runId,
-      fromSeq: 0,
+      afterSeq: 0,
       timeoutMs: 150,
       maxEvents: 10,
     });
@@ -3254,7 +3255,7 @@ describe("SmithersRuntimeManager", () => {
       getTaskAgentDefaults: () => ({
         provider: "openai",
         model: "gpt-5.4",
-        thinkingLevel: "medium",
+        reasoningEffort: "medium",
       }),
       onHandlerAttention: async (event) => {
         handlerAttentions.push(event.reason);
@@ -3273,7 +3274,7 @@ describe("SmithersRuntimeManager", () => {
         store,
         provider: "openai",
         model: "gpt-5.4",
-        thinkingLevel: "medium",
+        reasoningEffort: "medium",
       }),
     );
 
@@ -3368,7 +3369,7 @@ describe("SmithersRuntimeManager", () => {
             },
           },
           getActiveToolNames() {
-            return ["execute_typescript"];
+            return options.customTools.map((tool: { name: string }) => tool.name);
           },
           subscribe(callback: (event: Record<string, unknown>) => void) {
             subscribers.add(callback);
@@ -3509,10 +3510,9 @@ describe("SmithersRuntimeManager", () => {
       expect(taskNodeDetail.attempts.length).toBeGreaterThan(0);
       expect(taskNodeDetail.node.outputTable).toBeTruthy();
       const taskAttemptMeta =
-        (taskNodeDetail.attempts[0] as { metaJson?: string | null } | undefined)?.metaJson ?? null;
-      const parsedTaskAttemptMeta = taskAttemptMeta
-        ? (JSON.parse(taskAttemptMeta) as { agentResume?: string | null })
-        : null;
+        (taskNodeDetail.attempts[0] as { meta?: { agentResume?: string | null } } | undefined)
+          ?.meta ?? null;
+      const parsedTaskAttemptMeta = taskAttemptMeta;
       expect(parsedTaskAttemptMeta?.agentResume).toEqual(expect.any(String));
       expect(parsedTaskAttemptMeta?.agentResume).toContain("/task-agent-sessions/");
       const taskAttemptArtifacts = snapshot.artifacts.filter(

@@ -134,7 +134,7 @@ The `svvy`-owned part is:
 - Only `thread.handoff` returns control to the orchestrator.
 - `thread.handoff` returns control through a typed `handler_handoff` item in the orchestrator surface queue. The tool call blocks until that item is accepted as orchestrator input or rejected by the user; acceptance emits the durable handoff episode and rejection returns an explicit tool error to the handler.
 - If a handler thread opens a workflow run for its current objective span, that thread stays responsible until the span ends in `thread.handoff`; waits, approvals, resumes, and repairs stay inside the handler lifecycle.
-- Workflow-task-attempt projection is write-driven from the current Smithers attempt identity and explicit runtime handlers. When a task-local tool needs the attempt before handler-side projection has landed, the bootstrap path is an exact persisted resume-handle lookup against the Smithers attempt row, not a heuristic scan or fallback chain.
+- Workflow-task-attempt projection is write-driven from the current Smithers attempt identity and explicit runtime handlers. When a task-local tool needs the attempt before handler-side projection has landed, the bootstrap path uses the exact Smithers task-attempt identity `(runId, nodeId, iteration, attempt)` from the current task context, not a resume-handle lookup, heuristic scan, or fallback chain.
 
 ## Core Concepts
 

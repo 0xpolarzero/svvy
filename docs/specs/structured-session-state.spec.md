@@ -62,7 +62,7 @@ If this spec and the POC ever disagree, the POC should be reconciled to the spec
 - Future Smithers lifecycle projection beyond explicit tool-boundary snapshots should arrive through bridge events rather than speculative read-side reconciliation.
 - Keep workflow-run state separate from handler-thread state.
 - Project workflow task attempts as first-class durable records keyed by Smithers `runId` plus `nodeId`, `iteration`, and `attempt`, while keeping their full transcript canonical in Smithers and their inspectable task-agent transcript, command, and artifact projection in `svvy`.
-- Create or update workflow-task-attempt records from the current Smithers task identity before task-local commands run. The only bootstrap path for task-local command binding is an exact persisted resume-handle lookup against the Smithers attempt row; do not use heuristic recency scans, transcript inference, or multi-stage fallback chains.
+- Create or update workflow-task-attempt records from the exact Smithers task-attempt identity before task-local commands run. The only bootstrap path for task-local command binding is the current Smithers context's `(runId, nodeId, iteration, attempt)` tuple; do not use resume handles, heuristic recency scans, transcript inference, or multi-stage fallback chains.
 - Keep thread state about handler ownership and attention, not as a lossy proxy for raw workflow outcome.
 - Preserve raw Smithers workflow status, wait kind, heartbeat freshness, cursor metadata, and lineage instead of flattening them into generic thread status.
 - Derive active and latest workflow selectors from workflow-run state and recency rules rather than persisting a thread-level latest-workflow pointer.
@@ -1011,7 +1011,7 @@ The main session UI should primarily read:
 
 Transcript replay is not an allowed mechanism for these product surfaces once structured writes exist.
 
-Workflow-task-attempt projection follows the same rule: read APIs must not discover or repair task ownership by heuristic polling. The sanctioned bootstrap read is the exact resume-handle lookup used to bind the active task agent to its current Smithers attempt before task-local commands run.
+Workflow-task-attempt projection follows the same rule: read APIs must not discover or repair task ownership by heuristic polling. The sanctioned bootstrap read uses the exact Smithers task-attempt identity from the current task context to bind the active task agent before task-local commands run.
 
 ## SQLite Notes
 
@@ -1075,7 +1075,7 @@ The implementation must enforce these invariants:
 - a thread may be waiting only on real blocked conditions such as user input, approval, signal, timer, or external dependency, not on a fake wait episode
 - `session.wait` must be cleared when runnable work exists again
 - a turn must end in exactly one of: `completed`, `failed`, or `waiting`
-- a workflow-task command must attach to an existing workflow-task-attempt record identified from explicit runtime state or the exact persisted resume-handle bootstrap path, not from best-effort fallback behavior
+- a workflow-task command must attach to an existing workflow-task-attempt record identified from explicit runtime state or the current Smithers task-attempt identity, not from resume handles or best-effort fallback behavior
 
 ## Non-Goals
 

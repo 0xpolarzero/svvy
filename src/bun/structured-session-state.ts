@@ -605,9 +605,12 @@ export interface StructuredSessionStateStore {
     }>;
   }): StructuredWorkflowTaskMessageRecord[];
   findWorkflowRunBySmithersRunId(smithersRunId: string): StructuredWorkflowRunRecord | null;
-  findWorkflowTaskAttemptByAgentResume(
-    agentResume: string,
-  ): StructuredWorkflowTaskAttemptRecord | null;
+  findWorkflowTaskAttemptBySmithersIdentity(input: {
+    smithersRunId: string;
+    nodeId: string;
+    iteration: number;
+    attempt: number;
+  }): StructuredWorkflowTaskAttemptRecord | null;
   recordProjectCiResult(input: {
     workflowRunId: string;
     workflowId: string;
@@ -2357,12 +2360,22 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     finishedAt?: string | null;
   }): StructuredWorkflowTaskAttemptRecord {
     const workflowRun = this.mustFindWorkflowRunRow(input.workflowRunId);
+    if (workflowRun.smithers_run_id !== input.smithersRunId) {
+      throw new Error(
+        `Structured workflow run ${input.workflowRunId} is bound to Smithers run ${workflowRun.smithers_run_id}, not ${input.smithersRunId}.`,
+      );
+    }
     const existing = this.findWorkflowTaskAttemptRowByIdentity({
-      workflowRunId: input.workflowRunId,
+      smithersRunId: input.smithersRunId,
       nodeId: input.nodeId,
       iteration: input.iteration,
       attempt: input.attempt,
     });
+    if (existing && existing.workflow_run_id !== input.workflowRunId) {
+      throw new Error(
+        `Smithers task attempt ${input.smithersRunId}:${input.nodeId}:${input.iteration}:${input.attempt} is already bound to structured workflow run ${existing.workflow_run_id}.`,
+      );
+    }
     const timestamp = this.now();
     const title = input.title?.trim() || input.nodeId;
     const startedAt = input.startedAt ?? existing?.started_at ?? timestamp;
@@ -2563,10 +2576,13 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return row ? this.mapWorkflowRun(row) : null;
   }
 
-  findWorkflowTaskAttemptByAgentResume(
-    agentResume: string,
-  ): StructuredWorkflowTaskAttemptRecord | null {
-    const row = this.findWorkflowTaskAttemptRowByAgentResume(agentResume);
+  findWorkflowTaskAttemptBySmithersIdentity(input: {
+    smithersRunId: string;
+    nodeId: string;
+    iteration: number;
+    attempt: number;
+  }): StructuredWorkflowTaskAttemptRecord | null {
+    const row = this.findWorkflowTaskAttemptRowByIdentity(input);
     return row ? this.mapWorkflowTaskAttempt(row) : null;
   }
 
@@ -3381,7 +3397,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   }
 
   private findWorkflowTaskAttemptRowByIdentity(input: {
-    workflowRunId: string;
+    smithersRunId: string;
     nodeId: string;
     iteration: number;
     attempt: number;
@@ -3390,27 +3406,12 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       (this.db
         .query(
           `SELECT * FROM workflow_task_attempt
-           WHERE workflow_run_id = ? AND node_id = ? AND iteration = ? AND attempt = ?
+           WHERE smithers_run_id = ? AND node_id = ? AND iteration = ? AND attempt = ?
            LIMIT 1`,
         )
-        .get(input.workflowRunId, input.nodeId, input.iteration, input.attempt) as
+        .get(input.smithersRunId, input.nodeId, input.iteration, input.attempt) as
         | WorkflowTaskAttemptRow
         | undefined) ?? null
-    );
-  }
-
-  private findWorkflowTaskAttemptRowByAgentResume(
-    agentResume: string,
-  ): WorkflowTaskAttemptRow | null {
-    return (
-      (this.db
-        .query(
-          `SELECT * FROM workflow_task_attempt
-           WHERE agent_resume = ?
-           ORDER BY updated_at DESC, rowid DESC
-           LIMIT 1`,
-        )
-        .get(agentResume) as WorkflowTaskAttemptRow | undefined) ?? null
     );
   }
 
@@ -4510,6 +4511,14 @@ function initializeSchema(db: Database): void {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_surface_message_queue_pending
      ON surface_message_queue (surface_pi_session_id, status, position)`,
+  );
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_run_smithers_run_id
+     ON workflow_run (smithers_run_id)`,
+  );
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_task_attempt_smithers_identity
+     ON workflow_task_attempt (smithers_run_id, node_id, iteration, attempt)`,
   );
 }
 

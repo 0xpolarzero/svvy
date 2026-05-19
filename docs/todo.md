@@ -26,22 +26,6 @@ Later follow-up: implement the provider-neutral Ambient Agent Resources model fr
 
 Reference: `docs/codebase-audit-issue-research.md`, AUD-019.
 
-### Smithers-Native Follow-Ups From AUD-011
-
-Status: parked for the relevant later Smithers issues, not treated as AUD-011 blockers.
-
-Decision context: these were discovered while fixing/reviewing AUD-011. We chose not to expand AUD-011 into a broader Smithers-native refactor and kept moving through the audit.
-
-Later follow-ups:
-
-- `smithers.resolve_approval` should be checked against native Smithers approval semantics and payloads. Target issue: AUD-033 unless it proves more severe.
-- `smithers.watch_run` should be checked for custom polling drift. Target issues: AUD-026 and AUD-033.
-- `smithers.get_node_detail`, `smithers.list_artifacts`, transcript, event, and related inspection tools should preserve native Smithers read-model fields unless product docs explicitly choose a smaller projection. Target issue: AUD-033.
-- Workflow task-attempt records should bind to exact Smithers run, node, iteration, and attempt identity rather than recency-style lookup. Target issues: AUD-020 and AUD-033.
-- `smithers.streamDevTools` should be checked against Smithers' intended streaming behavior. Target issues: AUD-026 and AUD-033.
-
-Reference: `docs/codebase-audit-issue-research.md`, "Smithers-Native Follow-Ups From AUD-011 Exploration".
-
 ## Not Decided Follow-Ups
 
 The "Source-Only Highlights Requiring Follow-Up" section in `docs/codebase-audit-issue-research.md` is not copied here because we have not reviewed those items one by one. They are preserved in the audit document as untriaged source-audit input, not as accepted follow-up work.

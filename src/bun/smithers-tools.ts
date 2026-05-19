@@ -64,10 +64,13 @@ const listPendingApprovalsParamsSchema = Type.Object(
 
 const resolveApprovalParamsSchema = Type.Object(
   {
-    runId: runIdSchema,
-    nodeId: Type.String({ minLength: 1 }),
+    action: Type.Union([Type.Literal("approve"), Type.Literal("deny")]),
+    runId: Type.Optional(runIdSchema),
+    workflowName: Type.Optional(Type.String({ minLength: 1 })),
+    nodeId: Type.Optional(Type.String({ minLength: 1 })),
     iteration: Type.Optional(Type.Integer({ minimum: 0 })),
-    decision: Type.Union([Type.Literal("approve"), Type.Literal("deny")]),
+    decidedBy: Type.Optional(Type.String({ minLength: 1 })),
+    decision: Type.Optional(Type.Any()),
     note: Type.Optional(Type.String()),
   },
   { additionalProperties: false },
@@ -85,7 +88,8 @@ const getNodeDetailParamsSchema = Type.Object(
 const listArtifactsParamsSchema = Type.Object(
   {
     runId: runIdSchema,
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    nodeId: Type.Optional(Type.String({ minLength: 1 })),
+    includeRaw: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
@@ -142,7 +146,7 @@ const getDevToolsSnapshotParamsSchema = Type.Object(
 const streamDevToolsParamsSchema = Type.Object(
   {
     runId: runIdSchema,
-    fromSeq: Type.Optional(Type.Integer({ minimum: 0 })),
+    afterSeq: Type.Optional(Type.Integer({ minimum: 0 })),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 10_000 })),
     maxEvents: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
     pollIntervalMs: Type.Optional(Type.Integer({ minimum: 1, maximum: 1_000 })),
@@ -221,9 +225,13 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       runtime: options.runtime,
       store: options.store,
       execute: async (params) => {
-        const run = await options.manager.getRun(params.runId);
+        const run = await options.manager.getSmithersRunDetail(params.runId);
+        const status =
+          typeof run.run === "object" && run.run && "status" in run.run
+            ? String((run.run as Record<string, unknown>).status)
+            : "unknown";
         return {
-          summary: run.summary,
+          summary: `Loaded Smithers run ${params.runId} with status ${status}.`,
           details: run,
         };
       },
@@ -302,22 +310,32 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       store: options.store,
       execute: async (params) => {
         const result = await options.manager.resolveApproval({
-          runId: params.runId,
-          nodeId: params.nodeId,
+          action: params.action,
+          runId: params.runId?.trim() || undefined,
+          workflowName: params.workflowName?.trim() || undefined,
+          nodeId: params.nodeId?.trim() || undefined,
           iteration: params.iteration,
+          decidedBy: params.decidedBy?.trim() || undefined,
           decision: params.decision,
           note: params.note?.trim() || undefined,
         });
+        const approval = result.approval as Record<string, unknown>;
+        const runId = typeof approval.runId === "string" ? approval.runId : params.runId;
+        const nodeId = typeof approval.nodeId === "string" ? approval.nodeId : params.nodeId;
         return {
-          summary: `${params.decision === "approve" ? "Approved" : "Denied"} ${params.nodeId} for run ${params.runId}.`,
+          summary: `${params.action === "approve" ? "Approved" : "Denied"} ${nodeId ?? "approval"} for run ${runId ?? "matching Smithers run"}.`,
           details: result,
         };
       },
       afterExecute(input) {
+        const approval = input.result.details.approval as Record<string, unknown> | undefined;
         return {
-          runId: input.params.runId,
-          nodeId: input.params.nodeId,
-          decision: input.params.decision,
+          runId:
+            typeof approval?.runId === "string" ? approval.runId : (input.params.runId ?? null),
+          nodeId:
+            typeof approval?.nodeId === "string" ? approval.nodeId : (input.params.nodeId ?? null),
+          action: input.params.action,
+          decision: input.params.decision ?? null,
           postStatus: "approval-updated",
         };
       },
@@ -353,7 +371,8 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       execute: async (params) => {
         const artifacts = await options.manager.listArtifacts({
           runId: params.runId,
-          limit: params.limit,
+          nodeId: params.nodeId?.trim() || undefined,
+          includeRaw: params.includeRaw,
         });
         return {
           summary: `Loaded workflow artifacts for run ${params.runId}.`,
@@ -497,7 +516,7 @@ export function createSmithersTools(options: CreateSmithersToolsOptions): AgentT
       execute: async (params) => {
         const stream = await options.manager.streamDevTools({
           runId: params.runId,
-          fromSeq: params.fromSeq,
+          afterSeq: params.afterSeq,
           timeoutMs: params.timeoutMs,
           maxEvents: params.maxEvents,
           pollIntervalMs: params.pollIntervalMs,

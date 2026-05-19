@@ -97,7 +97,7 @@ function createHarness() {
     getTaskAgentDefaults: () => ({
       provider: "openai",
       model: "gpt-5.4",
-      thinkingLevel: "medium",
+      reasoningEffort: "medium",
     }),
   });
   managers.push(manager);
@@ -112,7 +112,7 @@ function createHarness() {
       store,
       provider: "openai",
       model: "gpt-5.4",
-      thinkingLevel: "medium",
+      reasoningEffort: "medium",
     }),
   );
 
@@ -516,29 +516,44 @@ describe("smithers.* tools", () => {
       runId,
       nodeId: "publish-gate",
       status: "requested",
+      requestedAtMs: expect.any(Number),
+      nodeLabel: "Approve the release?",
+      request: null,
     });
 
     const waitingRun = await getRun.execute("tool-get-run", { runId });
     expect(waitingRun.details).toMatchObject({
-      runId,
-      workflowName: "approval_gate",
-      workflowId: "approval_gate",
-      workflowSource: "saved",
-      status: "waiting-approval",
-      waitKind: "approval",
+      run: {
+        runId,
+        workflowName: "svvy-approval-gate",
+        status: "waiting-approval",
+        pendingApprovalCount: 1,
+        approvals: [
+          expect.objectContaining({
+            nodeId: "publish-gate",
+            status: "requested",
+          }),
+        ],
+      },
     });
 
     const approved = await resolveApproval.execute("tool-resolve-approval", {
       runId,
       nodeId: "publish-gate",
-      decision: "approve",
+      action: "approve",
       note: "Ship it.",
     });
     expect(approved.details).toMatchObject({
-      ok: true,
-      decision: "approve",
-      runId,
-      nodeId: "publish-gate",
+      action: "approve",
+      approval: {
+        runId,
+        nodeId: "publish-gate",
+        status: "approved",
+        decidedBy: "svvy-handler",
+      },
+      run: {
+        runId,
+      },
     });
 
     await waitFor("post-approval waiting-event status", async () => {
@@ -589,9 +604,10 @@ describe("smithers.* tools", () => {
 
     const completedRun = await getRun.execute("tool-get-run-completed", { runId });
     expect(completedRun.details).toMatchObject({
-      runId,
-      status: "finished",
-      waitKind: null,
+      run: {
+        runId,
+        status: "finished",
+      },
     });
 
     const detail = await getNodeDetail.execute("tool-node-detail", {
@@ -604,11 +620,12 @@ describe("smithers.* tools", () => {
 
     const artifacts = await listArtifacts.execute("tool-list-artifacts", {
       runId,
-      limit: 10,
     });
-    expect(artifacts.details.outputs.map((entry: { nodeId: string }) => entry.nodeId)).toEqual(
-      expect.arrayContaining(["record-decision"]),
-    );
+    expect(artifacts.details).toMatchObject({
+      artifacts: expect.any(Array),
+    });
+    expect(artifacts.details).not.toHaveProperty("outputs");
+    expect(artifacts.details).not.toHaveProperty("frames");
 
     const events = await getRunEvents.execute("tool-get-run-events", {
       runId,
@@ -617,6 +634,7 @@ describe("smithers.* tools", () => {
     expect(events.details.events.map((event: { type: string }) => event.type)).toEqual(
       expect.arrayContaining(["ApprovalRequested", "ApprovalGranted", "RunFinished"]),
     );
+    expect(events.details.events[0]).toMatchObject({ runId });
 
     const logPath = smithersLogPath(cwd, runId);
     await waitFor("approval workflow execution log", () =>
@@ -689,7 +707,7 @@ describe("smithers.* tools", () => {
       transport: "embedded-runtime",
       runId,
       nodeId: "publish-gate",
-      decision: "approve",
+      action: "approve",
       postStatus: "approval-updated",
     });
   });
@@ -849,9 +867,10 @@ describe("smithers.* tools", () => {
 
     const waitingRun = await getRun.execute("tool-get-signal-run", { runId });
     expect(waitingRun.details).toMatchObject({
-      runId,
-      status: "waiting-event",
-      waitKind: "event",
+      run: {
+        runId,
+        status: "waiting-event",
+      },
     });
 
     const watched = await watchRun.execute("tool-watch-signal-run", {
@@ -864,7 +883,6 @@ describe("smithers.* tools", () => {
       timedOut: true,
       finalRun: {
         status: "waiting-event",
-        waitKind: "event",
       },
     });
 
@@ -932,7 +950,7 @@ describe("smithers.* tools", () => {
 
     const stream = await streamDevTools.execute("tool-stream-devtools", {
       runId,
-      fromSeq: 0,
+      afterSeq: 0,
       timeoutMs: 150,
       maxEvents: 10,
     });

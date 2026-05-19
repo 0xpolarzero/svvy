@@ -1056,7 +1056,14 @@ describe("structured session state write API", () => {
       "workflow-task-message-user",
       "workflow-task-message-assistant",
     ]);
-    expect(store.findWorkflowTaskAttemptByAgentResume("/tmp/task-agent-session.json")).toEqual(
+    expect(
+      store.findWorkflowTaskAttemptBySmithersIdentity({
+        smithersRunId: workflowRun.smithersRunId,
+        nodeId: "task",
+        iteration: 0,
+        attempt: 1,
+      }),
+    ).toEqual(
       expect.objectContaining({
         id: workflowTaskAttempt.id,
       }),
@@ -1066,5 +1073,101 @@ describe("structured session state write API", () => {
         id: workflowTaskAttempt.id,
       }),
     ]);
+  });
+
+  it("enforces durable Smithers run and task-attempt identity uniqueness", () => {
+    const store = createStore();
+    seedSession(store, "session-smithers-identity");
+    const turn = store.startTurn({
+      sessionId: "session-smithers-identity",
+      surfacePiSessionId: "session-smithers-identity",
+      requestSummary: "Delegate identity check",
+    });
+    const thread = store.createThread({
+      turnId: turn.id,
+      title: "Identity Check",
+      objective: "Check exact Smithers identities.",
+    });
+    const command = store.createCommand({
+      turnId: turn.id,
+      threadId: thread.id,
+      toolName: "smithers.run_workflow",
+      executor: "smithers",
+      visibility: "surface",
+      title: "Run identity workflow",
+      summary: "Launch the identity workflow.",
+    });
+    const workflowRun = store.recordWorkflow({
+      threadId: thread.id,
+      commandId: command.id,
+      smithersRunId: "smithers-run-unique",
+      workflowName: "identity",
+      workflowSource: "saved",
+      status: "running",
+      summary: "Identity workflow is running.",
+    });
+
+    expect(() =>
+      store.recordWorkflow({
+        threadId: thread.id,
+        commandId: command.id,
+        smithersRunId: "smithers-run-unique",
+        workflowName: "identity-duplicate",
+        workflowSource: "saved",
+        status: "running",
+        summary: "Duplicate run should fail.",
+      }),
+    ).toThrow();
+
+    const first = store.upsertWorkflowTaskAttempt({
+      workflowRunId: workflowRun.id,
+      smithersRunId: workflowRun.smithersRunId,
+      nodeId: "task",
+      iteration: 0,
+      attempt: 1,
+      summary: "Task is running.",
+      kind: "agent",
+      status: "running",
+      smithersState: "in-progress",
+      agentResume: "/tmp/first-session.jsonl",
+    });
+    const updated = store.upsertWorkflowTaskAttempt({
+      workflowRunId: workflowRun.id,
+      smithersRunId: workflowRun.smithersRunId,
+      nodeId: "task",
+      iteration: 0,
+      attempt: 1,
+      summary: "Task is still running.",
+      kind: "agent",
+      status: "running",
+      smithersState: "in-progress",
+      agentResume: "/tmp/second-session.jsonl",
+    });
+
+    expect(updated.id).toBe(first.id);
+    expect(
+      store.findWorkflowTaskAttemptBySmithersIdentity({
+        smithersRunId: workflowRun.smithersRunId,
+        nodeId: "task",
+        iteration: 0,
+        attempt: 1,
+      }),
+    ).toMatchObject({
+      id: first.id,
+      agentResume: "/tmp/second-session.jsonl",
+    });
+    expect(() =>
+      store.upsertWorkflowTaskAttempt({
+        workflowRunId: workflowRun.id,
+        smithersRunId: "different-smithers-run",
+        nodeId: "task",
+        iteration: 0,
+        attempt: 1,
+        summary: "Mismatched run should fail.",
+        kind: "agent",
+        status: "running",
+        smithersState: "in-progress",
+      }),
+    ).toThrow("not different-smithers-run");
   });
 });

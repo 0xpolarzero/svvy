@@ -34,6 +34,10 @@ import {
   createDefaultWorkflowTaskAgentConfig,
   type WorkflowTaskAgentConfig,
 } from "./workflow-task-agent-config";
+import {
+  WORKFLOW_TASK_TOOL_REGISTRY,
+  type WorkflowTaskToolName,
+} from "./workflow-authoring-contract";
 
 type WorkflowTaskAgentOptions = {
   workspaceRoot: string;
@@ -63,7 +67,20 @@ type WorkflowTaskAttemptProjectionContext = {
   workflowRunId: string;
   workflowTaskAttemptId: string;
   surfacePiSessionId: string;
+  smithersRunId: string;
+  nodeId: string;
+  iteration: number;
+  attempt: number;
 };
+
+type SmithersTaskAttemptIdentity = {
+  runId: string;
+  nodeId: string;
+  iteration: number;
+  attempt: number;
+};
+
+const taskAttemptIdentityByResumeHandle = new Map<string, SmithersTaskAttemptIdentity>();
 
 export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): AgentLike {
   return {
@@ -71,6 +88,11 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
     async generate(rawArgs: unknown) {
       const args = normalizeWorkflowTaskAgentGenerateArgs(rawArgs);
       const taskRoot = resolveWorkflowTaskRoot(args);
+      const smithersIdentity = readSmithersTaskAttemptIdentity({
+        workspaceRoot: options.workspaceRoot,
+        rootDir: taskRoot,
+        resumeSession: args.resumeSession,
+      });
       const config = options.config ?? createDefaultWorkflowTaskAgentConfig();
       const webProvider = createWebProvider(
         {
@@ -138,12 +160,21 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
       const resumeHandleRef: { current: string | null } = {
         current: args.resumeSession ?? null,
       };
+      const projectionContextRef: {
+        current: WorkflowTaskAttemptProjectionContext | null;
+      } = {
+        current: null,
+      };
       const executeTypescriptTool = createWorkflowTaskExecuteTypescriptTool({
         cwd: taskRoot,
         workspaceRoot: options.workspaceRoot,
         store: options.store,
         getSurfacePiSessionId: () => sessionIdentity.surfacePiSessionId,
         getResumeHandle: () => resumeHandleRef.current,
+        getSmithersIdentity: () => smithersIdentity,
+        setProjectionContext: (projection) => {
+          projectionContextRef.current = projection;
+        },
         webProvider,
       });
       const directTools = createSvvyDirectTools({
@@ -167,22 +198,30 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         sessionManager,
         settingsManager,
         model,
-        thinkingLevel: config.thinkingLevel,
+        thinkingLevel: config.reasoningEffort,
         tools: [],
-        customTools: createCustomToolDefinitions([
-          createListToolsTool({
-            getSession: () => sessionForListTools,
+        customTools: createCustomToolDefinitions(
+          selectWorkflowTaskAgentTools({
+            configuredToolSurface: config.toolSurface,
+            tools: [
+              createListToolsTool({
+                getSession: () => sessionForListTools,
+              }),
+              ...cxTools,
+              ...directTools.codingTools,
+              ...directTools.artifactTools,
+              ...directTools.webTools,
+              executeTypescriptTool,
+            ],
           }),
-          ...cxTools,
-          ...directTools.codingTools,
-          ...directTools.artifactTools,
-          ...directTools.webTools,
-          executeTypescriptTool,
-        ]),
+        ),
         resourceLoader,
       });
       sessionForListTools = session;
-      assertTaskAgentToolSurface(session.getActiveToolNames());
+      assertTaskAgentToolSurface(
+        session.getActiveToolNames(),
+        selectWorkflowTaskAgentToolNames(config.toolSurface),
+      );
 
       const durableSessionManager =
         (session as { sessionManager?: SessionManager }).sessionManager ?? sessionManager;
@@ -190,6 +229,10 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
       const resumeHandle =
         durableSessionManager.getSessionFile() ?? sessionIdentity.surfacePiSessionId;
       resumeHandleRef.current = resumeHandle;
+      bindWorkflowTaskAttemptResumeHandle({
+        resumeHandle,
+        identity: smithersIdentity,
+      });
 
       args.onEvent?.({
         type: "started",
@@ -198,6 +241,7 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         resume: resumeHandle,
         detail: {
           surfacePiSessionId: sessionIdentity.surfacePiSessionId,
+          smithers: smithersIdentity ?? undefined,
         },
       });
 
@@ -343,7 +387,8 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
         const usage = normalizeLatestAssistantUsage(responseMessages, session.agent.state.messages);
         recordWorkflowTaskAgentContextBudget({
           store: options.store,
-          agentResume: resumeHandle,
+          projectionContext: projectionContextRef.current,
+          smithersIdentity,
           usage,
           maxTokens: model.contextWindow,
         });
@@ -400,7 +445,8 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
 
 function recordWorkflowTaskAgentContextBudget(input: {
   store: StructuredSessionStateStore;
-  agentResume: string;
+  projectionContext: WorkflowTaskAttemptProjectionContext | null;
+  smithersIdentity: SmithersTaskAttemptIdentity | null;
   usage: Record<string, unknown> | undefined;
   maxTokens: number | undefined;
 }): void {
@@ -410,7 +456,21 @@ function recordWorkflowTaskAgentContextBudget(input: {
     return;
   }
 
-  const existing = input.store.findWorkflowTaskAttemptByAgentResume(input.agentResume);
+  const existing = input.projectionContext
+    ? input.store.findWorkflowTaskAttemptBySmithersIdentity({
+        smithersRunId: input.projectionContext.smithersRunId,
+        nodeId: input.projectionContext.nodeId,
+        iteration: input.projectionContext.iteration,
+        attempt: input.projectionContext.attempt,
+      })
+    : input.smithersIdentity
+      ? input.store.findWorkflowTaskAttemptBySmithersIdentity({
+          smithersRunId: input.smithersIdentity.runId,
+          nodeId: input.smithersIdentity.nodeId,
+          iteration: input.smithersIdentity.iteration,
+          attempt: input.smithersIdentity.attempt,
+        })
+      : null;
   if (!existing) {
     return;
   }
@@ -456,6 +516,8 @@ function createWorkflowTaskExecuteTypescriptTool(input: {
   store: StructuredSessionStateStore;
   getSurfacePiSessionId: () => string;
   getResumeHandle: () => string | null;
+  getSmithersIdentity: () => SmithersTaskAttemptIdentity | null;
+  setProjectionContext: (projection: WorkflowTaskAttemptProjectionContext) => void;
   webProvider: ReturnType<typeof createWebProvider>;
 }): AgentTool<typeof executeTypescriptParamsSchema, ExecuteTypescriptResult> {
   return {
@@ -470,7 +532,9 @@ function createWorkflowTaskExecuteTypescriptTool(input: {
         workspaceRoot: input.workspaceRoot,
         surfacePiSessionId: input.getSurfacePiSessionId(),
         agentResume: input.getResumeHandle(),
+        smithersIdentity: input.getSmithersIdentity(),
       });
+      input.setProjectionContext(projection);
       const result = await runExecuteTypescript({
         cwd: input.cwd,
         store: createStructuredWorkflowTaskExecuteTypescriptStore({
@@ -556,18 +620,21 @@ async function waitForWorkflowTaskAttemptProjection(input: {
   workspaceRoot: string;
   surfacePiSessionId: string;
   agentResume: string | null;
+  smithersIdentity: SmithersTaskAttemptIdentity | null;
   timeoutMs?: number;
 }): Promise<WorkflowTaskAttemptProjectionContext> {
-  const agentResume = input.agentResume?.trim();
-  if (!agentResume) {
-    throw new Error("Workflow task agent projection requires an explicit agent resume handle.");
+  if (!input.smithersIdentity) {
+    throw new Error(
+      "Workflow task agent projection requires exact Smithers task attempt identity.",
+    );
   }
+  const agentResume = input.agentResume?.trim() || null;
 
   const deadline = Date.now() + (input.timeoutMs ?? 5_000);
   while (Date.now() <= deadline) {
-    const smithersAttempt = findSmithersAttemptForProjection({
+    const smithersAttempt = findSmithersAttemptByIdentity({
       workspaceRoot: input.workspaceRoot,
-      agentResume,
+      identity: input.smithersIdentity,
     });
     const workflowRun = smithersAttempt
       ? input.store.findWorkflowRunBySmithersRunId(smithersAttempt.runId)
@@ -616,12 +683,18 @@ async function waitForWorkflowTaskAttemptProjection(input: {
         workflowRunId: attempt.workflowRunId,
         workflowTaskAttemptId: attempt.id,
         surfacePiSessionId: attempt.surfacePiSessionId ?? input.surfacePiSessionId,
+        smithersRunId: attempt.smithersRunId,
+        nodeId: attempt.nodeId,
+        iteration: attempt.iteration,
+        attempt: attempt.attempt,
       };
     }
     await Bun.sleep(25);
   }
 
-  throw new Error("Timed out waiting for workflow task attempt projection.");
+  throw new Error(
+    `Timed out waiting for workflow task attempt projection ${input.smithersIdentity.runId}:${input.smithersIdentity.nodeId}:${input.smithersIdentity.iteration}:${input.smithersIdentity.attempt}.`,
+  );
 }
 
 type SmithersAttemptProjectionRow = {
@@ -642,9 +715,9 @@ type SmithersAttemptProjectionRow = {
   jjCwd?: string | null;
 };
 
-function findSmithersAttemptForProjection(input: {
+function findSmithersAttemptByIdentity(input: {
   workspaceRoot: string;
-  agentResume: string;
+  identity: SmithersTaskAttemptIdentity;
 }): SmithersAttemptProjectionRow | null {
   const dbPath = join(input.workspaceRoot, ".svvy", "smithers-runtime", "smithers.db");
   if (!existsSync(dbPath)) {
@@ -673,13 +746,18 @@ function findSmithersAttemptForProjection(input: {
              jj_pointer AS jjPointer,
              jj_cwd AS jjCwd
            FROM _smithers_attempts
-           WHERE json_extract(meta_json, '$.agentResume') = ?
-              OR json_extract(heartbeat_data_json, '$.agentResume') = ?
-           ORDER BY started_at_ms DESC
+           WHERE run_id = ?
+             AND node_id = ?
+             AND iteration = ?
+             AND attempt = ?
            LIMIT 1`,
         )
-        .get(input.agentResume, input.agentResume) as SmithersAttemptProjectionRow | undefined) ??
-      null
+        .get(
+          input.identity.runId,
+          input.identity.nodeId,
+          input.identity.iteration,
+          input.identity.attempt,
+        ) as SmithersAttemptProjectionRow | undefined) ?? null
     );
   } finally {
     db.close();
@@ -773,9 +851,9 @@ async function resolveTaskAgentSessionManager(input: {
   }
 
   const sessions = await SessionManager.list(input.cwd, input.sessionDir);
-  const match = sessions.find((session) => session.id.startsWith(resumeHandle));
+  const match = sessions.find((session) => session.id === resumeHandle);
   if (!match) {
-    throw new Error(`Workflow task agent resume session was not found: ${resumeHandle}`);
+    throw new Error(`Workflow task agent resume session id was not found exactly: ${resumeHandle}`);
   }
   return SessionManager.open(match.path, input.sessionDir);
 }
@@ -803,35 +881,52 @@ function syncAuthStorage(authStorage: AuthStorage): void {
   }
 }
 
-function assertTaskAgentToolSurface(activeToolNames: string[]): void {
-  const allowed = new Set([
-    "read",
-    "grep",
-    "find",
-    "ls",
-    "edit",
-    "write",
-    "bash",
-    "cx.overview",
-    "cx.symbols",
-    "cx.definition",
-    "cx.references",
-    "cx.lang.list",
-    "cx.lang.add",
-    "cx.lang.remove",
-    "cx.cache.path",
-    "cx.cache.clean",
-    "artifact.write_text",
-    "artifact.write_json",
-    "artifact.attach_file",
-    "web.search",
-    "web.fetch",
+function selectWorkflowTaskAgentTools(input: {
+  configuredToolSurface: readonly WorkflowTaskToolName[];
+  tools: readonly AgentTool<any>[];
+}): AgentTool<any>[] {
+  const toolsByName = new Map(input.tools.map((tool) => [tool.name, tool]));
+  return selectWorkflowTaskAgentToolNames(input.configuredToolSurface).map((toolName) => {
+    const tool = toolsByName.get(toolName);
+    if (!tool) {
+      throw new Error(`Workflow task agent tool is unavailable: ${toolName}.`);
+    }
+    return tool;
+  });
+}
+
+function selectWorkflowTaskAgentToolNames(
+  configuredToolSurface: readonly WorkflowTaskToolName[],
+): string[] {
+  const requested = new Set(configuredToolSurface);
+  const unknown = configuredToolSurface.filter(
+    (toolName) => !WORKFLOW_TASK_TOOL_REGISTRY.includes(toolName),
+  );
+  if (unknown.length > 0) {
+    throw new Error(`Workflow task agent config contains unknown tools: ${unknown.join(", ")}.`);
+  }
+  return [
     "list_tools",
-    EXECUTE_TYPESCRIPT_TOOL_NAME,
-  ]);
-  const unexpected = activeToolNames.filter((name) => !allowed.has(name));
-  if (unexpected.length > 0) {
-    throw new Error(`Workflow task agent received unexpected tools: ${unexpected.join(", ")}.`);
+    ...WORKFLOW_TASK_TOOL_REGISTRY.filter((toolName) => requested.has(toolName)),
+  ];
+}
+
+function assertTaskAgentToolSurface(
+  activeToolNames: string[],
+  expectedToolNames: readonly string[],
+): void {
+  const unexpected = activeToolNames.filter((name) => !expectedToolNames.includes(name));
+  const missing = expectedToolNames.filter((name) => !activeToolNames.includes(name));
+  if (unexpected.length > 0 || missing.length > 0) {
+    throw new Error(
+      [
+        "Workflow task agent received the wrong tool surface.",
+        unexpected.length > 0 ? `Unexpected: ${unexpected.join(", ")}.` : "",
+        missing.length > 0 ? `Missing: ${missing.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
   }
 }
 
@@ -1151,6 +1246,109 @@ function resolveWorkflowTaskRoot(input: WorkflowTaskAgentGenerateArgs): string {
     return toolContext.rootDir;
   }
   throw new Error("Workflow task agent requires an explicit Smithers task root.");
+}
+
+function readSmithersTaskAttemptIdentity(input: {
+  workspaceRoot: string;
+  rootDir: string;
+  resumeSession?: string;
+}): SmithersTaskAttemptIdentity | null {
+  const contextIdentity = readSmithersTaskAttemptIdentityFromContext();
+  if (contextIdentity) {
+    return contextIdentity;
+  }
+  const resumeHandle = input.resumeSession?.trim();
+  if (resumeHandle) {
+    const boundIdentity = taskAttemptIdentityByResumeHandle.get(resumeHandle);
+    if (boundIdentity) {
+      return boundIdentity;
+    }
+  }
+  return findUniqueInProgressSmithersTaskAttempt({
+    workspaceRoot: input.workspaceRoot,
+    rootDir: input.rootDir,
+  });
+}
+
+function readSmithersTaskAttemptIdentityFromContext(): SmithersTaskAttemptIdentity | null {
+  const toolContext = getToolContext();
+  if (!toolContext) {
+    return null;
+  }
+  return {
+    runId: toolContext.runId,
+    nodeId: toolContext.nodeId,
+    iteration: toolContext.iteration,
+    attempt: toolContext.attempt,
+  };
+}
+
+function bindWorkflowTaskAttemptResumeHandle(input: {
+  resumeHandle: string | null;
+  identity: SmithersTaskAttemptIdentity | null;
+}): void {
+  const resumeHandle = input.resumeHandle?.trim();
+  if (!resumeHandle || !input.identity) {
+    return;
+  }
+  const existing = taskAttemptIdentityByResumeHandle.get(resumeHandle);
+  if (existing && !smithersTaskAttemptIdentityEquals(existing, input.identity)) {
+    throw new Error(
+      `Workflow task agent resume handle already belongs to ${existing.runId}:${existing.nodeId}:${existing.iteration}:${existing.attempt}; refusing to rebind it to ${input.identity.runId}:${input.identity.nodeId}:${input.identity.iteration}:${input.identity.attempt}.`,
+    );
+  }
+  taskAttemptIdentityByResumeHandle.set(resumeHandle, input.identity);
+}
+
+function findUniqueInProgressSmithersTaskAttempt(input: {
+  workspaceRoot: string;
+  rootDir: string;
+}): SmithersTaskAttemptIdentity | null {
+  const dbPath = join(input.workspaceRoot, ".svvy", "smithers-runtime", "smithers.db");
+  if (!existsSync(dbPath)) {
+    return null;
+  }
+
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const rows = db
+      .query(
+        `SELECT
+           run_id AS runId,
+           node_id AS nodeId,
+           iteration AS iteration,
+           attempt AS attempt
+         FROM _smithers_attempts
+         WHERE state = 'in-progress'
+           AND jj_cwd = ?
+           AND json_extract(meta_json, '$.agentId') = ?
+           AND json_extract(meta_json, '$.kind') = 'agent'`,
+      )
+      .all(input.rootDir, "svvy-workflow-task-agent") as SmithersTaskAttemptIdentity[];
+    if (rows.length > 1) {
+      const identities = rows
+        .map((row) => `${row.runId}:${row.nodeId}:${row.iteration}:${row.attempt}`)
+        .join(", ");
+      throw new Error(
+        `Workflow task agent Smithers context is ambiguous for root ${input.rootDir}: ${identities}.`,
+      );
+    }
+    return rows[0] ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+function smithersTaskAttemptIdentityEquals(
+  left: SmithersTaskAttemptIdentity,
+  right: SmithersTaskAttemptIdentity,
+): boolean {
+  return (
+    left.runId === right.runId &&
+    left.nodeId === right.nodeId &&
+    left.iteration === right.iteration &&
+    left.attempt === right.attempt
+  );
 }
 
 function looksLikeSessionPath(value: string): boolean {

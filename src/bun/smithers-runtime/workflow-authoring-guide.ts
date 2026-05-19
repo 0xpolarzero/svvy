@@ -140,7 +140,7 @@ const ASSET_AND_AGENT_EXAMPLE = [
   "export const reviewer = {",
   "  provider: 'openai',",
   "  model: 'gpt-5.4',",
-  "  thinkingLevel: 'medium',",
+  "  reasoningEffort: 'medium',",
   "  systemPrompt: 'Review the task result for correctness, edge cases, and test coverage.',",
   "  toolSurface: ['read', 'grep', 'find', 'ls', 'bash', 'execute_typescript'] as const,",
   "};",

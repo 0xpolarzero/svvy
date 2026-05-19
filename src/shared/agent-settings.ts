@@ -1,35 +1,17 @@
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type {
+  ReasoningEffort,
+  WorkflowTaskAgentConfig,
+  WorkflowTaskToolName,
+} from "../bun/smithers-runtime/workflow-authoring-contract";
 
-export type ReasoningEffort = ThinkingLevel;
+export type { ReasoningEffort };
 export type SessionMode = "orchestrator" | "dumb";
 export type SessionAgentKey = "defaultSession" | "dumbOrchestrator" | "namer";
 export type WorkflowAgentKey = "explorer" | "implementer" | "reviewer";
 export type AppAppearance = "system" | "light" | "dark";
 export type PreferredExternalEditor = "system" | "code" | "cursor" | "zed" | "sublime" | "custom";
 export type WebProviderId = "tinyfish" | "firecrawl";
-export type WorkflowAgentToolName =
-  | "read"
-  | "grep"
-  | "find"
-  | "ls"
-  | "edit"
-  | "write"
-  | "bash"
-  | "cx.overview"
-  | "cx.symbols"
-  | "cx.definition"
-  | "cx.references"
-  | "cx.lang.list"
-  | "cx.lang.add"
-  | "cx.lang.remove"
-  | "cx.cache.path"
-  | "cx.cache.clean"
-  | "artifact.write_text"
-  | "artifact.write_json"
-  | "artifact.attach_file"
-  | "web.search"
-  | "web.fetch"
-  | "execute_typescript";
+export type WorkflowAgentToolName = WorkflowTaskToolName;
 
 export interface AgentDefaults {
   provider: string;
@@ -47,10 +29,9 @@ export interface SessionAgentDefaults {
   namer: SessionAgentSettings;
 }
 
-export interface WorkflowAgentSettings extends SessionAgentSettings {
+export interface WorkflowAgentSettings extends WorkflowTaskAgentConfig {
   id: WorkflowAgentKey;
   label: string;
-  toolSurface: readonly WorkflowAgentToolName[];
 }
 
 export interface AgentSettingsState {

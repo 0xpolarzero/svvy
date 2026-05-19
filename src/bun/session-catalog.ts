@@ -319,7 +319,7 @@ export class WorkspaceSessionCatalog {
       getTaskAgentDefaults: () => ({
         provider: DEFAULT_AGENT_SETTINGS.provider,
         model: DEFAULT_AGENT_SETTINGS.model,
-        thinkingLevel: DEFAULT_AGENT_SETTINGS.reasoningEffort,
+        reasoningEffort: DEFAULT_AGENT_SETTINGS.reasoningEffort,
       }),
       onStructuredStateChanged: async (sessionId) => {
         await this.emitStructuredStateSync(sessionId);
@@ -822,14 +822,14 @@ export class WorkspaceSessionCatalog {
       input.mode?.kind === "live"
         ? await this.smithersRuntimeManager.streamDevTools({
             runId: workflowRun.smithersRunId,
-            fromSeq: input.fromSeq ?? workflowRun.lastEventSeq ?? undefined,
+            afterSeq: input.fromSeq ?? workflowRun.lastEventSeq ?? undefined,
             timeoutMs: 1500,
             maxEvents: 100,
             pollIntervalMs: 100,
           })
         : {
             runId: workflowRun.smithersRunId,
-            fromSeq: input.fromSeq ?? null,
+            afterSeq: input.fromSeq ?? null,
             lastSeq: input.fromSeq ?? null,
             events: [],
           };
@@ -837,7 +837,7 @@ export class WorkspaceSessionCatalog {
     return {
       workflowRunId: input.workflowRunId,
       smithersRunId: workflowRun.smithersRunId,
-      fromSeq: stream.fromSeq,
+      fromSeq: stream.afterSeq,
       lastSeq: stream.lastSeq,
       events: stream.events,
       inspector,

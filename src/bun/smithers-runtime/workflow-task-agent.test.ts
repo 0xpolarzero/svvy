@@ -181,6 +181,7 @@ function insertSmithersAttemptByResume(input: {
   attempt: number;
   rootDir: string;
   agentResume: string;
+  startedAtMs?: number;
 }) {
   const runtimeRoot = join(input.workspaceRoot, ".svvy", "smithers-runtime");
   mkdirSync(runtimeRoot, { recursive: true });
@@ -211,7 +212,7 @@ function insertSmithersAttemptByResume(input: {
       input.iteration,
       input.attempt,
       "in-progress",
-      Date.now(),
+      input.startedAtMs ?? Date.now(),
       null,
       Date.now(),
       JSON.stringify({
@@ -307,7 +308,7 @@ describe("workflow task agent", () => {
               );
             },
           },
-          getActiveToolNames: () => ["execute_typescript"],
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
           subscribe(callback: (event: Record<string, unknown>) => void) {
             subscribers.add(callback);
             return () => {
@@ -359,6 +360,17 @@ describe("workflow task agent", () => {
               attempt: 1,
               rootDir: fixture.taskRoot,
               agentResume: event.resume,
+              startedAtMs: Date.now(),
+            });
+            insertSmithersAttemptByResume({
+              workspaceRoot: fixture.workspaceRoot,
+              runId: fixture.smithersRunId,
+              nodeId: "latest-but-not-current-task",
+              iteration: 0,
+              attempt: 1,
+              rootDir: fixture.taskRoot,
+              agentResume: event.resume,
+              startedAtMs: Date.now() + 60_000,
             });
           },
           onStepFinish: (step: { response: { messages: any[] } }) => {
@@ -466,7 +478,7 @@ describe("workflow task agent", () => {
               stateMessages.push(...messages, createAssistantMessage('{"ok":true}'));
             },
           },
-          getActiveToolNames: () => ["execute_typescript"],
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
           subscribe() {
             return () => {};
           },
@@ -504,7 +516,68 @@ describe("workflow task agent", () => {
     createAgentSessionSpy.mockRestore();
   });
 
-  it("resolves non-path resume handles through SessionManager.list and opens the matched session", async () => {
+  it("registers only list_tools plus the configured narrow workflow task surface", async () => {
+    const fixture = createFixture();
+    const createAgentSessionSpy = spyOn(PiCodingAgent, "createAgentSession");
+
+    createAgentSessionSpy.mockImplementation(async (options: any) => {
+      const stateMessages: any[] = [];
+      return {
+        session: {
+          agent: {
+            state: {
+              messages: stateMessages,
+            },
+            prompt: async (messages: any[]) => {
+              stateMessages.push(...messages, createAssistantMessage('{"ok":true}'));
+            },
+          },
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
+          subscribe() {
+            return () => {};
+          },
+          async abort() {},
+          dispose() {},
+        },
+      } as any;
+    });
+
+    const agent = createWorkflowTaskAgent({
+      workspaceRoot: fixture.workspaceRoot,
+      agentDir: fixture.agentDir,
+      artifactDir: fixture.artifactDir,
+      store: fixture.store,
+      config: {
+        ...createDefaultWorkflowTaskAgentConfig(),
+        toolSurface: ["execute_typescript"],
+      },
+    });
+
+    await runWithToolContext(
+      {
+        db: {} as never,
+        runId: fixture.smithersRunId,
+        nodeId: "task",
+        iteration: 0,
+        attempt: 1,
+        rootDir: fixture.taskRoot,
+        allowNetwork: false,
+        maxOutputBytes: 8192,
+        timeoutMs: 30_000,
+        seq: 0,
+      },
+      async () => await agent.generate({ prompt: "Hello" }),
+    );
+
+    const [createAgentSessionOptions] = createAgentSessionSpy.mock.calls[0] ?? [];
+    expect(
+      createAgentSessionOptions?.customTools?.map((tool: { name: string }) => tool.name),
+    ).toEqual(["list_tools", "execute_typescript"]);
+
+    createAgentSessionSpy.mockRestore();
+  });
+
+  it("resolves non-path resume handles only by exact SessionManager id", async () => {
     const fixture = createFixture();
     const createAgentSessionSpy = spyOn(PiCodingAgent, "createAgentSession");
     const listSpy = spyOn(PiCodingAgent.SessionManager, "list");
@@ -525,7 +598,7 @@ describe("workflow task agent", () => {
     );
     openSpy.mockImplementation(() => PiCodingAgent.SessionManager.inMemory(fixture.taskRoot));
     createSpy.mockImplementation(() => PiCodingAgent.SessionManager.inMemory(fixture.taskRoot));
-    createAgentSessionSpy.mockImplementation(async () => {
+    createAgentSessionSpy.mockImplementation(async (options: any) => {
       const stateMessages: any[] = [];
       return {
         session: {
@@ -537,7 +610,7 @@ describe("workflow task agent", () => {
               stateMessages.push(...messages, createAssistantMessage('{"ok":true}'));
             },
           },
-          getActiveToolNames: () => ["execute_typescript"],
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
           subscribe() {
             return () => {};
           },
@@ -568,7 +641,7 @@ describe("workflow task agent", () => {
         timeoutMs: 30_000,
         seq: 0,
       },
-      async () => await agent.generate({ prompt: "Hello", resumeSession: "resume-prefix" }),
+      async () => await agent.generate({ prompt: "Hello", resumeSession: "resume-prefix-1234" }),
     );
 
     expect(listSpy).toHaveBeenCalled();
@@ -581,13 +654,68 @@ describe("workflow task agent", () => {
     createSpy.mockRestore();
   });
 
+  it("rejects non-path resume handle prefixes", async () => {
+    const fixture = createFixture();
+    const listSpy = spyOn(PiCodingAgent.SessionManager, "list");
+    const openSpy = spyOn(PiCodingAgent.SessionManager, "open");
+    const createSpy = spyOn(PiCodingAgent.SessionManager, "create");
+
+    listSpy.mockImplementation(
+      async () =>
+        [
+          {
+            id: "resume-prefix-1234",
+            path: join(fixture.root, "task-session.jsonl"),
+            cwd: fixture.taskRoot,
+            modifiedAt: Date.now(),
+            title: "Task Session",
+          },
+        ] as any,
+    );
+    openSpy.mockImplementation(() => PiCodingAgent.SessionManager.inMemory(fixture.taskRoot));
+    createSpy.mockImplementation(() => PiCodingAgent.SessionManager.inMemory(fixture.taskRoot));
+
+    const agent = createWorkflowTaskAgent({
+      workspaceRoot: fixture.workspaceRoot,
+      agentDir: fixture.agentDir,
+      artifactDir: fixture.artifactDir,
+      store: fixture.store,
+      config: createDefaultWorkflowTaskAgentConfig(),
+    });
+
+    await expect(
+      runWithToolContext(
+        {
+          db: {} as never,
+          runId: fixture.smithersRunId,
+          nodeId: "task",
+          iteration: 0,
+          attempt: 1,
+          rootDir: fixture.taskRoot,
+          allowNetwork: false,
+          maxOutputBytes: 8192,
+          timeoutMs: 30_000,
+          seq: 0,
+        },
+        async () => await agent.generate({ prompt: "Hello", resumeSession: "resume-prefix" }),
+      ),
+    ).rejects.toThrow("resume session id was not found exactly");
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(createSpy).not.toHaveBeenCalled();
+
+    listSpy.mockRestore();
+    openSpy.mockRestore();
+    createSpy.mockRestore();
+  });
+
   it("treats message snapshots as authoritative and preserves structured response messages", async () => {
     const fixture = createFixture();
     const createAgentSessionSpy = spyOn(PiCodingAgent, "createAgentSession");
     const openSpy = spyOn(PiCodingAgent.SessionManager, "open");
 
     let receivedMessages: any[] = [];
-    createAgentSessionSpy.mockImplementation(async () => {
+    createAgentSessionSpy.mockImplementation(async (options: any) => {
       const subscribers = new Set<(event: Record<string, unknown>) => void>();
       const stateMessages: any[] = [];
       return {
@@ -618,7 +746,7 @@ describe("workflow task agent", () => {
               );
             },
           },
-          getActiveToolNames: () => ["execute_typescript"],
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
           subscribe(callback: (event: Record<string, unknown>) => void) {
             subscribers.add(callback);
             return () => {
@@ -694,7 +822,7 @@ describe("workflow task agent", () => {
     let abortCalled = false;
     let rejectPrompt!: (error: Error) => void;
 
-    createAgentSessionSpy.mockImplementation(async () => {
+    createAgentSessionSpy.mockImplementation(async (options: any) => {
       const stateMessages: any[] = [];
       return {
         session: {
@@ -709,7 +837,7 @@ describe("workflow task agent", () => {
               });
             },
           },
-          getActiveToolNames: () => ["execute_typescript"],
+          getActiveToolNames: () => options.customTools.map((tool: { name: string }) => tool.name),
           subscribe() {
             return () => {};
           },

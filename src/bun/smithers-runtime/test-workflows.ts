@@ -81,7 +81,7 @@ export function createExecuteTypescriptTaskTestWorkflow(input: {
   store: StructuredSessionStateStore;
   provider: string;
   model: string;
-  thinkingLevel: ThinkingLevel;
+  reasoningEffort: ThinkingLevel;
 }): TestWorkflowDefinition {
   const launchSchema = z.object({
     objective: z.string().min(1),
@@ -119,7 +119,7 @@ export function createExecuteTypescriptTaskTestWorkflow(input: {
     config: createDefaultWorkflowTaskAgentConfig({
       provider: input.provider,
       model: input.model,
-      thinkingLevel: input.thinkingLevel,
+      reasoningEffort: input.reasoningEffort,
     }),
   });
 

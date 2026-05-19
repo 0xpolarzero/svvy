@@ -210,7 +210,7 @@ The adopted direction for task agents is:
 - keep human approval and hijack as Smithers runtime or operator controls around the task, not as ordinary task-agent tools
 - execute the task agent and its task-local tool calls from Smithers' current task root, including the active worktree when the task is worktree-bound
 - keep the workflow runtime DB, run ownership, and structured projection workspace-scoped even when the task itself executes in a worktree
-- bind the workflow-task-attempt record before any task-local tool call runs by exact persisted resume-handle lookup against the current Smithers attempt row; do not use heuristic recency scans, transcript inference, or multi-stage fallback chains to discover ownership
+- bind the workflow-task-attempt record before any task-local tool call runs by the exact Smithers task-attempt identity `(runId, nodeId, iteration, attempt)` supplied by the current Smithers context; do not use resume-handle lookup, heuristic recency scans, transcript inference, or multi-stage fallback chains to discover ownership
 - preserve structured message history, step boundaries, and usage across retries, schema repair prompts, and hijack handoff instead of flattening continuation state into role-labelled prose
 - stream live assistant and tool updates so handler wake-ups, UI activity, and heartbeat freshness reflect real task-agent progress rather than only terminal task text
 

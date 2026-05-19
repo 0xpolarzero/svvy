@@ -48,7 +48,7 @@ For each issue, record:
 | AUD-017 | P1 | Prompt freshness is detected but not enforced before the next pi turn | `209c` | Fixed |
 | AUD-018 | P1 | Session mode changes and new-session creation can use raw or double-wrapped system prompts | `1291`, `3eed` | Fixed |
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Adopted |
-| AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Researched |
+| AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Researched |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Researched |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Researched |
@@ -61,7 +61,7 @@ For each issue, record:
 | AUD-030 | P1 | Destructive Delete Session conflicts with archive-as-hide product semantics | `1291`, `2a4e` | Researched |
 | AUD-031 | P2 | E2E and proof tests encode retries, live-provider dependencies, brittle selectors, or missing restart paths | all five | Researched |
 | AUD-032 | P2 | `docs/progress.md` and feature status tracking drift from shipped implementation | all five | Researched |
-| AUD-033 | P2 | Smithers approval, task-attempt, and artifact shapes may drift from native Smithers contracts | `34a6`, `209c` | Researched |
+| AUD-033 | P2 | Smithers approval, task-attempt, and artifact shapes may drift from native Smithers contracts | `34a6`, `209c` | Fixed |
 | AUD-034 | P2 | Minor UI and observability edge cases need confirmation: layout slot hydration, inspector split targets, log related links, double-click rename, private URL guards, provider secret storage | `209c`, `2a4e`, `34a6` | Researched; split into AUD-034A-F |
 
 ## Cross-Check Addendum
@@ -127,13 +127,13 @@ The items below were highlighted by source audit finals or source audit subagent
 
 ### Smithers-Native Follow-Ups From AUD-011 Exploration
 
-These are not AUD-011 regressions. They are adjacent places where `svvy` may still be rolling custom workflow-control logic that should be checked against native Smithers behavior before implementation:
+These are not AUD-011 regressions. They are adjacent places where `svvy` was still rolling custom workflow-control logic. They were pulled forward into the Smithers-native refactor tracked by AUD-020 and AUD-033:
 
-- **Approval resolution:** `smithers.resolve_approval` should mirror Smithers approval semantics and payloads, including native approve/deny behavior, instead of preserving a simplified svvy-only decision shape. This belongs with AUD-033 unless it proves more severe.
-- **Run watching:** `smithers.watch_run` deserves a Smithers-native review because custom polling can drift from the event/control-plane behavior Smithers already provides. This overlaps AUD-026 and AUD-033.
-- **Inspection result shapes:** `smithers.get_node_detail`, `smithers.list_artifacts`, transcript, event, and related inspection tools should preserve native Smithers read-model fields unless the product docs explicitly choose a smaller projection. This belongs with AUD-033.
-- **Task-attempt identity:** Workflow task-attempt records should bind to exact Smithers run, node, iteration, and attempt identity rather than recency-style resume-handle lookup. This belongs with AUD-020/AUD-033.
-- **DevTools streaming:** `smithers.streamDevTools` should be checked against Smithers' intended streaming surface instead of a bounded collector if handlers or UI depend on live DevTools behavior. This overlaps AUD-026/AUD-033.
+- **Approval resolution:** `smithers.resolve_approval` now mirrors Smithers approval semantics and payloads, including native approve/deny behavior, instead of preserving a simplified svvy-only decision shape.
+- **Run watching:** `smithers.watch_run` now delegates through the Smithers-native adapter instead of maintaining a separate svvy control-plane shape.
+- **Inspection result shapes:** `smithers.get_node_detail`, `smithers.list_artifacts`, transcript, event, and related inspection tools now pass through native Smithers read-model fields unless the product exposes a separate svvy-specific projection.
+- **Task-attempt identity:** Workflow task-attempt records now bind to exact Smithers run, node, iteration, and attempt identity rather than recency-style resume-handle lookup.
+- **DevTools streaming:** `smithers.streamDevTools` now uses the Smithers-native stream cursor path. The broader renderer inspector delta work remains AUD-026.
 
 ### Resolved Design Boundary For Smithers Execution Facts
 
@@ -904,44 +904,37 @@ Relevant code:
 
 **Confidence:** High from source and pi behavior. Dynamic reproduction was not run in the audit.
 
-### AUD-020 - Workflow task-agent config, generated declarations, saved settings, and runtime behavior diverge
+### AUD-020 - Workflow task-agent config, generated declarations, saved settings, and runtime behavior diverged
 
-**Impact:** High workflow authoring correctness issue.
+**Disposition:** Fixed. `WorkflowTaskAgentConfig` now uses `reasoningEffort`, settings render workflow agents assignable to that contract, `cx.*` survives normalization, runtime task-agent registration filters the ordered task-tool registry by `config.toolSurface` with `list_tools` added as the required framework tool, and task-agent projection binds by exact Smithers `(runId, nodeId, iteration, attempt)` identity.
 
-**Precise issue:** The generated workflow contract, saved settings renderer, normalization, and runtime tool-surface enforcement disagree.
+**Impact:** High workflow authoring correctness issue when present.
 
-Confirmed drift:
+Resolved drift:
 
-- Generated `WorkflowTaskAgentConfig` uses `thinkingLevel`.
-- Rendered workflow-agent settings use `reasoningEffort`.
-- Generated/default contracts include `cx.*`, but normalization filters `cx.*` out.
-- Runtime task-agent creation hard-codes the full task tool set and does not enforce `config.toolSurface`.
+- Generated `WorkflowTaskAgentConfig` uses `reasoningEffort`.
+- Rendered workflow-agent settings use `reasoningEffort` and are assignable to `WorkflowTaskAgentConfig`.
+- Generated/default contracts include `cx.*`, and normalization preserves canonical `cx.*` tools.
+- Runtime task-agent creation registers exactly the ordered registry tools requested by `config.toolSurface`, plus `list_tools`.
+- Task-agent projection no longer discovers Smithers attempts by resume handle or recency.
 
 Relevant code:
 
-- `src/bun/workflow-authoring-contract.ts`: generated config declaration.
-- `src/bun/workflow-task-agent.ts`: runtime task-agent tool registration.
+- `src/bun/smithers-runtime/workflow-authoring-contract.ts`: generated config declaration and ordered task-tool registry.
+- `src/bun/smithers-runtime/workflow-task-agent.ts`: runtime task-agent tool registration.
+- `src/bun/structured-session-state.ts`: durable workflow task-attempt rows are uniquely keyed by Smithers run, node, iteration, and attempt.
 - `src/bun/session-agent-settings.ts`: rendered workflow-agent components/settings.
-- Normalization code for workflow task-agent tool surfaces.
+- `src/bun/smithers-runtime/workflow-task-agent-config.ts`: default workflow task-agent config.
 
-**Why this matters:** Authors and generated code can believe a task agent has one configuration while runtime gives it another. Narrow tool surfaces are not enforced. `cx.*` tools can disappear despite being part of the declared/default surface. The `thinkingLevel` versus `reasoningEffort` mismatch can break assignability or silently drop intended model settings.
+**Why this matters:** Authors and generated code must be able to trust that a workflow task agent receives the config shape and callable surface it declares.
 
-**Best fix:**
-
-1. Define one canonical workflow task-agent config schema.
-2. Generate TypeScript declarations, settings UI defaults, normalization, persistence, and runtime behavior from that schema.
-3. Choose either `thinkingLevel` or `reasoningEffort`, then migrate all code to that one name without compatibility aliases unless explicitly requested.
-4. Preserve `cx.*` if it remains part of the contract, or remove it from the contract and docs if not.
-5. Make runtime tool registration filter an ordered registry by `config.toolSurface`.
-
-**Verification required:**
+**Verification covered:**
 
 - Rendered workflow-agent settings are assignable to the generated `WorkflowTaskAgentConfig`.
-- `cx.*` survives normalization if still documented.
-- A narrow `toolSurface` produces exactly that task-agent tool set plus any required framework tool such as `list_tools`.
-- A broad/default tool surface matches the generated declaration.
-
-**Documentation impact:** Update `docs/features.ts` and workflow authoring specs if task-agent config names or tool surfaces are materially changed.
+- `cx.*` survives normalization.
+- A narrow `toolSurface` produces exactly that task-agent tool set plus `list_tools`.
+- The default task-agent surface includes the documented task-local direct tools and `execute_typescript`.
+- Duplicate or repeated pi resume handles cannot bind projection to the wrong Smithers attempt.
 
 **Confidence:** High.
 
@@ -1377,7 +1370,9 @@ Relevant files:
 
 **Impact:** High agent-tool correctness and upgradeability issue.
 
-**Precise issue:** The shipped Smithers-facing tools do not mirror the native Smithers tool schemas documented in the full Smithers reference. Some svvy schemas require fields Smithers treats as optional filters, rename fields, omit structured fields, or return non-native shapes. Task-attempt binding also uses recency lookup by resume handle rather than exact current run/node/attempt identity.
+**Disposition:** Fixed. The handler-facing Smithers tool surface now delegates native Smithers operations through a Smithers adapter, keeps native Smithers shapes for approvals, node detail, artifacts, transcript, events, run watching, and DevTools streaming, and task-attempt binding uses exact Smithers task-attempt identity.
+
+**Precise issue:** The shipped Smithers-facing tools did not mirror the native Smithers tool schemas documented in the full Smithers reference. Some svvy schemas required fields Smithers treats as optional filters, renamed fields, omitted structured fields, or returned non-native shapes. Task-attempt binding also used recency lookup by resume handle rather than exact current run/node/attempt identity.
 
 Smithers reference facts from `https://smithers.sh/llms-full.txt`:
 
@@ -1386,41 +1381,40 @@ Smithers reference facts from `https://smithers.sh/llms-full.txt`:
 - `get_node_detail` returns `{ detail: ... }`.
 - `list_artifacts` takes `{ runId, nodeId?, includeRaw? }` and returns an artifact list.
 
-Current drift:
+Resolved drift:
 
-- `resolve_approval` requires `runId` and `nodeId`, uses `decision` instead of native `action`, omits `workflowName`, `decidedBy`, and structured decision options.
-- Approval resolution edits local DB state directly and hard-codes `decidedBy`.
-- Pending approval output omits native fields and converts time shape.
-- `list_artifacts` returns a svvy-specific `{ runId, outputs, frames }` shape with a non-native limit concept.
-- `get_node_detail` does not wrap output as `{ detail }`.
-- Task-agent execute TypeScript and structured lookup bind attempts by `agentResume` plus recency.
+- `resolve_approval` accepts native `action`, optional filters, `workflowName`, `decidedBy`, `note`, and structured `decision` payloads.
+- Approval resolution delegates to Smithers-native approval behavior instead of editing local DB state directly.
+- Pending approval output preserves native fields.
+- `list_artifacts`, `get_node_detail`, transcript, event, and frame reads delegate to Smithers-native read models.
+- Task-agent execute TypeScript and structured lookup bind attempts by exact Smithers `(runId, nodeId, iteration, attempt)` identity.
 
 Relevant code:
 
 - `src/bun/smithers-tools.ts`
-- `src/bun/workflow-supervision/manager.ts`
-- `src/bun/workflow-task-agent.ts`
+- `src/bun/smithers-runtime/native-adapter.ts`
+- `src/bun/smithers-runtime/manager.ts`
+- `src/bun/smithers-runtime/workflow-task-agent.ts`
 - `src/bun/structured-session-state.ts`
 - `docs/references/smithers/src/engine/approvals.ts`
 
 **Why this matters:** The PRD says agent-facing workflow control should expose Smithers-native semantic tools and mirror Smithers naming closely. Drift makes generated/documented calls fail or lose fields, blocks native ambiguity handling, loses structured approval decisions, and can bind task results to the wrong attempt when resume handles repeat.
 
-**Best fix:**
+**Implemented resolution:**
 
-1. Generate or directly mirror native Smithers schemas for Smithers tools.
-2. Change `resolve_approval` to accept native `action`, filters, `decidedBy`, `note`, and structured `decision`.
-3. Preserve native ambiguity behavior when filters do not identify exactly one approval.
-4. Use Smithers native approval helpers or an exact local transaction that preserves the same event/decision semantics.
-5. Return native shapes for `list_pending_approvals`, `get_node_detail`, and `list_artifacts`.
-6. Move svvy-specific frame/output views under separate clearly named tools such as `frames.list` if needed.
-7. Bind task-attempt operations by exact current Smithers context: `runId`, `nodeId`, `iteration`, attempt id, and resume handle where relevant. Do not use newest-by-recency fallback when exact identity exists.
+1. Added a Smithers-native adapter for semantic control/read operations.
+2. Changed `resolve_approval` to accept native `action`, filters, `decidedBy`, `note`, and structured `decision`.
+3. Preserved Smithers-native ambiguity behavior by delegating approval resolution through Smithers.
+4. Returned native shapes for pending approvals, node detail, artifacts, transcripts, events, frames, run watching, and DevTools reads.
+5. Kept svvy-specific product bindings in `svvy` structured state instead of duplicating Smithers execution facts.
+6. Bound task-attempt operations by exact current Smithers context: `runId`, `nodeId`, `iteration`, and attempt id. Resume handles are metadata only and are not ownership lookup keys.
 
-**Verification required:**
+**Verification covered:**
 
-- Schema tests against the Smithers reference for approval/list/detail/artifact tools.
-- `resolve_approval` tests for approve, deny, note, decidedBy, structured decision, ambiguous filters, and missing approval.
-- Duplicate `agentResume` task-attempt test proving the exact current attempt is selected.
-- Regression tests updating existing drift-lock tests to the native shapes.
+- `src/bun/smithers-tools.test.ts` covers the native `resolve_approval` schema and Smithers tool registration surface.
+- `src/bun/smithers-runtime/manager.test.ts` covers native adapter delegation for approvals and read operations.
+- `src/bun/smithers-runtime/workflow-task-agent.test.ts` covers exact task-agent tool surface and exact resume-session matching.
+- `src/bun/structured-session-state.test.ts` covers exact Smithers task-attempt identity uniqueness.
 
 **Documentation impact:** No PRD change if aligning with the current PRD. Update generated tool declarations and any svvy Smithers specs. If svvy intentionally keeps custom shapes, the PRD/features must be rewritten, but that conflicts with current instructions.
 

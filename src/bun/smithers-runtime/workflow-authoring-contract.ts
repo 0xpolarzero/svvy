@@ -10,29 +10,34 @@ import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { AgentLike, SmithersWorkflow } from "smithers-orchestrator";
 import type { z } from "zod";
 
-export type WorkflowTaskToolName =
-  | "read"
-  | "grep"
-  | "find"
-  | "ls"
-  | "edit"
-  | "write"
-  | "bash"
-  | "cx.overview"
-  | "cx.symbols"
-  | "cx.definition"
-  | "cx.references"
-  | "cx.lang.list"
-  | "cx.lang.add"
-  | "cx.lang.remove"
-  | "cx.cache.path"
-  | "cx.cache.clean"
-  | "artifact.write_text"
-  | "artifact.write_json"
-  | "artifact.attach_file"
-  | "web.search"
-  | "web.fetch"
-  | "execute_typescript";
+export type ReasoningEffort = ThinkingLevel;
+
+export const WORKFLOW_TASK_TOOL_REGISTRY = [
+  "cx.overview",
+  "cx.symbols",
+  "cx.definition",
+  "cx.references",
+  "cx.lang.list",
+  "cx.lang.add",
+  "cx.lang.remove",
+  "cx.cache.path",
+  "cx.cache.clean",
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "edit",
+  "write",
+  "bash",
+  "artifact.write_text",
+  "artifact.write_json",
+  "artifact.attach_file",
+  "web.search",
+  "web.fetch",
+  "execute_typescript",
+] as const;
+
+export type WorkflowTaskToolName = (typeof WORKFLOW_TASK_TOOL_REGISTRY)[number];
 
 /**
  * Where a runnable workflow entry and its declared assets live.
@@ -97,7 +102,7 @@ export interface RunnableWorkflowRegistryEntry extends RunnableWorkflowEntryModu
 export interface WorkflowTaskAgentConfig {
   provider: string;
   model: string;
-  thinkingLevel: ThinkingLevel;
+  reasoningEffort: ReasoningEffort;
   systemPrompt: string;
   toolSurface: readonly WorkflowTaskToolName[];
 }

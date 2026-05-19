@@ -2,13 +2,10 @@ import { SmithersDb } from "@smithers-orchestrator/db";
 import { Database } from "bun:sqlite";
 import {
   chatAttemptKey,
-  parseChatAttemptMeta,
   parseNodeOutputEvent,
-  selectChatAttempts,
   type ParsedNodeOutputEvent,
 } from "@smithers-orchestrator/cli/chat";
 import { diagnoseRunEffect } from "@smithers-orchestrator/cli/why-diagnosis";
-import { getDevToolsSnapshotRoute, streamDevToolsRoute } from "@smithers-orchestrator/server";
 import {
   ensureSmithersTables,
   runWorkflow,
@@ -35,13 +32,20 @@ import {
   compileRunnableWorkflowLaunchContract,
   type RunnableWorkflowLaunchContract,
 } from "./workflow-launch-contract";
+import {
+  SmithersNativeAdapter,
+  type NativeChatTranscript,
+  type NativeNodeDetail,
+  type NativeResolveApprovalInput,
+  type NativeRunEvent,
+} from "./native-adapter";
 import { loadRunnableWorkflowRegistry } from "./workflow-registry";
 import type { RunnableWorkflowRegistryEntry } from "./workflow-authoring-contract";
 
 type WorkflowTaskAgentDefaults = {
   provider: string;
   model: string;
-  thinkingLevel: ThinkingLevel;
+  reasoningEffort: ThinkingLevel;
 };
 
 type WorkflowMonitor = {
@@ -235,6 +239,7 @@ export class SmithersRuntimeManager {
   private readonly runtimeRoot: string;
   private readonly runtimeDbPath: string;
   private readonly db: SmithersDb;
+  private readonly nativeAdapter: SmithersNativeAdapter;
   private readonly testWorkflowEntriesById = new Map<string, RunnableWorkflowRegistryEntry>();
   private readonly workflowEntriesById = new Map<string, RunnableWorkflowRegistryEntry>();
   private readonly launchContractsByWorkflowId = new Map<string, RunnableWorkflowLaunchContract>();
@@ -253,6 +258,7 @@ export class SmithersRuntimeManager {
     const db = new Database(this.runtimeDbPath);
     ensureSmithersTables(db as any);
     this.db = new SmithersDb(db as any);
+    this.nativeAdapter = new SmithersNativeAdapter(this.db, options.cwd);
   }
 
   listWorkflows(input: WorkflowListInput = {}): WorkflowListEntry[] {
@@ -567,7 +573,10 @@ export class SmithersRuntimeManager {
   }
 
   async listRuns(input?: { limit?: number; status?: string; workflowId?: string }) {
-    const runs = await this.db.listRuns(input?.limit ?? 25, input?.status);
+    const { runs } = await this.nativeAdapter.listRuns({
+      limit: input?.limit ?? 25,
+      status: input?.status,
+    });
     const structuredRunBySmithersRunId = this.listStructuredRunBySmithersRunId();
     const filteredRuns = runs.filter((run: any) => {
       if (!input?.workflowId) {
@@ -597,10 +606,19 @@ export class SmithersRuntimeManager {
           startedAt: toIso(run.startedAtMs),
           finishedAt: toIso(run.finishedAtMs),
           heartbeatAt: toIso(run.heartbeatAtMs),
-          summary: await this.buildRunSummary(run),
+          summary: await this.buildRunSummaryFromNative(run),
+          native: run,
         };
       }),
     );
+  }
+
+  async getSmithersRunDetail(runId: string) {
+    await this.flushRunEvents(runId, {
+      emitAttention: false,
+      source: "query",
+    });
+    return await this.nativeAdapter.getRun({ runId });
   }
 
   async getRun(runId: string) {
@@ -643,214 +661,56 @@ export class SmithersRuntimeManager {
   }
 
   async explainRun(runId: string) {
-    const diagnosis = await this.getRunDiagnosis(runId);
+    const { diagnosis } = await this.nativeAdapter.explainRun({ runId });
     return {
       runId,
-      status: diagnosis.status,
-      summary: diagnosis.summary,
-      explanation: diagnosis.summary,
+      status: typeof diagnosis.status === "string" ? diagnosis.status : "unknown",
+      summary:
+        typeof diagnosis.summary === "string"
+          ? diagnosis.summary
+          : `Loaded Smithers diagnosis for run ${runId}.`,
+      explanation: typeof diagnosis.summary === "string" ? diagnosis.summary : null,
       diagnosis,
     };
   }
 
   async watchRun(input: { runId: string; intervalMs?: number; timeoutMs?: number }) {
-    const intervalMs = Math.max(500, input.intervalMs ?? 1_000);
-    const timeoutMs = Math.max(0, input.timeoutMs ?? 30_000);
-    const deadline = Date.now() + timeoutMs;
-    const snapshots: Array<{
-      observedAtMs: number;
-      run: Awaited<ReturnType<SmithersRuntimeManager["getRun"]>>;
-    }> = [];
-    let pollCount = 0;
-
-    while (true) {
-      const run = await this.getRun(input.runId);
-      snapshots.push({
-        observedAtMs: Date.now(),
-        run,
-      });
-
-      if (isTerminalRunStatus(run.status)) {
-        return {
-          runId: input.runId,
-          intervalMs,
-          pollCount,
-          reachedTerminal: true,
-          timedOut: false,
-          finalRun: run,
-          snapshots,
-        };
-      }
-
-      if (Date.now() >= deadline) {
-        return {
-          runId: input.runId,
-          intervalMs,
-          pollCount,
-          reachedTerminal: false,
-          timedOut: true,
-          finalRun: run,
-          snapshots,
-        };
-      }
-
-      pollCount += 1;
-      await sleep(intervalMs);
-    }
+    return await this.nativeAdapter.watchRun(input);
   }
 
   async listPendingApprovals(input?: { runId?: string; workflowName?: string; nodeId?: string }) {
-    const allApprovals = input?.runId
-      ? await this.db.listPendingApprovals(input.runId)
-      : await this.db.listAllPendingApprovals();
-    const approvals = allApprovals.filter((approval: any) => {
-      if (input?.workflowName?.trim() && approval.workflowName !== input.workflowName.trim()) {
-        return false;
-      }
-      if (input?.nodeId?.trim() && approval.nodeId !== input.nodeId.trim()) {
-        return false;
-      }
-      return true;
-    });
-    return approvals.map((approval: any) => ({
-      runId: approval.runId,
-      nodeId: approval.nodeId,
-      iteration: approval.iteration,
-      status: approval.status,
-      requestedAt: toIso(approval.requestedAtMs),
-      note: approval.note ?? null,
-      decidedBy: approval.decidedBy ?? null,
-      workflowName: approval.workflowName ?? null,
-      runStatus: approval.runStatus ?? null,
-      nodeLabel: approval.nodeLabel ?? null,
-    }));
+    const { approvals } = await this.nativeAdapter.listPendingApprovals(input);
+    return approvals;
   }
 
-  async resolveApproval(input: {
+  async resolveApproval(input: NativeResolveApprovalInput) {
+    const result = await this.nativeAdapter.resolveApproval({
+      ...input,
+      decidedBy: input.decidedBy ?? "svvy-handler",
+    });
+    const runId =
+      typeof result.approval.runId === "string"
+        ? result.approval.runId
+        : typeof input.runId === "string"
+          ? input.runId
+          : null;
+    if (runId) {
+      await this.flushRunEvents(runId, { source: "control" });
+    }
+    return result;
+  }
+
+  async getNodeDetail(input: {
     runId: string;
     nodeId: string;
     iteration?: number;
-    decision: "approve" | "deny";
-    note?: string;
-  }) {
-    const iteration = input.iteration ?? 0;
-    const run = await this.db.getRun(input.runId);
-    if (!run) {
-      throw new Error(`Smithers run not found: ${input.runId}`);
-    }
-
-    const approval = await this.db.getApproval(input.runId, input.nodeId, iteration);
-    if (!approval) {
-      throw new Error(
-        `Pending approval not found for ${input.runId}/${input.nodeId}#${iteration}.`,
-      );
-    }
-
-    const timestampMs = Date.now();
-    const node = await this.db.getNode(input.runId, input.nodeId, iteration);
-    await this.db.insertOrUpdateApproval({
-      runId: input.runId,
-      nodeId: input.nodeId,
-      iteration,
-      status: input.decision === "approve" ? "approved" : "denied",
-      requestedAtMs: null,
-      decidedAtMs: timestampMs,
-      note: input.note ?? null,
-      decidedBy: "svvy-handler",
-    });
-    await this.db.insertNode({
-      runId: input.runId,
-      nodeId: input.nodeId,
-      iteration,
-      state: input.decision === "approve" ? "pending" : "failed",
-      lastAttempt: node?.lastAttempt ?? null,
-      updatedAtMs: timestampMs,
-      outputTable: node?.outputTable ?? "",
-      label: node?.label ?? null,
-    });
-    await this.db.insertEventWithNextSeq({
-      runId: input.runId,
-      timestampMs,
-      type: input.decision === "approve" ? "ApprovalGranted" : "ApprovalDenied",
-      payloadJson: JSON.stringify({
-        type: input.decision === "approve" ? "ApprovalGranted" : "ApprovalDenied",
-        runId: input.runId,
-        nodeId: input.nodeId,
-        iteration,
-        timestampMs,
-      }),
-    });
-    if (run.status === "waiting-approval" || run.status === "waiting-event") {
-      const pendingApprovals = await this.db.listPendingApprovals(input.runId);
-      await this.db.updateRun(input.runId, {
-        status: pendingApprovals.length > 0 ? "waiting-approval" : "waiting-event",
-      });
-    }
-    await this.flushRunEvents(input.runId, { source: "control" });
-    return {
-      ok: true,
-      decision: input.decision,
-      runId: input.runId,
-      nodeId: input.nodeId,
-      iteration,
-    };
+  }): Promise<NativeNodeDetail> {
+    const { detail } = await this.nativeAdapter.getNodeDetail(input);
+    return detail;
   }
 
-  async getNodeDetail(input: { runId: string; nodeId: string; iteration?: number }) {
-    const iterations = await this.db.listNodeIterations(input.runId, input.nodeId);
-    const iteration = input.iteration ?? iterations[0]?.iteration ?? 0;
-    const node = await this.db.getNode(input.runId, input.nodeId, iteration);
-    if (!node) {
-      throw new Error(`Smithers node not found: ${input.runId}/${input.nodeId}#${iteration}`);
-    }
-
-    const attempts = await this.db.listAttempts(input.runId, input.nodeId, iteration);
-    const toolCalls = await this.db.listToolCalls(input.runId, input.nodeId, iteration);
-    const output =
-      typeof node.outputTable === "string" && node.outputTable.trim().length > 0
-        ? await this.db.getRawNodeOutputForIteration(
-            node.outputTable,
-            input.runId,
-            input.nodeId,
-            iteration,
-          )
-        : null;
-
-    return {
-      runId: input.runId,
-      nodeId: input.nodeId,
-      iteration,
-      node,
-      attempts,
-      toolCalls,
-      output,
-    };
-  }
-
-  async listArtifacts(input: { runId: string; limit?: number }) {
-    const nodes = await this.db.listNodes(input.runId);
-    const frames = await this.db.listFrames(input.runId, input.limit ?? 10);
-    const outputs = await Promise.all(
-      nodes
-        .filter((node: any) => typeof node.outputTable === "string" && node.outputTable.length > 0)
-        .map(async (node: any) => ({
-          nodeId: node.nodeId,
-          iteration: node.iteration,
-          outputTable: node.outputTable,
-          output: await this.db.getRawNodeOutputForIteration(
-            node.outputTable,
-            input.runId,
-            node.nodeId,
-            node.iteration ?? 0,
-          ),
-        })),
-    );
-
-    return {
-      runId: input.runId,
-      outputs,
-      frames,
-    };
+  async listArtifacts(input: { runId: string; nodeId?: string; includeRaw?: boolean }) {
+    return await this.nativeAdapter.listArtifacts(input);
   }
 
   async getChatTranscript(input: {
@@ -858,125 +718,8 @@ export class SmithersRuntimeManager {
     all?: boolean;
     includeStderr?: boolean;
     tail?: number;
-  }) {
-    const run = await this.db.getRun(input.runId);
-    if (!run) {
-      throw new Error(`Smithers run not found: ${input.runId}`);
-    }
-
-    const attempts = await this.db.listAttemptsForRun(input.runId);
-    const events = await listAllRunEvents(this.db, input.runId);
-    const knownOutputAttemptKeys = new Set<string>();
-    const parsedOutputs = events.map((event) => parseNodeOutputEvent(event as any)).filter(Boolean);
-
-    for (const event of parsedOutputs) {
-      knownOutputAttemptKeys.add(chatAttemptKey(event as any));
-    }
-
-    const selectedAttempts = selectChatAttempts(
-      attempts as any,
-      knownOutputAttemptKeys,
-      Boolean(input.all),
-    );
-    const selectedAttemptKeys = new Set(
-      selectedAttempts.map((attempt: any) => chatAttemptKey(attempt)),
-    );
-    const stdoutSeenAttempts = new Set<string>();
-    const messages: Array<Record<string, unknown>> = [];
-
-    for (const attempt of selectedAttempts) {
-      const attemptKey = chatAttemptKey(attempt as any);
-      const meta = parseChatAttemptMeta(attempt.metaJson);
-      const prompt = typeof meta.prompt === "string" ? meta.prompt.trim() : "";
-      if (!prompt) {
-        continue;
-      }
-      messages.push({
-        id: `prompt:${attemptKey}`,
-        attemptKey,
-        nodeId: attempt.nodeId,
-        iteration: attempt.iteration ?? 0,
-        attempt: attempt.attempt,
-        role: "user",
-        stream: null,
-        timestampMs: attempt.startedAtMs,
-        text: prompt,
-        source: "prompt",
-      });
-    }
-
-    for (const parsedEvent of parsedOutputs) {
-      const attemptKey = chatAttemptKey(parsedEvent as any);
-      if (!selectedAttemptKeys.has(attemptKey)) {
-        continue;
-      }
-      const stream = parsedEvent?.stream === "stderr" ? "stderr" : "stdout";
-      if (stream === "stderr" && input.includeStderr === false) {
-        continue;
-      }
-      if (stream === "stdout") {
-        stdoutSeenAttempts.add(attemptKey);
-      }
-      messages.push({
-        id: `event:${parsedEvent?.seq ?? "unknown"}`,
-        attemptKey,
-        nodeId: parsedEvent?.nodeId ?? "",
-        iteration: parsedEvent?.iteration ?? 0,
-        attempt: parsedEvent?.attempt ?? 1,
-        role: stream === "stderr" ? "stderr" : "assistant",
-        stream,
-        timestampMs: parsedEvent?.timestampMs ?? Date.now(),
-        text: parsedEvent?.text ?? "",
-        source: "event",
-      });
-    }
-
-    for (const attempt of selectedAttempts) {
-      const attemptKey = chatAttemptKey(attempt as any);
-      const responseText =
-        typeof attempt.responseText === "string" ? attempt.responseText.trim() : "";
-      if (!responseText || stdoutSeenAttempts.has(attemptKey)) {
-        continue;
-      }
-      messages.push({
-        id: `response:${attemptKey}`,
-        attemptKey,
-        nodeId: attempt.nodeId,
-        iteration: attempt.iteration ?? 0,
-        attempt: attempt.attempt,
-        role: "assistant",
-        stream: null,
-        timestampMs: attempt.finishedAtMs ?? attempt.startedAtMs ?? Date.now(),
-        text: responseText,
-        source: "responseText",
-      });
-    }
-
-    messages.sort((left, right) => {
-      const leftTimestamp = Number(left.timestampMs ?? 0);
-      const rightTimestamp = Number(right.timestampMs ?? 0);
-      if (leftTimestamp !== rightTimestamp) {
-        return leftTimestamp - rightTimestamp;
-      }
-      return String(left.id ?? "").localeCompare(String(right.id ?? ""));
-    });
-
-    return {
-      runId: input.runId,
-      attempts: selectedAttempts.map((attempt: any) => ({
-        attemptKey: chatAttemptKey(attempt),
-        nodeId: attempt.nodeId,
-        iteration: attempt.iteration ?? 0,
-        attempt: attempt.attempt,
-        state: attempt.state,
-        startedAtMs: attempt.startedAtMs,
-        finishedAtMs: attempt.finishedAtMs ?? null,
-        cached: Boolean(attempt.cached),
-        meta: parseJson(attempt.metaJson),
-      })),
-      messages:
-        typeof input.tail === "number" ? messages.slice(-Math.max(1, input.tail)) : messages,
-    };
+  }): Promise<NativeChatTranscript> {
+    return await this.nativeAdapter.getChatTranscript(input);
   }
 
   async getRunEvents(input: {
@@ -986,20 +729,9 @@ export class SmithersRuntimeManager {
     nodeId?: string;
     types?: string[];
     sinceTimestampMs?: number;
-  }) {
-    const events = await this.db.listEventHistory(input.runId, {
-      afterSeq: input.afterSeq,
-      limit: input.limit ?? 200,
-      nodeId: input.nodeId,
-      types: input.types,
-      sinceTimestampMs: input.sinceTimestampMs,
-    });
-    return events.map((event: any) => ({
-      seq: event.seq,
-      timestampMs: event.timestampMs,
-      type: event.type,
-      payload: parseJson(event.payloadJson),
-    }));
+  }): Promise<NativeRunEvent[]> {
+    const { events } = await this.nativeAdapter.getRunEvents(input);
+    return events;
   }
 
   async sendSignal(input: {
@@ -1039,70 +771,17 @@ export class SmithersRuntimeManager {
   }
 
   async getDevToolsSnapshot(input: { runId: string; frameNo?: number }) {
-    return await getDevToolsSnapshotRoute({
-      adapter: this.db as any,
-      runId: input.runId,
-      frameNo: input.frameNo,
-    });
+    return await this.nativeAdapter.getDevToolsSnapshot(input);
   }
 
   async streamDevTools(input: {
     runId: string;
-    fromSeq?: number;
+    afterSeq?: number;
     timeoutMs?: number;
     maxEvents?: number;
     pollIntervalMs?: number;
   }) {
-    const timeoutMs = Math.max(1, input.timeoutMs ?? 500);
-    const maxEvents = Math.max(1, input.maxEvents ?? 25);
-    const abortController = new AbortController();
-    let endReason: "timeout" | "max-events" | "stream-closed" = "stream-closed";
-    const timeoutId = setTimeout(() => {
-      endReason = "timeout";
-      abortController.abort();
-    }, timeoutMs);
-    const events: Array<Record<string, unknown>> = [];
-
-    try {
-      for await (const event of streamDevToolsRoute({
-        adapter: this.db as any,
-        runId: input.runId,
-        fromSeq: input.fromSeq,
-        pollIntervalMs: input.pollIntervalMs,
-        signal: abortController.signal,
-      })) {
-        events.push(event as Record<string, unknown>);
-        if (events.length >= maxEvents) {
-          endReason = "max-events";
-          break;
-        }
-      }
-    } finally {
-      clearTimeout(timeoutId);
-      abortController.abort();
-    }
-
-    const lastEvent = events[events.length - 1] as
-      | {
-          kind?: string;
-          delta?: { seq?: number };
-          snapshot?: { seq?: number };
-        }
-      | undefined;
-    const lastSeq =
-      lastEvent?.kind === "delta"
-        ? Number(lastEvent.delta?.seq ?? 0)
-        : Number(lastEvent?.snapshot?.seq ?? 0);
-
-    return {
-      runId: input.runId,
-      fromSeq: input.fromSeq ?? null,
-      timeoutMs,
-      maxEvents,
-      endReason,
-      lastSeq: Number.isFinite(lastSeq) ? lastSeq : null,
-      events,
-    };
+    return await this.nativeAdapter.streamDevTools(input);
   }
 
   async cancelRun(runId: string) {
@@ -2394,6 +2073,26 @@ export class SmithersRuntimeManager {
     }
     return `${parts.join("; ")}.`;
   }
+
+  private async buildRunSummaryFromNative(run: Record<string, unknown>): Promise<string> {
+    const workflowName =
+      typeof run.workflowName === "string" && run.workflowName.trim().length > 0
+        ? run.workflowName
+        : "Smithers workflow";
+    const status = typeof run.status === "string" ? run.status : "unknown";
+    const countsByState =
+      run.countsByState && typeof run.countsByState === "object"
+        ? (run.countsByState as Record<string, unknown>)
+        : {};
+    const countsText = Object.entries(countsByState)
+      .map(([state, count]) => `${String(count)} ${state}`)
+      .join(", ");
+    const parts = [`${workflowName} is ${describeRunStatus(status)}`];
+    if (countsText) {
+      parts.push(countsText);
+    }
+    return `${parts.join("; ")}.`;
+  }
 }
 
 function mapRunStatusToWorkflowStatus(status: RunStatus): StructuredWorkflowStatus {
@@ -2633,7 +2332,7 @@ function describeAttentionEvent(event: SmithersEvent): string {
   }
 }
 
-function describeRunStatus(status: RunStatus): string {
+function describeRunStatus(status: string): string {
   switch (status) {
     case "waiting-approval":
       return "waiting for approval";
@@ -2807,29 +2506,6 @@ function mapFrameRow(frame: {
   };
 }
 
-async function listAllRunEvents(
-  db: SmithersDb,
-  runId: string,
-): Promise<Array<Record<string, unknown>>> {
-  const events: Array<Record<string, unknown>> = [];
-  let afterSeq = -1;
-
-  while (true) {
-    const batch = await db.listEvents(runId, afterSeq, 1_000);
-    if (batch.length === 0) {
-      break;
-    }
-    events.push(...(batch as Array<Record<string, unknown>>));
-    const lastEvent = batch[batch.length - 1];
-    afterSeq = Number(lastEvent?.seq ?? afterSeq);
-    if (batch.length < 1_000) {
-      break;
-    }
-  }
-
-  return events;
-}
-
 async function listAllRunEventsByType(
   db: SmithersDb,
   runId: string,
@@ -2856,8 +2532,4 @@ async function listAllRunEventsByType(
   }
 
   return events;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

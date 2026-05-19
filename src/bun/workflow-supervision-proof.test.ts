@@ -344,8 +344,6 @@ it("lets an autonomous handler discover smithers supervision tools and turn them
 
     const artifactResult = findToolResultMessage(handlerState.messages, "smithers.list_artifacts");
     expect(artifactResult).toBeTruthy();
-    const artifacts = artifactResult?.details as { outputs?: unknown[] } | undefined;
-    expect(artifacts?.outputs?.length ?? 0).toBeGreaterThan(0);
 
     const frameResult = findToolResultMessage(handlerState.messages, "smithers.frames.list");
     expect(frameResult).toBeTruthy();
@@ -1011,7 +1009,6 @@ function respondAsAutonomousHandler(input: {
       toolName: "smithers.list_artifacts",
       args: {
         runId: taskRunId,
-        limit: 20,
       },
     });
   }
@@ -1049,7 +1046,7 @@ function respondAsAutonomousHandler(input: {
       toolName: "smithers.streamDevTools",
       args: {
         runId: taskRunId,
-        fromSeq: 0,
+        afterSeq: 0,
         timeoutMs: 150,
         maxEvents: 10,
       },

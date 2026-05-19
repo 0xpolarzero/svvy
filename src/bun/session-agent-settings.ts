@@ -14,6 +14,10 @@ import {
   type WorkflowAgentSettings,
   type WorkflowAgentToolName,
 } from "../shared/agent-settings";
+import {
+  WORKFLOW_TASK_TOOL_REGISTRY,
+  type WorkflowTaskAgentConfig,
+} from "./smithers-runtime/workflow-authoring-contract";
 
 export type SessionAgentSettingsStore = {
   getState(): AgentSettingsState;
@@ -139,14 +143,19 @@ export function renderWorkflowAgentsComponent(
     " * @svvySummary Conventional explorer, implementer, and reviewer agents for Smithers workflows.",
     " */",
     "",
-    "export type WorkflowAgentComponent = {",
-    "  id: string;",
-    "  label: string;",
+    `export type WorkflowTaskToolName = ${WORKFLOW_TASK_TOOL_REGISTRY.map((tool) => JSON.stringify(tool)).join(" | ")};`,
+    "",
+    "export interface WorkflowTaskAgentConfig {",
     "  provider: string;",
     "  model: string;",
     "  reasoningEffort: string;",
     "  systemPrompt: string;",
-    "  toolSurface: readonly string[];",
+    "  toolSurface: readonly WorkflowTaskToolName[];",
+    "}",
+    "",
+    "export type WorkflowAgentComponent = WorkflowTaskAgentConfig & {",
+    "  id: string;",
+    "  label: string;",
     "};",
     "",
   ];
@@ -173,36 +182,28 @@ function normalizeWorkflowAgentSettings(
   key: WorkflowAgentKey,
   input: WorkflowAgentSettings,
 ): WorkflowAgentSettings {
-  return {
+  return assertWorkflowAgentSettingsAssignableToTaskConfig({
     id: key,
     label: requireNonEmpty(input.label, "label"),
     ...normalizeSessionAgentSettings(input),
     toolSurface: normalizeWorkflowAgentToolSurface(input.toolSurface),
-  };
+  });
 }
 
 function normalizeWorkflowAgentToolSurface(
   input: readonly WorkflowAgentToolName[],
 ): readonly WorkflowAgentToolName[] {
-  const allowed = new Set<WorkflowAgentToolName>([
-    "read",
-    "grep",
-    "find",
-    "ls",
-    "edit",
-    "write",
-    "bash",
-    "artifact.write_text",
-    "artifact.write_json",
-    "artifact.attach_file",
-    "web.search",
-    "web.fetch",
-    "execute_typescript",
-  ]);
+  const allowed = new Set<WorkflowAgentToolName>(WORKFLOW_TASK_TOOL_REGISTRY);
   const normalized = input.filter((tool): tool is WorkflowAgentToolName => allowed.has(tool));
   return normalized.length > 0
     ? normalized
     : DEFAULT_AGENT_SETTINGS_STATE.workflowAgents.implementer.toolSurface;
+}
+
+function assertWorkflowAgentSettingsAssignableToTaskConfig<T extends WorkflowTaskAgentConfig>(
+  settings: T,
+): T {
+  return settings;
 }
 
 function requireNonEmpty(value: string, label: string): string {
