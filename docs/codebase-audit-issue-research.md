@@ -52,7 +52,7 @@ For each issue, record:
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Fixed |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Fixed |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Fixed |
-| AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Specified |
+| AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Partially implemented |
 | AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Researched |
 | AUD-026 | P1 | Workflow inspector live mode polls and rebuilds too much state | `34a6`, `2a4e`, `3eed`, `1291` | Researched |
 | AUD-027 | P1 | Structured-state selectors materialize large snapshots with insufficient indexes/read models | `2a4e`, `34a6`, `209c`, `3eed` | Researched |
