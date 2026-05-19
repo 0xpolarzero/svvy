@@ -116,6 +116,21 @@ describe("default workspace renderer shell", () => {
     expect(panelHostSource).toContain("onRetryFailure=");
   });
 
+  it("does not keep focus-global artifact or inspector surfaces in the workspace shell", async () => {
+    const workspaceSource = await readFile(
+      new URL("./ChatWorkspace.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(workspaceSource).not.toContain("showArtifactsPanel");
+    expect(workspaceSource).not.toContain("showCommandInspector");
+    expect(workspaceSource).not.toContain("showThreadInspector");
+    expect(workspaceSource).not.toContain("showWorkflowTaskAttemptInspector");
+    expect(workspaceSource).not.toContain("setPaneInspectorSelection");
+    expect(workspaceSource).not.toContain("<ArtifactsPanel");
+    expect(workspaceSource).toContain("runtime.openSurface");
+  });
+
   it("mutes layout slot controls for the default workspace", async () => {
     const runtimeSource = await readFile(new URL("./chat-runtime.ts", import.meta.url), "utf8");
     const workspaceSource = await readFile(

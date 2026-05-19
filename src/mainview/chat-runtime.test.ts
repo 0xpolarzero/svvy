@@ -1742,7 +1742,6 @@ async function createRuntime(
                 panelId: "primary",
                 binding: createOrchestratorTarget(initialSession.id),
                 localState: {
-                  inspectorSelection: null,
                   scroll: null,
                   timelineDensity: "comfortable",
                 },
@@ -2819,7 +2818,7 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
-  it("restores pane bindings, focused pane, and inspector selection after restart", async () => {
+  it("restores pane bindings and focused pane after restart", async () => {
     const storage = createMemoryStorage();
     const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
     const firstHarness = createFakeRpc({
@@ -2837,10 +2836,6 @@ describe("createChatRuntime", () => {
     });
     const firstRuntime = await createRuntime(firstHarness, storage);
     await firstRuntime.openSurface(threadTarget, "secondary");
-    firstRuntime.setPaneInspectorSelection("secondary", {
-      kind: "thread",
-      threadId: "thread-123",
-    });
     await Bun.sleep(0);
     firstRuntime.dispose();
 
@@ -2850,9 +2845,6 @@ describe("createChatRuntime", () => {
       expect.objectContaining({
         panelId: "secondary",
         binding: threadTarget,
-        localState: expect.objectContaining({
-          inspectorSelection: { kind: "thread", threadId: "thread-123" },
-        }),
       }),
     );
 
@@ -2874,10 +2866,6 @@ describe("createChatRuntime", () => {
 
     expect(secondRuntime.paneLayout.focusedPanelId).toBe("secondary");
     expect(secondRuntime.getPane("secondary")?.target).toEqual(threadTarget);
-    expect(secondRuntime.getPane("secondary")?.inspectorSelection).toEqual({
-      kind: "thread",
-      threadId: "thread-123",
-    });
 
     secondRuntime.dispose();
   });
@@ -2914,7 +2902,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: orchestratorTarget,
             localState: {
-              inspectorSelection: null,
               scroll: { transcriptAnchorId: "assistant-1", offsetPx: 12 },
               timelineDensity: "comfortable",
             },
@@ -2923,7 +2910,6 @@ describe("createChatRuntime", () => {
             panelId: "thread-left",
             binding: threadTarget,
             localState: {
-              inspectorSelection: { kind: "thread", threadId: "thread-123" },
               scroll: null,
               timelineDensity: "compact",
             },
@@ -2932,7 +2918,6 @@ describe("createChatRuntime", () => {
             panelId: "thread-right",
             binding: threadTarget,
             localState: {
-              inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -2941,7 +2926,6 @@ describe("createChatRuntime", () => {
             panelId: "inspector",
             binding: workflowInspectorTarget,
             localState: {
-              inspectorSelection: { kind: "workflow-run", workflowRunId: "workflow-1" },
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -2959,14 +2943,6 @@ describe("createChatRuntime", () => {
     expect(runtime.getPane("thread-left")?.target).toEqual(threadTarget);
     expect(runtime.getPane("thread-right")?.target).toEqual(threadTarget);
     expect(runtime.getPane("inspector")?.target).toEqual(workflowInspectorTarget);
-    expect(runtime.getPane("thread-left")?.inspectorSelection).toEqual({
-      kind: "thread",
-      threadId: "thread-123",
-    });
-    expect(runtime.getPane("thread-right")?.inspectorSelection).toEqual({
-      kind: "workflow-run",
-      workflowRunId: "workflow-1",
-    });
 
     const threadController = runtime.getSurfaceController(threadTarget.surfacePiSessionId);
     expect(threadController?.ownerPaneIds.toSorted()).toEqual(["thread-left", "thread-right"]);
@@ -3006,7 +2982,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: threadTarget,
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3048,7 +3023,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: null,
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3057,7 +3031,6 @@ describe("createChatRuntime", () => {
             panelId: "secondary",
             binding: createOrchestratorTarget("session-1"),
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3151,7 +3124,6 @@ describe("createChatRuntime", () => {
               panelId: "secondary",
               binding: createOrchestratorTarget("session-1"),
               localState: {
-                inspectorSelection: null,
                 scroll: null,
                 timelineDensity: "comfortable",
               },
@@ -3290,7 +3262,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: { surface: "app-logs" },
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3335,7 +3306,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: { surface: "open-workspace" },
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3378,7 +3348,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: { surface: "open-workspace" },
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },
@@ -3415,7 +3384,6 @@ describe("createChatRuntime", () => {
             panelId: "primary",
             binding: createOrchestratorTarget("missing-session"),
             localState: {
-              inspectorSelection: null,
               scroll: null,
               timelineDensity: "comfortable",
             },

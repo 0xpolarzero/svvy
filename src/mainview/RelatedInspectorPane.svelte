@@ -90,8 +90,10 @@
     return getWorkspaceCommandStatusPresentation(status).label;
   }
 
-  function artifactPreviewMode(artifact: WorkspaceArtifactPreview): "metadata" | "text" {
+  function artifactPreviewMode(artifact: WorkspaceArtifactPreview): "html" | "metadata" | "text" {
     if (artifact.missingFile || artifact.kind === "file") return "metadata";
+    const filename = (artifact.path ?? artifact.name).toLowerCase();
+    if (filename.endsWith(".html") || filename.endsWith(".htm")) return "html";
     return "text";
   }
 
@@ -221,6 +223,16 @@
             </div>
           {/each}
         </div>
+      </section>
+    {:else if artifactPreviewMode(content) === "html"}
+      <section class="inspector-section">
+        <h4>Preview</h4>
+        <iframe
+          class="artifact-html-preview"
+          title={`HTML preview for ${content.name}`}
+          sandbox="allow-scripts"
+          srcdoc={content.content}
+        ></iframe>
       </section>
     {:else if artifactPreviewMode(content) === "text"}
       <section class="inspector-section">
@@ -408,6 +420,14 @@
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     line-height: 1.55;
+  }
+
+  .artifact-html-preview {
+    width: 100%;
+    min-height: 24rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
+    border-radius: var(--ui-radius-sm);
+    background: var(--ui-surface);
   }
 
   .diff-line {

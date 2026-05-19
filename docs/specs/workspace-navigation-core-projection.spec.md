@@ -18,7 +18,7 @@ Section 8 exists to make the workspace shell reflect durable product state clear
 - sessions can be pinned or archived
 - handler threads and workflow runs can show their linked artifacts directly
 - Project CI status can be seen without opening a dedicated deep inspector first
-- Dockview panel bindings and inspector selections can survive app restart
+- Dockview panel bindings and static inspector pane targets can survive app restart
 
 The renderer must still join durable workspace read models, live surface state, and Dockview panel state locally. It must not infer these projections from transcript text.
 
@@ -262,11 +262,11 @@ Workflow-run artifact groups should prefer this order:
 
 ### Preview Behavior
 
-Clicking an artifact should open the existing artifact panel or inspector.
+Clicking an artifact should open an explicit Dockview artifact inspector pane keyed by the artifact id and any required owning workspace/session context. It must not route through a focus-global artifact drawer or infer the artifact from the currently focused session.
 
 Small text, JSON, log, image, and HTML artifacts may show inline previews or thumbnails, but Section 8 should not build a new full artifact viewer.
 
-Visible HTML previews must render inside sandboxed iframes. Static HTML previews use the sandbox without script execution. Interactive artifact previews may enable scripts with `allow-scripts`, but the sandbox must not grant same-origin access, top navigation, popups, forms, or other parent/app escape permissions by default.
+Visible HTML previews must render inside sandboxed iframes. Script-capable previews may enable scripts with `allow-scripts`, but the sandbox must not grant same-origin access, top navigation, popups, forms, or other parent/app escape permissions by default.
 
 Missing artifact files should still render a stale artifact row using retained metadata. The row should show that the file is missing rather than disappearing silently.
 
@@ -331,7 +331,7 @@ It must not infer Project CI status from arbitrary command names, logs, transcri
 
 The product should restore as much app and workspace UI state as is useful and stable.
 
-Restart restore is a product contract, not a best-effort UI convenience. On startup the app shell restores open workspace chrome tabs first. Each workspace tab then rebuilds restorable Dockview panel bindings from that tab's durable view-local UI state, opens referenced live surfaces through the shared Bun workspace runtime for the tab's canonical cwd, and lets that runtime bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Duplicate same-cwd tabs restore separate layouts, opened panels, focus, scroll, and inspector selections while sharing the same sessions, pi surfaces, queues, threads, workflow runs, app logs, and durable workspace read models. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
+Restart restore is a product contract, not a best-effort UI convenience. On startup the app shell restores open workspace chrome tabs first. Each workspace tab then rebuilds restorable Dockview panel bindings from that tab's durable view-local UI state, opens referenced live surfaces and static inspector pane targets through the shared Bun workspace runtime for the tab's canonical cwd, and lets that runtime bootstrap Smithers supervision for tracked workflow runs owned by each restored workspace session. Duplicate same-cwd tabs restore separate layouts, opened panels, focus, scroll, and explicit static pane targets while sharing the same sessions, pi surfaces, queues, threads, workflow runs, app logs, and durable workspace read models. Pending handler attention remains Smithers-owned and is delivered through the same durable attention cursor used during live execution.
 
 Workspace-scoped restore, read-model, Context, Workflows, and settings requests must route by explicit `workspaceId`, not by whichever workspace tab is active after restart. A restored background workspace may continue workflow supervision, prompt freshness checks, queue draining, or workflow-library validation while another workspace is focused.
 
@@ -372,8 +372,7 @@ On restart:
 - restore the focused Dockview panel if it still exists
 - otherwise focus the first visible panel
 - restore panel-local scroll if its anchor still exists
-- restore inspector selection if the selected target still exists
-- otherwise clear that panel's inspector selection
+- restore explicit static inspector pane targets when the target still exists
 - show a non-destructive unavailable-surface state if a panel binding points at a deleted or missing surface
 - never delete durable state just because a restore target is missing
 

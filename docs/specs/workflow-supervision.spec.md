@@ -523,7 +523,7 @@ Smithers-only execution facts include:
 - runnable entry and product-lane binding, such as Project CI entry identity
 - attention cursors that dedupe handler wake-ups
 - product statuses such as `running-workflow`, `waiting`, `troubleshooting`, and compact sidebar states
-- UI read-model rows, panel targets, unread or attention badges, inspector selection, and related-link projections
+- UI read-model rows, explicit panel targets, unread or attention badges, and related-link projections
 - Project CI `ci_run` and `ci_check_result` rows derived from a declared CI entry's durable Smithers terminal result
 - app logs and redacted product diagnostics
 

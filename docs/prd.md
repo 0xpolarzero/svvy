@@ -828,7 +828,7 @@ Agents should create artifacts only for durable byproducts, evidence, previews, 
 
 Artifact projection should show durable work outputs linked to threads, workflow runs, commands, and CI checks before relying on transcript reconstruction.
 
-Visible HTML artifact previews must render inside sandboxed iframes. Non-interactive HTML previews use the sandbox without script execution. Interactive artifact previews may add `allow-scripts`, but the default sandbox policy does not include `allow-same-origin`, top navigation, popups, form submission, or other parent/app escape permissions.
+Visible HTML artifact previews must render inside sandboxed iframes. Script-capable previews may grant `allow-scripts`, but the sandbox policy must not include `allow-same-origin`, top navigation, popups, form submission, or other parent/app escape permissions.
 
 Artifacts are thread- and command-addressable first.
 

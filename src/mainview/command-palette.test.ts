@@ -110,7 +110,6 @@ function createRuntime(): CommandRuntime & {
     getPane: (paneId: string) => ({
       id: paneId,
       target: runtime.paneTarget,
-      inspectorSelection: null,
       scroll: null,
       timelineDensity: "comfortable" as const,
     }),

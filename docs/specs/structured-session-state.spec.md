@@ -877,7 +877,7 @@ Every submitted `execute_typescript` snippet must land in this table as a file-b
 
 ### Artifact Preview Isolation
 
-Artifact records may be projected as text, JSON, log, image, or HTML previews, but preview rendering is not a trust boundary for artifact content. Visible HTML previews must use sandboxed iframes. Script execution is granted only for interactive artifact previews that require it, and that script-capable sandbox still omits `allow-same-origin`, top navigation, popups, and form submission by default. Static HTML previews use the iframe sandbox without `allow-scripts`.
+Artifact records may be projected as text, JSON, log, image, or HTML previews, but preview rendering is not a trust boundary for artifact content. Visible HTML previews must use sandboxed iframes. Script-capable previews may grant `allow-scripts`, but that sandbox still omits `allow-same-origin`, top navigation, popups, and form submission by default.
 
 ## Event Model
 

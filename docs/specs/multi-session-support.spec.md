@@ -94,7 +94,7 @@ It owns:
 - which surface each panel is showing
 - focused panel
 - Dockview layout JSON and panel occupancy
-- panel-local view state such as scroll position or inspector selection
+- panel-local view state such as scroll position
 
 Panel state must not own transcript state, prompt locks, or model settings.
 

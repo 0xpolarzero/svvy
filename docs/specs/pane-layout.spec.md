@@ -62,7 +62,7 @@ Dockview owns:
 - surface ids and bindings
 - live runtime registry keyed by `surfacePiSessionId`
 - durable session, thread, workflow-run, task-attempt, command, episode, artifact, wait, Project CI, and lifecycle records
-- panel-local metadata such as scroll, inspector selection, density, display preferences, and unavailable-target state
+- panel-local metadata such as scroll, density, display preferences, and unavailable-target state
 - command palette placement semantics
 - sidebar open-location indicators
 - renderer subscriptions to live surface controllers
@@ -245,18 +245,11 @@ type PaneLocalState = {
     transcriptAnchorId: string | null;
     offsetPx: number;
   };
-  inspectorSelection:
-    | null
-    | { kind: "thread"; threadId: string }
-    | { kind: "workflow-run"; workflowRunId: string }
-    | { kind: "workflow-node"; workflowRunId: string; nodeId: string }
-    | { kind: "artifact"; artifactId: string }
-    | { kind: "ci-run"; ciRunId: string };
   timelineDensity: "compact" | "comfortable";
 };
 ```
 
-Panel-local state is durable workspace layout state inside one `(workspaceId, layoutId)` slot. Scroll, inspector selection, and display preferences should persist per panel and restore when their referenced targets still exist. Duplicate same-cwd workspace tabs share panel-local state when they select the same layout slot because they are viewing the same durable layout document; selecting different layout ids gives them different workspace-owned slot state.
+Panel-local state is durable workspace layout state inside one `(workspaceId, layoutId)` slot. Scroll and display preferences should persist per panel. Artifact, command, workflow, workflow-task-attempt, Project CI, and other static inspector surfaces restore from explicit pane targets rather than from a panel-local selection or focused/current session. Duplicate same-cwd workspace tabs share panel-local state when they select the same layout slot because they are viewing the same durable layout document; selecting different layout ids gives them different workspace-owned slot state.
 
 ## State Ownership
 
@@ -281,7 +274,6 @@ svvy panel metadata owns:
 - panel ids as product-visible visual pane ids
 - panel surface bindings
 - panel-local scroll
-- panel-local inspector selection
 - panel-local display preferences such as timeline density
 - panel chrome labels and product kind
 - unavailable-surface restore state
@@ -680,7 +672,7 @@ When that happens:
 - transcript updates, turn status, tool activity, model state, and cancellation state come from the shared live runtime
 - sending a message from either panel targets the same surface
 - cancelling from either panel cancels the shared active turn for that surface
-- panel-local scroll, inspector selection, and density remain independent
+- panel-local scroll and density remain independent
 - focus changes only update `focusedPanelId`; they do not create, destroy, or retarget the live runtime
 
 Duplicating a panel is a view operation, not a runtime fork.
@@ -697,7 +689,6 @@ On restart, restore:
 - panel occupancy and surface bindings
 - focused panel when the panel still exists
 - panel-local scroll when its anchor still exists
-- panel-local inspector selection when the selected target still exists
 - panel-local display preferences
 - unavailable-surface state for bindings whose durable target no longer exists
 

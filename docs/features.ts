@@ -42,11 +42,11 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     sourceSpecs: ["docs/prd.md", "docs/specs/ambient-agent-resources-baseline.spec.md"],
   },
   {
-    id: "artifacts-panel",
+    id: "artifacts-projection",
     name: "Artifacts Projection",
     status: "shipped",
     summary:
-      "Presents generated artifacts in a docked preview panel, with visible HTML previews isolated in sandboxed iframes and script execution granted only to interactive artifact previews.",
+      "Presents generated artifacts as explicit Dockview artifact inspector panes keyed by durable artifact identity, with visible HTML previews isolated in sandboxed iframes that grant script execution only without same-origin, navigation, popup, form, or parent/app escape permissions.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/structured-session-state.spec.md",
@@ -185,7 +185,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workspace Navigation And Core Projection",
     status: "shipped",
     summary:
-      "Keeps each workspace tab navigable with pinned, regular Sessions, and Archived session groups in a shared sidebar band between creation/search actions and reference panes; each group uses the same collapsible accordion header style, keeps its own independently scrollable and resizable space, persists collapsed state and size across restart, and keeps Archived collapsed by default. It also provides durable session-level unread dots that appear when assistant turns finish outside the focused pane surface and clear on session-pane focus or explicit mark-read action, layered sidebar rows where orchestrator session state, handler-thread state, and workflow-run state stay local to their owning rows, session row context menus for mark read or unread, pin, rename, archive, and confirmed delete actions, compact running indicators, tone-aware open-pane highlighting, context-budget rails for open orchestrator and handler rows, a sidebar footer that shows the current git branch with a branch icon and opens a local-branch switcher when the workspace is a git repo, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable Dockview panel bindings, focus, panel-local scroll, display preferences, session-group layout, and inspector selections while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
+      "Keeps each workspace tab navigable with pinned, regular Sessions, and Archived session groups in a shared sidebar band between creation/search actions and reference panes; each group uses the same collapsible accordion header style, keeps its own independently scrollable and resizable space, persists collapsed state and size across restart, and keeps Archived collapsed by default. It also provides durable session-level unread dots that appear when assistant turns finish outside the focused pane surface and clear on session-pane focus or explicit mark-read action, layered sidebar rows where orchestrator session state, handler-thread state, and workflow-run state stay local to their owning rows, session row context menus for mark read or unread, pin, rename, archive, and confirmed delete actions, compact running indicators, tone-aware open-pane highlighting, context-budget rails for open orchestrator and handler rows, a sidebar footer that shows the current git branch with a branch icon and opens a local-branch switcher when the workspace is a git repo, compact thread and workflow-run artifact blocks backed by durable artifact records, compact latest Project CI projection near the focused surface or relevant handler thread, and restart restoration for stable Dockview panel bindings, static inspector pane targets, focus, panel-local scroll, display preferences, and session-group layout while deliberately excluding transient UI, composer drafts, transcript selections, and stale live stream state.",
     sourceSpecs: [
       "docs/prd.md",
       "docs/specs/pane-layout.spec.md",

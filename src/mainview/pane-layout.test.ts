@@ -54,7 +54,6 @@ describe("pane layout normalization", () => {
           panelId: "empty",
           binding: null,
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },
@@ -63,7 +62,6 @@ describe("pane layout normalization", () => {
           panelId: "logs",
           binding: { surface: "app-logs" },
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },
@@ -92,7 +90,6 @@ describe("pane layout normalization", () => {
           panelId: "logs",
           binding: { surface: "app-logs" },
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },
@@ -114,7 +111,6 @@ describe("pane layout normalization", () => {
           panelId: "logs",
           binding: { surface: "app-logs" },
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },
@@ -147,7 +143,6 @@ describe("pane layout normalization", () => {
             surfacePiSessionId: "session-1",
           },
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },
@@ -156,7 +151,6 @@ describe("pane layout normalization", () => {
           panelId: "logs",
           binding: { surface: "app-logs" },
           localState: {
-            inspectorSelection: null,
             scroll: null,
             timelineDensity: "comfortable",
           },

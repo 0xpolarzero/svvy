@@ -38,9 +38,12 @@ function readStaticAttribute(attribute: SvelteAstNode | undefined): string | nul
   return null;
 }
 
-describe("ArtifactsPanel", () => {
-  test("sandboxes the visible HTML artifact preview iframe with only scripts allowed", async () => {
-    const source = await readFile(new URL("./ArtifactsPanel.svelte", import.meta.url), "utf8");
+describe("RelatedInspectorPane", () => {
+  test("sandboxes visible HTML artifact previews with only scripts allowed", async () => {
+    const source = await readFile(
+      new URL("./RelatedInspectorPane.svelte", import.meta.url),
+      "utf8",
+    );
     const ast = parse(source, { modern: true }) as unknown as SvelteAstNode;
     const iframes: SvelteAstNode[] = [];
 
@@ -54,7 +57,7 @@ describe("ArtifactsPanel", () => {
       iframe.attributes?.some(
         (attribute) =>
           attribute.name === "class" &&
-          readStaticAttribute(attribute)?.split(/\s+/).includes("html-preview"),
+          readStaticAttribute(attribute)?.split(/\s+/).includes("artifact-html-preview"),
       ),
     );
     const sandbox = readStaticAttribute(

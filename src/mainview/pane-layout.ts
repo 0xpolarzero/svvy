@@ -1,6 +1,5 @@
 import type { SerializedDockview } from "dockview-core";
 import type { WorkspacePaneSurfaceTarget } from "../shared/workspace-contract";
-import type { WorkspaceInspectorSelection } from "./chat-storage";
 
 export const PRIMARY_CHAT_PANE_ID = "primary";
 export const MIN_PANE_HEIGHT_PX = 260;
@@ -14,7 +13,6 @@ export interface PaneLocalState {
     transcriptAnchorId: string | null;
     offsetPx: number;
   };
-  inspectorSelection: WorkspaceInspectorSelection | null;
   timelineDensity: "compact" | "comfortable";
 }
 
@@ -120,7 +118,6 @@ export function getSidebarSessionOpenTarget(event?: Pick<MouseEvent, "metaKey">)
 export function createDefaultPaneLocalState(): PaneLocalState {
   return {
     scroll: null,
-    inspectorSelection: null,
     timelineDensity: "comfortable",
   };
 }
@@ -226,16 +223,16 @@ export function normalizePaneLayout(
       return [];
     }
     const binding = { ...next.binding };
+    const localState = {
+      ...createDefaultPaneLocalState(),
+      scroll: next.localState?.scroll ?? null,
+      timelineDensity: next.localState?.timelineDensity === "compact" ? "compact" : "comfortable",
+    } satisfies PaneLocalState;
     return [
       {
         panelId: String(next.panelId ?? createPanelId()),
         binding,
-        localState: {
-          ...createDefaultPaneLocalState(),
-          ...next.localState,
-          inspectorSelection: next.localState?.inspectorSelection ?? null,
-          scroll: next.localState?.scroll ?? null,
-        },
+        localState,
         chrome: {
           ...createPanelChrome(binding),
           ...next.chrome,
@@ -297,27 +294,6 @@ export function focusPane(
     return layout;
   }
   return touch({ ...layout, focusedPanelId: panelId });
-}
-
-export function setPaneInspectorSelection(
-  layout: WorkspaceDockviewLayoutState,
-  panelId: string,
-  selection: WorkspaceInspectorSelection | null,
-): WorkspaceDockviewLayoutState {
-  return touch({
-    ...layout,
-    panels: layout.panels.map((panel) =>
-      panel.panelId === panelId
-        ? {
-            ...panel,
-            localState: {
-              ...panel.localState,
-              inspectorSelection: selection ? structuredClone(selection) : null,
-            },
-          }
-        : panel,
-    ),
-  });
 }
 
 export function setPaneScroll(

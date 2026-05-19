@@ -51,7 +51,7 @@ For each issue, record:
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Fixed |
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Fixed |
-| AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Researched |
+| AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Fixed |
 | AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Researched |
 | AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Researched |
 | AUD-026 | P1 | Workflow inspector live mode polls and rebuilds too much state | `34a6`, `2a4e`, `3eed`, `1291` | Researched |
@@ -154,7 +154,7 @@ Smithers execution facts stay in Smithers only. That includes:
 - Smithers run id and exact Smithers node/iteration/attempt identifiers for UI projection rows
 - runnable-entry and product-lane binding, including Project CI entry identity
 - handler-attention cursors and delivery state
-- product statuses, troubleshooting summaries, sidebar badges, panel targets, related links, and inspector selection
+- product statuses, troubleshooting summaries, sidebar badges, explicit panel targets, and related links
 - command/artifact projections created by svvy direct tools
 - Project CI `ci_run` and `ci_check_result` rows derived from declared CI entries after reading durable Smithers terminal result output
 
@@ -389,27 +389,27 @@ Relevant code:
 
 ### AUD-006 - Visible HTML artifact previews are sandboxed
 
-**Disposition:** Fixed. Visible HTML artifact previews use sandboxed iframes. Script execution is allowed only for interactive previews, and the default sandbox does not grant same-origin access, top navigation, popups, or form submission.
+**Disposition:** Fixed. Visible HTML artifact previews use sandboxed iframes. Script-capable previews grant only `allow-scripts`; the sandbox does not grant same-origin access, top navigation, popups, or form submission.
 
 **Impact:** High renderer security issue when absent; resolved by the sandboxed preview contract.
 
-**Resolved contract:** HTML artifact content is untrusted renderer input. Visible HTML previews must render inside a sandboxed iframe. Static HTML previews use the sandbox without script execution. Interactive artifact previews may add `allow-scripts`, but the preview sandbox must not include `allow-same-origin`, `allow-top-navigation`, `allow-popups`, `allow-forms`, or equivalent escape permissions by default.
+**Resolved contract:** HTML artifact content is untrusted renderer input. Visible HTML previews must render inside a sandboxed iframe. Script-capable previews may use `allow-scripts`, but the preview sandbox must not include `allow-same-origin`, `allow-top-navigation`, `allow-popups`, `allow-forms`, or equivalent escape permissions by default.
 
 **Original issue:** The artifact contract said HTML artifacts run in a sandboxed preview. The hidden iframe used for log capture had `sandbox="allow-scripts"`, but the visible artifact preview iframe used `srcdoc` without a sandbox attribute.
 
 Relevant code:
 
 - `src/mainview/artifacts.ts`: builds artifact preview documents and uses a hidden sandboxed iframe for log capture.
-- `src/mainview/ArtifactsPanel.svelte`: visible HTML preview iframe uses `srcdoc` and a sandbox attribute.
+- `src/mainview/RelatedInspectorPane.svelte`: explicit artifact inspector panes render visible HTML previews through `srcdoc` and a sandbox attribute.
 - `e2e/transcript-artifacts.test.ts`: covers HTML artifact preview/log behavior; sandbox-attribute coverage belongs with artifact preview regression tests.
 
 **Why this matters:** An unsandboxed `srcdoc` iframe normally shares origin with the parent document. Malicious generated HTML can access parent DOM, inspect app state, or modify UI unless browser/electrobun embedding behavior prevents it. The product contract should not depend on that accidental behavior.
 
-**Fixed behavior:** The visible preview iframe is sandboxed. Script execution is available only to interactive artifact previews, and the default policy does not include same-origin, top-navigation, popup, or form permissions.
+**Fixed behavior:** The visible preview iframe is sandboxed. Script-capable previews grant only script execution and do not include same-origin, top-navigation, popup, or form permissions.
 
 **Verification:**
 
-- Component/e2e test asserting the visible iframe has the expected sandbox attribute.
+- Component/e2e test asserting the visible iframe has the expected sandbox attribute, currently covered by `src/mainview/related-inspector-pane.test.ts`.
 - Malicious HTML fixture that tries to read or mutate `parent.document`; parent state must remain unchanged.
 - Regression test that ordinary HTML artifact scripts still run inside the preview.
 
@@ -419,7 +419,7 @@ Relevant code:
 
 ### AUD-007 - Duplicate same-cwd workspace tabs share runtime and durable state
 
-**Disposition:** Not accepted as a bug. Duplicate tabs for the same cwd are intentionally multiple visual tabs over the same workspace runtime and durable workspace state. They should share sessions, pi session files, structured state, queues, thread state, workflow state, and other workspace-owned runtime data. They should not share visual/layout state such as Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and other per-tab view state.
+**Disposition:** Not accepted as a bug. Duplicate tabs for the same cwd are intentionally multiple visual tabs over the same workspace runtime and durable workspace state. They should share sessions, pi session files, structured state, queues, thread state, workflow state, and other workspace-owned runtime data. They should not share visual/layout state such as Dockview layout, opened panels, scroll positions, focused pane, and other per-tab view state.
 
 **Impact:** Documentation/contract clarification only. The issue is not that same-cwd tabs share durable state; the product rule is that only visual state is isolated per tab.
 
@@ -427,7 +427,7 @@ Relevant code:
 
 Relevant product surfaces:
 
-- Workspace shell: duplicate same-cwd tabs are separate visual entries and restore separate tab order, active layout slot, Dockview layout, opened panels, panel-local scroll, focus, and inspector selections.
+- Workspace shell: duplicate same-cwd tabs are separate visual entries and restore separate tab order, active layout slot, Dockview layout, opened panels, panel-local scroll, focus, and explicit static pane targets.
 - Workspace runtime: duplicate same-cwd tabs share the runtime identity, session catalog, live surface registry, app logs, pi sessions, structured state, queues, threads, workflow runs, and workspace read models.
 - Workspace-scoped RPC: user work routes through the shared runtime `workspaceId`; view-local updates also carry a tab or view id.
 
@@ -436,7 +436,7 @@ Relevant product surfaces:
 **Verification to preserve the intended contract:**
 
 - Open the same cwd twice and assert both tabs share the same backend workspace runtime, durable sessions, structured workspace state, live surface registry, thread/workflow state, prompt queues, and app logs.
-- Assert visual state is tab-specific: Dockview layout, opened panels, scroll positions, focused pane, inspector selection, and similar view-local state do not leak between duplicate tabs.
+- Assert visual state is tab-specific: Dockview layout, opened panels, scroll positions, focused pane, and similar view-local state do not leak between duplicate tabs.
 - Keep or strengthen tests that codify duplicate-tab durable sharing.
 
 **Documentation impact:** Update PRD/features/spec wording where needed so "duplicate same-cwd workspace tabs" means shared workspace runtime/state with isolated visual layout state.
@@ -1015,9 +1015,9 @@ Relevant code:
 
 Relevant code:
 
-- `src/renderer/components/ChatWorkspace.svelte`: maintains focus-global artifact state and a global `ArtifactsPanel`.
-- `src/renderer/components/DockviewPanelHost.svelte`: supports static artifact/inspector targets.
-- `src/bun/workspace-contract.ts`: defines `WorkspacePaneSurfaceTarget`-style static targets.
+- `src/mainview/ChatWorkspace.svelte`: maintained focus-global artifact state and global modal inspectors.
+- `src/mainview/DockviewPanelHost.svelte`: supports static artifact/inspector targets.
+- `src/shared/workspace-contract.ts`: defines `WorkspacePaneSurfaceTarget`-style static targets.
 
 **Why this matters:** Multiple panes cannot independently inspect different artifacts or related records if the preview model is partly global. Opening an artifact from one pane can affect another pane or the global drawer. It also makes deep links and restored static panes less reliable.
 
@@ -1028,15 +1028,18 @@ Relevant code:
 3. Store local preview state in pane-local state, not global workspace focus state.
 4. Keep any global drawer only as a deliberate app-global shortcut with clear source routing.
 
-**Verification required:**
+**Disposition:** Fixed. The workspace shell no longer keeps a focus-global artifact drawer or modal command/thread/task-attempt inspectors for Dockview-owned routes. Artifact, command, workflow, workflow-task-attempt, Project CI, and handler-thread openings now route through explicit `runtime.openSurface` targets owned by the pane layout. The old pane-local `inspectorSelection` bridge was removed; static inspector panes restore from their explicit target records instead of global focus.
 
-- Open two panes, inspect two different artifacts, and assert each pane keeps its own artifact.
-- Repeat for command/thread/task/workflow/CI inspectors.
-- Restored layout reopens static panes without relying on focus.
+**Verified by:**
 
-**Documentation impact:** Update workspace navigation spec if the static inspector target model is made the only supported path.
+- `bun run typecheck`.
+- `bun test src/mainview/default-workspace-shell.test.ts`.
+- `bun test src/mainview/default-workspace-shell.test.ts src/mainview/artifacts.test.ts src/mainview/related-inspector-pane.test.ts`.
+- `bun run check`.
 
-**Confidence:** High that both models coexist. Exact reachability of every legacy path needs route-by-route cleanup.
+**Documentation impact:** The feature inventory, pane-layout spec, workspace-navigation projection spec, and PRD now describe explicit static inspector pane targets and sandboxed artifact inspector previews.
+
+**Confidence:** High. The global artifact/modal inspector paths and pane-local inspector-selection bridge are removed from the workspace shell and pane-layout runtime.
 
 ### AUD-024 - Restart recovery lacks one durable scheduler for active prompts, initial starts, queues, and workflow monitors
 

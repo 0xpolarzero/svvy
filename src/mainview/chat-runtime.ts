@@ -49,11 +49,7 @@ import type {
   PromptLibraryState,
   UpdatePromptLibraryRequest,
 } from "../shared/prompt-library";
-import {
-  createChatStorage,
-  type ChatStorage,
-  type WorkspaceInspectorSelection,
-} from "./chat-storage";
+import { createChatStorage, type ChatStorage } from "./chat-storage";
 import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-settings";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
 import type { AppMenuAction } from "../shared/shortcut-registry";
@@ -68,7 +64,6 @@ import {
   normalizePaneLayout,
   PRIMARY_CHAT_PANE_ID,
   setDockviewSerializedLayout,
-  setPaneInspectorSelection as setLayoutPaneInspectorSelection,
   setPaneScroll as setLayoutPaneScroll,
   splitPane,
   WORKSPACE_LAYOUT_SLOT_IDS,
@@ -166,7 +161,6 @@ export type ComposerPromptSubmission = {
 export interface ChatPaneState {
   id: string;
   target: WorkspacePaneSurfaceTarget | null;
-  inspectorSelection: WorkspaceInspectorSelection | null;
   scroll: ChatPaneLayoutState["panels"][number]["localState"]["scroll"];
   timelineDensity: "compact" | "comfortable";
 }
@@ -404,10 +398,6 @@ export interface ChatRuntime {
     section: "pinned" | "active" | "archived",
     state: { collapsed?: boolean; sizePx?: number },
   ) => Promise<void>;
-  setPaneInspectorSelection: (
-    panelId: string,
-    selection: WorkspaceInspectorSelection | null,
-  ) => void;
   setPaneScroll: (
     panelId: string,
     scroll: ChatPaneLayoutState["panels"][number]["localState"]["scroll"],
@@ -1771,7 +1761,6 @@ export async function createChatRuntime(
       return {
         id: pane.panelId,
         target: pane.binding ? { ...pane.binding } : null,
-        inspectorSelection: pane.localState.inspectorSelection,
         scroll: pane.localState.scroll,
         timelineDensity: pane.localState.timelineDensity,
       };
@@ -2119,11 +2108,6 @@ export async function createChatRuntime(
     setSessionNavigationSectionState: async (section, state) => {
       await rpcClient.request.setSessionNavigationSectionState(scoped({ section, ...state }));
       await refreshSessions();
-    },
-    setPaneInspectorSelection: (panelId, selection) => {
-      paneLayout = setLayoutPaneInspectorSelection(paneLayout, panelId, selection);
-      persistWorkspaceUiRestore();
-      emit();
     },
     setPaneScroll: (panelId, scroll) => {
       paneLayout = setLayoutPaneScroll(paneLayout, panelId, scroll);
