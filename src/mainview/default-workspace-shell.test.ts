@@ -96,6 +96,26 @@ describe("default workspace renderer shell", () => {
     expect(panelHostSource).not.toContain("{#if controller.promptBinding?.stale}");
   });
 
+  it("wires Dockview transcripts to semantic blocks and structured actions", async () => {
+    const panelHostSource = await readFile(
+      new URL("./DockviewPanelHost.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelHostSource).toContain("buildTranscriptSemanticBlocks");
+    expect(panelHostSource).toContain("semanticBlocks={transcriptSemanticBlocks}");
+    expect(panelHostSource).toContain("{workspaceMentionPaths}");
+    expect(panelHostSource).not.toContain("workspaceMentionPaths={new Set()}");
+    expect(panelHostSource).toContain("onInspectCommand={inspectCommandFromTranscript}");
+    expect(panelHostSource).toContain("onOpenHandlerThread={openHandlerThreadFromTranscript}");
+    expect(panelHostSource).toContain("onInspectWorkflow={inspectWorkflowFromTranscript}");
+    expect(panelHostSource).toContain(
+      "onInspectWorkflowTaskAttempt={inspectWorkflowTaskAttemptFromTranscript}",
+    );
+    expect(panelHostSource).toContain("onReplyToWait=");
+    expect(panelHostSource).toContain("onRetryFailure=");
+  });
+
   it("mutes layout slot controls for the default workspace", async () => {
     const runtimeSource = await readFile(new URL("./chat-runtime.ts", import.meta.url), "utf8");
     const workspaceSource = await readFile(

@@ -50,7 +50,7 @@ For each issue, record:
 | AUD-019 | P1 | Orchestrator and handler surfaces can inherit ambient pi extension tools beyond the actor contract | `34a6` | Adopted |
 | AUD-020 | P1 | Workflow task-agent authoring contract, generated agent config, and runtime tool surface can diverge | `209c`, `2a4e`, `1291` | Fixed |
 | AUD-021 | P2 | Workflow task agents and `request_context` do not fully match prompt/context binding semantics | `2a4e` | Fixed |
-| AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Researched |
+| AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Fixed |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Researched |
 | AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Researched |
 | AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Researched |
@@ -984,9 +984,9 @@ Relevant code:
 
 Relevant code:
 
-- `src/renderer/components/ChatTranscript.svelte`: supports `semanticBlocks` and action callbacks.
-- `src/renderer/transcript-projection.ts`: builds semantic blocks.
-- `src/renderer/components/DockviewPanelHost.svelte`: mounts `ChatTranscript` without those semantic blocks/callbacks and passes an empty mention path set.
+- `src/mainview/ChatTranscript.svelte`: supports `semanticBlocks` and action callbacks.
+- `src/mainview/transcript-projection.ts`: builds semantic blocks.
+- `src/mainview/DockviewPanelHost.svelte`: mounted `ChatTranscript` without those semantic blocks/callbacks and passed an empty mention path set.
 
 **Why this matters:** The Dockview UI is supposed to be the main semantic workspace. If it renders only raw transcript text, users lose structured workflow status, command cards, handoff cards, failure actions, and navigation affordances.
 
@@ -996,11 +996,12 @@ Relevant code:
 2. Pass `semanticBlocks`, real workspace mention paths, and action callbacks into `ChatTranscript`.
 3. Ensure callbacks open static inspector panes using the target surface model rather than global focus state.
 
-**Verification required:**
+**Disposition:** Fixed. Dockview chat panels now build transcript semantic blocks from the active session summary, command rollups, live surface error state, and loaded handler-thread summaries. The host passes the real workspace mention index into `ChatTranscript` and wires transcript actions to exact Dockview/runtime routes: commands open command inspector panes, handler-thread cards open their owning thread surface by exact `threadId`, workflow cards open workflow inspectors, workflow task-agent cards open workflow-task-attempt inspectors, wait replies target the owning handler thread when present, and failure retry sends a normal follow-up to the active surface. Filename-only transcript artifacts are routed through workspace-path opening because that callback does not carry a durable artifact id.
 
-- Component test rendering command, artifact, wait, failure, thread, and workflow events in a Dockview chat panel.
-- Each semantic block action calls the expected runtime/open-surface callback.
-- Mention paths are not always empty in Dockview panels.
+**Verified by:**
+
+- `bun test src/mainview/default-workspace-shell.test.ts`.
+- `bun run check`.
 
 **Documentation impact:** None unless the semantic transcript feature inventory needs wording updates.
 

@@ -9,13 +9,22 @@
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
   import { projectConversation } from "./conversation-projection";
+  import { getVisibleCommandRollups } from "./command-inspector";
   import { buildSurfaceContextBudget } from "./context-budget";
   import { getSurfaceDisplayTitle } from "./surface-title";
+  import {
+    buildTranscriptSemanticBlocks,
+    type TranscriptSemanticBlock,
+  } from "./transcript-projection";
   import type { PromptHistoryEntry } from "./prompt-history";
   import type { ChatRuntime } from "./chat-runtime";
   import type { ChatSurfaceController } from "./chat-runtime";
   import type { QueuedPrompt } from "./chat-runtime";
-  import type { WorkspaceTabInfo } from "../shared/workspace-contract";
+  import type {
+    WorkspaceHandlerThreadSummary,
+    WorkspaceSessionSummary,
+    WorkspaceTabInfo,
+  } from "../shared/workspace-contract";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
   import { onDestroy, onMount } from "svelte";
   import { listModelComboboxOptions } from "./model-options";
@@ -43,6 +52,7 @@
   }: Props = $props();
   let controller = $state<ChatSurfaceController | null>(null);
   let pane = $state<ReturnType<ChatRuntime["getPane"]> | null>(null);
+  let sessions = $state<WorkspaceSessionSummary[]>([]);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
   let streamMessage = $state<ChatSurfaceController["agent"]["state"]["streamMessage"]>(null);
@@ -54,15 +64,35 @@
   let errorMessage = $state<string | undefined>(undefined);
   let currentModel = $state<ChatSurfaceController["agent"]["state"]["model"] | null>(null);
   let currentThinkingLevel = $state<ThinkingLevel>("off");
+  let handlerThreads = $state<WorkspaceHandlerThreadSummary[]>([]);
+  let handlerThreadsSessionId = $state<string | null>(null);
+  let handlerThreadLoadToken = 0;
+  let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
   let unsubscribeRuntime = $state<(() => void) | null>(null);
   let unsubscribeController = $state<(() => void) | null>(null);
 
   const conversation = $derived(projectConversation(messages));
+  const currentSession = $derived<WorkspaceSessionSummary | null>(
+    controller
+      ? (sessions.find(
+          (session) => session.id === controller?.target.workspaceSessionId,
+        ) ?? null)
+      : null,
+  );
+  const currentCommandRollups = $derived(getVisibleCommandRollups(currentSession));
+  const transcriptSemanticBlocks = $derived(
+    buildTranscriptSemanticBlocks({
+      session: currentSession,
+      errorMessage,
+      commandRollups: currentCommandRollups,
+      handlerThreads,
+    }),
+  );
   const contextBudget = $derived(currentModel ? buildSurfaceContextBudget(messages, currentModel) : null);
   const surfaceDisplayTitle = $derived(
     getSurfaceDisplayTitle(
       controller?.target,
-      runtime.sessions,
+      sessions,
       pane?.target?.surface === "thread" ? "Handler Thread" : "Orchestrator",
     ),
   );
@@ -87,6 +117,9 @@
       errorMessage = undefined;
       currentModel = null;
       currentThinkingLevel = "off";
+      handlerThreads = [];
+      handlerThreadsSessionId = null;
+      handlerThreadLoadToken += 1;
       return;
     }
 
@@ -104,6 +137,7 @@
 
   function syncPanel() {
     pane = runtime.getPane(panelId) ?? null;
+    sessions = [...runtime.sessions];
     const nextController = runtime.getPaneController(panelId);
     if (nextController !== controller) {
       unsubscribeController?.();
@@ -111,6 +145,37 @@
       unsubscribeController = controller?.subscribe(syncSurfaceState) ?? null;
     }
     syncSurfaceState();
+    refreshHandlerThreadBlocks();
+  }
+
+  function refreshHandlerThreadBlocks() {
+    if (!controller || controller.target.surface !== "orchestrator") {
+      handlerThreads = [];
+      handlerThreadsSessionId = null;
+      handlerThreadLoadToken += 1;
+      return;
+    }
+
+    const sessionId = controller.target.workspaceSessionId;
+    if (handlerThreadsSessionId !== sessionId) {
+      handlerThreads = [];
+    }
+    handlerThreadsSessionId = sessionId;
+    const loadToken = ++handlerThreadLoadToken;
+    void runtime
+      .listHandlerThreads(sessionId)
+      .then((nextThreads) => {
+        if (loadToken !== handlerThreadLoadToken) return;
+        handlerThreads = nextThreads;
+      })
+      .catch(() => {
+        if (loadToken !== handlerThreadLoadToken) return;
+        handlerThreads = [];
+      });
+  }
+
+  function transcriptSplitTarget() {
+    return { kind: "split" as const, panelId, direction: "right" as const };
   }
 
 	async function send(input: ComposerSubmit): Promise<boolean> {
@@ -144,6 +209,101 @@
     );
   }
 
+  async function openArtifactFromTranscript(filename: string): Promise<void> {
+    await openWorkspacePathFromTranscript(filename);
+  }
+
+  async function openWorkspacePathFromTranscript(path: string): Promise<void> {
+    const opened = await runtime.openWorkspacePath(path).catch(() => false);
+    if (!opened) {
+      await runtime.writeClipboardText(path).catch(() => undefined);
+    }
+  }
+
+  function inspectCommandFromTranscript(commandId: string): void {
+    if (!controller) return;
+    void runtime.openSurface(
+      {
+        workspaceSessionId: controller.target.workspaceSessionId,
+        surface: "command",
+        commandId,
+      },
+      transcriptSplitTarget(),
+    );
+  }
+
+  function openHandlerThreadFromTranscript(threadId: string): void {
+    if (!controller) return;
+    const thread = handlerThreads.find((candidate) => candidate.threadId === threadId);
+    if (!thread) return;
+    void runtime.openSurface(
+      {
+        workspaceSessionId: controller.target.workspaceSessionId,
+        surface: "thread",
+        surfacePiSessionId: thread.surfacePiSessionId,
+        threadId: thread.threadId,
+      },
+      transcriptSplitTarget(),
+    );
+  }
+
+  function inspectWorkflowFromTranscript(workflowRunId: string): void {
+    if (!controller) return;
+    void runtime.openSurface(
+      {
+        workspaceSessionId: controller.target.workspaceSessionId,
+        surface: "workflow-inspector",
+        workflowRunId,
+      },
+      transcriptSplitTarget(),
+    );
+  }
+
+  function inspectWorkflowTaskAttemptFromTranscript(workflowTaskAttemptId: string): void {
+    if (!controller) return;
+    void runtime.openSurface(
+      {
+        workspaceSessionId: controller.target.workspaceSessionId,
+        surface: "workflow-task-attempt",
+        workflowTaskAttemptId,
+      },
+      transcriptSplitTarget(),
+    );
+  }
+
+  async function replyToWaitFromTranscript(
+    block: TranscriptSemanticBlock & { kind: "wait" },
+    text: string,
+  ): Promise<void> {
+    if (!controller) return;
+    const targetThread = block.threadId
+      ? handlerThreads.find((thread) => thread.threadId === block.threadId)
+      : null;
+    if (targetThread) {
+      await runtime.sendPromptToTarget(
+        {
+          workspaceSessionId: controller.target.workspaceSessionId,
+          surface: "thread",
+          surfacePiSessionId: targetThread.surfacePiSessionId,
+          threadId: targetThread.threadId,
+        },
+        text,
+      );
+      return;
+    }
+    await runtime.sendPromptToTarget(controller.target, text);
+  }
+
+  async function retryFailureFromTranscript(
+    block: TranscriptSemanticBlock & { kind: "failure" },
+  ): Promise<void> {
+    if (!controller) return;
+    await runtime.sendPromptToTarget(
+      controller.target,
+      `Retry the failed turn and address this failure:\n\n${block.summary}`,
+    );
+  }
+
   onMount(() => {
     syncPanel();
     unsubscribeRuntime = runtime.subscribe(syncPanel);
@@ -154,6 +314,14 @@
       })
       .catch(() => {
         promptHistory = [];
+      });
+    void runtime
+      .listWorkspacePaths()
+      .then((paths) => {
+        workspaceMentionPaths = new Set(paths.map((path) => path.workspaceRelativePath));
+      })
+      .catch(() => {
+        workspaceMentionPaths = new Set();
       });
   });
 
@@ -212,10 +380,19 @@
       currentModel={currentModel ?? controller.agent.state.model}
       {pendingToolCalls}
       {isStreaming}
-      workspaceMentionPaths={new Set()}
+      semanticBlocks={transcriptSemanticBlocks}
+      {workspaceMentionPaths}
       initialScroll={pane?.scroll ?? null}
       onScrollStateChange={(scroll) => runtime.setPaneScroll(panelId, scroll)}
+      onOpenArtifact={(filename) => void openArtifactFromTranscript(filename)}
+      onOpenWorkspacePath={(path) => void openWorkspacePathFromTranscript(path)}
+      onInspectCommand={inspectCommandFromTranscript}
+      onOpenHandlerThread={openHandlerThreadFromTranscript}
+      onInspectWorkflow={inspectWorkflowFromTranscript}
+      onInspectWorkflowTaskAttempt={inspectWorkflowTaskAttemptFromTranscript}
       onForkAssistantMessage={(message) => void forkFromAssistantMessage(message.timestamp)}
+      onReplyToWait={(block, text) => void replyToWaitFromTranscript(block, text)}
+      onRetryFailure={(block) => void retryFailureFromTranscript(block)}
     />
     <ChatComposer
       currentModel={currentModel ?? controller.agent.state.model}
