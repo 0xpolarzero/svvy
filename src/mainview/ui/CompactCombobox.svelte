@@ -105,7 +105,7 @@
   onMount(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Node) || root?.contains(target)) return;
+      if (!(target instanceof Node) || root?.contains(target) || menuElement?.contains(target)) return;
       open = false;
     };
 
@@ -134,18 +134,46 @@
     };
   });
 
+  function portalMenu(node: HTMLElement) {
+    document.body.append(node);
+
+    return {
+      destroy() {
+        node.remove();
+      },
+    };
+  }
+
+  function clampPosition(nextValue: number, minimum: number, maximum: number) {
+    if (maximum < minimum) return minimum;
+    return Math.min(Math.max(nextValue, minimum), maximum);
+  }
+
   function positionMenu() {
     if (!triggerElement) return;
     const rect = triggerElement.getBoundingClientRect();
     const gap = 5;
-    const menuHeight = menuElement?.getBoundingClientRect().height ?? (menuClass.includes("model-menu") ? 225 : 240);
-    const top =
-      placement === "below"
-        ? Math.min(window.innerHeight - menuHeight - 8, rect.bottom + gap)
-        : Math.max(8, rect.top - menuHeight - gap);
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 232));
     const minimumWidth = menuClass.includes("model-menu") ? 256 : 128;
-    menuStyle = `left: ${left}px; top: ${top}px; min-width: ${Math.max(rect.width, minimumWidth)}px;`;
+    const viewportPadding = 8;
+    const availableWidth = Math.max(160, window.innerWidth - viewportPadding * 2);
+    const targetWidth = Math.min(Math.max(rect.width, minimumWidth), availableWidth);
+    const measuredRect = menuElement?.getBoundingClientRect();
+    const menuWidth = Math.min(measuredRect?.width ?? targetWidth, availableWidth);
+    const menuHeight = measuredRect?.height ?? (menuClass.includes("model-menu") ? 225 : 240);
+    const spaceAbove = rect.top - viewportPadding - gap;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+    const resolvedPlacement =
+      placement === "below"
+        ? spaceBelow >= menuHeight || spaceBelow >= spaceAbove
+          ? "below"
+          : "above"
+        : spaceAbove >= menuHeight || spaceAbove >= spaceBelow
+          ? "above"
+          : "below";
+    const unclampedTop = resolvedPlacement === "below" ? rect.bottom + gap : rect.top - menuHeight - gap;
+    const top = clampPosition(unclampedTop, viewportPadding, window.innerHeight - menuHeight - viewportPadding);
+    const left = clampPosition(rect.left, viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    menuStyle = `left: ${left}px; top: ${top}px; width: ${targetWidth}px; max-width: ${availableWidth}px;`;
   }
 
   async function scrollActiveOptionIntoView() {
@@ -258,7 +286,7 @@
     </span>
   </button>
   {#if open}
-    <div bind:this={menuElement} class={`compact-combobox-menu ${menuClass}`.trim()} style={menuStyle}>
+    <div bind:this={menuElement} use:portalMenu class={`compact-combobox-menu ${menuClass}`.trim()} style={menuStyle}>
       <div
         class="compact-combobox-options"
         bind:this={optionsElement}
