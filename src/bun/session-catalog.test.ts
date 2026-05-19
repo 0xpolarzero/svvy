@@ -1545,6 +1545,7 @@ describe("WorkspaceSessionCatalog", () => {
           onEvent: () => {},
         });
 
+        await waitFor(() => systemPromptsSeen.length === 1);
         await waitFor(
           () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
@@ -1637,7 +1638,7 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
-  it("applies an idle prompt refresh immediately without queueing a visible row", async () => {
+  it("applies an idle prompt refresh through the durable surface queue", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
@@ -1650,13 +1651,23 @@ describe("WorkspaceSessionCatalog", () => {
 
       const refreshed = await catalog.queuePromptRefresh({ target: created.target });
 
-      expect(refreshed.snapshot?.queuedMessages).toEqual([]);
-      expect(refreshed.snapshot?.promptBinding?.stale).toBe(false);
-      expect(refreshed.snapshot?.resolvedSystemPrompt).toContain(freshMarker);
+      expect(refreshed.snapshot?.queuedMessages.map((message) => message.kind)).toEqual([
+        "prompt_refresh",
+      ]);
+      await waitFor(
+        () =>
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.every((message) => message.status === "delivered") === true,
+      );
+      const applied = await catalog.openSurface(created.target);
+      expect(applied.promptBinding?.stale).toBe(false);
+      expect(applied.resolvedSystemPrompt).toContain(freshMarker);
       expect(
-        getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
-          .queuedMessages,
-      ).toEqual([]);
+        getStructuredSessionStore(catalog)
+          .getSessionState(created.target.workspaceSessionId)
+          .queuedMessages?.map((message) => message.status),
+      ).toEqual(["delivered"]);
     } finally {
       await catalog.dispose();
     }
@@ -1710,6 +1721,7 @@ describe("WorkspaceSessionCatalog", () => {
         const refresh = await catalog.queuePromptRefresh({ target: created.target });
         expect(refresh.snapshot?.queuedMessages.map((message) => message.kind)).toEqual([
           "prompt_refresh",
+          "user_message",
         ]);
 
         await catalog.sendPrompt({
@@ -1722,7 +1734,7 @@ describe("WorkspaceSessionCatalog", () => {
           getStructuredSessionStore(catalog)
             .getSessionState(created.target.workspaceSessionId)
             .queuedMessages?.map((message) => message.kind),
-        ).toEqual(["prompt_refresh", "user_message"]);
+        ).toEqual(["prompt_refresh", "user_message", "user_message"]);
 
         firstPromptGate.resolve();
         await waitFor(() => orchestratorPromptCount === 2);
@@ -2188,8 +2200,9 @@ describe("WorkspaceSessionCatalog", () => {
           onEvent: () => {},
         });
         expect(
-          getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
-            .queuedMessages,
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.filter((message) => message.status === "queued"),
         ).toHaveLength(1);
 
         await catalog.sendPrompt({
@@ -2216,7 +2229,7 @@ describe("WorkspaceSessionCatalog", () => {
           getStructuredSessionStore(catalog)
             .getSessionState(created.target.workspaceSessionId)
             .queuedMessages?.map((message) => message.status) ?? [],
-        ).toEqual(["delivered"]);
+        ).toEqual(["delivered", "delivered", "delivered"]);
       } finally {
         handlerPromptGate.resolve();
         handlerPromptSpy.mockRestore();
@@ -2291,7 +2304,9 @@ describe("WorkspaceSessionCatalog", () => {
         await waitFor(
           () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
-        expect(promptSpy).toHaveBeenCalledTimes(1);
+        expect(
+          promptSpy.mock.calls.filter(([promptText]) => promptText === "Run the queued turn."),
+        ).toHaveLength(1);
         expect(
           getStructuredSessionStore(catalog)
             .getSessionState(created.target.workspaceSessionId)
@@ -2306,7 +2321,7 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
-  it("steers an active surface through pi without durably queueing the message", async () => {
+  it("routes active steer requests through the durable surface queue", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
@@ -2361,17 +2376,19 @@ describe("WorkspaceSessionCatalog", () => {
           onEvent: () => {},
         });
 
-        expect(steerSpy).toHaveBeenCalledWith("Focus on the failing backend contract.");
         expect(
-          getStructuredSessionStore(catalog).getSessionState(created.target.workspaceSessionId)
-            .queuedMessages,
-        ).toHaveLength(0);
+          getStructuredSessionStore(catalog)
+            .getSessionState(created.target.workspaceSessionId)
+            .queuedMessages?.filter((message) => message.status === "queued")
+            .map((message) => message.requestSummary),
+        ).toEqual(["Focus on the failing backend contract."]);
+        expect(steerSpy).not.toHaveBeenCalled();
 
         promptGate.resolve();
+        await waitFor(() => targetPromptCalls === 2);
         await waitFor(
           () => !getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
-        expect(targetPromptCalls).toBe(1);
       } finally {
         promptGate.resolve();
         promptSpy.mockRestore();
@@ -3013,7 +3030,7 @@ describe("WorkspaceSessionCatalog", () => {
         async function (this: PromptableSession) {
           const surface = findManagedSurfaceBySession(catalog, this);
           if (surface?.sessionId === handler.target.surfacePiSessionId) {
-            handlerCancelled.reject(new Error("handler aborted"));
+            handlerCancelled.resolve();
             return;
           }
         },
@@ -3034,10 +3051,10 @@ describe("WorkspaceSessionCatalog", () => {
         });
 
         await waitFor(
-          () =>
-            handlerPromptSpy.mock.calls.length === 2 &&
-            getManagedSurface(catalog, handler.target.surfacePiSessionId).activePrompt &&
-            getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
+          () => getManagedSurface(catalog, handler.target.surfacePiSessionId).activePrompt,
+        );
+        await waitFor(
+          () => getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt,
         );
 
         await catalog.sendPrompt({
@@ -3049,7 +3066,10 @@ describe("WorkspaceSessionCatalog", () => {
         expect(
           getStructuredSessionStore(catalog)
             .getSessionState(created.target.workspaceSessionId)
-            .queuedMessages?.map((message) => message.status) ?? [],
+            .queuedMessages?.filter(
+              (message) => message.kind === "user_message" && message.status === "queued",
+            )
+            .map((message) => message.status) ?? [],
         ).toEqual(["queued"]);
 
         await cancelSurfacePrompt(catalog, handler.target);
@@ -3058,11 +3078,14 @@ describe("WorkspaceSessionCatalog", () => {
         );
 
         expect(handlerAbortSpy).toHaveBeenCalledTimes(1);
-        expect(handlerPromptSpy).toHaveBeenCalledTimes(2);
+        expect(handlerPromptSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
         expect(
           getStructuredSessionStore(catalog)
             .getSessionState(created.target.workspaceSessionId)
-            .queuedMessages?.map((message) => message.status) ?? [],
+            .queuedMessages?.filter(
+              (message) => message.kind === "user_message" && message.status === "queued",
+            )
+            .map((message) => message.status) ?? [],
         ).toEqual(["queued"]);
         expect(getManagedSurface(catalog, created.target.surfacePiSessionId).activePrompt).toBe(
           true,
@@ -3193,6 +3216,7 @@ describe("WorkspaceSessionCatalog", () => {
         );
 
         expect(delivered).toBe(true);
+        await waitFor(() => handlerAPrompts.length === 1);
         expect(handlerAPrompts).toHaveLength(1);
         expect(handlerAPrompts[0]).toBe(
           [

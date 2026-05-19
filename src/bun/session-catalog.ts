@@ -229,6 +229,21 @@ interface PromptRefreshQueuePayload {
   requestedAt: string;
 }
 
+interface InitialHandlerStartQueuePayload {
+  threadId: string;
+  requestedAt: string;
+}
+
+interface WorkflowAttentionQueuePayload {
+  sessionId: string;
+  threadId: string;
+  workflowRunId: string;
+  smithersRunId: string;
+  workflowId: string;
+  summary: string;
+  reason: string;
+}
+
 interface CreateManagedSessionOptions {
   sessionManager: SessionManager;
   actorKind: ManagedActorKind;
@@ -320,7 +335,7 @@ export class WorkspaceSessionCatalog {
         await this.emitStructuredStateSync(sessionId);
       },
       onHandlerAttention: async (event) => {
-        this.recoveryCoordinator?.enqueue({
+        this.recoveryCoordinator.enqueue({
           kind: "workflow_attention",
           ownerScope: {
             kind: "workflow_run",
@@ -1178,80 +1193,30 @@ export class WorkspaceSessionCatalog {
   async sendPrompt(options: SendAgentPromptOptions): Promise<SendAgentPromptResult> {
     this.assertValidPromptTarget(options.target);
     const session = await this.ensureManagedSurfaceForPrompt(options);
-    const hasQueuedSurfaceWork =
-      this.structuredSessionStore.listQueuedSurfaceMessages({
-        surfacePiSessionId: options.target.surfacePiSessionId,
-      }).length > 0;
-    if (options.queueOnly || session.activePrompt || hasQueuedSurfaceWork) {
-      const queued = this.enqueuePendingSurfacePrompt(options);
-      const snapshot = await this.buildSurfaceSnapshot(session, options.target);
-      await this.emitSurfaceSync({
-        session,
-        reason: "surface.updated",
-        target: options.target,
-      });
-      await this.emitWorkspaceSync("structured.updated");
-      if (!session.activePrompt) {
-        this.wakeSurfaceQueue(options.target);
-      }
-      return { target: structuredClone(queued.target), queued: true, snapshot };
-    }
-
-    const promptExecution = this.createPromptExecutionContext(session, options);
-    session.abortRequested = false;
-    session.activePrompt = true;
-    session.activePromptDone = new Promise<void>((resolve) => {
-      setTimeout(() => {
-        void (async () => {
-          await this.runAgentPrompt(session, options, promptExecution);
-        })()
-          .catch((error) => {
-            console.error("Failed to continue orchestrator control after prompt execution:", error);
-          })
-          .finally(resolve);
-      }, 0);
-    });
-    session.activeStreamMessage = null;
-    this.setPendingUserMessage(session, promptExecution, getLatestUserMessage(options.messages));
-    if (options.target.surface === "orchestrator") {
-      this.startTopLevelTitleGeneration(session, promptExecution);
-    }
-    await this.emitSurfaceSync({
-      session,
-      reason: "background.started",
-      target: options.target,
-    });
-    await this.emitWorkspaceSync("workspace.updated");
-
-    return {
-      target: structuredClone(options.target),
-    };
-  }
-
-  async steerPrompt(options: SendAgentPromptOptions): Promise<SendAgentPromptResult> {
-    this.assertValidPromptTarget(options.target);
-    const session = await this.ensureManagedSurfaceForPrompt(options);
-    const text = getLatestUserPromptText(options.messages);
-    if (!text) {
-      throw new Error("No user message to steer.");
-    }
-
-    if (!session.activePrompt) {
-      return this.sendPrompt(options);
-    }
-
-    const images = getLatestUserImages(options.messages);
-    if (images.length > 0) {
-      await session.session.steer(text, images);
-    } else {
-      await session.session.steer(text);
-    }
+    const queued = this.enqueuePendingSurfacePrompt(options);
+    const snapshot = await this.buildSurfaceSnapshot(session, options.target);
     await this.emitSurfaceSync({
       session,
       reason: "surface.updated",
       target: options.target,
     });
-    return { target: structuredClone(options.target) };
+    await this.emitWorkspaceSync("structured.updated");
+    this.wakeSurfaceQueue(options.target);
+
+    return {
+      target: structuredClone(queued.target),
+      queued: true,
+      snapshot,
+    };
+  }
+
+  async steerPrompt(options: SendAgentPromptOptions): Promise<SendAgentPromptResult> {
+    this.assertValidPromptTarget(options.target);
+    const text = getLatestUserPromptText(options.messages);
+    if (!text) {
+      throw new Error("No user message to steer.");
+    }
+    return this.sendPrompt({ ...options, queueOnly: true });
   }
 
   async deleteQueuedSurfaceMessage(input: {
@@ -1269,53 +1234,30 @@ export class WorkspaceSessionCatalog {
     target: PromptTarget;
   }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
-    const session = await this.retainManagedSurface(input.target);
-    try {
-      const queuedMessages = this.structuredSessionStore.listQueuedSurfaceMessages({
+    const queuedMessages = this.structuredSessionStore.listQueuedSurfaceMessages({
+      surfacePiSessionId: input.target.surfacePiSessionId,
+    });
+    const existing = queuedMessages.find((message) => message.kind === "prompt_refresh");
+    if (!existing) {
+      this.structuredSessionStore.enqueueSurfaceMessage({
+        sessionId: input.target.workspaceSessionId,
         surfacePiSessionId: input.target.surfacePiSessionId,
+        threadId: input.target.threadId ?? null,
+        kind: "prompt_refresh",
+        idempotencyKey: `prompt_refresh:${input.target.surfacePiSessionId}:${this.promptLibraryStore.getState().revision}`,
+        messageJson: "{}",
+        payloadJson: JSON.stringify({
+          requestedRevision: this.promptLibraryStore.getState().revision,
+          requestedAt: new Date().toISOString(),
+        } satisfies PromptRefreshQueuePayload),
+        requestSummary: "Update instructions",
+        position: "front",
       });
-      if (!session.activePrompt && queuedMessages.length === 0) {
-        const refreshed = await this.refreshManagedSurfacePromptBinding(session, input.target);
-        await this.emitSurfaceSync({
-          session: refreshed,
-          reason: "surface.updated",
-          target: input.target,
-        });
-        await this.emitWorkspaceSync("structured.updated");
-        return {
-          ok: true,
-          target: structuredClone(input.target),
-          snapshot: await this.buildSurfaceSnapshot(refreshed, input.target, {
-            refreshExternalSources: true,
-          }),
-        };
-      }
-
-      const existing = queuedMessages.find((message) => message.kind === "prompt_refresh");
-      if (!existing) {
-        this.structuredSessionStore.enqueueSurfaceMessage({
-          sessionId: input.target.workspaceSessionId,
-          surfacePiSessionId: input.target.surfacePiSessionId,
-          threadId: input.target.threadId ?? null,
-          kind: "prompt_refresh",
-          messageJson: "{}",
-          payloadJson: JSON.stringify({
-            requestedRevision: this.promptLibraryStore.getState().revision,
-            requestedAt: new Date().toISOString(),
-          } satisfies PromptRefreshQueuePayload),
-          requestSummary: "Update instructions",
-          position: "front",
-        });
-      }
-
-      const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
-      if (!session.activePrompt) {
-        this.wakeSurfaceQueue(input.target);
-      }
-      return { ok: true, target: structuredClone(input.target), snapshot };
-    } finally {
-      await this.releaseManagedSurface(input.target.surfacePiSessionId);
     }
+
+    const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
+    this.wakeSurfaceQueue(input.target);
+    return { ok: true, target: structuredClone(input.target), snapshot };
   }
 
   async editQueuedSurfaceMessage(input: {
@@ -1361,54 +1303,13 @@ export class WorkspaceSessionCatalog {
     if (queued.kind === "prompt_refresh") {
       throw new Error("Queued context updates cannot be steered.");
     }
-    const text =
-      queued.kind === "handler_handoff"
-        ? this.buildHandlerHandoffQueuedPrompt(queued)
-        : this.getQueuedMessageText(queued.messageJson);
-    this.structuredSessionStore.markSurfaceMessageSteering({ id: input.queuedMessageId });
-    await this.emitQueuedSurfaceUpdate(input.target);
-
-    const session = await this.retainManagedSurface(input.target);
-    try {
-      if (!session.activePrompt) {
-        this.structuredSessionStore.markSurfaceMessageQueued({
-          id: input.queuedMessageId,
-          position: "front",
-        });
-        await this.emitQueuedSurfaceUpdate(input.target);
-        this.wakeSurfaceQueue(input.target);
-        return {
-          ok: true,
-          target: structuredClone(input.target),
-          snapshot: await this.buildSurfaceSnapshot(session, input.target),
-        };
-      }
-
-      let images: ImageContent[] = [];
-      if (queued.kind === "user_message") {
-        try {
-          images = getLatestUserImages([JSON.parse(queued.messageJson) as Message]);
-        } catch {
-          images = [];
-        }
-      }
-      if (images.length > 0) {
-        await session.session.steer(text, images);
-      } else {
-        await session.session.steer(text);
-      }
-      const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
-      return { ok: true, target: structuredClone(input.target), snapshot };
-    } catch (error) {
-      this.structuredSessionStore.markSurfaceMessageQueued({
-        id: input.queuedMessageId,
-        position: "front",
-      });
-      await this.emitQueuedSurfaceUpdate(input.target);
-      throw error;
-    } finally {
-      await this.releaseManagedSurface(input.target.surfacePiSessionId);
-    }
+    this.structuredSessionStore.markSurfaceMessageQueued({
+      id: input.queuedMessageId,
+      position: "front",
+    });
+    const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
+    this.wakeSurfaceQueue(input.target);
+    return { ok: true, target: structuredClone(input.target), snapshot };
   }
 
   async cancelPrompt(target: PromptTarget): Promise<void> {
@@ -1871,19 +1772,33 @@ export class WorkspaceSessionCatalog {
           message.kind === "handler_handoff" ? this.parseHandlerHandoffQueuePayload(message) : null;
         const promptRefreshPayload =
           message.kind === "prompt_refresh" ? this.parsePromptRefreshQueuePayload(message) : null;
+        const workflowAttentionPayload =
+          message.kind === "workflow_attention"
+            ? this.parseWorkflowAttentionQueuePayload(message)
+            : null;
         return {
           id: message.id,
           kind: message.kind,
           text: promptRefreshPayload
             ? "Update instructions"
-            : payload
-              ? `Handler handoff: ${payload.summary}`
-              : this.getQueuedMessageText(message.messageJson),
+            : message.kind === "initial_handler_start"
+              ? "Start handler thread"
+              : workflowAttentionPayload
+                ? `Workflow attention: ${workflowAttentionPayload.summary}`
+                : payload
+                  ? `Handler handoff: ${payload.summary}`
+                  : this.getQueuedMessageText(message.messageJson),
           title: payload?.title,
           summary: promptRefreshPayload
             ? `Context revision ${promptRefreshPayload.requestedRevision}`
-            : payload?.summary,
-          threadId: payload?.threadId,
+            : workflowAttentionPayload?.summary
+              ? workflowAttentionPayload.summary
+              : payload?.summary,
+          threadId:
+            payload?.threadId ??
+            workflowAttentionPayload?.threadId ??
+            message.threadId ??
+            undefined,
           sourceCommandId: payload?.sourceCommandId,
           status:
             message.status === "dispatching"
@@ -1939,6 +1854,64 @@ export class WorkspaceSessionCatalog {
     } catch {
       return null;
     }
+  }
+
+  private parseWorkflowAttentionQueuePayload(
+    message: StructuredSurfaceQueuedMessageRecord,
+  ): WorkflowAttentionQueuePayload | null {
+    if (!message.payloadJson) {
+      return null;
+    }
+    try {
+      const payload = JSON.parse(message.payloadJson) as WorkflowAttentionQueuePayload;
+      if (
+        typeof payload.sessionId !== "string" ||
+        typeof payload.threadId !== "string" ||
+        typeof payload.workflowRunId !== "string" ||
+        typeof payload.smithersRunId !== "string" ||
+        typeof payload.workflowId !== "string" ||
+        typeof payload.summary !== "string" ||
+        typeof payload.reason !== "string"
+      ) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildInitialHandlerQueuedPrompt(message: StructuredSurfaceQueuedMessageRecord): string {
+    const snapshot = this.getStructuredSnapshot(message.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === message.threadId) ?? null;
+    if (!thread) {
+      throw new Error(`Queued initial handler start ${message.id} has no handler thread.`);
+    }
+    return buildInitialHandlerThreadPrompt(thread);
+  }
+
+  private buildWorkflowAttentionQueuedPrompt(
+    message: StructuredSurfaceQueuedMessageRecord,
+  ): string {
+    const payload = this.parseWorkflowAttentionQueuePayload(message);
+    if (!payload) {
+      throw new Error(`Queued workflow attention ${message.id} has malformed payload.`);
+    }
+    const snapshot = this.getStructuredSnapshot(payload.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === payload.threadId) ?? null;
+    if (!snapshot || !thread) {
+      throw new Error(`Queued workflow attention ${message.id} has no handler thread.`);
+    }
+    return buildHandlerWorkflowAttentionPrompt({
+      thread,
+      workflowRun:
+        snapshot.workflowRuns.find((workflowRun) => workflowRun.id === payload.workflowRunId) ??
+        null,
+      reason: payload.reason,
+      summary: payload.summary,
+      workflowId: payload.workflowId,
+      smithersRunId: payload.smithersRunId,
+    });
   }
 
   private buildHandlerHandoffQueuedPrompt(message: StructuredSurfaceQueuedMessageRecord): string {
@@ -2505,7 +2478,10 @@ export class WorkspaceSessionCatalog {
         : null;
   }
 
-  private enqueuePendingSurfacePrompt(options: SendAgentPromptOptions): { target: PromptTarget } {
+  private enqueuePendingSurfacePrompt(options: SendAgentPromptOptions): {
+    target: PromptTarget;
+    queuedMessageId: string;
+  } {
     const message = getLatestUserMessage(options.messages);
     if (!message) {
       throw new Error("No user message to queue.");
@@ -2515,7 +2491,7 @@ export class WorkspaceSessionCatalog {
       throw new Error("No user message to queue.");
     }
 
-    this.structuredSessionStore.enqueueSurfaceMessage({
+    const queued = this.structuredSessionStore.enqueueSurfaceMessage({
       sessionId: options.target.workspaceSessionId,
       surfacePiSessionId: options.target.surfacePiSessionId,
       threadId: options.target.threadId ?? null,
@@ -2523,7 +2499,7 @@ export class WorkspaceSessionCatalog {
       requestSummary: summarizePromptForTurn(text),
     });
 
-    return { target: structuredClone(options.target) };
+    return { target: structuredClone(options.target), queuedMessageId: queued.id };
   }
 
   private async awaitThreadHandoffAcceptance(
@@ -2543,6 +2519,7 @@ export class WorkspaceSessionCatalog {
       sessionId: orchestratorTarget.workspaceSessionId,
       surfacePiSessionId: orchestratorTarget.surfacePiSessionId,
       kind: "handler_handoff",
+      idempotencyKey: `handler_handoff:${request.commandId}`,
       messageJson: "{}",
       payloadJson: JSON.stringify(payload),
       requestSummary: request.summary,
@@ -2812,20 +2789,7 @@ export class WorkspaceSessionCatalog {
       });
     }
     if (input.autoStart !== false) {
-      this.recoveryCoordinator.enqueue({
-        kind: "initial_handler_start",
-        ownerScope: {
-          kind: "thread",
-          workspaceSessionId: input.sessionId,
-          threadId: thread.id,
-          surfacePiSessionId: thread.surfacePiSessionId,
-        },
-        idempotencyKey: `initial_handler_start:${thread.id}`,
-        orderingKey: `thread:${thread.id}`,
-        priority: 20,
-        payloadJson: { sessionId: input.sessionId, threadId: thread.id },
-      });
-      this.recoveryCoordinator.wake();
+      this.enqueueInitialHandlerThreadPrompt({ sessionId: input.sessionId, threadId: thread.id });
     }
     this.recoveryCoordinator.enqueue({
       kind: "title_generation",
@@ -2882,6 +2846,7 @@ export class WorkspaceSessionCatalog {
       sessionId: input.sessionId,
       surfacePiSessionId: thread.surfacePiSessionId,
       threadId: thread.id,
+      idempotencyKey: `thread_resume:${input.resumedByCommandId}`,
       messageJson: JSON.stringify(message),
       requestSummary: summarizePromptForTurn(input.message),
     });
@@ -2907,6 +2872,10 @@ export class WorkspaceSessionCatalog {
     if (!snapshot || !thread || thread.status !== "running-handler") {
       return;
     }
+    const hasAcceptedInitialTurn = snapshot.turns.some((turn) => turn.threadId === thread.id);
+    if (hasAcceptedInitialTurn) {
+      return;
+    }
 
     const target: PromptTarget = {
       workspaceSessionId: input.sessionId,
@@ -2914,64 +2883,38 @@ export class WorkspaceSessionCatalog {
       surfacePiSessionId: thread.surfacePiSessionId,
       threadId: thread.id,
     };
-    let handlerSession: ManagedSession | null = null;
-    try {
-      handlerSession = await this.retainManagedSurface(target);
-      if (handlerSession.activePrompt) {
-        return;
-      }
+    this.enqueueInitialHandlerThreadPrompt(input);
+    this.wakeSurfaceQueue(target);
+  }
 
-      handlerSession.abortRequested = false;
-      handlerSession.activePrompt = true;
-      const initialMessage = createSyntheticUserMessage(buildInitialHandlerThreadPrompt(thread));
-      const options: SendAgentPromptOptions = {
-        target,
-        provider: handlerSession.provider,
-        model: handlerSession.model,
-        thinkingLevel: handlerSession.thinkingLevel,
-        messages: [
-          ...convertToLlmMessages(handlerSession.session.agent.state.messages),
-          initialMessage,
-        ],
-      };
-      const promptContext = this.createPromptExecutionContext(handlerSession, options);
-      this.setPendingUserMessage(handlerSession, promptContext, initialMessage);
-      await this.emitSurfaceSync({
-        session: handlerSession,
-        reason: "background.started",
-        target,
-      });
-      await this.runAgentPrompt(handlerSession, options, promptContext);
-    } catch (error) {
-      if (this.closed) {
-        return;
-      }
-      const message =
-        error instanceof Error ? error.message : "Failed to start delegated handler thread.";
-      try {
-        this.structuredSessionStore.updateThread({
-          threadId: input.threadId,
-          status: "troubleshooting",
-        });
-        this.structuredSessionStore.recordLifecycleEvent({
-          sessionId: input.sessionId,
-          kind: "thread.initial_prompt_failed",
-          subjectKind: "thread",
-          subjectId: input.threadId,
-          data: { error: message },
-        });
-        await this.emitWorkspaceSync("structured.updated");
-      } catch (stateError) {
-        console.error("Failed to record initial handler prompt failure:", stateError);
-      }
-      throw error;
-    } finally {
-      if (handlerSession) {
-        handlerSession.pendingUserMessage = null;
-        handlerSession.activeStreamMessage = null;
-        await this.releaseManagedSurface(target.surfacePiSessionId, { emitClosed: false });
-      }
+  private enqueueInitialHandlerThreadPrompt(input: { sessionId: string; threadId: string }): void {
+    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === input.threadId) ?? null;
+    if (!snapshot || !thread || thread.status !== "running-handler") {
+      return;
     }
+    if (snapshot.turns.some((turn) => turn.threadId === thread.id)) {
+      return;
+    }
+    this.structuredSessionStore.enqueueSurfaceMessage({
+      sessionId: input.sessionId,
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+      kind: "initial_handler_start",
+      idempotencyKey: `initial_handler_start:${thread.id}`,
+      messageJson: "{}",
+      payloadJson: JSON.stringify({
+        threadId: thread.id,
+        requestedAt: new Date().toISOString(),
+      } satisfies InitialHandlerStartQueuePayload),
+      requestSummary: summarizePromptForTurn(thread.objective),
+    });
+    this.wakeSurfaceQueue({
+      workspaceSessionId: input.sessionId,
+      surface: "thread",
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+    });
   }
 
   private startTopLevelTitleGeneration(
@@ -3470,11 +3413,6 @@ export class WorkspaceSessionCatalog {
       priority: 30,
     });
     this.recoveryCoordinator.wake();
-    setTimeout(() => {
-      if (!this.closed) {
-        this.recoveryCoordinator.wake();
-      }
-    }, 0);
   }
 
   private async runSurfaceQueue(target: PromptTarget): Promise<void> {
@@ -3539,6 +3477,36 @@ export class WorkspaceSessionCatalog {
         await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
         throw error;
       }
+    } else if (queued.kind === "initial_handler_start") {
+      try {
+        const snapshot = this.getStructuredSnapshot(currentTarget.workspaceSessionId);
+        if (queued.threadId && snapshot?.turns.some((turn) => turn.threadId === queued.threadId)) {
+          this.structuredSessionStore.markSurfaceMessageDelivered({ id: queued.id });
+          await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+          return true;
+        }
+        message = createSyntheticUserMessage(this.buildInitialHandlerQueuedPrompt(queued));
+      } catch (error) {
+        this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+        await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+        throw error;
+      }
+    } else if (queued.kind === "workflow_attention") {
+      try {
+        const payload = this.parseWorkflowAttentionQueuePayload(queued);
+        const snapshot = payload ? this.getStructuredSnapshot(payload.sessionId) : null;
+        const thread = snapshot?.threads.find((entry) => entry.id === payload?.threadId) ?? null;
+        if (!thread || thread.status === "completed") {
+          this.structuredSessionStore.markSurfaceMessageDelivered({ id: queued.id });
+          await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+          return true;
+        }
+        message = createSyntheticUserMessage(this.buildWorkflowAttentionQueuedPrompt(queued));
+      } catch (error) {
+        this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+        await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
+        throw error;
+      }
     } else {
       try {
         message = JSON.parse(queued.messageJson) as Message;
@@ -3563,7 +3531,13 @@ export class WorkspaceSessionCatalog {
         queuedMessageId: queued.id,
       };
       const promptExecution = this.createPromptExecutionContext(session, options);
+      if (queued.kind === "workflow_attention" && promptExecution) {
+        promptExecution.suppressPendingWorkflowAttentionDelivery = true;
+      }
       this.setPendingUserMessage(session, promptExecution, message);
+      if (currentTarget.surface === "orchestrator") {
+        this.startTopLevelTitleGeneration(session, promptExecution);
+      }
       await this.emitSurfaceSync({
         session,
         reason: "background.started",
@@ -3577,6 +3551,8 @@ export class WorkspaceSessionCatalog {
           id: queued.id,
           position: "front",
         });
+        await this.emitQueuedSurfaceUpdate(currentTarget);
+        return false;
       }
       await this.emitQueuedSurfaceUpdate(currentTarget);
       return true;
@@ -3594,9 +3570,21 @@ export class WorkspaceSessionCatalog {
     summary: string;
     reason: string;
   }): Promise<boolean> {
+    return this.enqueueWorkflowAttentionPrompt(input);
+  }
+
+  private enqueueWorkflowAttentionPrompt(input: {
+    sessionId: string;
+    threadId: string;
+    workflowRunId: string;
+    smithersRunId: string;
+    workflowId: string;
+    summary: string;
+    reason: string;
+  }): boolean {
     const snapshot = this.getStructuredSnapshot(input.sessionId);
     const thread = snapshot?.threads.find((entry) => entry.id === input.threadId) ?? null;
-    if (!snapshot || !thread) {
+    if (!snapshot || !thread || thread.status === "completed") {
       return false;
     }
 
@@ -3606,52 +3594,19 @@ export class WorkspaceSessionCatalog {
       surfacePiSessionId: thread.surfacePiSessionId,
       threadId: thread.id,
     };
-    const handlerSession = await this.retainManagedSurface(target);
-    if (handlerSession.activePrompt) {
-      await this.releaseManagedSurface(target.surfacePiSessionId);
-      return false;
-    }
-
-    try {
-      handlerSession.abortRequested = false;
-      handlerSession.activePrompt = true;
-      await this.emitSurfaceSync({
-        session: handlerSession,
-        reason: "background.started",
-        target,
-      });
-
-      const resumeMessage = createSyntheticUserMessage(
-        buildHandlerWorkflowAttentionPrompt({
-          thread,
-          workflowRun:
-            snapshot.workflowRuns.find((workflowRun) => workflowRun.id === input.workflowRunId) ??
-            null,
-          reason: input.reason,
-          summary: input.summary,
-          workflowId: input.workflowId,
-          smithersRunId: input.smithersRunId,
-        }),
-      );
-      const options: SendAgentPromptOptions = {
-        target,
-        provider: handlerSession.provider,
-        model: handlerSession.model,
-        thinkingLevel: handlerSession.thinkingLevel,
-        messages: [
-          ...convertToLlmMessages(handlerSession.session.agent.state.messages),
-          resumeMessage,
-        ],
-      };
-      const handlerPromptContext = this.createPromptExecutionContext(handlerSession, options);
-      if (handlerPromptContext) {
-        handlerPromptContext.suppressPendingWorkflowAttentionDelivery = true;
-      }
-      await this.runAgentPrompt(handlerSession, options, handlerPromptContext);
-      return true;
-    } finally {
-      await this.releaseManagedSurface(target.surfacePiSessionId);
-    }
+    this.structuredSessionStore.enqueueSurfaceMessage({
+      sessionId: input.sessionId,
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+      kind: "workflow_attention",
+      idempotencyKey: `workflow_attention:${input.workflowRunId}:${input.reason}`,
+      messageJson: "{}",
+      payloadJson: JSON.stringify(input satisfies WorkflowAttentionQueuePayload),
+      requestSummary: input.summary,
+    });
+    void this.emitQueuedSurfaceUpdate(target);
+    this.wakeSurfaceQueue(target);
+    return true;
   }
 
   private completePromptExecution(

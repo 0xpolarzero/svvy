@@ -177,7 +177,12 @@ export interface SendPromptResponse {
 }
 
 export type QueuedSurfaceMessageStatus = "queued" | "steering" | "dispatching";
-export type QueuedSurfaceMessageKind = "user_message" | "handler_handoff" | "prompt_refresh";
+export type QueuedSurfaceMessageKind =
+  | "user_message"
+  | "handler_handoff"
+  | "prompt_refresh"
+  | "initial_handler_start"
+  | "workflow_attention";
 
 export interface QueuedSurfaceMessage {
   id: string;

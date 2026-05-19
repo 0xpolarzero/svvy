@@ -86,11 +86,11 @@ The recovery coordinator owns or coordinates the following interruptible work po
 | Queued `user_message` row | surface queue table keyed by `surfacePiSessionId` | Leave `queued` rows ordered and visible. Reset stale `dispatching` rows to `queued` only when no accepted pi turn can be proven for that row. Claim the next row transactionally per surface after the surface lock is free. |
 | Queued `prompt_refresh` row | surface queue table | Deliver in queue order before later prompt-bearing items. Refresh the surface prompt binding, generated contracts, and runtime standards, then mark delivered. Do not create transcript or prompt-history content. |
 | Queued `handler_handoff` row | orchestrator surface queue plus already-recorded handler command and handoff episode metadata | Keep the row ordered with other orchestrator queue work. Delivery creates at most one orchestrator reconciliation turn for an already-recorded durable handoff. Dismissal cancels only the notification row; it does not roll back the handoff episode or return a tool error to the handler. |
-| Initial handler auto-start | handler-thread record plus initial-start recovery work row | Claim exactly one initial-start row per `threadId`. Start the handler's first pi turn from the raw objective only if no accepted initial turn exists. Preserve the handler surface identity and loaded context keys. |
+| Initial handler auto-start | handler-thread record plus initial-start recovery work row plus surface queue row | Claim exactly one initial-start recovery row per `threadId`, ensure the matching `initial_handler_start` surface queue row exists, then let the shared queue runner start the handler's first pi turn from the raw objective only if no accepted initial turn exists. Preserve the handler surface identity and loaded context keys. |
 | Handoff notification delivery or dismissal | queue item, command record, handoff episode rows | Recover the notification row and already-recorded handoff episode together. A recorded handoff must have exactly one durable episode. Notification delivery has at most one orchestrator reconciliation turn. Notification dismissal must not alter the completed handler command or episode. |
 | Wait state | session, thread, workflow-run, and Smithers wait identifiers | Restore wait projection and attention state. Do not auto-resume a wait unless the durable resolving input, signal, approval decision, or timer state exists. Smithers waits are re-read from Smithers by run/node/wait identifiers. |
 | Title generation | title job record on workspace session or handler thread | Claim pending or stale running title jobs by title job id. Run the `namer` once per unfrozen title target. Manual rename or completed title freezes the job and prevents regeneration. |
-| Workflow monitors and workflow attention | `svvy` workflow-run binding plus Smithers run id and cursor metadata | Bootstrap Smithers projection first. Reconnect monitor cursors from the last durable event sequence or official snapshot. Re-read Smithers durable run, wait, output, artifact, approval, timer, event, and task-attempt detail by Smithers id before updating `svvy` projection. Re-emit only undelivered handler attention. |
+| Workflow monitors and workflow attention | `svvy` workflow-run binding plus Smithers run id and cursor metadata plus surface queue row | Bootstrap Smithers projection first. Reconnect monitor cursors from the last durable event sequence or official snapshot. Re-read Smithers durable run, wait, output, artifact, approval, timer, event, and task-attempt detail by Smithers id before updating `svvy` projection. Re-emit undelivered handler attention by writing a `workflow_attention` row to the owning handler surface queue. |
 | Project CI projection | `svvy` workflow-run binding, declared Project CI entry metadata, Smithers terminal result | Re-run idempotent CI derivation from Smithers durable terminal result and `svvy` ownership facts. Missing or invalid terminal result becomes durable projection failure or troubleshooting state. Do not use process-local terminal output. |
 | App logs and observability | workspace app log store | Emit recovery lifecycle logs with workspace, surface, turn, queue, thread, workflow, and Smithers identifiers. Logs explain recovery but are not the canonical recovery state. Redaction policy applies before persistence. |
 | App menu and native actions | app-global command registry plus workspace RPC targets | Native menu actions are not replayed after restart. If a native action created durable workspace work before the crash, the workspace coordinator recovers that work. Otherwise the action is gone. |
@@ -186,7 +186,7 @@ Ordering is explicit and data-oriented:
 
 - `orderingKey = "workspace:<workspaceId>:smithers"` for workspace bootstrap and projection prerequisites.
 - `orderingKey = "surface:<surfacePiSessionId>"` for surface turns, prompt refresh, queue drain, and handler handoff delivery.
-- `orderingKey = "thread:<threadId>"` for initial handler start and thread-local title generation when it depends on the thread objective.
+- `orderingKey = "thread:<threadId>"` for initial handler start recovery seeding and thread-local title generation when it depends on the thread objective.
 - `orderingKey = "workflow:<workflowRunId>"` for monitor reconnect and attention delivery for one Smithers run.
 
 The coordinator must process rows in `(priority, availableAt, orderingKey, orderingSeq, createdAt)` order while enforcing owner locks:
@@ -234,8 +234,8 @@ Workspace runtime startup follows this order:
 6. Recover surface work in per-surface order:
    - settle or mark interrupted active turn state;
    - apply queued `prompt_refresh` control work in order;
-   - deliver accepted `handler_handoff` or `user_message` rows as real pi inputs;
-   - start initial handler turns only after their surface lock and context binding are recovered;
+   - deliver accepted `handler_handoff`, `user_message`, `initial_handler_start`, or `workflow_attention` rows as real pi inputs;
+   - start initial handler turns only through their typed surface queue rows and only after their surface lock and context binding are recovered;
    - run title generation only when the target is not frozen and no higher-priority surface work owns that prompt resource.
 7. Continue normal runtime operation. Later Smithers events, queue additions, prompt-lock releases, native commands, and user actions schedule the same recovery work types instead of bypassing the coordinator.
 
@@ -268,6 +268,7 @@ The UI should expose that state as a recovery issue for the affected surface rat
 - Queue order is per `surfacePiSessionId` and survives restart.
 - A prompt-bearing queue item is marked delivered only after acceptance into the target pi surface is proven.
 - A `prompt_refresh` item is delivered before later prompt-bearing work in the same surface queue.
+- Initial handler starts and workflow attention wake-ups are typed surface queue rows rather than direct prompt calls.
 - A handler initial auto-start runs at most once per handler thread unless the first attempt is proven not accepted.
 - A recorded handoff emits exactly one durable handoff episode for the handler command.
 - A handoff notification delivery emits at most one orchestrator reconciliation turn.
@@ -293,7 +294,7 @@ Unit tests should cover:
 
 - recovery work idempotency-key uniqueness and terminal-row behavior
 - stale claim expiration and transactional re-claim
-- per-surface queue ordering across `prompt_refresh`, `user_message`, and `handler_handoff`
+- per-surface queue ordering across `prompt_refresh`, `user_message`, `handler_handoff`, `initial_handler_start`, and `workflow_attention`
 - owner lock exclusion for concurrent coordinators
 - deterministic seeding from durable facts without duplicate scheduler rows
 - conservative prompt delivery behavior when pi acceptance is unknown

@@ -374,7 +374,12 @@ export type StructuredSurfaceQueuedMessageStatus =
   | "delivered"
   | "cancelled";
 
-export type StructuredSurfaceQueueItemKind = "user_message" | "handler_handoff" | "prompt_refresh";
+export type StructuredSurfaceQueueItemKind =
+  | "user_message"
+  | "handler_handoff"
+  | "prompt_refresh"
+  | "initial_handler_start"
+  | "workflow_attention";
 
 export type StructuredRecoveryWorkKind =
   | "smithers_bootstrap"
@@ -439,6 +444,7 @@ export interface StructuredSurfaceQueuedMessageRecord {
   surfacePiSessionId: string;
   threadId: string | null;
   kind: StructuredSurfaceQueueItemKind;
+  idempotencyKey: string;
   messageJson: string;
   payloadJson: string | null;
   requestSummary: string;
@@ -730,6 +736,7 @@ export interface StructuredSessionStateStore {
     surfacePiSessionId: string;
     threadId?: string | null;
     kind?: StructuredSurfaceQueueItemKind;
+    idempotencyKey?: string | null;
     messageJson: string;
     payloadJson?: string | null;
     requestSummary: string;
@@ -1059,6 +1066,7 @@ type SurfaceQueuedMessageRow = {
   surface_pi_session_id: string;
   thread_id: string | null;
   kind: StructuredSurfaceQueueItemKind;
+  idempotency_key: string;
   message_json: string;
   payload_json: string | null;
   request_summary: string;
@@ -2998,6 +3006,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     surfacePiSessionId: string;
     threadId?: string | null;
     kind?: StructuredSurfaceQueueItemKind;
+    idempotencyKey?: string | null;
     messageJson: string;
     payloadJson?: string | null;
     requestSummary: string;
@@ -3008,6 +3017,19 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       this.mustFindThreadRow(input.threadId);
     }
     const id = createId("queued-message");
+    const idempotencyKey = input.idempotencyKey?.trim() || `surface_queue:${id}`;
+    const existing = this.db
+      .query(
+        `SELECT * FROM surface_message_queue
+         WHERE surface_pi_session_id = ?
+           AND idempotency_key = ?
+           AND status NOT IN ('delivered', 'cancelled')
+         LIMIT 1`,
+      )
+      .get(input.surfacePiSessionId, idempotencyKey) as SurfaceQueuedMessageRow | undefined;
+    if (existing) {
+      return this.mapSurfaceQueuedMessage(existing);
+    }
     const timestamp = this.now();
     const queuePosition = this.nextSurfaceMessagePosition(
       input.surfacePiSessionId,
@@ -3021,6 +3043,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            surface_pi_session_id,
            thread_id,
            kind,
+           idempotency_key,
            message_json,
            payload_json,
            request_summary,
@@ -3030,7 +3053,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            updated_at,
            delivered_at,
            cancelled_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, NULL, NULL)`,
       )
       .run(
         id,
@@ -3038,6 +3061,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         input.surfacePiSessionId,
         input.threadId ?? null,
         input.kind ?? "user_message",
+        idempotencyKey,
         input.messageJson,
         input.payloadJson ?? null,
         input.requestSummary,
@@ -3056,6 +3080,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         surfacePiSessionId: input.surfacePiSessionId,
         threadId: input.threadId ?? null,
         queuedMessageId: id,
+        idempotencyKey,
       },
     });
 
@@ -4477,6 +4502,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       surfacePiSessionId: row.surface_pi_session_id,
       threadId: row.thread_id,
       kind: row.kind,
+      idempotencyKey: row.idempotency_key || `surface_queue:${row.id}`,
       messageJson: row.message_json,
       payloadJson: row.payload_json,
       requestSummary: row.request_summary,
@@ -4798,6 +4824,7 @@ function initializeSchema(db: Database): void {
       surface_pi_session_id TEXT NOT NULL,
       thread_id TEXT,
       kind TEXT NOT NULL DEFAULT 'user_message',
+      idempotency_key TEXT NOT NULL DEFAULT '',
       message_json TEXT NOT NULL,
       payload_json TEXT,
       request_summary TEXT NOT NULL,
@@ -4893,10 +4920,21 @@ function initializeSchema(db: Database): void {
   ensureColumn(db, "surface_message_queue", "position", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "surface_message_queue", "cancelled_at", "TEXT");
   ensureColumn(db, "surface_message_queue", "kind", "TEXT NOT NULL DEFAULT 'user_message'");
+  ensureColumn(db, "surface_message_queue", "idempotency_key", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "surface_message_queue", "payload_json", "TEXT");
+  db.exec(
+    `UPDATE surface_message_queue
+     SET idempotency_key = 'surface_queue:' || id
+     WHERE idempotency_key = ''`,
+  );
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_surface_message_queue_pending
      ON surface_message_queue (surface_pi_session_id, status, position)`,
+  );
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_surface_message_queue_active_idempotency
+     ON surface_message_queue (surface_pi_session_id, idempotency_key)
+     WHERE status NOT IN ('delivered', 'cancelled')`,
   );
   db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_recovery_work_active_idempotency

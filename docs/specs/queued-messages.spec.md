@@ -68,13 +68,13 @@ Local pi references:
 
 `svvy` treats ordinary composer submits as queued follow-up user messages. The queue row also exposes an explicit `Steer` action for the uncommon case where the user wants that queued text delivered through pi/Codex-style steering at the next safe boundary of the active turn.
 
-The queue is generic surface work, not only composer text. Every interactive surface accepts `user_message` and `prompt_refresh` queue items. The orchestrator additionally accepts `handler_handoff` notification items created after `thread.handoff` records a durable handoff episode. A `handler_handoff` item waits in the orchestrator queue with user messages and is delivered as orchestrator reconciliation input. Dismissing or deleting the notification cancels only the queue row; it does not roll back the durable handoff episode or return a tool error to the handler.
+The queue is generic surface work, not only composer text. Every interactive surface accepts `user_message`, `prompt_refresh`, `initial_handler_start`, and `workflow_attention` queue items. The orchestrator additionally accepts `handler_handoff` notification items created after `thread.handoff` records a durable handoff episode. A `handler_handoff` item waits in the orchestrator queue with user messages and is delivered as orchestrator reconciliation input. Dismissing or deleting the notification cancels only the queue row; it does not roll back the durable handoff episode or return a tool error to the handler.
 
-A `prompt_refresh` item is a surface-local control item created by the stale-context warning's `Update system prompt` action when the surface is active or already has queued work. If the surface is idle and has no queued work, the same action applies immediately without creating a visible queue row. When queued, it is ordered with the rest of the surface queue, but it is not sent to the agent and does not create transcript or prompt-history content. When delivered, it refreshes the surface's prompt binding to the latest Context Library, generated contracts, and runtime standards before later prompt-bearing queue items run.
+A `prompt_refresh` item is a surface-local control item created by the stale-context warning's `Update system prompt` action. It is always written as durable surface queue work, even when the target surface is idle and has no queued work. When the surface lock is free, "immediate" means the row is durably enqueued and claimed by the shared queue runner in the same scheduler tick. A prompt refresh is ordered with the rest of the surface queue, but it is not sent to the agent and does not create transcript or prompt-history content. When delivered, it refreshes the surface's prompt binding to the latest Context Library, generated contracts, and runtime standards before later prompt-bearing queue items run.
 
 When a user submits from a composer:
 
-- if the target surface is idle, the message starts a normal turn immediately
+- if the target surface is idle, the message is durably enqueued and then claimed by the backend queue runner as the next normal turn
 - if the target surface already has an active turn, the message is queued for that same surface
 - the active turn continues until it naturally settles or is cancelled
 - the queued message starts the next real turn only after the active turn settles and the surface prompt lock is released
@@ -87,7 +87,7 @@ Ordinary queued composer sends must not:
 - retarget itself to the orchestrator just because the focused panel changed
 - become an inline transcript message before delivery
 
-The `Steer` row action is separate from ordinary queued delivery. It commits the selected row into a locked `steering` state and submits that text through pi's steering queue when the surface is active. The row remains visible in the queue projection without edit, delete, reorder, or steer controls until pi either accepts it as a real steering user message or rejects it. If the surface is idle, the closest equivalent behavior is to run that selected queued message next as a normal turn. If steering is rejected, `svvy` restores the row to the front of the durable queue.
+The `Steer` row action is separate from ordinary queued delivery. It promotes the selected durable row to the front of the surface queue for next-turn delivery. `svvy` does not inject a direct pi steering message as a fast path; the row remains durable and ordered until the shared queue runner claims it. If delivery fails before pi accepts it, `svvy` restores the row to the front of the durable queue.
 
 ## Queue Ownership
 
@@ -99,7 +99,8 @@ Required identity:
 - `surfacePiSessionId`
 - `threadId` when the target surface is a handler thread
 - `queuedItemId`
-- `kind`, currently `user_message`, `handler_handoff`, or `prompt_refresh`
+- `kind`, currently `user_message`, `handler_handoff`, `prompt_refresh`, `initial_handler_start`, or `workflow_attention`
+- idempotency key for stable internal producers and recovery seeding
 
 The queue is ordered per `surfacePiSessionId`. Queue ordering is FIFO unless the user explicitly edits, removes, or reorders messages through future queue-management UI.
 
@@ -132,6 +133,8 @@ The durable record should keep:
 - submitted text exactly as sent for `user_message`
 - source thread, source command, handoff episode, title, summary, body, and episode kind for `handler_handoff`
 - requested prompt-library revision and request time for `prompt_refresh`
+- thread id and request time for `initial_handler_start`
+- workflow run, Smithers run, workflow id, summary, and reason for `workflow_attention`
 - composer attachments or mention-link serialized text according to their own specs
 - creation, update, delivery, and cancellation timestamps
 - source panel id for diagnostics only, not for ownership
@@ -149,7 +152,7 @@ If the queue has at least one queued item:
 1. atomically claim the first `queued` item and mark it `dispatching`
 2. derive the action for that item kind
 3. for `prompt_refresh`, recreate or refresh the managed pi runtime binding behind the same product surface, mark the item delivered, and continue draining later items
-4. for `user_message` or `handler_handoff`, submit the derived text as the next real user message to that same pi surface; `handler_handoff` delivery reconciles an already-recorded durable episode
+4. for `user_message`, `handler_handoff`, `initial_handler_start`, or `workflow_attention`, submit the derived text as the next real user message to that same pi surface; `handler_handoff` delivery reconciles an already-recorded durable episode
 5. create a normal turn record for prompt-bearing delivery
 6. mark prompt-bearing items `delivered` once pi accepts the queued item into the surface history
 
@@ -221,7 +224,7 @@ Recovery must not infer queued messages from transcript text. The queue is struc
 
 Tests should cover:
 
-- idle send starts immediately
+- idle send writes a durable queue row before the row is claimed for immediate dispatch
 - active-surface send creates a queued message and leaves the active turn alone
 - queued messages deliver FIFO after the prompt lock releases
 - queued messages stay surface-local across orchestrator and handler-thread surfaces
