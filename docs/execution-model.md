@@ -196,9 +196,9 @@ That actor is:
 The adopted direction is:
 
 - use a PI-backed workflow task agent by default when a workflow task needs an adaptive agent
-- give that workflow task agent a `svvy` workflow-task prompt rather than the orchestrator or handler-thread prompt
+- give that workflow task agent a minimal `svvy` workflow-task prompt rather than the orchestrator or handler-thread prompt
 - expose task-local direct tools plus `execute_typescript` for typed composition
-- do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents
+- do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents or mention those unavailable controls in their base prompt
 - do not load ambient pi built-in tools or workspace-discovered extension tools into workflow task agents
 - execute workflow task agents from Smithers' current task root or worktree rather than from the workspace runtime DB root
 - preserve structured message history, step boundaries, and usage across retries and hijack handoff instead of flattening task-agent continuation into plain text

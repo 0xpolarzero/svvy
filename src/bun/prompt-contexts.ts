@@ -61,9 +61,7 @@ const SMITHERS_HANDLER_CONTEXT_PROMPT = [
 const SMITHERS_WORKFLOW_TASK_CONTEXT_PROMPT = [
   "Loaded always-on prompt context: Smithers task-agent boundary.",
   "",
-  "This workflow task agent runs inside one Smithers task attempt. Smithers owns the task lifecycle, retries, validation, approval gates, and workflow state around this task.",
-  "",
-  "Complete the task with task-local tools. Do not attempt handler-thread or workflow-control operations such as `thread.start`, `thread.handoff`, `wait`, `request_context`, or `smithers.*`.",
+  "Smithers owns this task attempt's lifecycle, retries, validation, approval gates, and workflow state.",
 ].join("\n");
 
 const CI_CONTEXT_PROMPT = [

@@ -49,7 +49,8 @@ describe("default system prompt", () => {
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_assets(");
     expect(DEFAULT_SYSTEM_PROMPT).not.toContain("list_models(): Promise<ToolResult");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("api.cx");
-    expect(DEFAULT_SYSTEM_PROMPT).toContain("handler-only workflow.* discovery");
+    expect(HANDLER_SYSTEM_PROMPT).toContain("workflow.* discovery");
+    expect(DEFAULT_SYSTEM_PROMPT).not.toContain("workflow.* discovery");
     expect(DEFAULT_SYSTEM_PROMPT).toContain("Selected Web Provider: none");
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "No `web.*` direct tools or `api.web` helpers are callable",
@@ -205,13 +206,17 @@ describe("default system prompt", () => {
   it("gives workflow task agents a direct-tool product surface plus code mode", () => {
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).toBe(buildSystemPrompt("workflow-task"));
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).toContain(
-      "This surface is a Smithers workflow task agent.",
+      "You are a task-scoped coding agent running inside one Smithers workflow task attempt.",
     );
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).toContain(
-      "Use the task-local direct tools for repository work and execute_typescript only for typed composition.",
+      "Use the available task-local tools to complete the task described by the workflow.",
     );
     expect(WORKFLOW_TASK_SYSTEM_PROMPT).toContain(
-      "Do not attempt handler-thread or orchestrator control actions such as thread.start, thread.handoff, wait, request_context, or smithers.*.",
+      "Work only within the task root or worktree provided by the workflow runtime.",
     );
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread.start");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("thread.handoff");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("request_context");
+    expect(WORKFLOW_TASK_SYSTEM_PROMPT).not.toContain("smithers.*");
   });
 });

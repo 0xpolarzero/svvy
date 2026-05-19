@@ -164,8 +164,8 @@ export interface WorkflowListModelsDetails {
  * These functions duplicate direct tools by name and input shape. Use direct
  * tools for ordinary reads, edits, writes, and commands; use this API only when
  * TypeScript control flow is the clearest way to compose several read/search,
- * bash, artifact, or read-only cx calls. Actor capability profiles add any
- * actor-local extensions, such as handler-only workflow discovery.
+ * bash, artifact, or read-only cx calls. Actor capability profiles add their
+ * own namespaces in separate declaration blocks.
  */
 export interface SvvyApi {
   read(input: {

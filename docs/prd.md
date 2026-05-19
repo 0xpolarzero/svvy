@@ -204,9 +204,9 @@ A workflow task agent is:
 The adopted direction for task agents is:
 
 - use a PI-backed workflow task agent by default when a workflow task needs an adaptive coding agent
-- give that task agent a `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
+- give that task agent a minimal `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
 - expose a task-local direct-tool surface plus `execute_typescript` for typed composition
-- keep `thread.start`, `thread.handoff`, `wait`, and `smithers.*` out of the task-agent prompt and tool schema
+- keep `thread.start`, `thread.handoff`, `wait`, and `smithers.*` out of the task-agent runtime and tool schema instead of teaching unavailable controls in prompt prose
 - keep human approval and hijack as Smithers runtime or operator controls around the task, not as ordinary task-agent tools
 - execute the task agent and its task-local tool calls from Smithers' current task root, including the active worktree when the task is worktree-bound
 - keep the workflow runtime DB, run ownership, and structured projection workspace-scoped even when the task itself executes in a worktree

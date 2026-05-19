@@ -970,7 +970,7 @@ Relevant code:
 
 **Documentation impact:** Update workflow task-agent prompt semantics and task-attempt provenance specs.
 
-**Disposition:** Fixed. Workflow task-agent custom prompts now append under a workflow-task override section while preserving the svvy workflow-task base prompt and generated callable contract. Task-local command bootstrap writes `meta.promptBinding` onto the exact workflow-task-attempt projection keyed by Smithers `(runId, nodeId, iteration, attempt)`, including prompt revision id, resolved prompt hash, runtime standards hashes, and binding timestamp. Handler-side `request_context` now marks the retained managed handler surface for prompt recreation before its next turn, so newly loaded context reaches pi through the system-prompt channel instead of only being stored durably.
+**Disposition:** Fixed. Workflow task-agent custom prompts now append under a workflow-task override section while preserving the minimal svvy workflow-task base prompt and generated callable contract. The base prompt defines task scope and task-root locality without teaching unavailable handler, orchestrator, or Smithers controls. Task-local command bootstrap writes `meta.promptBinding` onto the exact workflow-task-attempt projection keyed by Smithers `(runId, nodeId, iteration, attempt)`, including prompt revision id, resolved prompt hash, runtime standards hashes, and binding timestamp. Handler-side `request_context` now marks the retained managed handler surface for prompt recreation before its next turn, so newly loaded context reaches pi through the system-prompt channel instead of only being stored durably.
 
 **Verified by:** `bun test src/bun/request-context-tool.test.ts src/bun/smithers-runtime/workflow-task-agent.test.ts`.
 

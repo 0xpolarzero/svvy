@@ -285,12 +285,12 @@ Product-runtime workflows may contain lower-level workflow task agents inside th
 The adopted direction is:
 
 - when a product workflow needs an adaptive coding agent, use a PI-backed workflow task agent by default
-- configure that task agent with a `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
-- treat workflow-specific custom task prompts as overlays appended to the base workflow-task prompt, not replacements for svvy's task-agent contract
+- configure that task agent with a minimal `svvy` workflow-task system prompt rather than the orchestrator or handler-thread prompt
+- treat workflow-specific custom task prompts as overlays appended to the base workflow-task prompt; the base prompt only establishes task scope, task-local tools, and task-root locality
 - expose only task-local cx tools, direct tools, and `execute_typescript` to that actor
 - the default adopted task-agent tool surface is task-local cx semantic navigation, direct tools, and code mode for typed composition
 - project each Smithers task attempt into a `svvy` workflow-task-attempt UI row with exact Smithers identifiers and attach any `svvy` command or artifact projections to that row instead of leaving product navigation in a local ephemeral trace
-- do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents
+- do not expose `thread.start`, `thread.handoff`, `wait`, or `smithers.*` to workflow task agents or mention those unavailable controls in their base prompt
 - do not load ambient pi built-in tools or workspace-discovered extension tools into the task agent runtime
 - execute the task agent and its task-local tools from Smithers' current task root or worktree, while leaving Smithers runtime DB ownership and `svvy` workflow projection workspace-scoped
 - preserve structured message arrays, step boundaries, and usage across retries, schema repair prompts, and hijack handoff instead of flattening continuation state into plain transcript prose

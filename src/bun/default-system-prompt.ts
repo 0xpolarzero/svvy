@@ -28,11 +28,15 @@ export function buildExecuteTypescriptPromptSection(
     actor === "handler"
       ? "batching, looping, filtering, aggregation, workflow discovery, bash-backed inspection, or artifact evidence"
       : "batching, looping, filtering, aggregation, bash-backed inspection, or artifact evidence";
+  const duplicatedTools =
+    actor === "handler"
+      ? "read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, the read-only cx.* subset, and workflow.* discovery"
+      : "read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, and the read-only cx.* subset";
   return [
     `Use execute_typescript only when a small TypeScript program is genuinely useful for ${compositionUses}.`,
     "When you call execute_typescript, write plain TypeScript against the injected `api` object and `console`.",
     "Do not import or assume Node.js built-ins such as `fs`, `path`, `process`, or `node:*` inside the snippet.",
-    "The injected `api` duplicates only selected actor-local direct tools: read, grep, find, ls, bash, artifact.*, web.* when a keyed web provider is ready, the read-only cx.* subset, and handler-only workflow.* discovery.",
+    `The injected \`api\` duplicates only selected actor-local direct tools: ${duplicatedTools}.`,
     "Do not use execute_typescript for ordinary reads, edits, writes, or simple command runs; call the direct tools instead.",
     "The execute_typescript contract follows and is the source of truth for the snippet environment:",
     "```ts",
@@ -91,10 +95,9 @@ const HANDLER_INSTRUCTION_BODY = [
 ].join("\n\n");
 
 const WORKFLOW_TASK_INSTRUCTION_BODY = [
-  "This surface is a Smithers workflow task agent.",
-  "Use the task-local direct tools for repository work and execute_typescript only for typed composition.",
-  "Do not attempt handler-thread or orchestrator control actions such as thread.start, thread.handoff, wait, request_context, or smithers.*.",
-  "Complete the current task locally and return only the task result requested by the workflow prompt.",
+  "You are a task-scoped coding agent running inside one Smithers workflow task attempt.",
+  "Use the available task-local tools to complete the task described by the workflow.",
+  "Work only within the task root or worktree provided by the workflow runtime.",
 ].join("\n");
 
 const CX_CONTEXT_BODY = [
@@ -144,15 +147,13 @@ const SMITHERS_HANDLER_CONTEXT_BODY = [
 const SMITHERS_WORKFLOW_TASK_CONTEXT_BODY = [
   "Loaded always-on prompt context: Smithers task-agent boundary.",
   "",
-  "This workflow task agent runs inside one Smithers task attempt. Smithers owns the task lifecycle, retries, validation, approval gates, and workflow state around this task.",
-  "",
-  "Complete the task with task-local tools. Do not attempt handler-thread or workflow-control operations such as `thread.start`, `thread.handoff`, `wait`, `request_context`, or `smithers.*`.",
+  "Smithers owns this task attempt's lifecycle, retries, validation, approval gates, and workflow state.",
 ].join("\n");
 
 const CI_CONTEXT_BODY = buildLoadedOptionalPromptContextPrompt(["ci"]) ?? "";
 
 function buildActorInstructions(actor: SvvyActorKind): string[] {
-  const common = COMMON_INSTRUCTION_BODY.split("\n\n");
+  const common = buildCommonInstructions(actor);
 
   switch (actor) {
     case "orchestrator":
@@ -162,6 +163,20 @@ function buildActorInstructions(actor: SvvyActorKind): string[] {
     case "workflow-task":
       return [...common, ...WORKFLOW_TASK_INSTRUCTION_BODY.split("\n\n")];
   }
+}
+
+function buildCommonInstructions(actor: SvvyActorKind): string[] {
+  const common = COMMON_INSTRUCTION_BODY.split("\n\n");
+  if (actor !== "workflow-task") {
+    return common;
+  }
+  return common.filter(
+    (instruction) =>
+      !instruction.includes("handoff episodes") &&
+      !instruction.includes("runtime.current") &&
+      !instruction.includes("thread.list") &&
+      !instruction.includes("runtime, thread, handoff, or workflow state"),
+  );
 }
 
 export function createDefaultPromptLibraryState(

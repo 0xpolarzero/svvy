@@ -523,7 +523,11 @@ describe("workflow task agent", () => {
       async () => await agent.generate({ prompt: "Hello" }),
     );
 
-    expect(loadedSystemPrompt.startsWith(buildSystemPrompt("workflow-task"))).toBe(true);
+    expect(
+      loadedSystemPrompt.startsWith(
+        buildSystemPrompt("workflow-task", { promptLibraryState: fixture.promptLibraryState }),
+      ),
+    ).toBe(true);
     expect(loadedSystemPrompt).toContain("## Workflow Task Agent Override");
     expect(loadedSystemPrompt).toContain(customPrompt);
 

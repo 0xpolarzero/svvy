@@ -103,7 +103,7 @@ The prompt content is actor-specific:
 
 - orchestrator: compact routing knowledge that handler threads can supervise Smithers workflows
 - handler: full workflow supervision guidance for `smithers.*` tools, workflow waits, approvals, resumptions, inspection, and handoff boundaries
-- workflow task agent: task-agent boundary guidance that Smithers owns workflow lifecycle around the task
+- workflow task agent: compact task-attempt boundary guidance that Smithers owns workflow lifecycle around the task
 
 The orchestrator receives Smithers routing knowledge, not handler-callable `smithers.*` tool declarations.
 
