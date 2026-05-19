@@ -53,7 +53,7 @@ For each issue, record:
 | AUD-022 | P1 | Dockview chat panels miss semantic transcript blocks and artifact/path callbacks | `34a6`, `2a4e`, `1291` | Fixed |
 | AUD-023 | P2 | Artifact/static inspector panes remain focus-global instead of surface-owned | `3eed`, `209c` | Fixed |
 | AUD-024 | P1 | Restart recovery can leave in-flight prompts, pending messages, running turns, or initial handler starts stale | `2a4e`, `34a6`, `209c` | Partially implemented |
-| AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Researched |
+| AUD-025 | P1 | Streaming assistant deltas emit full surface snapshots and reparse too much Markdown | all five | Fixed |
 | AUD-026 | P1 | Workflow inspector live mode polls and rebuilds too much state | `34a6`, `2a4e`, `3eed`, `1291` | Researched |
 | AUD-027 | P1 | Structured-state selectors materialize large snapshots with insufficient indexes/read models | `2a4e`, `34a6`, `209c`, `3eed` | Researched |
 | AUD-028 | P2 | Native command-palette shortcut payload shape breaks app-menu accelerators | `34a6`, `209c` | Researched |
@@ -1083,6 +1083,8 @@ Responsibilities:
 
 ### AUD-025 - Streaming emits full snapshots and reparses full Markdown on every delta
 
+**Disposition:** Fixed. Live assistant packets now emit compact ordered `stream.patch` payloads keyed by `surfacePiSessionId`, and the renderer applies those patches to the active stream message without replacing the full surface snapshot. Full snapshots remain for open/rebaseline/recovery/settled states. Markdown rendering now reuses parsed token/code-block results for stable message content and avoids expensive highlighting for an unfinished trailing stream fence.
+
 **Impact:** Medium-high scalability and responsiveness issue.
 
 **Precise issue:** Backend stream events emit full surface snapshots on every content delta. The renderer receives those snapshots, resets/replaces large message structures, and sends the accumulated assistant content back through full Markdown parsing/highlighting paths each time.
@@ -1112,9 +1114,9 @@ Relevant code:
 - Markdown test: unchanged blocks are not reparsed across stream deltas.
 - Manual long-response profile showing lower bridge payload size and render work.
 
-**Documentation impact:** Define snapshot versus patch/rebaseline behavior in the surface-sync spec. Update `docs/features.ts` only if the user-facing streaming model changes.
+**Documentation impact:** `docs/prd.md`, `docs/features.ts`, and `docs/specs/multi-session-support.spec.md` now describe stream patches as the live-packet path and full snapshots as the baseline/recovery/settled path.
 
-**Confidence:** High for current full-snapshot/reparse path. Actual measured cost still needs profiling.
+**Confidence:** High. Focused backend and renderer tests cover patch emission/application, and full preflight is required before commit.
 
 ### AUD-026 - Workflow inspector polls and rebuilds full snapshots instead of applying deltas
 

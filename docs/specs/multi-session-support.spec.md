@@ -265,7 +265,7 @@ Workspace updates must not include or imply transcript ownership for one current
 
 ### Surface Updates
 
-Surface updates carry one live surface snapshot keyed by `surfacePiSessionId`.
+Surface baseline, recovery, metadata, queue, and settled updates carry one live surface snapshot keyed by `surfacePiSessionId`. Live assistant stream packets are separate ordered stream patches keyed by the same `surfacePiSessionId`, so duplicate panes and duplicate tabs observe the same runtime stream without replacing the whole surface snapshot for every packet.
 
 They include:
 

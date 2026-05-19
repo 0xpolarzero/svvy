@@ -30,6 +30,8 @@ import type {
   ListSessionsResponse,
   PromptTarget,
   QueuedSurfaceMessage,
+  SurfaceStreamPatch,
+  SurfaceStreamPatchInput,
   SurfaceSyncMessage,
   WorkspaceMutationResponse,
   WorkspaceArtifactPreview,
@@ -182,6 +184,7 @@ interface ManagedSession {
   activePromptDone: Promise<void> | null;
   pendingUserMessage: { turnId: string; message: Message } | null;
   activeStreamMessage: AssistantMessage | null;
+  activeStreamSequence: number;
   recreateOnNextPrompt: boolean;
   abortRequested: boolean;
   retainCount: number;
@@ -1760,6 +1763,7 @@ export class WorkspaceSessionCatalog {
       streamMessage: session.activeStreamMessage
         ? structuredClone(session.activeStreamMessage)
         : null,
+      streamSequence: session.activeStreamSequence,
       promptStatus: session.activePrompt ? "streaming" : "idle",
     };
   }
@@ -2036,6 +2040,31 @@ export class WorkspaceSessionCatalog {
       });
     } catch (error) {
       console.error("Failed to emit surface sync payload:", error);
+    }
+  }
+
+  private emitSurfaceStreamPatch(input: {
+    session: ManagedSession;
+    target: PromptTarget;
+    patch: SurfaceStreamPatchInput;
+  }): void {
+    if (!this.surfaceSyncListener) {
+      return;
+    }
+
+    input.session.activeStreamSequence += 1;
+    try {
+      this.surfaceSyncListener({
+        workspaceId: this.workspaceId,
+        reason: "stream.patch",
+        target: structuredClone(input.target),
+        streamPatch: {
+          ...structuredClone(input.patch),
+          sequence: input.session.activeStreamSequence,
+        } as SurfaceStreamPatch,
+      });
+    } catch (error) {
+      console.error("Failed to emit surface stream patch:", error);
     }
   }
 
@@ -3177,7 +3206,13 @@ export class WorkspaceSessionCatalog {
       onEvent(event);
       clearPendingIfUserMessageCommitted();
       if (event.type === "start") {
+        session.activeStreamSequence = 0;
         session.activeStreamMessage = structuredClone(event.partial);
+        this.emitSurfaceStreamPatch({
+          session,
+          target: options.target,
+          patch: { type: "start", message: event.partial },
+        });
       } else if (
         event.type === "text_start" ||
         event.type === "text_delta" ||
@@ -3190,15 +3225,22 @@ export class WorkspaceSessionCatalog {
         event.type === "toolcall_end"
       ) {
         session.activeStreamMessage = structuredClone(event.partial);
+        const patch = surfaceStreamPatchFromAssistantEvent(event);
+        if (patch) {
+          this.emitSurfaceStreamPatch({
+            session,
+            target: options.target,
+            patch,
+          });
+        }
       } else if (event.type === "done" || event.type === "error") {
         session.activeStreamMessage = null;
+        this.emitSurfaceStreamPatch({
+          session,
+          target: options.target,
+          patch: { type: "clear", reason: event.type },
+        });
       }
-
-      void this.emitSurfaceSync({
-        session,
-        reason: "surface.updated",
-        target: options.target,
-      });
     };
     try {
       const streamState = createVisibleStreamState(options.provider, options.model);
@@ -3981,6 +4023,7 @@ async function createManagedSession(
     activePromptDone: null,
     pendingUserMessage: null,
     activeStreamMessage: null,
+    activeStreamSequence: 0,
     recreateOnNextPrompt: false,
     abortRequested: false,
     retainCount: 0,
@@ -4536,6 +4579,55 @@ function applyVisibleAssistantEvent(
     case "done":
     case "error":
       return;
+  }
+}
+
+function surfaceStreamPatchFromAssistantEvent(
+  event: AssistantMessageEvent,
+): SurfaceStreamPatchInput | null {
+  switch (event.type) {
+    case "text_start":
+    case "thinking_start":
+      return {
+        type: event.type,
+        contentIndex: event.contentIndex,
+      };
+
+    case "text_delta":
+    case "thinking_delta":
+      return {
+        type: event.type,
+        contentIndex: event.contentIndex,
+        delta: event.delta,
+      };
+
+    case "text_end":
+    case "thinking_end":
+      return {
+        type: event.type,
+        contentIndex: event.contentIndex,
+        content: event.content,
+      };
+
+    case "toolcall_start":
+    case "toolcall_delta":
+    case "toolcall_end": {
+      const contentIndex = event.contentIndex;
+      const candidate = "toolCall" in event ? event.toolCall : event.partial.content[contentIndex];
+      if (!candidate || candidate.type !== "toolCall") {
+        return null;
+      }
+      return {
+        type: event.type,
+        contentIndex,
+        toolCall: candidate,
+      };
+    }
+
+    case "start":
+    case "done":
+    case "error":
+      return null;
   }
 }
 

@@ -253,6 +253,7 @@ function createSurfaceSnapshot(input: {
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
   streamMessage?: AssistantMessage | null;
+  streamSequence?: number;
   queuedMessages?: ConversationSurfaceSnapshot["queuedMessages"];
   provider?: string;
   model?: string;
@@ -271,6 +272,7 @@ function createSurfaceSnapshot(input: {
     pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
     queuedMessages: structuredClone(input.queuedMessages ?? []),
     streamMessage: input.streamMessage ? structuredClone(input.streamMessage) : null,
+    streamSequence: input.streamSequence ?? 0,
     provider: input.provider ?? "openai",
     model: input.model ?? "gpt-4o",
     reasoningEffort: input.reasoningEffort ?? "medium",
@@ -2491,6 +2493,111 @@ describe("createChatRuntime", () => {
           message.content[0].text === "Scanning files now...",
       ),
     ).toHaveLength(1);
+
+    runtime.dispose();
+  });
+
+  it("applies ordered stream patches without replacing the surface snapshot", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Streaming Handler", "worker running")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [userMessage("Inspect the repo")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    const controller = runtime.getPaneController("secondary");
+    if (!controller) {
+      throw new Error("Expected a restored controller.");
+    }
+
+    const streamMessage = assistantMessage("");
+    streamMessage.content = [];
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: { type: "start", sequence: 1, message: streamMessage },
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: { type: "text_start", sequence: 2, contentIndex: 0 },
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: {
+        type: "text_delta",
+        sequence: 3,
+        contentIndex: 0,
+        delta: "Scanning",
+      },
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: {
+        type: "text_delta",
+        sequence: 4,
+        contentIndex: 0,
+        delta: " files",
+      },
+    });
+
+    expect(controller.agent.state.messages).toHaveLength(1);
+    const patchedStreamMessage = controller.agent.state.streamMessage;
+    expect(
+      patchedStreamMessage?.role === "assistant" ? patchedStreamMessage.content[0] : null,
+    ).toMatchObject({
+      type: "text",
+      text: "Scanning files",
+    });
+    expect(controller.promptStatus).toBe("streaming");
+
+    const midStreamSnapshot = createSurfaceSnapshot({
+      target: threadTarget,
+      messages: [userMessage("Inspect the repo")],
+      streamMessage: controller.agent.state.streamMessage as AssistantMessage,
+      streamSequence: 4,
+      promptStatus: "streaming",
+    });
+    harness.emitSurfaceSync({
+      reason: "surface.updated",
+      target: threadTarget,
+      snapshot: midStreamSnapshot,
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: {
+        type: "text_delta",
+        sequence: 5,
+        contentIndex: 0,
+        delta: " now",
+      },
+    });
+
+    const continuedStreamMessage = controller.agent.state.streamMessage;
+    expect(
+      continuedStreamMessage?.role === "assistant" ? continuedStreamMessage.content[0] : null,
+    ).toMatchObject({
+      type: "text",
+      text: "Scanning files now",
+    });
+
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: { type: "clear", sequence: 6, reason: "done" },
+    });
+
+    expect(controller.agent.state.streamMessage).toBeNull();
+    expect(controller.promptStatus).toBe("idle");
 
     runtime.dispose();
   });

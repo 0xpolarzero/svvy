@@ -2926,12 +2926,11 @@ describe("WorkspaceSessionCatalog", () => {
         await waitFor(() =>
           surfaceSyncs.some(
             (payload) =>
-              payload.reason === "surface.updated" &&
+              payload.reason === "stream.patch" &&
               payload.target.surfacePiSessionId === handlerThread.surfacePiSessionId &&
-              payload.snapshot?.streamMessage?.content.some(
-                (block) =>
-                  block.type === "text" && block.text === "I started the delegated objective.",
-              ),
+              payload.streamPatch?.type === "text_delta" &&
+              payload.streamPatch.delta === "I started the delegated objective." &&
+              !payload.snapshot,
           ),
         );
         await waitFor(() =>

@@ -16,6 +16,11 @@
 		isFinished: boolean;
 	};
 
+	type ParsedMarkdown = {
+		tokens: Token[];
+		codeBlocks: Array<{ text: string; lang?: string }>;
+	};
+
 	let { content, isFinished }: Props = $props();
 
 	let highlightedCode = $state<Record<string, string>>({});
@@ -28,6 +33,8 @@
 	let codeToHighlightedHtmlPromise:
 		| Promise<(code: string, lang: HighlightLanguage, theme: "light" | "dark") => Promise<string>>
 		| undefined;
+	const parsedMarkdownCache = new Map<string, ParsedMarkdown>();
+	const parsedMarkdownCacheLimit = 200;
 
 	const supportedHighlightLanguages = [
 		"bash",
@@ -84,6 +91,47 @@
 
 	function toHighlightLanguage(lang: string): HighlightLanguage {
 		return supportedHighlightLanguageSet.has(lang) ? (lang as HighlightLanguage) : "text";
+	}
+
+	function rememberParsedMarkdown(key: string, parsed: ParsedMarkdown) {
+		parsedMarkdownCache.delete(key);
+		parsedMarkdownCache.set(key, parsed);
+		while (parsedMarkdownCache.size > parsedMarkdownCacheLimit) {
+			const oldestKey = parsedMarkdownCache.keys().next().value;
+			if (!oldestKey) return;
+			parsedMarkdownCache.delete(oldestKey);
+		}
+	}
+
+	function getParsedMarkdown(source: string): ParsedMarkdown {
+		const cached = parsedMarkdownCache.get(source);
+		if (cached) {
+			parsedMarkdownCache.delete(source);
+			parsedMarkdownCache.set(source, cached);
+			return cached;
+		}
+
+		const tokens = markdown.parse(source, {});
+		const codeBlocks: Array<{ text: string; lang?: string }> = [];
+
+		function collectCodeBlocks(items: Token[]) {
+			for (const item of items) {
+				if (item.type === "fence" || item.type === "code_block") {
+					codeBlocks.push({ text: item.content, lang: item.info });
+				}
+				if (Array.isArray(item.children)) collectCodeBlocks(item.children);
+			}
+		}
+
+		collectCodeBlocks(tokens);
+		const parsed = { tokens, codeBlocks };
+		rememberParsedMarkdown(source, parsed);
+		return parsed;
+	}
+
+	function hasOpenTrailingFence(source: string): boolean {
+		const fenceLines = source.match(/^```/gm);
+		return !!fenceLines && fenceLines.length % 2 === 1;
 	}
 
 	function renderCodeFrame(code: string, normalizedLanguage: string, codeHtml: string) {
@@ -267,20 +315,11 @@
 	});
 
 	$effect(() => {
-		const tokens = markdown.parse(content, {});
+		const parsed = getParsedMarkdown(content);
 		const theme = activeColorTheme;
-		const codeBlocks: Array<{ text: string; lang?: string }> = [];
-
-		function collectCodeBlocks(items: Token[]) {
-			for (const item of items) {
-				if (item.type === "fence" || item.type === "code_block") {
-					codeBlocks.push({ text: item.content, lang: item.info });
-				}
-				if (Array.isArray(item.children)) collectCodeBlocks(item.children);
-			}
-		}
-
-		collectCodeBlocks(tokens);
+		const codeBlocks = !isFinished && hasOpenTrailingFence(content)
+			? parsed.codeBlocks.slice(0, -1)
+			: parsed.codeBlocks;
 		if (codeBlocks.length === 0) return;
 
 		let cancelled = false;
@@ -313,7 +352,8 @@
 		};
 	});
 
-	const renderedHtml = $derived(markdown.render(content));
+	const parsedMarkdown = $derived(getParsedMarkdown(content));
+	const renderedHtml = $derived(markdown.renderer.render(parsedMarkdown.tokens, markdown.options, {}));
 
 	$effect(() => {
 		const root = containerElement;

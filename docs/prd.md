@@ -1042,7 +1042,7 @@ The main orchestrator surface and a handler thread surface should use the same c
 - artifacts
 - status
 
-Assistant transcript messages render Markdown suitable for coding-agent output, including compact prose, lists, tables, fenced code with syntax highlighting and copy actions, inline and block math, Mermaid diagrams, and escaped raw HTML rather than executable HTML. Long transcript surfaces use TanStack Virtual over system metadata, semantic projection cards, durable messages, tool rows, and active streaming rows so variable-height content preserves pane-local scroll anchors while following the bottom only when the user is pinned there.
+Assistant transcript messages render Markdown suitable for coding-agent output, including compact prose, lists, tables, fenced code with syntax highlighting and copy actions, inline and block math, Mermaid diagrams, and escaped raw HTML rather than executable HTML. Long transcript surfaces use TanStack Virtual over system metadata, semantic projection cards, durable messages, tool rows, and active streaming rows so variable-height content preserves pane-local scroll anchors while following the bottom only when the user is pinned there. Live assistant output preserves each provider/runtime stream packet as a visible update, but the bridge sends compact ordered stream patches instead of full surface snapshots for every packet; full snapshots remain the baseline, recovery, and settled-state mechanism.
 
 Message targeting is simple:
 

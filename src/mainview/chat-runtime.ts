@@ -21,6 +21,7 @@ import {
   type PromptTarget,
   type QueuedSurfaceMessage,
   type SendPromptRequest,
+  type SurfaceStreamPatch,
   type SurfaceSyncMessage,
   type WorkspaceBranchInfo,
   type WorkspaceCommandInspector,
@@ -192,6 +193,7 @@ interface ChatSurfaceControllerInternal extends ChatSurfaceController {
   attachPane: (panelId: string) => void;
   detachPane: (panelId: string) => void;
   applySnapshot: (snapshot: ConversationSurfaceSnapshot) => void;
+  applyStreamPatch: (patch: SurfaceStreamPatch) => void;
   dispose: () => void;
 }
 
@@ -515,6 +517,70 @@ function applySurfaceSnapshotToAgent(agent: Agent, payload: ConversationSurfaceS
   agent.setTools(currentTools);
 }
 
+function ensureStreamContentIndex(message: AssistantMessage, contentIndex: number): void {
+  while (message.content.length <= contentIndex) {
+    message.content.push({ type: "text", text: "" });
+  }
+}
+
+function applySurfaceStreamPatchToAgent(agent: Agent, patch: SurfaceStreamPatch): void {
+  if (patch.type === "clear") {
+    agent.state.streamMessage = null;
+    agent.state.isStreaming = false;
+    return;
+  }
+
+  if (patch.type === "start") {
+    agent.state.streamMessage = structuredClone(patch.message);
+    agent.state.isStreaming = true;
+    return;
+  }
+
+  const message = agent.state.streamMessage;
+  if (!message || message.role !== "assistant") {
+    return;
+  }
+
+  ensureStreamContentIndex(message, patch.contentIndex);
+  if (patch.type === "text_start") {
+    message.content[patch.contentIndex] = { type: "text", text: "" };
+    return;
+  }
+  if (patch.type === "thinking_start") {
+    message.content[patch.contentIndex] = { type: "thinking", thinking: "" };
+    return;
+  }
+  if (patch.type === "text_delta") {
+    const block = message.content[patch.contentIndex];
+    if (block?.type === "text") {
+      block.text += patch.delta;
+    }
+    return;
+  }
+  if (patch.type === "thinking_delta") {
+    const block = message.content[patch.contentIndex];
+    if (block?.type === "thinking") {
+      block.thinking += patch.delta;
+    }
+    return;
+  }
+  if (patch.type === "text_end") {
+    message.content[patch.contentIndex] = { type: "text", text: patch.content };
+    return;
+  }
+  if (patch.type === "thinking_end") {
+    message.content[patch.contentIndex] = { type: "thinking", thinking: patch.content };
+    return;
+  }
+  if (
+    patch.type === "toolcall_start" ||
+    patch.type === "toolcall_delta" ||
+    patch.type === "toolcall_end"
+  ) {
+    message.content[patch.contentIndex] = structuredClone(patch.toolCall);
+  }
+}
+
 function createInitialAgent(snapshot: ConversationSurfaceSnapshot, streamFn: StreamFn): Agent {
   const agent = new Agent({
     initialState: {
@@ -561,6 +627,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   private promptDispatchInFlight = false;
   private applyingSnapshot = false;
   private suppressSurfaceMutationSync = false;
+  private lastStreamSequence = 0;
 
   constructor(
     snapshot: ConversationSurfaceSnapshot,
@@ -575,6 +642,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
+    this.lastStreamSequence = snapshot.streamSequence;
     this.agent = createInitialAgent(snapshot, this.createStreamFn());
 
     const originalSetModel = this.agent.setModel.bind(this.agent);
@@ -637,6 +705,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
+    this.lastStreamSequence = snapshot.streamSequence;
 
     this.suppressSurfaceMutationSync = true;
     this.applyingSnapshot = true;
@@ -647,6 +716,41 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       this.suppressSurfaceMutationSync = false;
     }
     this.emit();
+  }
+
+  applyStreamPatch(patch: SurfaceStreamPatch): void {
+    if (this.disposed) {
+      return;
+    }
+    if (patch.sequence <= this.lastStreamSequence) {
+      return;
+    }
+    if (patch.sequence !== this.lastStreamSequence + 1) {
+      void this.rebaselineSurfaceAfterStreamGap();
+      return;
+    }
+
+    this.lastStreamSequence = patch.sequence;
+    this.promptStatus = patch.type === "clear" ? "idle" : "streaming";
+    this.applyingSnapshot = true;
+    try {
+      applySurfaceStreamPatchToAgent(this.agent, patch);
+    } finally {
+      this.applyingSnapshot = false;
+    }
+    this.emit();
+  }
+
+  private async rebaselineSurfaceAfterStreamGap(): Promise<void> {
+    try {
+      const snapshot = await this.rpcClient.request.openSurface({
+        workspaceId: this.workspaceId,
+        target: this.target,
+      });
+      this.applySnapshot(snapshot);
+    } catch (error) {
+      console.error("Failed to rebaseline surface after stream patch gap:", error);
+    }
   }
 
   async abort(): Promise<void> {
@@ -856,6 +960,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
         this.agent.state.streamMessage?.role === "assistant"
           ? structuredClone(this.agent.state.streamMessage)
           : null,
+      streamSequence: this.lastStreamSequence,
       provider: this.agent.state.model?.provider ?? DEFAULT_AGENT_SETTINGS.provider,
       model: this.agent.state.model?.id ?? DEFAULT_AGENT_SETTINGS.model,
       reasoningEffort:
@@ -1660,6 +1765,14 @@ export async function createChatRuntime(
         existing.dispose();
       }
       emit();
+      return;
+    }
+
+    if (payload.reason === "stream.patch") {
+      const controller = surfaceControllers.get(payload.target.surfacePiSessionId);
+      if (controller && payload.streamPatch) {
+        controller.applyStreamPatch(payload.streamPatch);
+      }
       return;
     }
 

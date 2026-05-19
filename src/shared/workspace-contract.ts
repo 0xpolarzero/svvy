@@ -1088,6 +1088,7 @@ export interface ConversationSurfaceSnapshot {
   pendingUserMessage?: AgentMessage | null;
   queuedMessages: QueuedSurfaceMessage[];
   streamMessage?: AssistantMessage | null;
+  streamSequence: number;
   provider: string;
   model: string;
   reasoningEffort: ReasoningEffort;
@@ -1107,11 +1108,50 @@ export interface ConversationSurfaceSnapshot {
   promptStatus: "idle" | "streaming";
 }
 
+export type SurfaceStreamPatchInput =
+  | {
+      type: "start";
+      message: AssistantMessage;
+    }
+  | {
+      type: "text_start" | "thinking_start";
+      contentIndex: number;
+    }
+  | {
+      type: "text_delta" | "thinking_delta";
+      contentIndex: number;
+      delta: string;
+    }
+  | {
+      type: "text_end" | "thinking_end";
+      contentIndex: number;
+      content: string;
+    }
+  | {
+      type: "toolcall_start" | "toolcall_delta" | "toolcall_end";
+      contentIndex: number;
+      toolCall: Extract<AssistantMessage["content"][number], { type: "toolCall" }>;
+    }
+  | {
+      type: "clear";
+      reason: "done" | "error";
+    };
+
+export type SurfaceStreamPatch = SurfaceStreamPatchInput & {
+  sequence: number;
+};
+
 export interface SurfaceSyncMessage {
   workspaceId: string;
-  reason: "surface.updated" | "prompt.settled" | "background.started" | "surface.closed";
+  reason:
+    | "surface.updated"
+    | "prompt.settled"
+    | "background.started"
+    | "surface.closed"
+    | "stream.patch";
   target: PromptTarget;
   snapshot?: ConversationSurfaceSnapshot;
+  streamPatch?: SurfaceStreamPatch;
 }
 
 export interface ListSessionsResponse {
