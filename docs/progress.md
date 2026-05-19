@@ -292,7 +292,7 @@ Current product decisions for this section are specified in `docs/specs/prompt-l
 
 ## 14A. Ambient Agent Resources
 
-Current product decisions for this section are specified in `docs/specs/ambient-agent-resources.spec.md`.
+Current product decisions for this section are specified in `docs/specs/ambient-agent-resources-baseline.spec.md`.
 
 - [ ] Add provider-neutral Ambient Agent Resources settings that default behavior-changing coding-agent host resources off, preserve visible runtime standards, and let the user opt in by host, workspace, actor class, category, and source for extensions/packages, skills, prompt templates, commands, hooks, UI resources, provider/model adapters, credentials, and execution-policy resources.
 - [ ] Implement the pi adapter so orchestrator, handler-thread, and workflow task-agent loaders preserve `AGENTS.md`/`CLAUDE.md`, ignore `SYSTEM.md`/`APPEND_SYSTEM.md`, and load extensions, skills, prompt templates, themes, package resources, slash commands, hooks, provider adapters, and related settings only when enabled for the exact actor/category/source.

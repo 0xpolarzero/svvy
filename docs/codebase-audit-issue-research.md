@@ -871,7 +871,7 @@ Relevant code:
 
 ### AUD-019 - Ambient pi extension tools can leak into orchestrator and handler sessions
 
-**Decision:** Adopted for implementation as a provider-neutral Ambient Agent Resources feature. The product should not simply delete all native host resources; behavior-changing ambient resources are disabled by default and can be explicitly enabled through settings by host, workspace, actor class, category, and source. See `docs/specs/ambient-agent-resources.spec.md`.
+**Decision:** Adopted for implementation as a provider-neutral Ambient Agent Resources feature. The product should not simply delete all native host resources; behavior-changing ambient resources are disabled by default and can be explicitly enabled through settings by host, workspace, actor class, category, and source. See `docs/specs/ambient-agent-resources-baseline.spec.md`.
 
 **Impact:** High capability-isolation and determinism issue.
 
@@ -900,7 +900,7 @@ Relevant code:
 - Enable a specific resource category/source/actor and assert it appears only in the selected actor scope.
 - Assert active tool names exactly match the generated/allowed svvy tool set plus explicitly enabled ambient callable resources.
 
-**Documentation impact:** Added `docs/specs/ambient-agent-resources.spec.md`; update PRD, feature inventory, and progress tracker with the adopted settings-gated design.
+**Documentation impact:** Added `docs/specs/ambient-agent-resources-baseline.spec.md`; update PRD, feature inventory, and progress tracker with the adopted settings-gated design.
 
 **Confidence:** High from source and pi behavior. Dynamic reproduction was not run in the audit.
 
