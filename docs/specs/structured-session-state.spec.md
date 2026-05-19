@@ -478,7 +478,7 @@ In the delegated model, the most important invariant is:
 
 Waiting inside a handler thread does not create a wait episode.
 
-A handoff episode is created only when that delegated objective reaches a terminal state for the current active work span, the handler thread explicitly calls `thread.handoff`, and the resulting typed orchestrator queue item is accepted as orchestrator input. While the queue item is pending, the handler turn remains active because the `thread.handoff` tool call is still blocked. If the queued handoff is rejected, the tool call returns an explicit error and no handoff episode is emitted.
+A handoff episode is created when that delegated objective reaches a terminal state for the current active work span, the handler thread explicitly calls `thread.handoff`, and `svvy` durably records the episode plus completed span. The resulting typed orchestrator queue item is a reconciliation notification for already-recorded state. Cancelling or deleting that notification does not roll back the episode and does not return a tool error to the handler.
 
 The terminal handoff back to the orchestrator is:
 
@@ -615,7 +615,7 @@ Use thread status this way:
 - `idle` while the handler owns an open delegated objective but has no active handler turn, active workflow run, durable wait, troubleshooting state, or terminal handoff
 - `waiting` when the delegated objective is durably blocked on user, approval, signal, timer, or other external input and no troubleshooting is required yet
 - `troubleshooting` when a workflow failed, was cancelled, continued into new lineage, or lost reliable supervision and the handler must inspect or repair before deciding what to do next
-- `completed` when the delegated objective reached an explicit terminal handoff point, `thread.handoff` emitted a handoff episode, and no running or waiting workflow run still belongs to that active span
+- `completed` when the delegated objective reached an explicit terminal handoff point, `thread.handoff` durably recorded a handoff episode, and no running or waiting workflow run still belongs to that active span
 
 These statuses describe the objective state, not whether the thread surface can still receive direct messages.
 
@@ -625,7 +625,7 @@ A completed thread surface remains directly interactive after handoff.
 
 A follow-up chat turn may leave thread status unchanged.
 
-A follow-up work turn may move a completed thread back to `running-handler` or `running-workflow`, preserving earlier handoff episodes as durable history.
+A direct follow-up work turn or explicit orchestrator `thread.resume` may move a completed thread back to `running-handler` or `running-workflow`, preserving earlier handoff episodes as durable history.
 
 If the same terminal workflow snapshot is replayed after handoff during final reconciliation or recovery, the thread remains `completed` because that replay does not start a new active span.
 

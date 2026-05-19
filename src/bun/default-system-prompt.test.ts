@@ -80,6 +80,8 @@ describe("default system prompt", () => {
   it("describes the adopted orchestrator and handler-thread tool split", () => {
     expect(DEFAULT_SYSTEM_PROMPT).toBe(buildSystemPrompt("orchestrator"));
     expect(DEFAULT_SYSTEM_PROMPT).toContain("delegate with thread.start");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("resume a completed handler with thread.resume");
+    expect(DEFAULT_SYSTEM_PROMPT).toContain("before thread.resume");
     expect(DEFAULT_SYSTEM_PROMPT).toContain('context: ["ci"]');
     expect(DEFAULT_SYSTEM_PROMPT).toContain(
       "Handler threads can supervise workflows through smithers.* tools",
@@ -110,6 +112,7 @@ describe("default system prompt", () => {
     expect(HANDLER_SYSTEM_PROMPT).toContain(
       "Do not call thread.start from this surface in the adopted supervision model.",
     );
+    expect(HANDLER_SYSTEM_PROMPT).not.toContain("thread.resume");
     expect(HANDLER_SYSTEM_PROMPT).toContain(".svvy/workflows/components/agents.ts");
     expect(HANDLER_SYSTEM_PROMPT).toContain("explorer");
     expect(HANDLER_SYSTEM_PROMPT).toContain("implementer");

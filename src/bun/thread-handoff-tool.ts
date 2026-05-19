@@ -46,9 +46,9 @@ export interface ThreadHandoffRequest {
 
 const THREAD_HANDOFF_DESCRIPTION = [
   "Request handoff of the current handler-thread objective back to the orchestrator.",
-  "This call blocks while the handoff waits in the orchestrator queue and succeeds only after the orchestrator accepts it as input.",
+  "This call records a durable handoff episode, queues an orchestrator reconciliation event, and returns once the handoff is durably recorded.",
   "Do not use this while the thread still owns a running or waiting workflow run; workflow waits stay inside the handler thread until they are resolved or cancelled.",
-  "If the user rejects the queued handoff, the tool returns an explicit error and the handler should ask for clarification or continue work.",
+  "The orchestrator queue item is a notification path; deleting it does not undo the durable handoff episode.",
 ].join(" ");
 
 export function createThreadHandoffTool(options: {

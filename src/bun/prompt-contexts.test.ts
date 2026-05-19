@@ -23,6 +23,7 @@ describe("prompt contexts", () => {
     expect(buildAlwaysLoadedPromptContext("orchestrator")).toContain(
       "Loaded always-on prompt context: Smithers workflow routing.",
     );
+    expect(buildAlwaysLoadedPromptContext("orchestrator")).toContain("thread.resume");
     expect(buildAlwaysLoadedPromptContext("handler")).toContain(
       "Loaded always-on prompt context: Smithers workflow supervision.",
     );

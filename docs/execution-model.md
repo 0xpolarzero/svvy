@@ -224,7 +224,7 @@ The handler thread then decides what to do next.
 
 The orchestrator only receives delegated handoff results when the handler thread explicitly emits them through `thread.handoff`.
 
-When that happens, the runtime should open an orchestrator turn to reconcile the latest durable handoff instead of waiting for another user-authored orchestrator message.
+When that happens, `thread.handoff` first records the durable handoff episode and closes the current objective span. The runtime then queues a typed orchestrator notification to reconcile the latest durable handoff instead of waiting for another user-authored orchestrator message.
 
 ### 6. Explicit Handoff Episodes
 
@@ -240,6 +240,8 @@ Ordinary replies inside the thread do not emit episodes and do not close the del
 When the handler thread wants to hand control back, it calls `thread.handoff`.
 
 Each `thread.handoff` emits one ordered handoff episode and marks the current objective span terminal, while the thread surface itself stays interactive for later follow-up.
+
+If the orchestrator later needs more help from the same delegated context, it should use `thread.resume` to re-engage the completed handler thread for a new active span instead of creating an unrelated replacement thread by default.
 
 That explicit handoff is the default reconciliation unit.
 

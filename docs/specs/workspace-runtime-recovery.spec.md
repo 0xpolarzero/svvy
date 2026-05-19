@@ -62,7 +62,7 @@ These are owned by the acquired workspace runtime:
 - pi-backed orchestrator and handler surfaces
 - surface prompt locks, active turns, and queued surface work
 - initial handler auto-starts
-- handler handoff acceptance and rejection
+- handler handoff notification delivery and dismissal
 - wait state
 - title generation jobs for workspace sessions and handler threads
 - Smithers workflow-run bindings and monitor reconnect
@@ -85,9 +85,9 @@ The recovery coordinator owns or coordinates the following interruptible work po
 | Active prompt or turn on an orchestrator or handler surface | turn record, surface prompt lock state, pi session state when available | Reacquire the surface by `surfacePiSessionId`, inspect durable turn and prompt-lock state, and either mark an interrupted pre-accept attempt retryable or project the accepted/running turn as resumed. If pi cannot provide accepted-message idempotency or an acceptance receipt, recovery cannot guarantee exact-once prompt delivery for a crash at the send boundary. |
 | Queued `user_message` row | surface queue table keyed by `surfacePiSessionId` | Leave `queued` rows ordered and visible. Reset stale `dispatching` rows to `queued` only when no accepted pi turn can be proven for that row. Claim the next row transactionally per surface after the surface lock is free. |
 | Queued `prompt_refresh` row | surface queue table | Deliver in queue order before later prompt-bearing items. Refresh the surface prompt binding, generated contracts, and runtime standards, then mark delivered. Do not create transcript or prompt-history content. |
-| Queued `handler_handoff` row | orchestrator surface queue plus handler command/handoff metadata | Keep the row ordered with other orchestrator queue work. Acceptance creates the orchestrator turn and handoff episode; rejection resolves the blocked handler tool call with an explicit error. Stale in-flight acceptance is recovered from the queue row and command state, not transcript text. |
+| Queued `handler_handoff` row | orchestrator surface queue plus already-recorded handler command and handoff episode metadata | Keep the row ordered with other orchestrator queue work. Delivery creates at most one orchestrator reconciliation turn for an already-recorded durable handoff. Dismissal cancels only the notification row; it does not roll back the handoff episode or return a tool error to the handler. |
 | Initial handler auto-start | handler-thread record plus initial-start recovery work row | Claim exactly one initial-start row per `threadId`. Start the handler's first pi turn from the raw objective only if no accepted initial turn exists. Preserve the handler surface identity and loaded context keys. |
-| Handoff acceptance or rejection | queue item, command record, handoff episode rows | Recover the blocked command and queue item together. A delivered accepted handoff must have exactly one handoff episode and exactly one orchestrator input turn. A rejected handoff must return one durable handler tool error and must not emit a handoff episode. |
+| Handoff notification delivery or dismissal | queue item, command record, handoff episode rows | Recover the notification row and already-recorded handoff episode together. A recorded handoff must have exactly one durable episode. Notification delivery has at most one orchestrator reconciliation turn. Notification dismissal must not alter the completed handler command or episode. |
 | Wait state | session, thread, workflow-run, and Smithers wait identifiers | Restore wait projection and attention state. Do not auto-resume a wait unless the durable resolving input, signal, approval decision, or timer state exists. Smithers waits are re-read from Smithers by run/node/wait identifiers. |
 | Title generation | title job record on workspace session or handler thread | Claim pending or stale running title jobs by title job id. Run the `namer` once per unfrozen title target. Manual rename or completed title freezes the job and prevents regeneration. |
 | Workflow monitors and workflow attention | `svvy` workflow-run binding plus Smithers run id and cursor metadata | Bootstrap Smithers projection first. Reconnect monitor cursors from the last durable event sequence or official snapshot. Re-read Smithers durable run, wait, output, artifact, approval, timer, event, and task-attempt detail by Smithers id before updating `svvy` projection. Re-emit only undelivered handler attention. |
@@ -269,8 +269,9 @@ The UI should expose that state as a recovery issue for the affected surface rat
 - A prompt-bearing queue item is marked delivered only after acceptance into the target pi surface is proven.
 - A `prompt_refresh` item is delivered before later prompt-bearing work in the same surface queue.
 - A handler initial auto-start runs at most once per handler thread unless the first attempt is proven not accepted.
-- A handoff acceptance emits at most one handoff episode for the accepted queue item.
-- A handoff rejection emits no handoff episode and resolves the handler command with an explicit error.
+- A recorded handoff emits exactly one durable handoff episode for the handler command.
+- A handoff notification delivery emits at most one orchestrator reconciliation turn.
+- A handoff notification dismissal never rolls back the handler command or handoff episode.
 - Smithers execution, wait, approval, timer, output, transcript, event, artifact, and task-attempt facts stay in Smithers.
 - Project CI recovery derives from Smithers durable terminal result plus `svvy` product binding, not process memory.
 - Renderer layout restore cannot create, skip, or duplicate backend recovery work.
@@ -304,7 +305,7 @@ Integration tests should cover:
 - app-global provider/settings startup remaining separate from workspace recovery
 - interrupted active turn recovery before queue drain
 - initial handler auto-start recovery exactly once
-- handoff acceptance and rejection recovery while the orchestrator was active during shutdown
+- handoff notification delivery and dismissal recovery while the orchestrator was active during shutdown
 - wait-state restore without accidental resume
 - title-generation restart with manual-rename freeze
 - Smithers monitor reconnect, undelivered handler attention, and Project CI projection from durable Smithers state

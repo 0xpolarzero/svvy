@@ -29,6 +29,7 @@ export type StructuredTurnDecision =
   | `workflow.${string}`
   | "clarify"
   | "thread.start"
+  | "thread.resume"
   | "request_context"
   | "thread.handoff"
   | "wait"
@@ -375,6 +376,63 @@ export type StructuredSurfaceQueuedMessageStatus =
 
 export type StructuredSurfaceQueueItemKind = "user_message" | "handler_handoff" | "prompt_refresh";
 
+export type StructuredRecoveryWorkKind =
+  | "smithers_bootstrap"
+  | "workflow_attention"
+  | "surface_turn_recovery"
+  | "queue_drain"
+  | "initial_handler_start"
+  | "handler_handoff_resolution"
+  | "title_generation"
+  | "project_ci_projection"
+  | "app_log_projection";
+
+export type StructuredRecoveryWorkStatus =
+  | "pending"
+  | "claimed"
+  | "blocked"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type StructuredRecoveryWorkOwnerScope =
+  | { kind: "workspace" }
+  | { kind: "workspace_session"; workspaceSessionId: string }
+  | { kind: "surface"; workspaceSessionId: string; surfacePiSessionId: string }
+  | {
+      kind: "thread";
+      workspaceSessionId: string;
+      threadId: string;
+      surfacePiSessionId: string;
+    }
+  | { kind: "workflow_run"; workflowRunId: string; smithersRunId: string }
+  | { kind: "queue_item"; queuedItemId: string; surfacePiSessionId: string }
+  | { kind: "title_job"; titleJobId: string };
+
+export interface StructuredRecoveryWorkRecord {
+  id: string;
+  workspaceId: string;
+  kind: StructuredRecoveryWorkKind;
+  status: StructuredRecoveryWorkStatus;
+  ownerScope: StructuredRecoveryWorkOwnerScope;
+  idempotencyKey: string;
+  orderingKey: string;
+  orderingSeq: number;
+  priority: number;
+  availableAt: string;
+  attempts: number;
+  maxAttempts: number;
+  claimedBy: string | null;
+  claimedAt: string | null;
+  claimExpiresAt: string | null;
+  leaseVersion: number;
+  payloadJson: unknown;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
 export interface StructuredSurfaceQueuedMessageRecord {
   id: string;
   sessionId: string;
@@ -452,6 +510,7 @@ export interface CreateStructuredSessionStateStoreOptions {
 }
 
 export interface StructuredSessionStateStore {
+  readonly workspaceId: string;
   upsertPiSession(pi: StructuredPiSessionRecord): void;
   isSessionDeleted(sessionId: string): boolean;
   startTurn(input: {
@@ -695,6 +754,26 @@ export interface StructuredSessionStateStore {
     id: string;
     beforeId?: string | null;
   }): StructuredSurfaceQueuedMessageRecord[];
+  ensureRecoveryWork(input: {
+    kind: StructuredRecoveryWorkKind;
+    ownerScope: StructuredRecoveryWorkOwnerScope;
+    idempotencyKey: string;
+    orderingKey: string;
+    orderingSeq: number;
+    priority: number;
+    availableAt: string;
+    maxAttempts: number;
+    payloadJson?: unknown;
+  }): StructuredRecoveryWorkRecord;
+  listRecoveryWork(): StructuredRecoveryWorkRecord[];
+  normalizeWorkspaceRecoveryState(input: { claimedBy: string }): void;
+  claimNextRecoveryWork(input: {
+    claimedBy: string;
+    leaseMs?: number;
+  }): StructuredRecoveryWorkRecord | null;
+  completeRecoveryWork(input: { id: string }): StructuredRecoveryWorkRecord;
+  blockRecoveryWork(input: { id: string; error?: string | null }): StructuredRecoveryWorkRecord;
+  failOrRetryRecoveryWork(input: { id: string; error: string }): StructuredRecoveryWorkRecord;
   getSessionState(sessionId: string): StructuredSessionSnapshot;
   listSessionStates(): StructuredSessionSnapshot[];
   deleteSessionState(sessionId: string): void;
@@ -936,6 +1015,30 @@ type WorkflowTaskMessageRow = {
   created_at: string;
 };
 
+type RecoveryWorkRow = {
+  id: string;
+  workspace_id: string;
+  kind: StructuredRecoveryWorkKind;
+  status: StructuredRecoveryWorkStatus;
+  owner_scope_json: string;
+  idempotency_key: string;
+  ordering_key: string;
+  ordering_seq: number;
+  priority: number;
+  available_at: string;
+  attempts: number;
+  max_attempts: number;
+  claimed_by: string | null;
+  claimed_at: string | null;
+  claim_expires_at: string | null;
+  lease_version: number;
+  payload_json: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
 type ArtifactRow = {
   id: string;
   session_id: string;
@@ -989,6 +1092,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
   private readonly db: Database;
   private readonly nowFn: () => string;
   private readonly workspace: StructuredWorkspaceRecord;
+  readonly workspaceId: string;
 
   constructor(options: CreateStructuredSessionStateStoreOptions) {
     const databasePath = options.databasePath ?? MEMORY_DATABASE;
@@ -999,7 +1103,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     this.db = new Database(databasePath);
     this.nowFn = options.now ?? (() => new Date().toISOString());
     initializeSchema(this.db);
-    this.restoreInterruptedQueuedMessages();
+    this.workspaceId = options.workspace.id;
 
     const existingWorkspace = this.db.query(`SELECT * FROM workspace LIMIT 1`).get() as
       | { id: string; label: string; cwd: string; artifact_dir: string }
@@ -1038,37 +1142,11 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
           this.workspace.artifactDir,
         );
     }
+    this.workspaceId = this.workspace.id;
   }
 
   close(): void {
     this.db.close();
-  }
-
-  private restoreInterruptedQueuedMessages(): void {
-    const interruptedCount = (
-      this.db
-        .query(
-          `SELECT COUNT(*) AS count
-           FROM surface_message_queue
-           WHERE status IN ('steering', 'dispatching')`,
-        )
-        .get() as { count: number }
-    ).count;
-    if (interruptedCount === 0) {
-      return;
-    }
-
-    const timestamp = this.now();
-    this.db
-      .query(
-        `UPDATE surface_message_queue
-         SET status = 'queued',
-             updated_at = ?,
-             delivered_at = NULL,
-             cancelled_at = NULL
-         WHERE status IN ('steering', 'dispatching')`,
-      )
-      .run(timestamp);
   }
 
   private nextSurfaceMessagePosition(
@@ -3133,6 +3211,226 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     );
   }
 
+  ensureRecoveryWork(input: {
+    kind: StructuredRecoveryWorkKind;
+    ownerScope: StructuredRecoveryWorkOwnerScope;
+    idempotencyKey: string;
+    orderingKey: string;
+    orderingSeq: number;
+    priority: number;
+    availableAt: string;
+    maxAttempts: number;
+    payloadJson?: unknown;
+  }): StructuredRecoveryWorkRecord {
+    const existing = this.db
+      .query(
+        `SELECT * FROM recovery_work
+         WHERE workspace_id = ? AND idempotency_key = ?
+           AND status NOT IN ('completed', 'failed', 'cancelled')
+         LIMIT 1`,
+      )
+      .get(this.workspace.id, input.idempotencyKey) as RecoveryWorkRow | undefined;
+    if (existing) {
+      return this.mapRecoveryWork(existing);
+    }
+
+    const timestamp = this.now();
+    const id = createId("recovery-work");
+    this.db
+      .query(
+        `INSERT INTO recovery_work (
+           id,
+           workspace_id,
+           kind,
+           status,
+           owner_scope_json,
+           idempotency_key,
+           ordering_key,
+           ordering_seq,
+           priority,
+           available_at,
+           attempts,
+           max_attempts,
+           claimed_by,
+           claimed_at,
+           claim_expires_at,
+           lease_version,
+           payload_json,
+           last_error,
+           created_at,
+           updated_at,
+           completed_at
+         ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL, 0, ?, NULL, ?, ?, NULL)`,
+      )
+      .run(
+        id,
+        this.workspace.id,
+        input.kind,
+        JSON.stringify(input.ownerScope),
+        input.idempotencyKey,
+        input.orderingKey,
+        input.orderingSeq,
+        input.priority,
+        input.availableAt,
+        input.maxAttempts,
+        toJson(input.payloadJson ?? null),
+        timestamp,
+        timestamp,
+      );
+    return this.mustFindRecoveryWorkRecord(id);
+  }
+
+  listRecoveryWork(): StructuredRecoveryWorkRecord[] {
+    return (
+      this.db
+        .query(
+          `SELECT * FROM recovery_work
+           WHERE workspace_id = ?
+           ORDER BY priority ASC, available_at ASC, ordering_key ASC, ordering_seq ASC, created_at ASC`,
+        )
+        .all(this.workspace.id) as RecoveryWorkRow[]
+    ).map((row) => this.mapRecoveryWork(row));
+  }
+
+  normalizeWorkspaceRecoveryState(_input: { claimedBy: string }): void {
+    const timestamp = this.now();
+    const normalize = this.db.transaction(() => {
+      this.db
+        .query(
+          `UPDATE recovery_work
+           SET status = 'pending',
+               claimed_by = NULL,
+               claimed_at = NULL,
+               claim_expires_at = NULL,
+               updated_at = ?
+           WHERE workspace_id = ?
+             AND status = 'claimed'
+             AND (claim_expires_at IS NULL OR claim_expires_at <= ?)`,
+        )
+        .run(timestamp, this.workspace.id, timestamp);
+      this.db
+        .query(
+          `UPDATE surface_message_queue
+           SET status = 'queued',
+               updated_at = ?,
+               delivered_at = NULL,
+               cancelled_at = NULL
+           WHERE status IN ('steering', 'dispatching')`,
+        )
+        .run(timestamp);
+    });
+    normalize();
+  }
+
+  claimNextRecoveryWork(input: {
+    claimedBy: string;
+    leaseMs?: number;
+  }): StructuredRecoveryWorkRecord | null {
+    const timestamp = this.now();
+    const leaseUntil = new Date(
+      Date.parse(timestamp) + (input.leaseMs ?? 5 * 60_000),
+    ).toISOString();
+    const claim = this.db.transaction(() => {
+      const candidates = this.db
+        .query(
+          `SELECT * FROM recovery_work
+           WHERE workspace_id = ?
+             AND status = 'pending'
+             AND available_at <= ?
+           ORDER BY priority ASC, available_at ASC, ordering_key ASC, ordering_seq ASC, created_at ASC
+           LIMIT 50`,
+        )
+        .all(this.workspace.id, timestamp) as RecoveryWorkRow[];
+      const active = this.db
+        .query(
+          `SELECT * FROM recovery_work
+           WHERE workspace_id = ? AND status = 'claimed'`,
+        )
+        .all(this.workspace.id) as RecoveryWorkRow[];
+      const row = candidates.find((candidate) =>
+        isRecoveryOwnerAvailable(
+          this.mapRecoveryWork(candidate),
+          active.map((entry) => this.mapRecoveryWork(entry)),
+        ),
+      );
+      if (!row) {
+        return null;
+      }
+      const result = this.db
+        .query(
+          `UPDATE recovery_work
+           SET status = 'claimed',
+               attempts = attempts + 1,
+               claimed_by = ?,
+               claimed_at = ?,
+               claim_expires_at = ?,
+               lease_version = lease_version + 1,
+               updated_at = ?
+           WHERE id = ? AND status = 'pending'`,
+        )
+        .run(input.claimedBy, timestamp, leaseUntil, timestamp, row.id);
+      if (result.changes !== 1) {
+        return null;
+      }
+      return this.mustFindRecoveryWorkRecord(row.id);
+    });
+    return claim();
+  }
+
+  completeRecoveryWork(input: { id: string }): StructuredRecoveryWorkRecord {
+    return this.updateRecoveryWorkTerminal(input.id, "completed", null);
+  }
+
+  blockRecoveryWork(input: { id: string; error?: string | null }): StructuredRecoveryWorkRecord {
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE recovery_work
+         SET status = 'blocked',
+             claimed_by = NULL,
+             claimed_at = NULL,
+             claim_expires_at = NULL,
+             last_error = ?,
+             updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(input.error ?? null, timestamp, input.id);
+    return this.mustFindRecoveryWorkRecord(input.id);
+  }
+
+  failOrRetryRecoveryWork(input: { id: string; error: string }): StructuredRecoveryWorkRecord {
+    const row = this.mustFindRecoveryWorkRow(input.id);
+    const timestamp = this.now();
+    const status: StructuredRecoveryWorkStatus =
+      row.attempts >= row.max_attempts ? "failed" : "pending";
+    const availableAt =
+      status === "pending"
+        ? new Date(Date.parse(timestamp) + Math.min(row.attempts + 1, 5) * 1000).toISOString()
+        : timestamp;
+    this.db
+      .query(
+        `UPDATE recovery_work
+         SET status = ?,
+             available_at = ?,
+             claimed_by = NULL,
+             claimed_at = NULL,
+             claim_expires_at = NULL,
+             last_error = ?,
+             updated_at = ?,
+             completed_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        status,
+        availableAt,
+        input.error,
+        timestamp,
+        status === "failed" ? timestamp : null,
+        input.id,
+      );
+    return this.mustFindRecoveryWorkRecord(input.id);
+  }
+
   getSessionState(sessionId: string): StructuredSessionSnapshot {
     const session = this.mustFindSessionRow(sessionId);
     const workflowRuns = this.queryWorkflowRunRecords(sessionId);
@@ -3396,6 +3694,16 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     return row;
   }
 
+  private mustFindRecoveryWorkRow(id: string): RecoveryWorkRow {
+    const row = this.db.query(`SELECT * FROM recovery_work WHERE id = ?`).get(id) as
+      | RecoveryWorkRow
+      | undefined;
+    if (!row) {
+      throw new Error(`Structured recovery work not found: ${id}`);
+    }
+    return row;
+  }
+
   private findWorkflowTaskAttemptRowByIdentity(input: {
     smithersRunId: string;
     nodeId: string;
@@ -3475,6 +3783,32 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
 
   private mustFindSurfaceQueuedMessageRecord(id: string): StructuredSurfaceQueuedMessageRecord {
     return this.mapSurfaceQueuedMessage(this.mustFindSurfaceQueuedMessageRow(id));
+  }
+
+  private mustFindRecoveryWorkRecord(id: string): StructuredRecoveryWorkRecord {
+    return this.mapRecoveryWork(this.mustFindRecoveryWorkRow(id));
+  }
+
+  private updateRecoveryWorkTerminal(
+    id: string,
+    status: Extract<StructuredRecoveryWorkStatus, "completed" | "failed" | "cancelled">,
+    error: string | null,
+  ): StructuredRecoveryWorkRecord {
+    const timestamp = this.now();
+    this.db
+      .query(
+        `UPDATE recovery_work
+         SET status = ?,
+             claimed_by = NULL,
+             claimed_at = NULL,
+             claim_expires_at = NULL,
+             last_error = ?,
+             updated_at = ?,
+             completed_at = ?
+         WHERE id = ?`,
+      )
+      .run(status, error, timestamp, timestamp, id);
+    return this.mustFindRecoveryWorkRecord(id);
   }
 
   private mustFindArtifactRecord(artifactId: string): StructuredArtifactRecord {
@@ -4155,6 +4489,34 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     };
   }
 
+  private mapRecoveryWork(row: RecoveryWorkRow): StructuredRecoveryWorkRecord {
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      kind: row.kind,
+      status: row.status,
+      ownerScope: fromJson<StructuredRecoveryWorkOwnerScope>(row.owner_scope_json) ?? {
+        kind: "workspace",
+      },
+      idempotencyKey: row.idempotency_key,
+      orderingKey: row.ordering_key,
+      orderingSeq: row.ordering_seq,
+      priority: row.priority,
+      availableAt: row.available_at,
+      attempts: row.attempts,
+      maxAttempts: row.max_attempts,
+      claimedBy: row.claimed_by,
+      claimedAt: row.claimed_at,
+      claimExpiresAt: row.claim_expires_at,
+      leaseVersion: row.lease_version,
+      payloadJson: fromJson<unknown>(row.payload_json) ?? null,
+      lastError: row.last_error,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at,
+    };
+  }
+
   private mapEvent(row: EventRow): StructuredLifecycleEventRecord {
     return {
       id: row.id,
@@ -4447,6 +4809,30 @@ function initializeSchema(db: Database): void {
       cancelled_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS recovery_work (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      owner_scope_json TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      ordering_key TEXT NOT NULL,
+      ordering_seq INTEGER NOT NULL,
+      priority INTEGER NOT NULL,
+      available_at TEXT NOT NULL,
+      attempts INTEGER NOT NULL,
+      max_attempts INTEGER NOT NULL,
+      claimed_by TEXT,
+      claimed_at TEXT,
+      claim_expires_at TEXT,
+      lease_version INTEGER NOT NULL,
+      payload_json TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS event (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -4513,6 +4899,15 @@ function initializeSchema(db: Database): void {
      ON surface_message_queue (surface_pi_session_id, status, position)`,
   );
   db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_recovery_work_active_idempotency
+     ON recovery_work (workspace_id, idempotency_key)
+     WHERE status NOT IN ('completed', 'failed', 'cancelled')`,
+  );
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_recovery_work_claim
+     ON recovery_work (workspace_id, status, available_at, priority, ordering_key, ordering_seq, created_at)`,
+  );
+  db.exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_workflow_run_smithers_run_id
      ON workflow_run (smithers_run_id)`,
   );
@@ -4533,6 +4928,50 @@ function ensureColumn(
     return;
   }
   db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+function isRecoveryOwnerAvailable(
+  candidate: StructuredRecoveryWorkRecord,
+  activeClaims: StructuredRecoveryWorkRecord[],
+): boolean {
+  return !activeClaims.some((active) => recoveryOwnerConflicts(candidate, active));
+}
+
+function recoveryOwnerConflicts(
+  left: StructuredRecoveryWorkRecord,
+  right: StructuredRecoveryWorkRecord,
+): boolean {
+  if (left.orderingKey === right.orderingKey) {
+    return true;
+  }
+  const leftSurface = recoverySurfaceOwner(left.ownerScope);
+  const rightSurface = recoverySurfaceOwner(right.ownerScope);
+  if (leftSurface && rightSurface && leftSurface === rightSurface) {
+    return true;
+  }
+  const leftThread = recoveryThreadOwner(left.ownerScope);
+  const rightThread = recoveryThreadOwner(right.ownerScope);
+  if (leftThread && rightThread && leftThread === rightThread) {
+    return true;
+  }
+  const leftWorkflow = recoveryWorkflowOwner(left.ownerScope);
+  const rightWorkflow = recoveryWorkflowOwner(right.ownerScope);
+  return Boolean(leftWorkflow && rightWorkflow && leftWorkflow === rightWorkflow);
+}
+
+function recoverySurfaceOwner(scope: StructuredRecoveryWorkOwnerScope): string | null {
+  if (scope.kind === "surface" || scope.kind === "thread" || scope.kind === "queue_item") {
+    return scope.surfacePiSessionId;
+  }
+  return null;
+}
+
+function recoveryThreadOwner(scope: StructuredRecoveryWorkOwnerScope): string | null {
+  return scope.kind === "thread" ? scope.threadId : null;
+}
+
+function recoveryWorkflowOwner(scope: StructuredRecoveryWorkOwnerScope): string | null {
+  return scope.kind === "workflow_run" ? scope.workflowRunId : null;
 }
 
 function clampSidebarSectionSize(sizePx: number): number {

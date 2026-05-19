@@ -86,7 +86,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Delegated Handler Thread Surfaces",
     status: "in-progress",
     summary:
-      "Lets the orchestrator open pi-backed delegated handler threads as fully interactive conversation surfaces that supervise one delegated objective, immediately start the handler's first turn from the raw objective, optionally preload prompt context keys such as `ci`, derive handler-thread titles through the configured `namer` from the supplied objective instead of exposing a separate title field to the orchestrator, stay multi-turn and directly messageable before and after handoff, expose runtime and thread state through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`, distinguish idle, handler-active, workflow-active, waiting, troubleshooting, and completed thread states, reject `thread.handoff` while the thread still owns a running or waiting workflow run for the current span, route workflow attention back to the owning handler surface rather than the focused Dockview panel, can be inspected on demand without becoming the default reconciliation path, and return control to the orchestrator only through explicit `thread.handoff` calls that append ordered handoff episodes over the thread's lifetime and immediately trigger a fresh orchestrator reconciliation turn.",
+      "Lets the orchestrator open pi-backed delegated handler threads as fully interactive conversation surfaces that supervise one delegated objective, immediately start the handler's first turn from the raw objective, explicitly resume a completed handler thread through `thread.resume` when follow-up work belongs in the same delegated context, optionally preload prompt context keys such as `ci`, derive handler-thread titles through the configured `namer` from the supplied objective instead of exposing a separate title field to the orchestrator, stay multi-turn and directly messageable before and after handoff, expose runtime and thread state through `runtime.current`, `thread.current`, `thread.list`, and `thread.handoffs`, distinguish idle, handler-active, workflow-active, waiting, troubleshooting, and completed thread states, reject `thread.handoff` while the thread still owns a running or waiting workflow run for the current span, route workflow attention back to the owning handler surface rather than the focused Dockview panel, can be inspected on demand without becoming the default reconciliation path, and return control to the orchestrator only through explicit `thread.handoff` calls that append ordered handoff episodes over the thread's lifetime and schedule typed orchestrator reconciliation notifications.",
     sourceSpecs: ["docs/prd.md", "docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -161,7 +161,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Queued Surface Messages",
     status: "in-progress",
     summary:
-      "Lets a user submit follow-up messages to an already-running orchestrator or handler-thread surface by placing them in a visible FIFO queue owned by the target `surfacePiSessionId`; ordinary queued sends do not steer, interrupt, or create concurrent turns, while a row-level `Steer` action deliberately locks the row and uses pi/Codex-style steering at the next safe boundary; the queue is a typed surface queue where all surfaces accept `user_message` items and `prompt_refresh` control items, and the orchestrator also accepts `handler_handoff` items created by blocking `thread.handoff` tool calls; queued items are claimed atomically by one shared queue runner per `surfacePiSessionId`, dispatching rows stay visible as locked in-flight state until accepted as the pending input or applied as control work, remain structured product state until delivered as real pi input or prompt-binding refresh, survive panel focus changes and duplicated panels, write user prompt history once at queue time only for user messages, and stay recoverable across restart, cancellation, restore-to-composer, and pre-accept delivery failure.",
+      "Lets a user or orchestrator submit follow-up messages to an already-running orchestrator or handler-thread surface by placing them in a visible FIFO queue owned by the target `surfacePiSessionId`; ordinary queued sends and `thread.resume` requests do not steer, interrupt, or create concurrent turns, while a row-level `Steer` action deliberately locks the row and uses pi/Codex-style steering at the next safe boundary; the queue is a typed surface queue where all surfaces accept `user_message` items and `prompt_refresh` control items, and the orchestrator also accepts `handler_handoff` notification items created after durable `thread.handoff` recording; queued items are claimed atomically by one shared queue runner per `surfacePiSessionId`, dispatching rows stay visible as locked in-flight state until accepted as the pending input or applied as control work, remain structured product state until delivered as real pi input, handoff notification, or prompt-binding refresh, survive panel focus changes and duplicated panels, write user prompt history once at queue time only for user messages, and stay recoverable across restart, cancellation, restore-to-composer, and pre-accept delivery failure.",
     sourceSpecs: ["docs/prd.md", "docs/specs/queued-messages.spec.md"],
   },
   {
@@ -244,7 +244,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Workspace Runtime Recovery Coordinator",
     status: "in-progress",
     summary:
-      "Defines one backend-owned recovery coordinator per acquired workspace runtime, with duplicate same-cwd tabs sharing recovery state, app-wide auth/preferences kept outside workspace recovery, Smithers durable-state bootstrap before surface work, durable scheduler records with transactional claims and idempotency keys for prompts, queues, initial handler starts, handoffs, waits, title jobs, workflow attention, Project CI projection, and recovery observability, while renderer layout restore remains only a consumer of backend snapshots.",
+      "Defines one backend-owned recovery coordinator per acquired workspace runtime, with duplicate same-cwd tabs sharing recovery state, app-wide auth/preferences kept outside workspace recovery, Smithers durable-state bootstrap before surface work, durable scheduler records with transactional claims and idempotency keys for prompts, queues, initial handler starts, handoff notifications, waits, title jobs, workflow attention, Project CI projection, and recovery observability, while renderer layout restore remains only a consumer of backend snapshots.",
     sourceSpecs: ["docs/specs/workspace-runtime-recovery.spec.md"],
   },
   {
@@ -268,7 +268,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Structured Handler Threads",
     status: "in-progress",
     summary:
-      "Tracks delegated handler threads as durable interactive surfaces keyed separately from workspace session containers and pi surface ids, with objective, handler-attention status, wait state, worktree context, and linkage to multiple workflow runs and multiple handoff episodes over the thread's lifetime without flattening workflow outcome into thread terminal state.",
+      "Tracks delegated handler threads as durable interactive surfaces keyed separately from workspace session containers and pi surface ids, with objective, handler-attention status, wait state, worktree context, explicit orchestrator re-engagement of completed threads through `thread.resume`, and linkage to multiple workflow runs and multiple handoff episodes over the thread's lifetime without flattening workflow outcome into thread terminal state.",
     sourceSpecs: ["docs/specs/structured-session-state.spec.md"],
   },
   {
@@ -276,7 +276,7 @@ export const PRODUCT_FEATURES: ProductFeature[] = [
     name: "Durable Episodes",
     status: "in-progress",
     summary:
-      "Stores reusable semantic outputs as first-class episode records, with handler threads able to emit multiple ordered handoff episodes over their lifetime through explicit `thread.handoff` calls as the semantic half of returning control to the orchestrator, including orchestrator-local episodes when substantive local work completes, while ordinary tool runs keep their own command summaries and artifacts.",
+      "Stores reusable semantic outputs as first-class episode records, with handler threads able to emit multiple ordered handoff episodes over their lifetime through explicit `thread.handoff` calls whose success boundary is durable episode recording plus objective-span closure, including orchestrator-local episodes when substantive local work completes, while ordinary tool runs keep their own command summaries and artifacts.",
     sourceSpecs: ["docs/specs/structured-session-state.spec.md"],
   },
   {

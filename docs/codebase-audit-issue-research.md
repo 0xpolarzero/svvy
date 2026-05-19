@@ -712,7 +712,7 @@ Relevant code:
 
 ### AUD-015 - Handler `thread.handoff` reconciliation can be dropped when orchestrator is active
 
-**Disposition:** Fixed. `thread.handoff` is now a blocking tool call that creates a typed `handler_handoff` item in the orchestrator surface queue. The handoff waits behind any active orchestrator turn or existing queued user messages, can be reordered or steered like other surface queue work, and returns success only once the item is accepted as orchestrator input. Rejecting the queue item returns an explicit tool error to the handler.
+**Disposition:** Fixed. `thread.handoff` now records a durable handoff episode and closes the current objective span before scheduling a typed `handler_handoff` notification item in the orchestrator surface queue. The notification waits behind any active orchestrator turn or existing queued user messages and can be reconciled in order. Dismissing the notification cancels only the queue row; it does not roll back the durable handoff or return a tool error to the handler.
 
 **Impact:** High orchestration correctness issue.
 
@@ -727,29 +727,29 @@ Relevant code:
 
 **Resolved design:**
 
-Use the generic typed surface queue rather than a separate reconciliation queue.
+Use durable handoff recording plus the generic typed surface queue rather than a separate reconciliation queue.
 
 1. Surface queue rows have a `kind`; all interactive surfaces accept `user_message`, and the orchestrator also accepts `handler_handoff`.
-2. `thread.handoff` creates a `handler_handoff` queue item with thread, command, title, summary, body, and episode-kind metadata, then blocks the handler tool call.
+2. `thread.handoff` records the durable handoff episode, marks the active objective span completed, and creates a `handler_handoff` notification item with thread, command, title, summary, body, and episode-kind metadata.
 3. If the orchestrator is active, the handoff remains queued behind existing orchestrator work and visible with distinct handoff UI.
-4. Queue delivery accepts the handoff as orchestrator input, creates the durable handoff episode, marks the handler objective span completed, and resolves the blocked tool call successfully.
-5. Queue rejection cancels the queue row and resolves the blocked tool call with an explicit user-rejected handoff error.
+4. Queue delivery submits the handoff notification as orchestrator input so the orchestrator reconciles already-recorded durable state.
+5. Notification dismissal cancels the queue row without changing the completed handler command or durable handoff episode.
 
-App restart during the blocked tool call remains part of the broader active-tool-call restart recovery problem tracked separately.
+App restart during the pending notification remains part of the broader workspace queue recovery problem tracked separately.
 
 **Implemented resolution:**
 
 - `surface_message_queue` now carries a queue item `kind` and optional payload; `handler_handoff` items reuse the same ordering, claim, steering, and projection path as queued user messages.
-- `thread.handoff` delegates acceptance to the catalog, blocks while its queue item is pending, succeeds only after orchestrator input acceptance, and fails when the queue item is rejected.
+- `thread.handoff` delegates durable handoff recording and notification enqueueing to the catalog, then returns once the handoff is recorded.
 - The old direct `resumeOrchestratorAfterHandlerHandoff` path was removed, so normal handler turns and initial auto-start handler turns use the same handoff queue semantics.
-- The queued-message UI renders handler handoffs with distinct labeling and a `Reject` action instead of edit/delete.
+- The queued-message UI renders handler handoffs with distinct labeling and notification controls instead of editable user-message controls.
 
 **Verification required:**
 
 - Handler hands off while orchestrator is idle: the handoff queue item is accepted as the next orchestrator input.
-- Handler hands off while orchestrator is active: no concurrent turn starts, the item remains visible in the orchestrator queue, and rejection returns a tool error.
+- Handler hands off while orchestrator is active: no concurrent turn starts, the notification remains visible in the orchestrator queue, and dismissal does not alter the durable handoff episode.
 - Queued handoff rows can be ordered with queued user messages and rendered distinctly.
-- Restart with a blocked handoff tool call is covered by the broader active-tool-call recovery work.
+- Restart with a pending handoff notification is covered by workspace-runtime queue recovery.
 
 **Documentation impact:** Update thread/handoff specs to describe pending reconciliation delivery if a spec exists.
 
@@ -757,7 +757,7 @@ App restart during the blocked tool call remains part of the broader active-tool
 
 ### AUD-016 - Initial auto-start handler handoff does not wake the orchestrator
 
-**Disposition:** Fixed by the AUD-015 typed surface-queue design. `thread.handoff` owns handoff delivery directly, so the handler prompt entrypoint no longer matters; initial auto-start handler turns and normal handler follow-up turns both block on the same queued handoff accept/reject path.
+**Disposition:** Fixed by the AUD-015 durable handoff notification design. `thread.handoff` owns durable handoff recording and notification enqueueing directly, so the handler prompt entrypoint no longer matters; initial auto-start handler turns and normal handler follow-up turns both schedule the same queued orchestrator notification path.
 
 **Impact:** High orchestration correctness issue.
 
@@ -1043,7 +1043,7 @@ Relevant code:
 
 ### AUD-024 - Restart recovery lacks one durable scheduler for active prompts, initial starts, queues, and workflow monitors
 
-**Disposition:** Specified. The adopted design is now captured in `docs/specs/workspace-runtime-recovery.spec.md`: recovery is scoped to each acquired workspace runtime, uses durable scheduler records and transactional claims, bootstraps Smithers projection before surface work, and keeps UI restore as a consumer of backend snapshots/events rather than the recovery owner.
+**Disposition:** Partially implemented. The adopted design is captured in `docs/specs/workspace-runtime-recovery.spec.md`, and the runtime now has a workspace-scoped durable scheduler table plus coordinator for Smithers bootstrap, surface-turn settlement, queue drain, handler initial starts, handoff notification recovery, title jobs, workflow attention, and Project CI projection. Remaining audit follow-up is full recovery app-log projection and broader restart-boundary integration coverage.
 
 **Impact:** Medium-high cross-cutting reliability issue.
 
@@ -1053,7 +1053,7 @@ Concrete confirmed pieces:
 
 - AUD-009: nonterminal Smithers runs are hydrated but not reattached/resumed.
 - AUD-013: dispatching queue rows are restored to queued on startup, but claiming is non-atomic and dispatching rows are hidden.
-- AUD-015: handoff reconciliation can be dropped when the orchestrator is busy.
+- AUD-015: handoff reconciliation notification can be dropped when the orchestrator is busy.
 - AUD-016: initial auto-start handler handoff lacks the normal wake path.
 
 **Why this matters:** Each individual bug has a local fix, but the shared product requirement is stronger: pending work should survive process boundaries and resume exactly once. Without one recovery owner, fixes can remain fragmented and new flows can repeat the same pattern.
@@ -1066,7 +1066,7 @@ Responsibilities:
 
 1. Reattach or settle nonterminal workflow runs.
 2. Restore dispatching/steering queued messages to queued and expose their status.
-3. Drain durable handoff reconciliation records.
+3. Drain durable handoff notification and reconciliation records.
 4. Resume pending initial handler starts exactly once.
 5. Emit explicit recovery events/facts so the UI and logs can explain what happened.
 6. Use transactional claims for every resumed work item.
@@ -1077,7 +1077,7 @@ Responsibilities:
 - Concurrent startup/open-surface paths do not double-run recovery.
 - Recovery order is deterministic where dependencies exist, especially workflow attention before handler/orchestrator prompt resume.
 
-**Documentation impact:** `docs/specs/workspace-runtime-recovery.spec.md` defines the adopted workspace-runtime recovery coordinator design. Runtime behavior remains implementation work.
+**Documentation impact:** `docs/specs/workspace-runtime-recovery.spec.md` defines the adopted workspace-runtime recovery coordinator design. Runtime behavior now has the durable scheduler/coordinator foundation, with remaining verification work tracked in `docs/progress.md`.
 
 **Confidence:** Medium-high. This section consolidates confirmed restart gaps rather than introducing a separate newly probed call site.
 

@@ -74,9 +74,10 @@ const COMMON_INSTRUCTION_BODY = [
 ].join("\n\n");
 
 const ORCHESTRATOR_INSTRUCTION_BODY = [
-  "This surface is the orchestrator. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, delegate with thread.start, or enter wait.",
+  "This surface is the orchestrator. Choose one top-level route per turn: reply directly, ask for clarification, use direct tools, use execute_typescript for typed composition, delegate with thread.start, resume a completed handler with thread.resume, or enter wait.",
   "The orchestrator delegates objectives into handler threads. It does not directly supervise Smithers workflow runs.",
   "Handler threads can supervise workflows through smithers.* tools, but those tool declarations are not callable from this surface.",
+  "Use thread.list and thread.handoffs before thread.resume when an existing completed handler thread may already have the right context for follow-up work.",
   "If a delegated objective needs workflow authoring or saving reusable workflow assets, delegate that work to a handler thread instead of trying to do it from the orchestrator surface.",
   buildOrchestratorContextRoutingPrompt(),
 ].join("\n\n");
@@ -129,7 +130,7 @@ const SMITHERS_ORCHESTRATOR_CONTEXT_BODY = [
   "",
   "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers.*` tool declarations.",
   "",
-  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`.",
+  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`, or use `thread.resume` when a completed handler thread already has the right delegated context for follow-up work.",
 ].join("\n");
 
 const SMITHERS_HANDLER_CONTEXT_BODY = [

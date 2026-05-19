@@ -708,7 +708,6 @@ function startAutonomousWorkflowSupervisionProofStub(): AutonomousProofStub {
 
       const payload = (await request.json()) as ChatCompletionRequest;
       requests.push(payload);
-
       const responseId = `chatcmpl-workflow-supervision-proof-${++responseCounter}`;
 
       try {

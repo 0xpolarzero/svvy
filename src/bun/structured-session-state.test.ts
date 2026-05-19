@@ -680,6 +680,103 @@ describe("structured session state write API", () => {
     ).toEqual([[second.id, "queued"]]);
   });
 
+  it("claims recovery work with idempotency keys, leases, and owner locks", () => {
+    const store = createStore();
+    const first = store.ensureRecoveryWork({
+      kind: "queue_drain",
+      ownerScope: {
+        kind: "surface",
+        workspaceSessionId: "session-recovery",
+        surfacePiSessionId: "surface-recovery",
+      },
+      idempotencyKey: "queue_drain:surface-recovery",
+      orderingKey: "surface:surface-recovery",
+      orderingSeq: 0,
+      priority: 30,
+      availableAt: "2026-04-18T09:00:00.000Z",
+      maxAttempts: 3,
+    });
+    const duplicate = store.ensureRecoveryWork({
+      kind: "queue_drain",
+      ownerScope: {
+        kind: "surface",
+        workspaceSessionId: "session-recovery",
+        surfacePiSessionId: "surface-recovery",
+      },
+      idempotencyKey: "queue_drain:surface-recovery",
+      orderingKey: "surface:surface-recovery",
+      orderingSeq: 0,
+      priority: 30,
+      availableAt: "2026-04-18T09:00:00.000Z",
+      maxAttempts: 3,
+    });
+    store.ensureRecoveryWork({
+      kind: "surface_turn_recovery",
+      ownerScope: {
+        kind: "surface",
+        workspaceSessionId: "session-recovery",
+        surfacePiSessionId: "surface-recovery",
+      },
+      idempotencyKey: "surface_turn_recovery:surface-recovery:turn-1",
+      orderingKey: "surface:surface-recovery",
+      orderingSeq: -1,
+      priority: 10,
+      availableAt: "2026-04-18T09:00:00.000Z",
+      maxAttempts: 3,
+    });
+
+    expect(duplicate.id).toBe(first.id);
+    const claimed = store.claimNextRecoveryWork({ claimedBy: "coordinator-a", leaseMs: 60_000 });
+    expect(claimed).toMatchObject({
+      kind: "surface_turn_recovery",
+      status: "claimed",
+      attempts: 1,
+      claimedBy: "coordinator-a",
+    });
+    expect(store.claimNextRecoveryWork({ claimedBy: "coordinator-b" })).toBeNull();
+
+    store.completeRecoveryWork({ id: claimed!.id });
+    expect(store.claimNextRecoveryWork({ claimedBy: "coordinator-b" })).toMatchObject({
+      id: first.id,
+      status: "claimed",
+    });
+  });
+
+  it("normalizes stale recovery leases and interrupted queue rows on coordinator startup", () => {
+    const store = createStore();
+    seedSession(store, "session-recovery-normalize");
+    const queued = store.enqueueSurfaceMessage({
+      sessionId: "session-recovery-normalize",
+      surfacePiSessionId: "surface-recovery-normalize",
+      messageJson: JSON.stringify({ role: "user", content: "Recover this prompt" }),
+      requestSummary: "Recover this prompt",
+    });
+    store.claimNextQueuedSurfaceMessage({ surfacePiSessionId: "surface-recovery-normalize" });
+    const work = store.ensureRecoveryWork({
+      kind: "queue_drain",
+      ownerScope: {
+        kind: "surface",
+        workspaceSessionId: "session-recovery-normalize",
+        surfacePiSessionId: "surface-recovery-normalize",
+      },
+      idempotencyKey: "queue_drain:surface-recovery-normalize",
+      orderingKey: "surface:surface-recovery-normalize",
+      orderingSeq: 0,
+      priority: 30,
+      availableAt: "2026-04-18T09:00:00.000Z",
+      maxAttempts: 3,
+    });
+    store.claimNextRecoveryWork({ claimedBy: "stale-coordinator", leaseMs: -1 });
+
+    store.normalizeWorkspaceRecoveryState({ claimedBy: "fresh-coordinator" });
+
+    expect(store.getSurfaceQueuedMessage({ id: queued.id }).status).toBe("queued");
+    expect(store.listRecoveryWork().find((entry) => entry.id === work.id)).toMatchObject({
+      status: "pending",
+      claimedBy: null,
+    });
+  });
+
   it("skips no-op queued message reorders and records only committed order changes", () => {
     const store = createStore();
     seedSession(store, "session-queue-reorder");

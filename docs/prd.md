@@ -356,10 +356,11 @@ More precisely, this means:
 The intended use of the native control subset is:
 
 - the orchestrator normally uses `thread.start` to open a delegated handler thread
+- the orchestrator uses `thread.resume` when a completed handler thread already has the right delegated context for follow-up work on the same objective
 - the orchestrator may pass `context: ["ci"]` to `thread.start` when the delegated objective clearly needs Project CI authoring context
 - a handler thread may call `request_context({ keys: ["ci"] })` when it later discovers that Project CI configuration or modification is required
-- a handler thread uses `thread.handoff` to request transfer back to the orchestrator only after no running or waiting workflow run still belongs to that span; the tool call blocks while the request is represented as a typed orchestrator surface queue item
-- accepting the queued handoff as the next orchestrator input emits the durable handoff episode, marks the current objective span complete, and lets the blocked `thread.handoff` tool call return successfully; rejecting the queued handoff returns an explicit tool error to the handler so it can ask for clarification or continue work
+- a handler thread uses `thread.handoff` to transfer back to the orchestrator only after no running or waiting workflow run still belongs to that span; the tool call succeeds when `svvy` records the durable handoff episode and marks the current objective span complete
+- after a durable handoff is recorded, `svvy` creates a typed orchestrator queue item so the orchestrator can reconcile the recorded handoff in surface-queue order; cancelling or deleting that notification does not roll back the handoff episode or return a tool error to the handler
 - a handler thread normally uses Smithers-native bridge tools such as `smithers.list_workflows`, `smithers.run_workflow`, `smithers.get_run`, `smithers.explain_run`, `smithers.list_pending_approvals`, `smithers.resolve_approval`, `smithers.get_node_detail`, `smithers.list_artifacts`, and `smithers.get_run_events` to supervise Smithers execution
 - any interactive surface may use `wait` when it needs user or external input
 
@@ -915,7 +916,8 @@ When the target surface is the main orchestrator:
    - call `thread.start`
    - hand off the delegated objective to a handler thread
    - include requestable context-pack keys such as `context: ["ci"]` only when the objective needs that product context from the first handler turn
-5. when a handler thread explicitly hands control back, accept its typed handoff queue item as orchestrator input and reconcile the latest durable handoff state: thread durable state plus the latest handoff episode
+5. when a handler thread explicitly hands control back, reconcile the typed handoff notification against durable state: thread durable state plus the latest handoff episode
+6. if later work belongs in the same delegated context, call `thread.resume` with the completed thread id and a new message instead of starting an unrelated replacement thread
 
 ### Handler Thread Loop
 
@@ -939,12 +941,12 @@ When the target surface is a handler thread:
 5. continue supervising until the objective is truly finished
 6. when appropriate, return control to the orchestrator by explicitly calling `thread.handoff`
 
-When `thread.handoff` succeeds, the handoff has crossed the clear ownership boundary: the owning orchestrator surface accepted the typed queue item as input and should reconcile it in that fresh orchestrator turn. If the orchestrator is already active, the handoff waits in the same ordered surface queue as user follow-up messages and can be reordered or steered from there.
+When `thread.handoff` succeeds, the handoff has crossed the clear ownership boundary because the durable handoff episode and completed objective span have been recorded. The orchestrator receives a typed notification in its ordered surface queue and should reconcile that recorded state in a fresh orchestrator turn. If the orchestrator is already active, the notification waits in the same ordered surface queue as user follow-up messages.
 
 If a thread already handed control back earlier:
 
 - a direct follow-up question may be answered inside that same thread without reopening the orchestrator loop
-- resumed objective work may move the thread back to an active running state
+- explicit orchestrator re-engagement through `thread.resume` may move the completed thread back to an active running state for a new objective span
 - a later return to the orchestrator should produce another handoff episode
 
 ### Clarification And Waiting
@@ -1081,7 +1083,7 @@ On restart, the workspace shell should restore useful stable UI state:
 
 It should not restore transient menus or popovers, unsaved inline edits, composer draft text, selected transcript text, temporary search highlights, or stale live stream and tool-running state.
 
-Backend recovery is separate from workspace shell UI restore. Each acquired workspace runtime owns one durable recovery coordinator for that workspace's sessions, pi surfaces, queues, initial handler starts, handoff accept/reject work, waits, title jobs, Smithers monitor reconnect, workflow attention, Project CI projection, and recovery observability. The coordinator uses durable owner scopes, idempotency keys, and transactional claims rather than active workspace, focused tab, focused panel, process cwd, or renderer state. App-global startup and workspace-tab restore decide which runtimes exist; they do not drain workspace queues or repair workspace product work directly.
+Backend recovery is separate from workspace shell UI restore. Each acquired workspace runtime owns one durable recovery coordinator for that workspace's sessions, pi surfaces, queues, initial handler starts, handoff notification delivery, waits, title jobs, Smithers monitor reconnect, workflow attention, Project CI projection, and recovery observability. The coordinator uses durable owner scopes, idempotency keys, and transactional claims rather than active workspace, focused tab, focused panel, process cwd, or renderer state. App-global startup and workspace-tab restore decide which runtimes exist; they do not drain workspace queues or repair workspace product work directly.
 
 ## Workflow Inspection
 

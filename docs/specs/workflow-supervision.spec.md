@@ -126,13 +126,14 @@ The `svvy`-owned part is:
 - Workflow task agents are a lower-level actor class inside Smithers tasks, not another `svvy` interactive surface.
 - `svvy` should derive active and latest workflow summaries from workflow-run records and recency rules rather than persisting a thread-level latest-workflow pointer.
 - Workflow attention must reacquire and target the owning handler surface by `surfacePiSessionId`, never a globally active surface or the currently focused Dockview panel.
-- `thread.start`, `thread.handoff`, and `wait` remain the only `svvy`-native control tools in this area.
+- `thread.start`, `thread.resume`, `thread.handoff`, and `wait` remain the only `svvy`-native control tools in this area.
 - Agent-facing workflow supervision should use Smithers-native semantic tools exposed through the Bun bridge rather than a svvy-defined `workflow.*` abstraction.
 - Shipped product runtime must not depend on repo-root `workflows/`, repo-relative Smithers binaries, or nearest-db path walking.
 - Runnable saved entries should live under `.svvy/workflows/entries/`, while artifact entries should live under `.svvy/artifacts/workflows/<artifact_workflow_id>/entries/`, and neither should depend on the repo authoring workspace.
 - A workflow run never returns control directly to the orchestrator.
 - Only `thread.handoff` returns control to the orchestrator.
-- `thread.handoff` returns control through a typed `handler_handoff` item in the orchestrator surface queue. The tool call blocks until that item is accepted as orchestrator input or rejected by the user; acceptance emits the durable handoff episode and rejection returns an explicit tool error to the handler.
+- `thread.handoff` returns control by durably recording the handoff episode and current objective-span closure, then scheduling a typed `handler_handoff` item in the orchestrator surface queue. Notification delivery is ordered through the orchestrator queue, but it does not determine whether the handoff succeeded.
+- `thread.resume` lets the orchestrator explicitly re-engage a completed handler thread for follow-up work in the same delegated context; Smithers run decisions remain inside that handler thread.
 - If a handler thread opens a workflow run for its current objective span, that thread stays responsible until the span ends in `thread.handoff`; waits, approvals, resumes, and repairs stay inside the handler lifecycle.
 - Workflow-task-attempt projection is write-driven from the current Smithers attempt identity and explicit runtime handlers. When a task-local tool needs the attempt before handler-side projection has landed, the bootstrap path uses the exact Smithers task-attempt identity `(runId, nodeId, iteration, attempt)` from the current task context, not a resume-handle lookup, heuristic scan, or fallback chain.
 
@@ -259,6 +260,7 @@ The adopted flow is:
 9. The Bun side emits explicit workspace updates and surface updates whenever those durable projections change visible workspace state or the live handler surface state.
 10. If the workflow reaches a state that needs another handler decision, `svvy` opens a synthetic background turn on that same handler thread.
 11. The handler thread uses `thread.current` to identify active workflow run ids, uses Smithers-native tools for detailed workflow state, and decides whether to inspect, repair, resume, ask the user, or hand control back with `thread.handoff`.
+12. If the orchestrator later needs more help from a completed handler thread, it uses `thread.resume` to queue a new handler-surface message instead of directly controlling Smithers.
 
 ## Shipped App Integration
 

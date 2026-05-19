@@ -92,6 +92,7 @@ import { createWaitTool } from "./wait-tool";
 import { resolveApiKey } from "./auth-store";
 import { createToolExecutionCommandTracker } from "./tool-execution-command-tracker";
 import { createStartThreadTool } from "./thread-start-tool";
+import { createResumeThreadTool } from "./thread-resume-tool";
 import {
   createThreadHandoffTool,
   type ThreadHandoffAcceptance,
@@ -120,6 +121,7 @@ import {
   createThreadHandoffsTool,
   createThreadListTool,
 } from "./runtime-state-tools";
+import { WorkspaceRecoveryCoordinator } from "./workspace-recovery-coordinator";
 
 const ZERO_USAGE: AssistantMessage["usage"] = {
   input: 0,
@@ -227,11 +229,6 @@ interface PromptRefreshQueuePayload {
   requestedAt: string;
 }
 
-type PendingThreadHandoff = {
-  resolve: (acceptance: ThreadHandoffAcceptance) => void;
-  reject: (error: Error) => void;
-};
-
 interface CreateManagedSessionOptions {
   sessionManager: SessionManager;
   actorKind: ManagedActorKind;
@@ -271,15 +268,11 @@ export class WorkspaceSessionCatalog {
   private readonly managedSurfaces = new Map<string, ManagedSession>();
   private readonly structuredSessionStore: StructuredSessionStateStore;
   private readonly smithersRuntimeManager: SmithersRuntimeManager;
+  private readonly recoveryCoordinator: WorkspaceRecoveryCoordinator;
   private readonly agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
   private readonly promptLibraryStore: PromptLibraryStore;
-  private readonly titleGenerationJobs = new Set<string>();
-  private readonly runningSurfaceQueueDrains = new Set<string>();
-  private readonly pendingSurfaceQueueDrains = new Set<string>();
-  private readonly pendingThreadHandoffs = new Map<string, PendingThreadHandoff>();
   private readonly restoredWorkflowSupervisionSessionIds = new Set<string>();
   private readonly workflowSupervisionRestoreTasks = new Map<string, Promise<void>>();
-  private durableWorkflowSupervisionRestoreScheduled = false;
   private durableWorkflowSupervisionRestoreStarted = false;
   private durableWorkflowSupervisionRestoreTask: Promise<void> | null = null;
   private closed = false;
@@ -327,39 +320,80 @@ export class WorkspaceSessionCatalog {
         await this.emitStructuredStateSync(sessionId);
       },
       onHandlerAttention: async (event) => {
+        this.recoveryCoordinator?.enqueue({
+          kind: "workflow_attention",
+          ownerScope: {
+            kind: "workflow_run",
+            workflowRunId: event.workflowRunId,
+            smithersRunId: event.smithersRunId,
+          },
+          idempotencyKey: `workflow_attention:${event.workflowRunId}:${event.reason}`,
+          orderingKey: `workflow:${event.workflowRunId}`,
+          priority: 5,
+          payloadJson: {
+            sessionId: event.sessionId,
+            threadId: event.threadId,
+            workflowRunId: event.workflowRunId,
+          },
+        });
         return await this.resumeHandlerAfterWorkflowAttention(event);
       },
     });
-    this.resumeDurableTitleGenerationJobs();
-    this.scheduleDurableWorkflowSupervisionRestore();
+    this.recoveryCoordinator = new WorkspaceRecoveryCoordinator(this.structuredSessionStore, {
+      bootstrapSmithers: async () => {
+        await this.restoreDurableWorkflowSupervision();
+      },
+      recoverSurfaceTurn: async (surfacePiSessionId) => {
+        this.recoverInterruptedSurfaceTurn(surfacePiSessionId);
+      },
+      drainSurfaceQueue: async (target) => {
+        await this.runSurfaceQueue(target);
+      },
+      startInitialHandler: async (input) => {
+        await this.startInitialHandlerThreadPrompt(input);
+      },
+      resolveHandlerHandoff: async (queuedItemId) => {
+        this.recoverHandlerHandoffResolution(queuedItemId);
+      },
+      generateTitle: async (owner) => {
+        if (owner.sessionId) {
+          await this.runQueuedTitleGeneration(owner.sessionId);
+          return;
+        }
+        if (owner.threadId) {
+          await this.runThreadTitleGenerationJob(owner.threadId);
+        }
+      },
+      projectWorkflowAttention: async (input) => {
+        if (input.sessionId) {
+          await this.smithersRuntimeManager.deliverPendingHandlerAttention(
+            input.sessionId,
+            input.threadId,
+          );
+        }
+      },
+      projectCi: async (input) => {
+        if (input.sessionId) {
+          await this.smithersRuntimeManager.restoreSessionSupervision(input.sessionId, {
+            emitAttention: false,
+          });
+        }
+      },
+      projectRecoveryLog: async () => {},
+      resolveSurfaceTarget: (surfacePiSessionId) =>
+        this.resolvePromptTargetForSurfacePiSessionId(surfacePiSessionId),
+    });
+    this.recoveryCoordinator.seedFromDurableState();
+    this.recoveryCoordinator.start();
   }
 
   private get threadSurfaceDir(): string {
     return join(this.sessionDir, "threads");
   }
 
-  private resumeDurableTitleGenerationJobs(): void {
-    if (this.closed) {
-      return;
-    }
-    for (const snapshot of this.structuredSessionStore.listSessionStates()) {
-      const status = snapshot.pi.titleGenerationStatus;
-      if (status === "pending" || status === "running") {
-        void this.runQueuedTitleGeneration(snapshot.pi.sessionId).catch((error) => {
-          console.error("Failed to resume session title generation:", error);
-        });
-      }
-    }
-  }
-
   async dispose(): Promise<void> {
     this.closed = true;
-    for (const [queuedMessageId, waiter] of this.pendingThreadHandoffs) {
-      waiter.reject(
-        new Error(`Queued handler handoff ${queuedMessageId} was cancelled on shutdown.`),
-      );
-    }
-    this.pendingThreadHandoffs.clear();
+    this.recoveryCoordinator.close();
     for (const session of this.managedSurfaces.values()) {
       session.session.dispose();
     }
@@ -381,21 +415,17 @@ export class WorkspaceSessionCatalog {
   }
 
   scheduleDurableWorkflowSupervisionRestore(): void {
-    if (
-      this.closed ||
-      this.durableWorkflowSupervisionRestoreScheduled ||
-      this.durableWorkflowSupervisionRestoreStarted
-    ) {
+    if (this.closed) {
       return;
     }
-    this.durableWorkflowSupervisionRestoreScheduled = true;
-    queueMicrotask(() => {
-      void this.restoreDurableWorkflowSupervision().catch((error) => {
-        if (!this.closed) {
-          console.error("Failed to restore durable workflow supervision:", error);
-        }
-      });
+    this.recoveryCoordinator.enqueue({
+      kind: "smithers_bootstrap",
+      ownerScope: { kind: "workspace" },
+      idempotencyKey: `smithers_bootstrap:${this.workspaceId}`,
+      orderingKey: `workspace:${this.workspaceId}:smithers`,
+      priority: 0,
     });
+    this.recoveryCoordinator.wake();
   }
 
   async restoreDurableWorkflowSupervision(): Promise<void> {
@@ -1140,7 +1170,6 @@ export class WorkspaceSessionCatalog {
         deleteSessionFileLikePi(threadSessionFile);
       }
     }
-    this.titleGenerationJobs.delete(sessionId);
     this.structuredSessionStore.deleteSessionState(sessionId);
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true };
@@ -1230,14 +1259,8 @@ export class WorkspaceSessionCatalog {
     queuedMessageId: string;
   }): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
     this.assertValidPromptTarget(input.target);
-    const queued = this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
+    this.assertQueuedMessageBelongsToSurface(input.queuedMessageId, input.target);
     this.structuredSessionStore.cancelSurfaceMessage({ id: input.queuedMessageId });
-    if (queued.kind === "handler_handoff") {
-      this.rejectPendingThreadHandoff(
-        queued.id,
-        "The user rejected this handoff before orchestrator acceptance.",
-      );
-    }
     const snapshot = await this.emitQueuedSurfaceUpdate(input.target);
     return { ok: true, target: structuredClone(input.target), snapshot };
   }
@@ -1678,6 +1701,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      resumeHandlerThread: this.resumeHandlerThread.bind(this),
       awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       onRequestContextLoaded: this.markPromptRefreshRequired.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
@@ -1715,6 +1739,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      resumeHandlerThread: this.resumeHandlerThread.bind(this),
       awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       onRequestContextLoaded: this.markPromptRefreshRequired.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
@@ -1934,40 +1959,34 @@ export class WorkspaceSessionCatalog {
       throw new Error(`Queued handler handoff ${message.id} has malformed payload.`);
     }
 
-    this.structuredSessionStore.updateThread({
-      threadId: payload.threadId,
-      status: "completed",
-      wait: null,
-    });
-    const episode = this.structuredSessionStore.createEpisode({
-      threadId: payload.threadId,
-      sourceCommandId: payload.sourceCommandId,
-      kind: payload.kind,
-      title: payload.title,
-      summary: payload.summary,
-      body: payload.body,
-    });
+    const snapshot = this.getStructuredSnapshot(message.sessionId);
+    const existingEpisode =
+      snapshot?.episodes.find((episode) => episode.sourceCommandId === payload.sourceCommandId) ??
+      null;
+    const episode =
+      existingEpisode ??
+      (() => {
+        this.structuredSessionStore.updateThread({
+          threadId: payload.threadId,
+          status: "completed",
+          wait: null,
+        });
+        return this.structuredSessionStore.createEpisode({
+          threadId: payload.threadId,
+          sourceCommandId: payload.sourceCommandId,
+          kind: payload.kind,
+          title: payload.title,
+          summary: payload.summary,
+          body: payload.body,
+        });
+      })();
     const acceptance: ThreadHandoffAcceptance = {
       episodeId: episode.id,
       kind: episode.kind,
       title: episode.title,
       summary: episode.summary,
     };
-    const waiter = this.pendingThreadHandoffs.get(message.id);
-    if (waiter) {
-      this.pendingThreadHandoffs.delete(message.id);
-      waiter.resolve(acceptance);
-    }
     return acceptance;
-  }
-
-  private rejectPendingThreadHandoff(queuedMessageId: string, reason: string): void {
-    const waiter = this.pendingThreadHandoffs.get(queuedMessageId);
-    if (!waiter) {
-      return;
-    }
-    this.pendingThreadHandoffs.delete(queuedMessageId);
-    waiter.reject(new Error(reason));
   }
 
   private getQueuedMessageText(messageJson: string): string {
@@ -2129,6 +2148,61 @@ export class WorkspaceSessionCatalog {
       await task;
     } finally {
       this.workflowSupervisionRestoreTasks.delete(sessionId);
+    }
+  }
+
+  private recoverInterruptedSurfaceTurn(surfacePiSessionId: string): void {
+    const snapshot = this.structuredSessionStore
+      .listSessionStates()
+      .find((state) =>
+        state.turns.some(
+          (turn) =>
+            turn.surfacePiSessionId === surfacePiSessionId &&
+            (turn.status === "running" || turn.status === "waiting"),
+        ),
+      );
+    const turn = snapshot?.turns.find(
+      (entry) =>
+        entry.surfacePiSessionId === surfacePiSessionId &&
+        (entry.status === "running" || entry.status === "waiting"),
+    );
+    if (!snapshot || !turn) {
+      return;
+    }
+
+    this.structuredSessionStore.recordLifecycleEvent({
+      sessionId: snapshot.session.id,
+      kind: "surface.turn_recovery.interrupted",
+      subjectKind: "turn",
+      subjectId: turn.id,
+      data: {
+        surfacePiSessionId,
+        reason:
+          "Prompt acceptance could not be proven after workspace restart; recovery did not silently resend it.",
+      },
+    });
+    this.structuredSessionStore.finishTurn({
+      turnId: turn.id,
+      status: turn.status === "waiting" ? "waiting" : "failed",
+    });
+  }
+
+  private recoverHandlerHandoffResolution(queuedItemId: string): void {
+    let queued: StructuredSurfaceQueuedMessageRecord;
+    try {
+      queued = this.structuredSessionStore.getSurfaceQueuedMessage({ id: queuedItemId });
+    } catch {
+      return;
+    }
+    if (queued.kind !== "handler_handoff" || queued.status === "delivered") {
+      return;
+    }
+    if (!this.parseHandlerHandoffQueuePayload(queued)) {
+      this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+      return;
+    }
+    if (queued.status !== "queued") {
+      this.structuredSessionStore.markSurfaceMessageQueued({ id: queued.id, position: "front" });
     }
   }
 
@@ -2452,7 +2526,7 @@ export class WorkspaceSessionCatalog {
     return { target: structuredClone(options.target) };
   }
 
-  private awaitThreadHandoffAcceptance(
+  private async awaitThreadHandoffAcceptance(
     request: ThreadHandoffRequest,
   ): Promise<ThreadHandoffAcceptance> {
     const orchestratorTarget = this.buildOrchestratorPromptTarget(request.runtime.sessionId);
@@ -2474,9 +2548,7 @@ export class WorkspaceSessionCatalog {
       requestSummary: request.summary,
     });
 
-    const acceptance = new Promise<ThreadHandoffAcceptance>((resolve, reject) => {
-      this.pendingThreadHandoffs.set(queued.id, { resolve, reject });
-    });
+    const acceptance = this.acceptHandlerHandoffQueueItem(queued);
     void this.emitQueuedSurfaceUpdate(orchestratorTarget);
     this.wakeSurfaceQueue(orchestratorTarget);
     return acceptance;
@@ -2740,25 +2812,86 @@ export class WorkspaceSessionCatalog {
       });
     }
     if (input.autoStart !== false) {
-      setTimeout(() => {
-        void this.startInitialHandlerThreadPrompt({
-          sessionId: input.sessionId,
+      this.recoveryCoordinator.enqueue({
+        kind: "initial_handler_start",
+        ownerScope: {
+          kind: "thread",
+          workspaceSessionId: input.sessionId,
           threadId: thread.id,
-        }).catch((error) => {
-          if (!this.closed) {
-            console.error("Failed to start initial handler thread prompt:", error);
-          }
-        });
-      }, 0);
-    }
-    setTimeout(() => {
-      void this.runThreadTitleGenerationJob(thread.id).catch((error) => {
-        if (!this.closed) {
-          console.error("Failed to generate handler thread title:", error);
-        }
+          surfacePiSessionId: thread.surfacePiSessionId,
+        },
+        idempotencyKey: `initial_handler_start:${thread.id}`,
+        orderingKey: `thread:${thread.id}`,
+        priority: 20,
+        payloadJson: { sessionId: input.sessionId, threadId: thread.id },
       });
-    }, 0);
+      this.recoveryCoordinator.wake();
+    }
+    this.recoveryCoordinator.enqueue({
+      kind: "title_generation",
+      ownerScope: { kind: "title_job", titleJobId: `thread:${thread.id}` },
+      idempotencyKey: `title_generation:thread:${thread.id}`,
+      orderingKey: `thread:${thread.id}`,
+      priority: 70,
+      payloadJson: { threadId: thread.id },
+    });
+    this.recoveryCoordinator.wake();
     return this.structuredSessionStore.getThreadDetail(thread.id).thread;
+  }
+
+  private async resumeHandlerThread(input: {
+    sessionId: string;
+    turnId: string;
+    threadId: string;
+    message: string;
+    resumedByCommandId: string;
+  }): Promise<{ threadId: string; surfacePiSessionId: string; queuedMessageId: string }> {
+    const snapshot = this.getStructuredSnapshot(input.sessionId);
+    const thread = snapshot?.threads.find((entry) => entry.id === input.threadId) ?? null;
+    if (!snapshot || !thread) {
+      throw new Error(`Delegated handler thread not found: ${input.threadId}`);
+    }
+    if (thread.status !== "completed") {
+      throw new Error(`thread.resume can only resume completed handler threads.`);
+    }
+
+    this.structuredSessionStore.updateThread({
+      threadId: thread.id,
+      status: "running-handler",
+      wait: null,
+    });
+    this.structuredSessionStore.recordLifecycleEvent({
+      sessionId: input.sessionId,
+      kind: "thread.resumed",
+      subjectKind: "thread",
+      subjectId: thread.id,
+      data: {
+        resumedByCommandId: input.resumedByCommandId,
+        turnId: input.turnId,
+      },
+    });
+
+    const target: PromptTarget = {
+      workspaceSessionId: input.sessionId,
+      surface: "thread",
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+    };
+    const message = createSyntheticUserMessage(input.message);
+    const queued = this.structuredSessionStore.enqueueSurfaceMessage({
+      sessionId: input.sessionId,
+      surfacePiSessionId: thread.surfacePiSessionId,
+      threadId: thread.id,
+      messageJson: JSON.stringify(message),
+      requestSummary: summarizePromptForTurn(input.message),
+    });
+    await this.emitQueuedSurfaceUpdate(target);
+    this.wakeSurfaceQueue(target);
+    return {
+      threadId: thread.id,
+      surfacePiSessionId: thread.surfacePiSessionId,
+      queuedMessageId: queued.id,
+    };
   }
 
   private async startInitialHandlerThreadPrompt(input: {
@@ -2863,11 +2996,15 @@ export class WorkspaceSessionCatalog {
     });
     this.syncPiSessionTitle(session, queued.title);
     void this.emitWorkspaceSync("structured.updated");
-    setTimeout(() => {
-      void this.runTitleGenerationJob(promptContext.sessionId).catch((error) => {
-        console.error("Failed to generate session title:", error);
-      });
-    }, 0);
+    this.recoveryCoordinator.enqueue({
+      kind: "title_generation",
+      ownerScope: { kind: "title_job", titleJobId: `session:${promptContext.sessionId}` },
+      idempotencyKey: `title_generation:session:${promptContext.sessionId}`,
+      orderingKey: `surface:${promptContext.surfacePiSessionId}`,
+      priority: 70,
+      payloadJson: { sessionId: promptContext.sessionId },
+    });
+    this.recoveryCoordinator.wake();
   }
 
   private async runQueuedTitleGeneration(sessionId: string): Promise<void> {
@@ -2878,10 +3015,6 @@ export class WorkspaceSessionCatalog {
     if (this.closed) {
       return;
     }
-    if (this.titleGenerationJobs.has(sessionId)) {
-      return;
-    }
-    this.titleGenerationJobs.add(sessionId);
     try {
       const snapshot = this.getStructuredSnapshot(sessionId);
       if (
@@ -2949,8 +3082,6 @@ export class WorkspaceSessionCatalog {
       if (!this.closed) {
         await this.emitWorkspaceSync("structured.updated");
       }
-    } finally {
-      this.titleGenerationJobs.delete(sessionId);
     }
   }
 
@@ -3003,6 +3134,7 @@ export class WorkspaceSessionCatalog {
       agentDir: this.agentDir,
       structuredSessionStore: this.structuredSessionStore,
       createHandlerThread: this.createHandlerThread.bind(this),
+      resumeHandlerThread: this.resumeHandlerThread.bind(this),
       awaitThreadHandoffAcceptance: this.awaitThreadHandoffAcceptance.bind(this),
       smithersRuntimeManager: this.smithersRuntimeManager,
     });
@@ -3326,32 +3458,30 @@ export class WorkspaceSessionCatalog {
     if (this.closed) {
       return;
     }
-    if (this.runningSurfaceQueueDrains.has(target.surfacePiSessionId)) {
-      this.pendingSurfaceQueueDrains.add(target.surfacePiSessionId);
-      return;
-    }
-    this.runningSurfaceQueueDrains.add(target.surfacePiSessionId);
+    this.recoveryCoordinator.enqueue({
+      kind: "queue_drain",
+      ownerScope: {
+        kind: "surface",
+        workspaceSessionId: target.workspaceSessionId,
+        surfacePiSessionId: target.surfacePiSessionId,
+      },
+      idempotencyKey: `queue_drain:${target.surfacePiSessionId}`,
+      orderingKey: `surface:${target.surfacePiSessionId}`,
+      priority: 30,
+    });
+    this.recoveryCoordinator.wake();
     setTimeout(() => {
-      void this.runSurfaceQueue(target).catch((error) => {
-        if (!this.closed) {
-          console.error("Failed to drain queued surface prompt:", error);
-        }
-      });
+      if (!this.closed) {
+        this.recoveryCoordinator.wake();
+      }
     }, 0);
   }
 
   private async runSurfaceQueue(target: PromptTarget): Promise<void> {
-    try {
-      while (!this.closed) {
-        const dispatched = await this.drainNextQueuedSurfacePrompt(target);
-        if (!dispatched) {
-          return;
-        }
-      }
-    } finally {
-      this.runningSurfaceQueueDrains.delete(target.surfacePiSessionId);
-      if (this.pendingSurfaceQueueDrains.delete(target.surfacePiSessionId)) {
-        this.wakeSurfaceQueue(target);
+    while (!this.closed) {
+      const dispatched = await this.drainNextQueuedSurfacePrompt(target);
+      if (!dispatched) {
+        return;
       }
     }
   }
@@ -3406,10 +3536,6 @@ export class WorkspaceSessionCatalog {
         message = createSyntheticUserMessage(prompt);
       } catch (error) {
         this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
-        this.rejectPendingThreadHandoff(
-          queued.id,
-          error instanceof Error ? error.message : "Queued handler handoff could not be accepted.",
-        );
         await this.releaseManagedSurface(currentTarget.surfacePiSessionId);
         throw error;
       }
@@ -3708,6 +3834,7 @@ async function createManagedSession(
     agentDir: string;
     structuredSessionStore: StructuredSessionStateStore;
     createHandlerThread: WorkspaceSessionCatalog["createHandlerThread"];
+    resumeHandlerThread: WorkspaceSessionCatalog["resumeHandlerThread"];
     awaitThreadHandoffAcceptance: WorkspaceSessionCatalog["awaitThreadHandoffAcceptance"];
     smithersRuntimeManager: SmithersRuntimeManager;
   },
@@ -3819,6 +3946,13 @@ async function createManagedSession(
               store: options.structuredSessionStore,
               bridge: {
                 createHandlerThread: options.createHandlerThread,
+              },
+            }),
+            createResumeThreadTool({
+              runtime: promptExecutionRuntime,
+              store: options.structuredSessionStore,
+              bridge: {
+                resumeHandlerThread: options.resumeHandlerThread,
               },
             }),
             waitTool,

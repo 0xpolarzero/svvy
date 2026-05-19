@@ -43,7 +43,7 @@ const SMITHERS_ORCHESTRATOR_CONTEXT_PROMPT = [
   "",
   "Handler threads supervise Smithers workflow runs. The orchestrator knows this capability exists, but it does not receive `smithers.*` tool declarations.",
   "",
-  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`.",
+  "When work requires workflow execution, workflow authoring, workflow inspection, or Project CI workflow operation, delegate a bounded objective to a handler thread with `thread.start`, or use `thread.resume` when a completed handler thread already has the right delegated context for follow-up work.",
 ].join("\n");
 
 const SMITHERS_HANDLER_CONTEXT_PROMPT = [

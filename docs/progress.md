@@ -85,7 +85,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Let handler threads receive direct user messages through the same surface model as the orchestrator. Commit(s): `f53c9b8`
 - [x] Make handler-thread wait and resume happen inside the thread itself instead of bouncing through the orchestrator by default. Commit(s): `f53c9b8`
 - [x] Keep handed-back handler threads directly interactive for follow-up chat without forcing a new thread. Commit(s): `ba5c3f0`
-- [x] Let a handed-back thread move from completed back to the correct active state when objective work resumes, distinguishing handler-active from workflow-active supervision. Commit(s): `f53c9b8`, `a02bd48`
+- [x] Let a handed-back thread move from completed back to the correct active state when objective work resumes, including explicit orchestrator re-engagement through `thread.resume`, distinguishing handler-active from workflow-active supervision. Commit(s): `f53c9b8`, `a02bd48`
 - [x] Preserve earlier handoff points in thread history when the same thread later returns control again. Commit(s): `d323012`
 - [x] Allow the orchestrator to inspect a handler thread on demand without making that the default reconciliation path. Commit(s): `ba5c3f0`
 - [x] Make `thread.handoff` the explicit handler-thread handoff path so ordinary handler replies stay interactive and multi-turn. Commit(s): `fdaf460`
@@ -270,7 +270,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [ ] Restore queued messages after app restart without transcript inference and resume delivery only after the owning surface runtime and prompt lock state are reconstructed.
 - [x] Claim queued messages atomically through one shared queue runner per `surfacePiSessionId`, keep dispatching rows visible as locked in-flight state, and prevent duplicated panes or tabs from starting duplicate backend queue drains. Commit(s): `45bdbe8b46`
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
-- [x] Represent handler handoffs as typed orchestrator surface queue items, block `thread.handoff` until accept/reject, and return explicit handler tool errors for rejected handoffs. Commit(s): 7739c2c824
+- [x] Represent handler handoffs as durable episode records that schedule typed orchestrator reconciliation notifications; notification dismissal does not roll back the handoff or return a handler tool error. Commit(s): 7739c2c824
 - [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): 61ba639d6a
 
 ## 14. Context Library And Context Packs
@@ -320,7 +320,7 @@ Current product decisions for this section are specified in `docs/specs/workflow
 Current product decisions for workspace-runtime restart and crash recovery are specified in `docs/specs/workspace-runtime-recovery.spec.md`.
 
 - [x] Build a POC restart or resume flow that restores multiple open surfaces and panel bindings from durable state. Commit(s): `7f84f06`
-- [ ] Implement one workspace-runtime recovery coordinator with durable scheduler records, transactional claims, Smithers-first projection bootstrap, per-surface queue and handoff recovery, initial handler auto-start recovery, title job recovery, Project CI projection recovery, and backend-owned recovery events/logs.
+- [ ] Complete one workspace-runtime recovery coordinator with durable scheduler records, transactional claims, Smithers-first projection bootstrap, per-surface queue and handoff recovery, initial handler auto-start recovery, title job recovery, Project CI projection recovery, and backend-owned recovery events/logs; the scheduler and coordinator are in place, with remaining work focused on full app-log projection and broader restart integration coverage.
 - [x] Restore pending clarification and waiting state after app restart. Commit(s): `7f84f06`
 - [x] Restore active workflow-run state after app restart. Commit(s): `7f84f06`
 - [x] Restore pending handler attention queues and per-surface prompt-lock state after app restart. Commit(s): `7f84f06`
