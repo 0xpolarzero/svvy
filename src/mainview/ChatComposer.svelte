@@ -143,6 +143,10 @@
 		availableThinkingLevels.map((level) => ({ value: level, label: level })),
 	);
 	const modelValue = $derived(currentModel ? getModelComboboxValue(currentModel) : "no-surface");
+
+	function cloneComposerAttachments(input: readonly ComposerAttachment[]): ComposerAttachment[] {
+		return input.map((attachment) => ({ ...attachment }));
+	}
 	const visibleModelOptions = $derived.by<CompactComboboxOption[]>(() => {
 		if (!currentModel) return [{ value: "no-surface", label: "No surface", disabled: true }];
 		const currentValue = getModelComboboxValue(currentModel);
@@ -215,7 +219,7 @@
 	$effect(() => {
 		void draft;
 		void attachments;
-		onBufferChange({ text: draft, attachments: structuredClone(attachments) });
+		onBufferChange({ text: draft, attachments: cloneComposerAttachments(attachments) });
 	});
 
 	$effect(() => {
@@ -232,7 +236,7 @@
 			return;
 		}
 		draft = composerDraft.text;
-		attachments = structuredClone(composerDraft.attachments);
+		attachments = cloneComposerAttachments(composerDraft.attachments);
 		resetHistoryNavigation();
 		draftPersistenceReady = true;
 		void tick().then(() => moveCaretToDraftEnd(composerDraft.text));
@@ -247,7 +251,7 @@
 		const payloadKey = `${draft}\u0000${JSON.stringify(attachments)}`;
 		if (payloadKey === lastPersistedDraftPayloadKey) return;
 		lastPersistedDraftPayloadKey = payloadKey;
-		onDraftChange({ text: draft, attachments: structuredClone(attachments) });
+		onDraftChange({ text: draft, attachments: cloneComposerAttachments(attachments) });
 	});
 
 	$effect(() => {

@@ -483,6 +483,14 @@ If no Dockview panel exists, opening a surface creates one default group with on
 
 Opening a handler-thread surface makes that thread a fully interactive pi-backed surface in the chosen panel. Opening a workflow inspector creates or binds the read-only inspector surface for the selected workflow run in the chosen panel.
 
+## Sidebar Session Placement
+
+Session sidebar rows use Dockview placement semantics directly:
+
+- a normal click opens the session in the currently focused panel
+- `Cmd`-click opens the session in a new right-side panel, including when the clicked session is already active in the focused panel
+- if no focused panel exists, focused-panel placement falls back to the normal first-panel creation behavior
+
 ## Command Palette Placement
 
 The command palette is defined by `docs/specs/command-palette.spec.md` as a shell/action surface. Command palette results that open a session or surface use Dockview placement semantics from this spec.

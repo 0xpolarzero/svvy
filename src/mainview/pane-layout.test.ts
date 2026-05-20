@@ -10,16 +10,16 @@ import {
 } from "./pane-layout";
 
 describe("getSidebarSessionOpenTarget", () => {
-  it("opens normal sidebar session clicks in a new right pane", () => {
+  it("opens normal sidebar session clicks in the focused pane", () => {
     expect(getSidebarSessionOpenTarget({ metaKey: false })).toEqual({
-      kind: "new-panel",
-      direction: "right",
+      kind: "focused-panel",
     });
   });
 
-  it("opens command-clicked sidebar sessions in the focused pane", () => {
+  it("opens command-clicked sidebar sessions in a new right pane", () => {
     expect(getSidebarSessionOpenTarget({ metaKey: true })).toEqual({
-      kind: "focused-panel",
+      kind: "new-panel",
+      direction: "right",
     });
   });
 });
@@ -69,6 +69,51 @@ describe("pane layout normalization", () => {
       ],
       compactSurfaces: [],
       focusedPanelId: "empty",
+      updatedAt: "2026-05-15T00:00:00.000Z",
+    });
+
+    expect(layout.panels.map((panel) => panel.panelId)).toEqual(["logs"]);
+    expect(layout.focusedPanelId).toBe("logs");
+  });
+
+  it("drops restored prompt panes without a valid surface target", () => {
+    const layout = normalizePaneLayout({
+      dockview: null,
+      panels: [
+        {
+          panelId: "invalid-orchestrator",
+          binding: {
+            surface: "orchestrator",
+            workspaceSessionId: "session-1",
+          } as never,
+          localState: {
+            scroll: null,
+            timelineDensity: "comfortable",
+          },
+        },
+        {
+          panelId: "invalid-thread",
+          binding: {
+            surface: "thread",
+            workspaceSessionId: "session-1",
+            surfacePiSessionId: "thread-session-1",
+          } as never,
+          localState: {
+            scroll: null,
+            timelineDensity: "comfortable",
+          },
+        },
+        {
+          panelId: "logs",
+          binding: { surface: "app-logs" },
+          localState: {
+            scroll: null,
+            timelineDensity: "comfortable",
+          },
+        },
+      ],
+      compactSurfaces: [],
+      focusedPanelId: "invalid-orchestrator",
       updatedAt: "2026-05-15T00:00:00.000Z",
     });
 

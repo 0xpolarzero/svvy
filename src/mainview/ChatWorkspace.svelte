@@ -899,6 +899,7 @@
 
   async function handleOpenSession(sessionId: string, event?: MouseEvent) {
     if (
+      !event?.metaKey &&
       sessionId === activeSessionId &&
       currentSurface?.surface === "orchestrator" &&
       currentSurface.workspaceSessionId === sessionId

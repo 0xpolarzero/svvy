@@ -502,7 +502,21 @@ function normalizePromptTarget(target: PromptTarget): PromptTarget {
 }
 
 function isPromptTarget(target: WorkspacePaneSurfaceTarget | null): target is PromptTarget {
-  return target?.surface === "orchestrator" || target?.surface === "thread";
+  if (target?.surface !== "orchestrator" && target?.surface !== "thread") {
+    return false;
+  }
+  if (
+    typeof target.workspaceSessionId !== "string" ||
+    target.workspaceSessionId.length === 0 ||
+    typeof target.surfacePiSessionId !== "string" ||
+    target.surfacePiSessionId.length === 0
+  ) {
+    return false;
+  }
+  if (target.surface === "thread") {
+    return typeof target.threadId === "string" && target.threadId.length > 0;
+  }
+  return true;
 }
 
 function isWorkspaceLayoutSlotId(value: unknown): value is WorkspaceLayoutSlotId {
@@ -707,6 +721,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   private suppressSurfaceMutationSync = false;
   private lastStreamSequence = 0;
   private draftSyncChain: Promise<void> = Promise.resolve();
+  private draftPersistTimer: ReturnType<typeof setTimeout> | null = null;
+  private rendererOwnsDraft = false;
 
   constructor(
     snapshot: ConversationSurfaceSnapshot,
@@ -817,7 +833,9 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.activeTurnStartedAt = snapshotForAgent.activeTurnStartedAt;
     this.turnTimings = structuredClone(snapshotForAgent.turnTimings);
     this.queuedPrompts = structuredClone(snapshotForAgent.queuedMessages ?? []);
-    this.composerDraft = structuredClone(snapshotForAgent.composerDraft);
+    if (!this.rendererOwnsDraft) {
+      this.composerDraft = structuredClone(snapshotForAgent.composerDraft);
+    }
     this.lastStreamSequence = snapshotForAgent.streamMessage ? snapshotForAgent.streamSequence : 0;
 
     this.suppressSurfaceMutationSync = true;
@@ -917,8 +935,24 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       updatedAt: new Date().toISOString(),
     };
     this.composerDraft = nextDraft;
+    this.rendererOwnsDraft = true;
     this.emit();
 
+    this.scheduleDraftPersistence(nextDraft);
+  }
+
+  private scheduleDraftPersistence(draft: ComposerDraft): void {
+    if (this.draftPersistTimer) {
+      clearTimeout(this.draftPersistTimer);
+    }
+    const draftToPersist = structuredClone(draft);
+    this.draftPersistTimer = setTimeout(() => {
+      this.draftPersistTimer = null;
+      this.persistComposerDraft(draftToPersist);
+    }, 120);
+  }
+
+  private persistComposerDraft(draft: ComposerDraft): void {
     this.draftSyncChain = this.draftSyncChain
       .catch(() => undefined)
       .then(async () => {
@@ -926,19 +960,17 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
           workspaceId: this.workspaceId,
           target: this.target,
           draft: {
-            text: nextDraft.text,
-            attachments: nextDraft.attachments,
+            text: draft.text,
+            attachments: draft.attachments,
           },
         });
         this.target = normalizePromptTarget(response.target);
         this.agent.sessionId = response.target.surfacePiSessionId;
       });
 
-    try {
-      await this.draftSyncChain;
-    } catch (error) {
+    void this.draftSyncChain.catch((error) => {
       console.error("Failed to sync composer draft:", error);
-    }
+    });
   }
 
   async editCommittedUserMessage(
@@ -1136,6 +1168,11 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   }
 
   dispose(): void {
+    if (this.draftPersistTimer) {
+      clearTimeout(this.draftPersistTimer);
+      this.draftPersistTimer = null;
+      this.persistComposerDraft(this.composerDraft);
+    }
     this.disposed = true;
     this.listeners.clear();
   }
@@ -1531,7 +1568,9 @@ export async function createChatRuntime(
       return true;
     }
 
-    await storage.providerKeys.delete(providerId);
+    await storage.providerKeys.delete(providerId).catch((error) => {
+      console.warn(`Failed to clear cached provider auth for ${providerId}:`, error);
+    });
     return false;
   };
 

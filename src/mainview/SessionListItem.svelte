@@ -105,8 +105,8 @@
     block
     delayMs={2000}
     details={[
-      { icon: "mouse-left", label: "Open in a new pane" },
-      { shortcut: "⌘", icon: "mouse-left", label: "Replace focused pane" },
+      { icon: "mouse-left", label: "Replace focused pane" },
+      { shortcut: "⌘", icon: "mouse-left", label: "Open in a new pane" },
     ]}
   >
     <button

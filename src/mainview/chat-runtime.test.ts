@@ -264,6 +264,7 @@ function createSurfaceSnapshot(input: {
   streamMessage?: AssistantMessage | null;
   streamSequence?: number;
   queuedMessages?: ConversationSurfaceSnapshot["queuedMessages"];
+  composerDraft?: ConversationSurfaceSnapshot["composerDraft"];
   provider?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
@@ -283,7 +284,9 @@ function createSurfaceSnapshot(input: {
     messages: structuredClone(input.messages),
     pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
     queuedMessages: structuredClone(input.queuedMessages ?? []),
-    composerDraft: { text: "", attachments: [], updatedAt: null },
+    composerDraft: structuredClone(
+      input.composerDraft ?? { text: "", attachments: [], updatedAt: null },
+    ),
     streamMessage: input.streamMessage ? structuredClone(input.streamMessage) : null,
     streamSequence: input.streamSequence ?? 0,
     provider: input.provider ?? "openai",
@@ -1507,7 +1510,6 @@ function createFakeRpc(input: {
           return {
             ok: true,
             target: cloneTarget(target),
-            snapshot: structuredClone(record.snapshot),
           };
         },
         deleteQueuedSurfaceMessage: async ({ target, queuedMessageId }) => {
@@ -1956,6 +1958,125 @@ describe("createChatRuntime", () => {
     expect(harness.closeRequests).toHaveLength(1);
     expect(harness.getRetainCount(threadTarget.surfacePiSessionId)).toBe(0);
 
+    runtime.dispose();
+  });
+
+  it("shares composer draft live state across duplicate panes for one surface", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [userMessage("worker"), assistantMessage("worker ready")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    await runtime.openSurface(threadTarget, "tertiary");
+
+    const secondaryController = runtime.getPaneController("secondary");
+    const tertiaryController = runtime.getPaneController("tertiary");
+    expect(secondaryController).toBeTruthy();
+    expect(secondaryController).toBe(tertiaryController);
+    if (!secondaryController || !tertiaryController) return;
+
+    await secondaryController.updateComposerDraft({ text: "shared from left", attachments: [] });
+    expect(tertiaryController.composerDraft.text).toBe("shared from left");
+
+    await tertiaryController.updateComposerDraft({ text: "shared from right", attachments: [] });
+    expect(secondaryController.composerDraft.text).toBe("shared from right");
+
+    runtime.dispose();
+  });
+
+  it("keeps renderer draft state authoritative when stale surface snapshots arrive", async () => {
+    const target = createOrchestratorTarget("session-1");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Draft Race", "Initial")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [userMessage("Initial"), assistantMessage("Ready")],
+          composerDraft: {
+            text: "old durable draft",
+            attachments: [],
+            updatedAt: "2026-04-10T10:00:00.000Z",
+          },
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    await controller.updateComposerDraft({ text: "live renderer draft", attachments: [] });
+
+    harness.emitSurfaceSync({
+      reason: "surface.updated",
+      target,
+      snapshot: createSurfaceSnapshot({
+        target,
+        messages: [userMessage("Initial"), assistantMessage("Ready")],
+        composerDraft: {
+          text: "old durable draft",
+          attachments: [],
+          updatedAt: "2026-04-10T10:00:00.000Z",
+        },
+      }),
+    });
+
+    expect(controller.composerDraft.text).toBe("live renderer draft");
+
+    runtime.dispose();
+  });
+
+  it("clears shared draft everywhere and shows the submitted user message immediately", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Orchestrator", "main reply")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [userMessage("worker"), assistantMessage("worker ready")],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    await runtime.openSurface(threadTarget, "tertiary");
+
+    const secondaryController = runtime.getPaneController("secondary");
+    const tertiaryController = runtime.getPaneController("tertiary");
+    expect(secondaryController).toBeTruthy();
+    expect(tertiaryController).toBeTruthy();
+    if (!secondaryController || !tertiaryController) return;
+
+    const activeTurn = createDeferred<PromptHandlerResult>();
+    harness.setPromptHandler(threadTarget.surfacePiSessionId, () => activeTurn.promise);
+
+    await secondaryController.updateComposerDraft({ text: "ready to send", attachments: [] });
+    const sendPromise = secondaryController.sendPrompt({ text: "ready to send", attachments: [] });
+    await waitFor(() => secondaryController.promptStatus === "streaming");
+
+    expect(secondaryController.composerDraft.text).toBe("");
+    expect(tertiaryController.composerDraft.text).toBe("");
+    expect(hasUserText(secondaryController.agent.state.messages, "ready to send")).toBe(true);
+    expect(hasUserText(tertiaryController.agent.state.messages, "ready to send")).toBe(true);
+
+    activeTurn.resolve({ assistantText: "Done" });
+    await sendPromise;
     runtime.dispose();
   });
 

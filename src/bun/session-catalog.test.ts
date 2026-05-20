@@ -2155,13 +2155,15 @@ describe("WorkspaceSessionCatalog", () => {
       expect(surfaceSyncs).toHaveLength(0);
       workspaceSyncs.length = 0;
 
-      await catalog.updateComposerDraft({
+      const draftResponse = await catalog.updateComposerDraft({
         target: created.target,
         draft: {
           text: "Explain the parser",
           attachments: [],
         },
       });
+      expect(draftResponse).toEqual({ ok: true, target: created.target });
+      expect("snapshot" in (draftResponse as unknown as Record<string, unknown>)).toBe(false);
       expect(workspaceSyncs).toHaveLength(1);
       expect(workspaceSyncs[0]?.reason).toBe("structured.updated");
       expect(surfaceSyncs).toHaveLength(0);

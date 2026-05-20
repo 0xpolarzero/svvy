@@ -142,6 +142,32 @@ describe("default workspace renderer shell", () => {
     expect(transcriptSource).toContain("scroller.scrollTop = scroller.scrollHeight;");
   });
 
+  it("keeps non-empty transcript rows visible when virtualizer total size is temporarily zero", async () => {
+    const transcriptSource = await readFile(
+      new URL("./ChatTranscript.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(transcriptSource).toContain("const estimatedTranscriptSize = $derived.by");
+    expect(transcriptSource).toContain(
+      "totalTranscriptSize > 0 ? totalTranscriptSize : estimatedTranscriptSize",
+    );
+    expect(transcriptSource).toContain("style={`height: ${transcriptVirtualHeight}px;`}");
+    expect(transcriptSource).not.toContain("style={`height: ${totalTranscriptSize}px;`}");
+  });
+
+  it("does not structuredClone Svelte attachment state in the composer", async () => {
+    const composerSource = await readFile(
+      new URL("./ChatComposer.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(composerSource).toContain("function cloneComposerAttachments");
+    expect(composerSource).toContain("cloneComposerAttachments(attachments)");
+    expect(composerSource).not.toContain("structuredClone(attachments)");
+    expect(composerSource).not.toContain("structuredClone(composerDraft.attachments)");
+  });
+
   it("does not keep focus-global artifact or inspector surfaces in the workspace shell", async () => {
     const workspaceSource = await readFile(
       new URL("./ChatWorkspace.svelte", import.meta.url),

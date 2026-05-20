@@ -112,7 +112,7 @@ export type DockviewOpenTarget =
 export type PaneOpenTarget = DockviewOpenTarget;
 
 export function getSidebarSessionOpenTarget(event?: Pick<MouseEvent, "metaKey">): PaneOpenTarget {
-  return event?.metaKey ? { kind: "focused-panel" } : { kind: "new-panel", direction: "right" };
+  return event?.metaKey ? { kind: "new-panel", direction: "right" } : { kind: "focused-panel" };
 }
 
 export function createDefaultPaneLocalState(): PaneLocalState {
@@ -222,7 +222,10 @@ export function normalizePaneLayout(
     if (!next.binding) {
       return [];
     }
-    const binding = { ...next.binding };
+    const binding = normalizePaneBinding(next.binding);
+    if (!binding) {
+      return [];
+    }
     const localState = {
       ...createDefaultPaneLocalState(),
       scroll: next.localState?.scroll ?? null,
@@ -268,6 +271,109 @@ export function normalizePaneLayout(
     focusedPanelId,
     updatedAt: now,
   };
+}
+
+function normalizePaneBinding(value: unknown): WorkspacePaneSurfaceTarget | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const binding = value as Partial<WorkspacePaneSurfaceTarget>;
+  switch (binding.surface) {
+    case "orchestrator":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.surfacePiSessionId === "string" &&
+        binding.surfacePiSessionId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "orchestrator",
+            surfacePiSessionId: binding.surfacePiSessionId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "thread":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.surfacePiSessionId === "string" &&
+        binding.surfacePiSessionId.length > 0 &&
+        typeof binding.threadId === "string" &&
+        binding.threadId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "thread",
+            surfacePiSessionId: binding.surfacePiSessionId,
+            threadId: binding.threadId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "workflow-inspector":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.workflowRunId === "string" &&
+        binding.workflowRunId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "workflow-inspector",
+            workflowRunId: binding.workflowRunId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "command":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.commandId === "string" &&
+        binding.commandId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "command",
+            commandId: binding.commandId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "workflow-task-attempt":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.workflowTaskAttemptId === "string" &&
+        binding.workflowTaskAttemptId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "workflow-task-attempt",
+            workflowTaskAttemptId: binding.workflowTaskAttemptId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "artifact":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.artifactId === "string" &&
+        binding.artifactId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "artifact",
+            artifactId: binding.artifactId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "project-ci-check":
+      return typeof binding.workspaceSessionId === "string" &&
+        binding.workspaceSessionId.length > 0 &&
+        typeof binding.checkResultId === "string" &&
+        binding.checkResultId.length > 0
+        ? ({
+            workspaceSessionId: binding.workspaceSessionId,
+            surface: "project-ci-check",
+            checkResultId: binding.checkResultId,
+          } satisfies WorkspacePaneSurfaceTarget)
+        : null;
+    case "saved-workflow-library":
+      return { surface: "saved-workflow-library" };
+    case "prompt-library":
+      return typeof binding.workspaceSessionId === "string" && binding.workspaceSessionId.length > 0
+        ? { surface: "prompt-library", workspaceSessionId: binding.workspaceSessionId }
+        : { surface: "prompt-library" };
+    case "app-logs":
+      return typeof binding.workspaceSessionId === "string" && binding.workspaceSessionId.length > 0
+        ? { surface: "app-logs", workspaceSessionId: binding.workspaceSessionId }
+        : { surface: "app-logs" };
+    case "open-workspace":
+      return { surface: "open-workspace" };
+    default:
+      return null;
+  }
 }
 
 export function bindPane(

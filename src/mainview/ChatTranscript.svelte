@@ -168,6 +168,17 @@
 	});
 	const virtualRows = $derived($transcriptVirtualizer.getVirtualItems());
 	const totalTranscriptSize = $derived($transcriptVirtualizer.getTotalSize());
+	const estimatedTranscriptSize = $derived.by(() => {
+		if (transcriptRows.length === 0) return 0;
+		const estimatedRowsHeight = transcriptRows.reduce(
+			(total, row) => total + estimateTranscriptRowSize(row),
+			0,
+		);
+		return estimatedRowsHeight + Math.max(0, transcriptRows.length - 1) * transcriptRowGap;
+	});
+	const transcriptVirtualHeight = $derived(
+		totalTranscriptSize > 0 ? totalTranscriptSize : estimatedTranscriptSize,
+	);
 
 	function estimateTranscriptRowSize(row: TranscriptRow | undefined): number {
 		if (!row) return 132;
@@ -643,7 +654,7 @@
 
 <div bind:this={scroller} class="chat-transcript" onscroll={handleScroll}>
 	<div bind:this={threadElement} class="chat-thread">
-		<div class="chat-thread-virtual" style={`height: ${totalTranscriptSize}px;`}>
+		<div class="chat-thread-virtual" style={`height: ${transcriptVirtualHeight}px;`}>
 			{#each virtualRows as virtualRow (virtualRow.key)}
 				{@const row = transcriptRows[virtualRow.index]}
 				{#if row?.kind === "system"}
