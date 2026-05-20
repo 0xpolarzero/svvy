@@ -243,7 +243,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [x] Add `namer` as a pi-backed session-agent default, alongside `defaultSession` and `dumbOrchestrator`, for one-shot top-level session naming rather than as a Smithers workflow agent. Commit(s): `354db28`
 - [x] Seed the `namer` session agent to `openai-codex`/`gpt-5.4-mini` with low reasoning effort, expose it in session-agent settings for customization, and treat its settings prompt as the only naming instruction. Commit(s): `354db28`
 - [x] Build a POC event-driven title-generation flow that starts a durable one-shot naming job concurrently with the first real top-level user turn without waiting for the orchestrator response. Commit(s): `354db28`
-- [x] Use the first live composer draft or first submitted user message as the provisional visible session title until the namer-generated title lands. Commit(s): `2056f48`
+- [x] Use the first live composer draft or first submitted user message as the provisional visible session title until the namer-generated title lands. Commit(s): `5378dcb`
 - [x] Persist generated top-level session titles, title-generation lifecycle state, and the first-turn trigger so app restart cannot duplicate or lose title generation. Commit(s): `354db28`
 - [x] Block manual session rename while a title-generation job is pending or running, then release the lock after success, failure, or cancellation. Commit(s): `354db28`
 - [x] Freeze auto-titling after manual rename or after the first successful generated title. Commit(s): `354db28`
@@ -256,7 +256,7 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [x] Keep selected `@` mentions as normal inline composer text.
 - [x] Render picker, dropped, and pasted files as removable chip-only composer attachments without mutating textarea text.
 - [x] Store file, folder, and image attachments for composer and transcript rendering, pass attachment paths through tagged agent-facing metadata without visible transcript prose, send images to pi as image content blocks, and warn when model metadata does not list image input.
-- [x] Save composer draft text and chip-only attachments live as durable surface state that survives closing the surface and app restart. Commit(s): `2056f48`
+- [x] Save composer draft text and chip-only attachments live as durable surface state that survives closing the surface and app restart. Commit(s): `5378dcb`
 - [x] Serialize inline mentions into the outgoing user message as normal workspace path links.
 - [x] Render sent mentions in the transcript as actionable workspace links that reveal files, open folders, and visibly mark missing paths.
 - [x] Keep mentions agent-neutral: no prompt injection, no eager file reads, no folder expansion, and no special context-target resolution.
@@ -275,7 +275,7 @@ Current product decisions for this section are specified in `docs/specs/queued-m
 - [x] Keep queued-message drag reorder previews local until drop, persist only final changed order, and skip no-op durable reorder writes. Commit(s): `98c73ecbb6`
 - [x] Represent handler handoffs as durable episode records that schedule typed orchestrator reconciliation notifications; notification dismissal does not roll back the handoff or return a handler tool error. Commit(s): 7739c2c824
 - [x] Represent stale prompt refresh as typed surface queue work, apply it before later prompt-bearing items, and expose sticky queue/cancel UI. Commit(s): 61ba639d6a
-- [x] Let committed user transcript messages enter composer edit mode with a visible selected-message indicator and a draft-replacement warning, then resend by moving the same pi surface back to the original message's parent state before continuing from the edited user message. Commit(s): `2056f48`
+- [x] Let committed user transcript messages enter composer edit mode with a visible selected-message indicator and a draft-replacement warning, then resend by moving the same pi surface back to the original message's parent state before continuing from the edited user message. Commit(s): `5378dcb`
 
 ## 14. Context Library And Context Packs
 
