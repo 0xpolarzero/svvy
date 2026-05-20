@@ -198,6 +198,12 @@ export interface QueuedSurfaceMessage {
   updatedAt: string;
 }
 
+export interface ComposerDraft {
+  text: string;
+  attachments: ComposerAttachment[];
+  updatedAt: string | null;
+}
+
 export interface QueuedSurfaceMessageRequest {
   target: PromptTarget;
   queuedMessageId: string;
@@ -209,6 +215,12 @@ export interface QueuePromptRefreshRequest {
 
 export interface ReorderQueuedSurfaceMessageRequest extends QueuedSurfaceMessageRequest {
   beforeQueuedMessageId?: string | null;
+}
+
+export interface EditCommittedUserMessageRequest {
+  target: PromptTarget;
+  messageTimestamp: string | number;
+  message: Message;
 }
 
 export interface EditQueuedSurfaceMessageResponse {
@@ -241,6 +253,14 @@ export interface SetSessionModeResponse {
   ok: boolean;
   snapshot?: ConversationSurfaceSnapshot;
   error?: string;
+}
+
+export interface UpdateComposerDraftRequest {
+  target: PromptTarget;
+  draft: {
+    text: string;
+    attachments: ComposerAttachment[];
+  };
 }
 
 export interface WorkspaceSyncMessage {
@@ -1087,6 +1107,7 @@ export interface ConversationSurfaceSnapshot {
   messages: AgentMessage[];
   pendingUserMessage?: AgentMessage | null;
   queuedMessages: QueuedSurfaceMessage[];
+  composerDraft: ComposerDraft;
   streamMessage?: AssistantMessage | null;
   streamSequence: number;
   provider: string;
@@ -1106,6 +1127,16 @@ export interface ConversationSurfaceSnapshot {
     stale: boolean;
   };
   promptStatus: "idle" | "streaming";
+  activeTurnId?: string | null;
+  activeTurnStartedAt?: string | null;
+  turnTimings: ConversationTurnTiming[];
+}
+
+export interface ConversationTurnTiming {
+  turnId: string;
+  assistantMessageTimestamp: string | number;
+  startedAt: string;
+  finishedAt: string;
 }
 
 export type SurfaceStreamPatchInput =
@@ -1510,6 +1541,14 @@ export interface ChatRPCSchema {
       };
       sendPrompt: {
         params: WorkspaceScoped<SendPromptRequest>;
+        response: SendPromptResponse;
+      };
+      updateComposerDraft: {
+        params: WorkspaceScoped<UpdateComposerDraftRequest>;
+        response: SurfaceMutationResponse;
+      };
+      editCommittedUserMessage: {
+        params: WorkspaceScoped<EditCommittedUserMessageRequest>;
         response: SendPromptResponse;
       };
       steerPrompt: {

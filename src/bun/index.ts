@@ -1481,6 +1481,49 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
         });
         return session;
       },
+      updateComposerDraft: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        return await runtime.catalog.updateComposerDraft(input);
+      },
+      editCommittedUserMessage: async (payload): Promise<SendPromptResponse> => {
+        const runtime = getWorkspaceRuntime(payload);
+        const session = await runtime.catalog.editCommittedUserMessage({
+          target: payload.target,
+          messageTimestamp: payload.messageTimestamp,
+          message: payload.message,
+          onEvent: (event) => {
+            if (event.type === "start") {
+              recordDevBrowserToolsEvent("prompt.started", {
+                surfacePiSessionId: payload.target.surfacePiSessionId,
+                workspaceSessionId: payload.target.workspaceSessionId,
+                threadId: payload.target.threadId ?? null,
+              });
+            } else if (event.type === "done") {
+              recordDevBrowserToolsEvent("prompt.finished", {
+                reason: event.reason,
+                surfacePiSessionId: payload.target.surfacePiSessionId,
+                workspaceSessionId: payload.target.workspaceSessionId,
+                threadId: payload.target.threadId ?? null,
+              });
+            } else if (event.type === "error") {
+              recordDevBrowserToolsEvent("prompt.failed", {
+                reason: event.reason,
+                error: event.error.errorMessage ?? "",
+                surfacePiSessionId: payload.target.surfacePiSessionId,
+                workspaceSessionId: payload.target.workspaceSessionId,
+                threadId: payload.target.threadId ?? null,
+              });
+            }
+          },
+        });
+        runtime.appLog.info("prompt", "Committed user message edited.", {
+          workspaceSessionId: payload.target.workspaceSessionId,
+          surfacePiSessionId: payload.target.surfacePiSessionId,
+          threadId: payload.target.threadId,
+          messageTimestamp: String(payload.messageTimestamp),
+        });
+        return session;
+      },
       deleteQueuedSurfaceMessage: async (input) => {
         const runtime = getWorkspaceRuntime(input);
         const result = await runtime.catalog.deleteQueuedSurfaceMessage(input);

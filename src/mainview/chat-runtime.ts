@@ -17,8 +17,11 @@ import {
   type AppLogSummary,
   type AppLogUpdateMessage,
   type ConversationSurfaceSnapshot,
+  type ConversationTurnTiming,
   type ComposerAttachment,
+  type ComposerDraft,
   type CreateSessionRequest,
+  type EditCommittedUserMessageRequest,
   type PromptTarget,
   type QueuedSurfaceMessage,
   type SendPromptRequest,
@@ -178,9 +181,18 @@ export interface ChatSurfaceController {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
+  activeTurnId: string | null;
+  activeTurnStartedAt: string | null;
+  turnTimings: ConversationTurnTiming[];
   queuedPrompts: QueuedPrompt[];
+  composerDraft: ComposerDraft;
   ownerPaneIds: string[];
   sendPrompt: (input: ComposerPromptSubmission) => Promise<void>;
+  updateComposerDraft: (draft: Pick<ComposerDraft, "text" | "attachments">) => Promise<void>;
+  editCommittedUserMessage: (
+    messageTimestamp: string | number,
+    input: ComposerPromptSubmission,
+  ) => Promise<void>;
   editQueuedPrompt: (promptId: string) => Promise<string | null>;
   deleteQueuedPrompt: (promptId: string) => Promise<boolean>;
   reorderQueuedPrompt: (promptId: string, beforePromptId: string | null) => Promise<boolean>;
@@ -280,6 +292,8 @@ export interface ChatRuntimeRpcClient {
     setArchivedGroupCollapsed: typeof rpc.request.setArchivedGroupCollapsed;
     setSessionNavigationSectionState: typeof rpc.request.setSessionNavigationSectionState;
     sendPrompt: typeof rpc.request.sendPrompt;
+    updateComposerDraft: typeof rpc.request.updateComposerDraft;
+    editCommittedUserMessage: typeof rpc.request.editCommittedUserMessage;
     deleteQueuedSurfaceMessage: typeof rpc.request.deleteQueuedSurfaceMessage;
     editQueuedSurfaceMessage: typeof rpc.request.editQueuedSurfaceMessage;
     reorderQueuedSurfaceMessage: typeof rpc.request.reorderQueuedSurfaceMessage;
@@ -679,7 +693,11 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   sessionMode: SessionMode;
   sessionAgentKey: SessionAgentKey;
   promptStatus: PromptStatus;
+  activeTurnId: string | null;
+  activeTurnStartedAt: string | null;
+  turnTimings: ConversationTurnTiming[] = [];
   queuedPrompts: QueuedPrompt[] = [];
+  composerDraft: ComposerDraft = { text: "", attachments: [], updatedAt: null };
 
   private listeners = new Set<ChatRuntimeListener>();
   private panelIds = new Set<string>();
@@ -688,6 +706,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   private applyingSnapshot = false;
   private suppressSurfaceMutationSync = false;
   private lastStreamSequence = 0;
+  private draftSyncChain: Promise<void> = Promise.resolve();
 
   constructor(
     snapshot: ConversationSurfaceSnapshot,
@@ -701,7 +720,11 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
+    this.activeTurnId = snapshot.activeTurnId ?? null;
+    this.activeTurnStartedAt = snapshot.activeTurnStartedAt ?? null;
+    this.turnTimings = structuredClone(snapshot.turnTimings);
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
+    this.composerDraft = structuredClone(snapshot.composerDraft);
     this.lastStreamSequence = snapshot.streamMessage ? snapshot.streamSequence : 0;
     this.agent = createInitialAgent(snapshot, this.createStreamFn());
 
@@ -756,21 +779,51 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     if (this.disposed) {
       return;
     }
+    if (
+      this.promptDispatchInFlight &&
+      this.promptStatus === "streaming" &&
+      this.agent.state.isStreaming &&
+      snapshot.promptStatus === "idle" &&
+      !snapshot.pendingUserMessage &&
+      snapshot.messages.length < this.agent.state.messages.length
+    ) {
+      return;
+    }
 
-    this.target = normalizePromptTarget(snapshot.target);
-    this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
-    this.promptBinding = snapshot.promptBinding;
-    this.externalContextSources = structuredClone(snapshot.externalContextSources ?? []);
-    this.sessionMode = snapshot.sessionMode;
-    this.sessionAgentKey = snapshot.sessionAgentKey;
-    this.promptStatus = snapshot.promptStatus;
-    this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
-    this.lastStreamSequence = snapshot.streamMessage ? snapshot.streamSequence : 0;
+    const currentStreamMessage =
+      this.agent.state.streamMessage?.role === "assistant"
+        ? structuredClone(this.agent.state.streamMessage)
+        : null;
+    const snapshotForAgent =
+      snapshot.promptStatus === "streaming" &&
+      !snapshot.streamMessage &&
+      currentStreamMessage &&
+      this.lastStreamSequence > snapshot.streamSequence
+        ? {
+            ...snapshot,
+            streamMessage: currentStreamMessage,
+            streamSequence: this.lastStreamSequence,
+          }
+        : snapshot;
+
+    this.target = normalizePromptTarget(snapshotForAgent.target);
+    this.resolvedSystemPrompt = snapshotForAgent.resolvedSystemPrompt;
+    this.promptBinding = snapshotForAgent.promptBinding;
+    this.externalContextSources = structuredClone(snapshotForAgent.externalContextSources ?? []);
+    this.sessionMode = snapshotForAgent.sessionMode;
+    this.sessionAgentKey = snapshotForAgent.sessionAgentKey;
+    this.promptStatus = snapshotForAgent.promptStatus;
+    this.activeTurnId = snapshotForAgent.activeTurnId ?? null;
+    this.activeTurnStartedAt = snapshotForAgent.activeTurnStartedAt ?? null;
+    this.turnTimings = structuredClone(snapshotForAgent.turnTimings);
+    this.queuedPrompts = structuredClone(snapshotForAgent.queuedMessages ?? []);
+    this.composerDraft = structuredClone(snapshotForAgent.composerDraft);
+    this.lastStreamSequence = snapshotForAgent.streamMessage ? snapshotForAgent.streamSequence : 0;
 
     this.suppressSurfaceMutationSync = true;
     this.applyingSnapshot = true;
     try {
-      applySurfaceSnapshotToAgent(this.agent, snapshot);
+      applySurfaceSnapshotToAgent(this.agent, snapshotForAgent);
     } finally {
       this.applyingSnapshot = false;
       this.suppressSurfaceMutationSync = false;
@@ -792,6 +845,12 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.lastStreamSequence = patch.sequence;
     this.promptStatus = patch.type === "clear" ? "idle" : "streaming";
+    if (patch.type === "clear") {
+      this.activeTurnId = null;
+      this.activeTurnStartedAt = null;
+    } else if (!this.activeTurnStartedAt) {
+      this.activeTurnStartedAt = new Date().toISOString();
+    }
     this.applyingSnapshot = true;
     try {
       applySurfaceStreamPatchToAgent(this.agent, patch);
@@ -814,6 +873,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   }
 
   async abort(): Promise<void> {
+    this.promptDispatchInFlight = false;
     try {
       await this.rpcClient.request.cancelPrompt({
         workspaceId: this.workspaceId,
@@ -822,7 +882,12 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     } catch (error) {
       console.error("Failed to cancel prompt:", error);
     } finally {
+      this.promptDispatchInFlight = false;
+      this.promptStatus = "idle";
+      this.activeTurnId = null;
+      this.activeTurnStartedAt = null;
       this.agent.abort();
+      this.emit();
     }
   }
 
@@ -836,11 +901,100 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     }
 
     if (this.promptDispatchInFlight || this.promptStatus === "streaming") {
+      await this.updateComposerDraft({ text: "", attachments: [] });
       await this.enqueuePrompt(submission);
       return;
     }
 
+    await this.updateComposerDraft({ text: "", attachments: [] });
     await this.dispatchPrompt(submission);
+  }
+
+  async updateComposerDraft(draft: Pick<ComposerDraft, "text" | "attachments">): Promise<void> {
+    const nextDraft = {
+      text: draft.text,
+      attachments: structuredClone(draft.attachments),
+      updatedAt: new Date().toISOString(),
+    };
+    this.composerDraft = nextDraft;
+    this.emit();
+
+    this.draftSyncChain = this.draftSyncChain
+      .catch(() => undefined)
+      .then(async () => {
+        const response = await this.rpcClient.request.updateComposerDraft({
+          workspaceId: this.workspaceId,
+          target: this.target,
+          draft: {
+            text: nextDraft.text,
+            attachments: nextDraft.attachments,
+          },
+        });
+        this.target = normalizePromptTarget(response.target);
+        this.agent.sessionId = response.target.surfacePiSessionId;
+      });
+
+    try {
+      await this.draftSyncChain;
+    } catch (error) {
+      console.error("Failed to sync composer draft:", error);
+    }
+  }
+
+  async editCommittedUserMessage(
+    messageTimestamp: string | number,
+    input: ComposerPromptSubmission,
+  ): Promise<void> {
+    const submission = {
+      text: input.text.trim(),
+      attachments: input.attachments,
+    };
+    if (!submission.text && submission.attachments.length === 0) {
+      return;
+    }
+    if (this.promptDispatchInFlight || this.promptStatus === "streaming") {
+      throw new Error("Wait for the current turn to finish before editing an earlier message.");
+    }
+
+    const userMessage = buildUserMessage(submission);
+    const request: EditCommittedUserMessageRequest = {
+      target: this.target,
+      messageTimestamp,
+      message: userMessage,
+    };
+
+    this.promptDispatchInFlight = true;
+    this.promptStatus = "streaming";
+    this.activeTurnId = null;
+    this.activeTurnStartedAt = new Date().toISOString();
+    this.lastStreamSequence = 0;
+    setSurfaceAgentStreamState(this.agent, { isStreaming: true, streamMessage: null });
+    this.emit();
+
+    try {
+      const response = await this.rpcClient.request.editCommittedUserMessage({
+        ...request,
+        workspaceId: this.workspaceId,
+      });
+      this.target = normalizePromptTarget(response.target);
+      this.agent.sessionId = response.target.surfacePiSessionId;
+      if (response.snapshot) {
+        this.applySnapshot(response.snapshot);
+      }
+    } catch (error) {
+      this.promptStatus = "idle";
+      this.activeTurnId = null;
+      this.activeTurnStartedAt = null;
+      setSurfaceAgentStreamState(this.agent, {
+        isStreaming: false,
+        streamMessage: null,
+        error: error instanceof Error ? error.message : "Message edit failed.",
+      });
+      throw error;
+    } finally {
+      this.promptDispatchInFlight = false;
+      this.emit();
+    }
   }
 
   async editQueuedPrompt(promptId: string): Promise<string | null> {
@@ -945,6 +1099,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.promptDispatchInFlight = true;
     this.promptStatus = "streaming";
+    this.activeTurnId = null;
+    this.activeTurnStartedAt = new Date().toISOString();
     this.lastStreamSequence = 0;
     setSurfaceAgentStreamState(this.agent, { isStreaming: true, streamMessage: null });
     this.agent.replaceMessages(
@@ -965,6 +1121,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     } catch (error) {
       const failure = createFailureMessage(error, provider, model, "error");
       this.promptStatus = "idle";
+      this.activeTurnId = null;
+      this.activeTurnStartedAt = null;
       setSurfaceAgentStreamState(this.agent, {
         isStreaming: false,
         streamMessage: null,
@@ -1004,6 +1162,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
         );
         this.promptDispatchInFlight = false;
         this.promptStatus = "idle";
+        this.activeTurnId = null;
+        this.activeTurnStartedAt = null;
         stream.push({
           type: "error",
           reason: "error",
@@ -1021,6 +1181,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       messages: structuredClone(this.agent.state.messages),
       pendingUserMessage: null,
       queuedMessages: structuredClone(this.queuedPrompts),
+      composerDraft: structuredClone(this.composerDraft),
       streamMessage:
         this.agent.state.streamMessage?.role === "assistant"
           ? structuredClone(this.agent.state.streamMessage)
@@ -1038,6 +1199,9 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       externalContextSources: structuredClone(this.externalContextSources),
       promptBinding: this.promptBinding,
       promptStatus: this.promptStatus,
+      activeTurnId: this.activeTurnId,
+      activeTurnStartedAt: this.activeTurnStartedAt,
+      turnTimings: structuredClone(this.turnTimings),
     };
   }
 
@@ -1976,11 +2140,10 @@ export async function createChatRuntime(
       return newPane.panelId;
     },
     closePane: async (panelId) => {
-      const targetPanelId = paneLayout.panels.some((pane) => pane.panelId === panelId)
-        ? panelId
-        : paneLayout.panels.some((pane) => pane.panelId === paneLayout.focusedPanelId)
-          ? paneLayout.focusedPanelId!
-          : (paneLayout.panels.at(-1)?.panelId ?? panelId);
+      if (!paneLayout.panels.some((pane) => pane.panelId === panelId)) {
+        return;
+      }
+      const targetPanelId = panelId;
       const target =
         paneLayout.panels.find((pane) => pane.panelId === targetPanelId)?.binding ?? null;
       paneLayout = closePane(paneLayout, targetPanelId);
@@ -2027,9 +2190,9 @@ export async function createChatRuntime(
       }
       captureActiveLayout();
       activeLayoutId = layoutId;
-      paneLayout = savedLayouts[layoutId]
-        ? normalizePaneLayout(savedLayouts[layoutId]!)
-        : createEmptyPaneLayout();
+      await hydrateActiveLayout(
+        savedLayouts[layoutId] ? normalizePaneLayout(savedLayouts[layoutId]!) : null,
+      );
       savedLayouts = {
         ...savedLayouts,
         [layoutId]: structuredClone(paneLayout),

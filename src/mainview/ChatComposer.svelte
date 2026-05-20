@@ -5,7 +5,7 @@
 	import PaperclipIcon from "@lucide/svelte/icons/paperclip";
 	import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
 	import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
-	import SquareIcon from "@lucide/svelte/icons/square";
+	import ClockIcon from "@lucide/svelte/icons/clock";
 	import XIcon from "@lucide/svelte/icons/x";
 	import { onMount, tick } from "svelte";
 	import type { Model } from "@mariozechner/pi-ai";
@@ -34,35 +34,48 @@
 	import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
 	import { getModelComboboxValue, type ModelComboboxOption } from "./model-options";
 	import { getSupportedThinkingLevels } from "./model-thinking";
+	import { formatWorkingElapsed, formatWorkingElapsedTooltip } from "./working-timer";
 	import QueuedMessagesStrip from "./QueuedMessagesStrip.svelte";
 	import type { QueuedPrompt } from "./chat-runtime";
-	import type { ComposerAttachment } from "../shared/workspace-contract";
+	import type { ComposerAttachment, ComposerDraft } from "../shared/workspace-contract";
 
 	export type ComposerSubmit = {
 		text: string;
 		attachments: ComposerAttachment[];
+		editMessageTimestamp?: string | number;
+	};
+
+	export type ComposerEditDraft = {
+		messageTimestamp: string | number;
+		text: string;
 	};
 
 	type Props = {
 		currentModel: Model<any> | null;
 		thinkingLevel: ThinkingLevel;
 		isStreaming: boolean;
+		activeTurnStartedAt?: string | null;
 		promptHistory: PromptHistoryEntry[];
 		errorMessage?: string;
 		contextBudget?: ContextBudget | null;
 		queuedMessages?: QueuedPrompt[];
+		composerDraft?: ComposerDraft;
+		draftStorageKey?: string;
+		editDraft?: ComposerEditDraft | null;
 		sessionName?: string;
 		targetLabel?: string;
 		worktreeLabel?: string;
-		onAbort: () => void;
 		onOpenModelPicker: () => void;
 		onListModels: () => Promise<ModelComboboxOption[]>;
 		onModelChange: (model: Model<any>) => void;
 		onSend: (input: ComposerSubmit) => Promise<boolean> | boolean;
+		onDraftChange?: (draft: { text: string; attachments: ComposerAttachment[] }) => void;
+		onBufferChange?: (draft: { text: string; attachments: ComposerAttachment[] }) => void;
 		onEditQueuedMessage?: (promptId: string) => Promise<string | null> | string | null;
 		onDeleteQueuedMessage?: (promptId: string) => void;
 		onSteerQueuedMessage?: (promptId: string) => void;
 		onReorderQueuedMessage?: (promptId: string, beforePromptId: string | null) => void;
+		onCancelEditMessage?: () => void;
 		onThinkingChange: (level: ThinkingLevel) => void;
 		listWorkspacePaths: (options?: { refresh?: boolean }) => Promise<WorkspacePathIndexEntry[]>;
 		pickWorkspaceAttachments: () => Promise<ComposerAttachment[]>;
@@ -73,22 +86,28 @@
 		currentModel,
 		thinkingLevel,
 		isStreaming,
+		activeTurnStartedAt = null,
 		promptHistory,
 		errorMessage,
 		contextBudget,
 		queuedMessages = [],
+		composerDraft = { text: "", attachments: [], updatedAt: null },
+		draftStorageKey = "composer",
+		editDraft = null,
 		sessionName = "Current session",
 		targetLabel = "orchestrator",
 		worktreeLabel = "worktree",
-		onAbort,
 		onOpenModelPicker,
 		onListModels,
 		onModelChange,
 		onSend,
+		onDraftChange = () => {},
+		onBufferChange = () => {},
 		onEditQueuedMessage = () => {},
 		onDeleteQueuedMessage = () => {},
 		onSteerQueuedMessage = () => {},
 		onReorderQueuedMessage = () => {},
+		onCancelEditMessage = () => {},
 		onThinkingChange,
 		listWorkspacePaths,
 		pickWorkspaceAttachments,
@@ -110,10 +129,15 @@
 	let mentionError = $state<string | null>(null);
 	let attachments = $state<ComposerAttachment[]>([]);
 	let isDragActive = $state(false);
+	let workingTimerNow = $state(Date.now());
 	let activeMentionIndex = $state(0);
 	let caretPosition = $state(0);
 	let dismissedMentionQueryKey = $state<string | null>(null);
 	let workspacePathTargetKey = $state("");
+	let loadedEditDraftKey = $state<string | null>(null);
+	let loadedComposerDraftKey = $state<string | null>(null);
+	let lastPersistedDraftPayloadKey = $state<string | null>(null);
+	let draftPersistenceReady = $state(false);
 	const availableThinkingLevels = $derived(getSupportedThinkingLevels(currentModel));
 	const thinkingOptions = $derived(
 		availableThinkingLevels.map((level) => ({ value: level, label: level })),
@@ -145,6 +169,10 @@
 	const contextBudgetTooltipDetails = $derived(
 		contextBudget ? buildContextBudgetTooltipDetails(contextBudget) : [],
 	);
+	const workingElapsedLabel = $derived(formatWorkingElapsed(activeTurnStartedAt, workingTimerNow));
+	const workingElapsedTooltip = $derived(
+		formatWorkingElapsedTooltip(activeTurnStartedAt, workingTimerNow),
+	);
 	const showMentionPicker = $derived(
 		Boolean(
 			mentionQuery &&
@@ -153,6 +181,15 @@
 				(mentionLoading || mentionError || workspacePathsLoaded || mentionResults.length > 0),
 		),
 	);
+
+	$effect(() => {
+		if (!isStreaming) return;
+		workingTimerNow = Date.now();
+		const timer = window.setInterval(() => {
+			workingTimerNow = Date.now();
+		}, 1000);
+		return () => window.clearInterval(timer);
+	});
 
 	$effect(() => {
 		const targetKey = `${sessionName}\u0000${targetLabel}\u0000${worktreeLabel}`;
@@ -173,6 +210,54 @@
 	$effect(() => {
 		void draft;
 		void tick().then(syncDraftTextareaHeight);
+	});
+
+	$effect(() => {
+		void draft;
+		void attachments;
+		onBufferChange({ text: draft, attachments: structuredClone(attachments) });
+	});
+
+	$effect(() => {
+		if (editDraft) return;
+		const storageKey = draftStorageKey;
+		const updatedAt = composerDraft.updatedAt;
+		const attachmentsKey = JSON.stringify(composerDraft.attachments);
+		const incomingKey = `${storageKey}\u0000${updatedAt ?? ""}\u0000${composerDraft.text}\u0000${attachmentsKey}`;
+		if (incomingKey === loadedComposerDraftKey) return;
+		loadedComposerDraftKey = incomingKey;
+		lastPersistedDraftPayloadKey = `${composerDraft.text}\u0000${attachmentsKey}`;
+		if (draft === composerDraft.text && JSON.stringify(attachments) === attachmentsKey) {
+			draftPersistenceReady = true;
+			return;
+		}
+		draft = composerDraft.text;
+		attachments = structuredClone(composerDraft.attachments);
+		resetHistoryNavigation();
+		draftPersistenceReady = true;
+		void tick().then(() => moveCaretToDraftEnd(composerDraft.text));
+	});
+
+	$effect(() => {
+		if (editDraft) return;
+		if (!draftPersistenceReady) return;
+		void draftStorageKey;
+		void draft;
+		void attachments;
+		const payloadKey = `${draft}\u0000${JSON.stringify(attachments)}`;
+		if (payloadKey === lastPersistedDraftPayloadKey) return;
+		lastPersistedDraftPayloadKey = payloadKey;
+		onDraftChange({ text: draft, attachments: structuredClone(attachments) });
+	});
+
+	$effect(() => {
+		const editKey = editDraft ? String(editDraft.messageTimestamp) : null;
+		if (!editDraft || editKey === loadedEditDraftKey) return;
+		loadedEditDraftKey = editKey;
+		draft = editDraft.text;
+		attachments = [];
+		resetHistoryNavigation();
+		void tick().then(() => moveCaretToDraftEnd(editDraft.text));
 	});
 
 	$effect(() => {
@@ -308,6 +393,7 @@
 
 	async function submit() {
 		if (!canSubmit || isSubmitting) return;
+		const editingMessageTimestamp = editDraft?.messageTimestamp;
 		const nextDraft = serializeComposerDraft(draft);
 		const nextVisibleDraft = draft;
 		const nextAttachments = attachments;
@@ -316,9 +402,17 @@
 		isSubmitting = true;
 
 		try {
-			const sent = await onSend({ text: nextDraft, attachments: nextAttachments });
+			const sent = await onSend({
+				text: nextDraft,
+				attachments: nextAttachments,
+				editMessageTimestamp: editingMessageTimestamp,
+			});
 			if (sent) {
 				resetHistoryNavigation();
+				if (editingMessageTimestamp !== undefined) {
+					loadedEditDraftKey = null;
+					onCancelEditMessage();
+				}
 			} else {
 				await restoreDraftBuffer(nextVisibleDraft);
 				attachments = nextAttachments;
@@ -329,6 +423,14 @@
 		} finally {
 			isSubmitting = false;
 		}
+	}
+
+	function cancelEditMessage() {
+		loadedEditDraftKey = null;
+		draft = "";
+		attachments = [];
+		onCancelEditMessage();
+		draftElement?.focus();
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -532,6 +634,12 @@
 
 		<div class="composer-main-row">
 			<div class="composer-input-wrap">
+				{#if editDraft}
+					<section class="composer-edit-row" aria-label="Editing message">
+						<span>Editing message</span>
+						<button type="button" onclick={cancelEditMessage}>Cancel</button>
+					</section>
+				{/if}
 				{#if queuedMessages.length > 0}
 					<QueuedMessagesStrip
 						{queuedMessages}
@@ -640,10 +748,11 @@
 							</button>
 						</Tooltip>
 						{#if isStreaming}
-							<Tooltip label="Stop generation">
-								<button class="composer-submit danger" type="button" aria-label="Stop" onclick={onAbort}>
-									<SquareIcon size={13} aria-hidden="true" />
-								</button>
+							<Tooltip label={workingElapsedTooltip}>
+								<span class="composer-working-timer" role="status" aria-label={workingElapsedTooltip}>
+									<ClockIcon size={14} aria-hidden="true" />
+									<span>{workingElapsedLabel}</span>
+								</span>
 							</Tooltip>
 						{/if}
 						<Tooltip label={isStreaming ? "Queue message" : "Send message"} disabled={!currentModel || !canSubmit || isSubmitting}>
@@ -680,6 +789,33 @@
 
 	.composer-context-row {
 		border-top: 1px solid var(--ui-border-soft);
+	}
+
+	.composer-edit-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding: 0.34rem 0.52rem 0.32rem;
+		border-bottom: 1px solid color-mix(in oklab, var(--ui-border-accent) 48%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-accent-soft) 52%, transparent);
+		color: var(--ui-text-secondary);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+	}
+
+	.composer-edit-row button {
+		border: 0;
+		background: transparent;
+		color: var(--ui-accent);
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.composer-edit-row button:hover,
+	.composer-edit-row button:focus-visible {
+		color: var(--ui-text-primary);
 	}
 
 	.composer-context-row {
@@ -899,10 +1035,24 @@
 		cursor: not-allowed;
 	}
 
-	.composer-submit.danger {
-		border-color: color-mix(in oklab, var(--ui-danger) 42%, var(--ui-border-soft));
-		background: color-mix(in oklab, var(--ui-danger-soft) 82%, var(--ui-surface));
-		color: var(--ui-danger);
+	.composer-working-timer {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.25rem;
+		flex: 0 0 auto;
+		min-width: 3.55rem;
+		height: 1.9rem;
+		padding: 0 0.44rem;
+		border: 1px solid color-mix(in oklab, var(--ui-accent) 28%, var(--ui-border-soft));
+		border-radius: var(--ui-radius-md);
+		background: color-mix(in oklab, var(--ui-accent) 9%, transparent);
+		color: var(--ui-accent);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
 	}
 
 	.model-pill {
@@ -1084,6 +1234,11 @@
 		.composer-submit {
 			width: 2.75rem;
 			height: 2.75rem;
+		}
+
+		.composer-working-timer {
+			height: 2.75rem;
+			min-width: 4.45rem;
 		}
 
 		.model-pill,

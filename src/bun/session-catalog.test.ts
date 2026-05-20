@@ -1064,6 +1064,40 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
+  it("uses the live first composer draft as the provisional session title", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+
+    try {
+      const created = await catalog.createSession({ title: "New Session" }, DEFAULTS);
+      await catalog.updateComposerDraft({
+        target: created.target,
+        draft: {
+          text: "A text written in the composer should survive closing surfaces",
+          attachments: [],
+        },
+      });
+
+      expect((await catalog.listSessions()).sessions[0]?.title).toBe(
+        "A text written in the composer should survive closing surfaces",
+      );
+      await catalog.closeSurface(created.target);
+      const reopened = await catalog.openSurface(created.target);
+      expect(reopened.composerDraft.text).toBe(
+        "A text written in the composer should survive closing surfaces",
+      );
+
+      getStructuredSessionStore(catalog).completeTitleGeneration({
+        sessionId: created.target.workspaceSessionId,
+        title: "Durable Composer Drafts",
+      });
+
+      expect((await catalog.listSessions()).sessions[0]?.title).toBe("Durable Composer Drafts");
+    } finally {
+      await catalog.dispose();
+    }
+  });
+
   it("starts top-level title generation while the first orchestrator turn is still running", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
@@ -2121,6 +2155,18 @@ describe("WorkspaceSessionCatalog", () => {
       expect(surfaceSyncs).toHaveLength(0);
       workspaceSyncs.length = 0;
 
+      await catalog.updateComposerDraft({
+        target: created.target,
+        draft: {
+          text: "Explain the parser",
+          attachments: [],
+        },
+      });
+      expect(workspaceSyncs).toHaveLength(1);
+      expect(workspaceSyncs[0]?.reason).toBe("structured.updated");
+      expect(surfaceSyncs).toHaveLength(0);
+      workspaceSyncs.length = 0;
+
       const prompt = userMessage("Explain the parser");
       const reply = assistantMessage("Parser cursor synced.");
       const managed = getManagedSurface(catalog, created.target.surfacePiSessionId);
@@ -2370,6 +2416,16 @@ describe("WorkspaceSessionCatalog", () => {
         });
 
         const snapshot = await catalog.openSurface(created.target);
+        const runningTurn = getStructuredSessionStore(catalog)
+          .getSessionState(created.target.workspaceSessionId)
+          .turns.find(
+            (turn) =>
+              turn.surfacePiSessionId === created.target.surfacePiSessionId &&
+              turn.status === "running",
+          );
+        expect(runningTurn).toBeDefined();
+        expect(snapshot.activeTurnId).toBe(runningTurn?.id);
+        expect(snapshot.activeTurnStartedAt).toBe(runningTurn?.startedAt);
         expect(snapshot.queuedMessages).toEqual([]);
         expect(userMessageText(snapshot.pendingUserMessage)).toBe("Run the queued turn.");
         expect(
@@ -2388,6 +2444,8 @@ describe("WorkspaceSessionCatalog", () => {
               userMessageText(payload.snapshot?.pendingUserMessage ?? null) ===
                 "Run the queued turn." &&
               payload.snapshot?.streamSequence === 0 &&
+              payload.snapshot?.activeTurnId === runningTurn?.id &&
+              payload.snapshot?.activeTurnStartedAt === runningTurn?.startedAt &&
               payload.snapshot?.queuedMessages.length === 0,
           ),
         ).toBe(true);
@@ -2404,6 +2462,19 @@ describe("WorkspaceSessionCatalog", () => {
             .getSessionState(created.target.workspaceSessionId)
             .queuedMessages?.map((message) => message.status) ?? [],
         ).toEqual(["delivered"]);
+        const finishedTurn = getStructuredSessionStore(catalog)
+          .getSessionState(created.target.workspaceSessionId)
+          .turns.find((turn) => turn.id === runningTurn?.id);
+        if (!runningTurn || !finishedTurn?.finishedAt) {
+          throw new Error("Expected queued turn to finish with timing metadata.");
+        }
+        const settledSnapshot = await catalog.openSurface(created.target);
+        expect(settledSnapshot.turnTimings).toContainEqual({
+          turnId: runningTurn.id,
+          assistantMessageTimestamp: expect.any(Number),
+          startedAt: runningTurn.startedAt,
+          finishedAt: finishedTurn.finishedAt,
+        });
       } finally {
         queuedPromptGate.resolve();
         promptSpy.mockRestore();

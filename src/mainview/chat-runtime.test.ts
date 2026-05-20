@@ -200,6 +200,15 @@ function createThreadTarget(
   };
 }
 
+function hasUserText(messages: AgentMessage[], text: string): boolean {
+  return messages.some((message) => {
+    if (message.role !== "user" || !Array.isArray(message.content)) {
+      return false;
+    }
+    return message.content.some((content) => content.type === "text" && content.text === text);
+  });
+}
+
 function createSummary(
   id: string,
   title: string,
@@ -264,6 +273,9 @@ function createSurfaceSnapshot(input: {
   resolvedSystemPrompt?: string;
   externalContextSources?: ConversationSurfaceSnapshot["externalContextSources"];
   promptStatus?: ConversationSurfaceSnapshot["promptStatus"];
+  activeTurnId?: string | null;
+  activeTurnStartedAt?: string | null;
+  turnTimings?: ConversationSurfaceSnapshot["turnTimings"];
 }): ConversationSurfaceSnapshot {
   const systemPrompt = input.systemPrompt ?? "You are svvy.";
   return {
@@ -271,6 +283,7 @@ function createSurfaceSnapshot(input: {
     messages: structuredClone(input.messages),
     pendingUserMessage: input.pendingUserMessage ? structuredClone(input.pendingUserMessage) : null,
     queuedMessages: structuredClone(input.queuedMessages ?? []),
+    composerDraft: { text: "", attachments: [], updatedAt: null },
     streamMessage: input.streamMessage ? structuredClone(input.streamMessage) : null,
     streamSequence: input.streamSequence ?? 0,
     provider: input.provider ?? "openai",
@@ -282,6 +295,9 @@ function createSurfaceSnapshot(input: {
     resolvedSystemPrompt: input.resolvedSystemPrompt ?? systemPrompt,
     externalContextSources: structuredClone(input.externalContextSources ?? []),
     promptStatus: input.promptStatus ?? "idle",
+    activeTurnId: input.activeTurnId ?? null,
+    activeTurnStartedAt: input.activeTurnStartedAt ?? null,
+    turnTimings: structuredClone(input.turnTimings ?? []),
   };
 }
 
@@ -1368,7 +1384,10 @@ function createFakeRpc(input: {
             target: cloneTarget(request.target),
             pendingUserMessage: pendingUserMessage ? structuredClone(pendingUserMessage) : null,
             streamMessage: null,
+            streamSequence: 0,
             promptStatus: "streaming",
+            activeTurnId: `turn-${promptRequests.length}`,
+            activeTurnStartedAt: "2026-04-10T10:12:00.000Z",
           };
           updateSummary(request.target.workspaceSessionId, (summary) => {
             summary.status = "running";
@@ -1410,6 +1429,8 @@ function createFakeRpc(input: {
             pendingUserMessage: null,
             streamMessage: null,
             promptStatus: "idle",
+            activeTurnId: null,
+            activeTurnStartedAt: null,
           };
 
           updateSummary(request.target.workspaceSessionId, (summary) => {
@@ -1451,6 +1472,43 @@ function createFakeRpc(input: {
           });
 
           return { target: cloneTarget(request.target) };
+        },
+        editCommittedUserMessage: async ({ target, messageTimestamp, message, workspaceId }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          const messages = record.snapshot.messages as AgentMessage[];
+          const editIndex = messages.findIndex(
+            (candidate) =>
+              candidate.role === "user" && String(candidate.timestamp) === String(messageTimestamp),
+          );
+          if (editIndex < 0) {
+            throw new Error(
+              "Unable to edit: user message was not found in the active conversation.",
+            );
+          }
+          return await harness.client.request.sendPrompt({
+            workspaceId,
+            target,
+            messages: [...messages.slice(0, editIndex), message] as Message[],
+          });
+        },
+        updateComposerDraft: async ({ target, draft }) => {
+          const record = getSurfaceRecord(target.surfacePiSessionId);
+          record.snapshot = {
+            ...record.snapshot,
+            composerDraft: {
+              text: draft.text,
+              attachments: structuredClone(draft.attachments),
+              updatedAt:
+                draft.text.trim() || draft.attachments.length > 0
+                  ? "2026-04-10T10:12:00.000Z"
+                  : null,
+            },
+          };
+          return {
+            ok: true,
+            target: cloneTarget(target),
+            snapshot: structuredClone(record.snapshot),
+          };
         },
         deleteQueuedSurfaceMessage: async ({ target, queuedMessageId }) => {
           const record = getSurfaceRecord(target.surfacePiSessionId);
@@ -1637,6 +1695,8 @@ function createFakeRpc(input: {
             pendingUserMessage: null,
             streamMessage: null,
             promptStatus: "idle",
+            activeTurnId: null,
+            activeTurnStartedAt: null,
           };
           queueMicrotask(() => {
             emitSurfaceSync({
@@ -1981,6 +2041,43 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("ignores stale pane close events for panels already removed from runtime state", async () => {
+    const harness = createFakeRpc({
+      sessions: [
+        createSummary("session-1", "Orchestrator", "main reply"),
+        createSummary("session-2", "Second", "second reply"),
+      ],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [userMessage("main"), assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-2"),
+          messages: [userMessage("second"), assistantMessage("second reply")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSession("session-2", "secondary");
+
+    expect(runtime.paneLayout.panels.map((panel) => panel.panelId)).toEqual([
+      "primary",
+      "secondary",
+    ]);
+
+    await runtime.closePane("primary");
+    await runtime.closePane("primary");
+
+    expect(runtime.getPane("primary")).toBeUndefined();
+    expect(runtime.getPane("secondary")?.target).toEqual(createOrchestratorTarget("session-2"));
+    expect(runtime.paneLayout.panels.map((panel) => panel.panelId)).toEqual(["secondary"]);
+    expect(runtime.paneLayout.panels.some((panel) => panel.binding === null)).toBe(false);
+
+    runtime.dispose();
+  });
+
   it("deletes the final session without creating a replacement session", async () => {
     const harness = createFakeRpc({
       sessions: [createSummary("session-1", "Only Session", "main reply")],
@@ -2217,6 +2314,49 @@ describe("createChatRuntime", () => {
     runtime.dispose();
   });
 
+  it("keeps an optimistic sent message visible when an older idle snapshot arrives", async () => {
+    const session = createSummary("session-1", "Draft Race", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const initialMessages = [userMessage("Initial"), assistantMessage("Ready")];
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: initialMessages,
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    const activeTurn = createDeferred<PromptHandlerResult>();
+    harness.setPromptHandler(target.surfacePiSessionId, () => activeTurn.promise);
+
+    const sendPromise = controller.sendPrompt({ text: "Keep this visible", attachments: [] });
+    await waitFor(() => controller.promptStatus === "streaming");
+    expect(hasUserText(controller.agent.state.messages, "Keep this visible")).toBe(true);
+
+    harness.emitSurfaceSync({
+      reason: "surface.updated",
+      target,
+      snapshot: createSurfaceSnapshot({
+        target,
+        messages: initialMessages,
+        promptStatus: "idle",
+      }),
+    });
+
+    expect(controller.promptStatus).toBe("streaming");
+    expect(hasUserText(controller.agent.state.messages, "Keep this visible")).toBe(true);
+
+    activeTurn.resolve({ assistantText: "Done" });
+    await sendPromise;
+    runtime.dispose();
+  });
+
   it("edits, deletes, promotes, and reorders queued prompts without touching the active prompt", async () => {
     const session = createSummary("session-1", "Parser", "Initial");
     const target = createOrchestratorTarget(session.id);
@@ -2263,6 +2403,54 @@ describe("createChatRuntime", () => {
 
     activeTurn.resolve({ assistantText: "Active turn done" });
     await activePrompt;
+
+    runtime.dispose();
+  });
+
+  it("edits a committed user message by continuing from that message point", async () => {
+    const session = createSummary("session-1", "Parser", "Initial");
+    const target = createOrchestratorTarget(session.id);
+    const firstUser = userMessage("Original request");
+    firstUser.timestamp = 101;
+    const firstAssistant = assistantMessage("Original reply");
+    firstAssistant.timestamp = 102;
+    const secondUser = userMessage("Follow-up");
+    secondUser.timestamp = 103;
+    const secondAssistant = assistantMessage("Follow-up reply");
+    secondAssistant.timestamp = 104;
+    const harness = createFakeRpc({
+      sessions: [session],
+      surfaces: [
+        createSurfaceSnapshot({
+          target,
+          messages: [firstUser, firstAssistant, secondUser, secondAssistant],
+        }),
+      ],
+    });
+    const runtime = await createRuntime(harness);
+    const controller = runtime.getPaneController("primary");
+    expect(controller).not.toBeNull();
+    if (!controller) return;
+
+    await controller.editCommittedUserMessage(101, {
+      text: "Revised request",
+      attachments: [],
+    });
+
+    await waitFor(() => controller.agent.state.messages.length === 2);
+    const committedUserMessages = controller.agent.state.messages.filter(
+      (message) => message.role === "user",
+    );
+    expect(
+      committedUserMessages.map((message) =>
+        typeof message.content === "string"
+          ? message.content
+          : message.content.map((block) => (block.type === "text" ? block.text : "")).join(""),
+      ),
+    ).toEqual(["Revised request"]);
+
+    const [promptRequest] = harness.promptRequests;
+    expect(promptRequest?.messages).toHaveLength(1);
 
     runtime.dispose();
   });
@@ -2445,6 +2633,9 @@ describe("createChatRuntime", () => {
           pendingUserMessage: pendingUser,
           streamMessage: liveAssistant,
           promptStatus: "streaming",
+          activeTurnId: "turn-live-1",
+          activeTurnStartedAt: "2026-04-10T10:12:00.000Z",
+          turnTimings: [],
         }),
       ],
     });
@@ -2457,6 +2648,9 @@ describe("createChatRuntime", () => {
     }
 
     expect(controller.promptStatus).toBe("streaming");
+    expect(controller.activeTurnId).toBe("turn-live-1");
+    expect(controller.activeTurnStartedAt).toBe("2026-04-10T10:12:00.000Z");
+    expect(controller.turnTimings).toEqual([]);
     expect(
       controller.agent.state.messages.some(
         (message) =>
@@ -2481,10 +2675,28 @@ describe("createChatRuntime", () => {
         target: threadTarget,
         messages: [pendingUser, liveAssistant],
         promptStatus: "idle",
+        turnTimings: [
+          {
+            turnId: "turn-live-1",
+            assistantMessageTimestamp: liveAssistant.timestamp,
+            startedAt: "2026-04-10T10:12:00.000Z",
+            finishedAt: "2026-04-10T10:12:42.000Z",
+          },
+        ],
       }),
     });
 
     expect(controller.agent.state.streamMessage).toBeNull();
+    expect(controller.activeTurnId).toBeNull();
+    expect(controller.activeTurnStartedAt).toBeNull();
+    expect(controller.turnTimings).toEqual([
+      {
+        turnId: "turn-live-1",
+        assistantMessageTimestamp: liveAssistant.timestamp,
+        startedAt: "2026-04-10T10:12:00.000Z",
+        finishedAt: "2026-04-10T10:12:42.000Z",
+      },
+    ]);
     expect(
       controller.agent.state.messages.filter(
         (message) =>
@@ -3379,6 +3591,79 @@ describe("createChatRuntime", () => {
 
     expect(runtime.activeLayoutId).toBe("B");
     expect(runtime.getPane("secondary")?.target).toEqual(createOrchestratorTarget("session-1"));
+
+    runtime.dispose();
+  });
+
+  it("hydrates prompt pane controllers when switching to a saved inactive layout slot", async () => {
+    const storage = createMemoryStorage();
+    const harness = createFakeRpc({
+      sessions: [
+        createSummary("session-1", "Orchestrator", "main reply"),
+        createSummary("session-2", "Second", "second reply"),
+      ],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-1"),
+          messages: [assistantMessage("main reply")],
+        }),
+        createSurfaceSnapshot({
+          target: createOrchestratorTarget("session-2"),
+          messages: [assistantMessage("second reply")],
+        }),
+      ],
+    });
+    harness.setWorkspaceUiRestore(TEST_WORKSPACE_INFO.workspaceId, {
+      version: 5,
+      layouts: {
+        A: {
+          dockview: null,
+          compactSurfaces: [],
+          panels: [
+            {
+              panelId: "slot-a",
+              binding: createOrchestratorTarget("session-1"),
+              localState: {
+                scroll: null,
+                timelineDensity: "comfortable",
+              },
+            },
+          ],
+          focusedPanelId: "slot-a",
+          updatedAt: "2026-04-27T00:00:00.000Z",
+        },
+        B: {
+          dockview: null,
+          compactSurfaces: [],
+          panels: [
+            {
+              panelId: "slot-b",
+              binding: createOrchestratorTarget("session-2"),
+              localState: {
+                scroll: null,
+                timelineDensity: "comfortable",
+              },
+            },
+          ],
+          focusedPanelId: "slot-b",
+          updatedAt: "2026-04-27T00:00:00.000Z",
+        },
+        C: null,
+      },
+    });
+
+    const runtime = await createRuntime(harness, storage);
+
+    expect(runtime.activeLayoutId).toBe("A");
+    expect(runtime.getPaneController("slot-a")).toBeTruthy();
+    expect(runtime.getPaneController("slot-b")).toBeNull();
+
+    await runtime.switchWorkspaceLayout("B");
+
+    expect(runtime.activeLayoutId).toBe("B");
+    expect(runtime.getPane("slot-b")?.target).toEqual(createOrchestratorTarget("session-2"));
+    expect(runtime.getPaneController("slot-b")).toBeTruthy();
+    expect(harness.openedTargets).toContainEqual(createOrchestratorTarget("session-2"));
 
     runtime.dispose();
   });

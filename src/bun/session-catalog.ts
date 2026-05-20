@@ -24,7 +24,9 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type {
+  ComposerDraft,
   ConversationSurfaceSnapshot,
+  ConversationTurnTiming,
   CreateSessionRequest,
   ForkSessionRequest,
   ListSessionsResponse,
@@ -33,6 +35,7 @@ import type {
   SurfaceStreamPatch,
   SurfaceStreamPatchInput,
   SurfaceSyncMessage,
+  UpdateComposerDraftRequest,
   WorkspaceMutationResponse,
   WorkspaceArtifactPreview,
   WorkspaceSessionNavigationReadModel,
@@ -217,6 +220,13 @@ export interface SendAgentPromptResult {
   target: PromptTarget;
   queued?: boolean;
   snapshot?: ConversationSurfaceSnapshot;
+}
+
+export interface EditCommittedUserMessageOptions {
+  target: PromptTarget;
+  messageTimestamp: string | number;
+  message: Message;
+  onEvent?: (event: AssistantMessageEvent) => void;
 }
 
 interface HandlerHandoffQueuePayload {
@@ -1199,6 +1209,13 @@ export class WorkspaceSessionCatalog {
     this.assertValidPromptTarget(options.target);
     const session = await this.ensureManagedSurfaceForPrompt(options);
     const queued = this.enqueuePendingSurfacePrompt(options);
+    this.structuredSessionStore.setComposerDraft({
+      sessionId: options.target.workspaceSessionId,
+      surfacePiSessionId: options.target.surfacePiSessionId,
+      threadId: options.target.threadId ?? null,
+      text: "",
+      attachments: [],
+    });
     const started = await this.drainNextQueuedSurfacePrompt(options.target, {
       awaitPrompt: false,
     });
@@ -1220,6 +1237,81 @@ export class WorkspaceSessionCatalog {
       queued: true,
       snapshot,
     };
+  }
+
+  async updateComposerDraft(
+    input: UpdateComposerDraftRequest,
+  ): Promise<{ ok: boolean; target: PromptTarget; snapshot?: ConversationSurfaceSnapshot }> {
+    this.assertValidPromptTarget(input.target);
+    this.structuredSessionStore.setComposerDraft({
+      sessionId: input.target.workspaceSessionId,
+      surfacePiSessionId: input.target.surfacePiSessionId,
+      threadId: input.target.threadId ?? null,
+      text: input.draft.text,
+      attachments: input.draft.attachments,
+    });
+    await this.emitWorkspaceSync("structured.updated");
+    return { ok: true, target: structuredClone(input.target) };
+  }
+
+  async editCommittedUserMessage(
+    options: EditCommittedUserMessageOptions,
+  ): Promise<SendAgentPromptResult> {
+    this.assertValidPromptTarget(options.target);
+    const session = await this.loadManagedSurface(
+      options.target.surfacePiSessionId,
+      getActorKindForTarget(options.target),
+      this.buildSystemPromptForTarget(options.target),
+    );
+    await this.restoreWorkflowSupervisionIfTracked(options.target.workspaceSessionId);
+    if (session.activePrompt) {
+      throw new Error("Wait for the current turn to finish before editing an earlier message.");
+    }
+
+    const targetTimestamp = String(options.messageTimestamp);
+    const userEntry = session.session.sessionManager.getBranch().find((entry) => {
+      return (
+        entry.type === "message" &&
+        entry.message.role === "user" &&
+        String(entry.message.timestamp) === targetTimestamp
+      );
+    });
+    if (!userEntry || userEntry.type !== "message") {
+      throw new Error("Unable to edit: user message was not found in the active conversation.");
+    }
+
+    if (userEntry.parentId === null) {
+      session.session.sessionManager.resetLeaf();
+    } else {
+      session.session.sessionManager.branch(userEntry.parentId);
+    }
+    session.session.agent.state.messages =
+      session.session.sessionManager.buildSessionContext().messages;
+    session.pendingUserMessage = null;
+    session.activeStreamMessage = null;
+    session.activeStreamSequence = 0;
+
+    for (const queued of this.structuredSessionStore.listQueuedSurfaceMessages({
+      surfacePiSessionId: options.target.surfacePiSessionId,
+    })) {
+      if (queued.status === "queued" || queued.status === "steering") {
+        this.structuredSessionStore.cancelSurfaceMessage({ id: queued.id });
+      }
+    }
+
+    this.syncManagedState(session);
+    if (options.target.surface === "orchestrator") {
+      this.syncStructuredPiSessionFromOrchestratorSession(session);
+    }
+
+    return this.sendPrompt({
+      target: options.target,
+      provider: session.provider,
+      model: session.model,
+      thinkingLevel: session.thinkingLevel,
+      messages: [...convertToLlmMessages(session.session.agent.state.messages), options.message],
+      onEvent: options.onEvent,
+    });
   }
 
   async steerPrompt(options: SendAgentPromptOptions): Promise<SendAgentPromptResult> {
@@ -1762,6 +1854,8 @@ export class WorkspaceSessionCatalog {
     const currentExternalSources = options.refreshExternalSources
       ? await this.buildCurrentExternalContextSources()
       : session.externalContextSources;
+    const activeTurn = session.activePrompt ? this.getActiveRunningTurnForSurface(target) : null;
+    const messages = structuredClone(session.session.agent.state.messages);
     return {
       target: structuredClone(target),
       provider: session.provider,
@@ -1773,17 +1867,111 @@ export class WorkspaceSessionCatalog {
       resolvedSystemPrompt: getResolvedSystemPrompt(session),
       externalContextSources: structuredClone(session.externalContextSources),
       promptBinding: this.buildPromptBinding(session, target, currentExternalSources),
-      messages: structuredClone(session.session.agent.state.messages),
+      messages,
       pendingUserMessage: session.pendingUserMessage
         ? structuredClone(session.pendingUserMessage.message)
         : null,
       queuedMessages: this.buildQueuedSurfaceMessages(target.surfacePiSessionId),
+      composerDraft: this.buildComposerDraft(target.surfacePiSessionId),
       streamMessage: session.activeStreamMessage
         ? structuredClone(session.activeStreamMessage)
         : null,
       streamSequence: session.activeStreamMessage ? session.activeStreamSequence : 0,
       promptStatus: session.activePrompt ? "streaming" : "idle",
+      activeTurnId: activeTurn?.id ?? null,
+      activeTurnStartedAt: activeTurn?.startedAt ?? null,
+      turnTimings: this.buildSurfaceTurnTimings(target, messages),
     };
+  }
+
+  private buildComposerDraft(surfacePiSessionId: string): ComposerDraft {
+    const draft = this.structuredSessionStore.getComposerDraft(surfacePiSessionId);
+    return {
+      text: draft?.text ?? "",
+      attachments: draft?.attachments ? structuredClone(draft.attachments) : [],
+      updatedAt: draft?.updatedAt ?? null,
+    };
+  }
+
+  private getActiveRunningTurnForSurface(
+    target: PromptTarget,
+  ): StructuredSessionSnapshot["turns"][number] | null {
+    const snapshot = this.getStructuredSnapshot(target.workspaceSessionId);
+    if (!snapshot) {
+      return null;
+    }
+
+    return (
+      snapshot.turns
+        .filter(
+          (turn) =>
+            turn.surfacePiSessionId === target.surfacePiSessionId && turn.status === "running",
+        )
+        .toSorted((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt))[0] ??
+      null
+    );
+  }
+
+  private buildSurfaceTurnTimings(
+    target: PromptTarget,
+    messages: AgentMessage[],
+  ): ConversationTurnTiming[] {
+    const snapshot = this.getStructuredSnapshot(target.workspaceSessionId);
+    if (!snapshot) {
+      return [];
+    }
+
+    const turns = snapshot.turns
+      .filter(
+        (turn) =>
+          turn.surfacePiSessionId === target.surfacePiSessionId &&
+          turn.status === "completed" &&
+          turn.finishedAt,
+      )
+      .toSorted((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
+    const assistantMessages = messages
+      .filter((message) => message.role === "assistant")
+      .toSorted((left, right) => Number(left.timestamp) - Number(right.timestamp));
+    const timings: ConversationTurnTiming[] = [];
+    let assistantIndex = 0;
+
+    for (let turnIndex = 0; turnIndex < turns.length; turnIndex += 1) {
+      const turn = turns[turnIndex];
+      if (!turn || !turn.finishedAt) {
+        continue;
+      }
+      const nextTurn = turns[turnIndex + 1] ?? null;
+      const turnStartedAtMs = Date.parse(turn.startedAt);
+      const nextTurnStartedAtMs = nextTurn
+        ? Date.parse(nextTurn.startedAt)
+        : Number.POSITIVE_INFINITY;
+
+      while (assistantIndex < assistantMessages.length) {
+        const message = assistantMessages[assistantIndex];
+        if (!message) {
+          break;
+        }
+        const messageTimestamp = Number(message.timestamp);
+        if (messageTimestamp < turnStartedAtMs) {
+          assistantIndex += 1;
+          continue;
+        }
+        if (messageTimestamp >= nextTurnStartedAtMs) {
+          break;
+        }
+
+        timings.push({
+          turnId: turn.id,
+          assistantMessageTimestamp: message.timestamp,
+          startedAt: turn.startedAt,
+          finishedAt: turn.finishedAt,
+        });
+        assistantIndex += 1;
+        break;
+      }
+    }
+
+    return timings;
   }
 
   private buildQueuedSurfaceMessages(surfacePiSessionId: string): QueuedSurfaceMessage[] {
@@ -2661,6 +2849,7 @@ export class WorkspaceSessionCatalog {
 
     const navSummary: WorkspaceSessionSummary = {
       ...summary,
+      title: snapshot.pi.title || summary.title,
       isPinned: snapshot.session.pinnedAt !== null,
       pinnedAt: snapshot.session.pinnedAt,
       isArchived: snapshot.session.archivedAt !== null,
@@ -2681,16 +2870,31 @@ export class WorkspaceSessionCatalog {
         error: snapshot.pi.titleGenerationError ?? null,
       },
     };
+    const provisionalTitle = this.getProvisionalSessionTitle(snapshot);
+    const durableStructuredTitle =
+      snapshot.pi.titleManualOverride ||
+      snapshot.pi.titleAutoFrozen ||
+      snapshot.pi.titleGenerationStatus === "completed"
+        ? snapshot.pi.title
+        : null;
+    const projectedTitle = durableStructuredTitle || provisionalTitle;
+    const summaryWithProjectedTitle = projectedTitle
+      ? {
+          ...navSummary,
+          title: projectedTitle,
+          preview: navSummary.preview || projectedTitle,
+        }
+      : navSummary;
 
     if (!hasStructuredSessionFacts(snapshot)) {
-      return navSummary;
+      return summaryWithProjectedTitle;
     }
 
     const structuredSummary = buildStructuredSessionSummaryProjection(snapshot);
     const view = buildStructuredSessionView(snapshot);
 
     return {
-      ...navSummary,
+      ...summaryWithProjectedTitle,
       preview: structuredSummary.preview || summary.preview,
       status: structuredSummary.status,
       updatedAt:
@@ -2704,6 +2908,24 @@ export class WorkspaceSessionCatalog {
       sidebarThreads: view.sidebarThreads,
       commandRollups: view.commandRollups.length > 0 ? view.commandRollups : undefined,
     };
+  }
+
+  private getProvisionalSessionTitle(snapshot: StructuredSessionSnapshot): string | null {
+    if (snapshot.pi.titleManualOverride || snapshot.pi.titleGenerationStatus === "completed") {
+      return null;
+    }
+
+    const firstTurnSummary = snapshot.turns[0]?.requestSummary?.trim() ?? "";
+    const draft = this.structuredSessionStore.getComposerDraft(
+      snapshot.session.orchestratorPiSessionId,
+    );
+    const draftText = draft?.text.trim() ?? "";
+    const sourceText = draftText || firstTurnSummary;
+    if (!sourceText) {
+      return null;
+    }
+
+    return summarizePromptForTurn(sourceText, 72);
   }
 
   private createPromptExecutionContext(

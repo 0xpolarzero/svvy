@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ChatComposer from "./ChatComposer.svelte";
-	import type { ComposerSubmit } from "./ChatComposer.svelte";
+	import type { ComposerEditDraft, ComposerSubmit } from "./ChatComposer.svelte";
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
   import AppLogsPane from "./AppLogsPane.svelte";
@@ -26,6 +26,7 @@
     WorkspaceTabInfo,
   } from "../shared/workspace-contract";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+  import type { UserMessage } from "@mariozechner/pi-ai";
   import { onDestroy, onMount } from "svelte";
   import { listModelComboboxOptions } from "./model-options";
 
@@ -57,9 +58,22 @@
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
   let pendingToolCalls = $state(new Set<string>());
   let queuedMessages = $state<QueuedPrompt[]>([]);
+  let composerDraft = $state<ChatSurfaceController["composerDraft"]>({
+    text: "",
+    attachments: [],
+    updatedAt: null,
+  });
+  let composerBuffer = $state<{ text: string; attachments: ChatSurfaceController["composerDraft"]["attachments"] }>(
+    {
+      text: "",
+      attachments: [],
+    },
+  );
   let promptBinding = $state<ChatSurfaceController["promptBinding"]>(undefined);
   let resolvedSystemPrompt = $state("");
   let isStreaming = $state(false);
+  let activeTurnStartedAt = $state<string | null>(null);
+  let turnTimings = $state<ChatSurfaceController["turnTimings"]>([]);
   let errorMessage = $state<string | undefined>(undefined);
   let currentModel = $state<ChatSurfaceController["agent"]["state"]["model"] | null>(null);
   let currentThinkingLevel = $state<ThinkingLevel>("off");
@@ -68,6 +82,7 @@
   let handlerThreadLoadToken = 0;
   let controllerRevision = $state(0);
   let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
+  let editDraft = $state<ComposerEditDraft | null>(null);
   let unsubscribeRuntime = $state<(() => void) | null>(null);
   let unsubscribeController = $state<(() => void) | null>(null);
 
@@ -106,6 +121,7 @@
   const queuedPromptRefresh = $derived(
     queuedMessages.find((message) => message.kind === "prompt_refresh") ?? null,
   );
+  const editingUserMessageTimestamp = $derived(editDraft?.messageTimestamp ?? null);
 
   function syncSurfaceState() {
     controllerRevision += 1;
@@ -113,9 +129,13 @@
       messages = [];
       pendingToolCalls = new Set();
       queuedMessages = [];
+      composerDraft = { text: "", attachments: [], updatedAt: null };
+      composerBuffer = { text: "", attachments: [] };
       promptBinding = undefined;
       resolvedSystemPrompt = "";
       isStreaming = false;
+      activeTurnStartedAt = null;
+      turnTimings = [];
       errorMessage = undefined;
       currentModel = null;
       currentThinkingLevel = "off";
@@ -128,9 +148,18 @@
     messages = [...controller.agent.state.messages];
     pendingToolCalls = new Set(controller.agent.state.pendingToolCalls);
     queuedMessages = [...controller.queuedPrompts];
+    composerDraft = structuredClone(controller.composerDraft);
+    if (!editDraft) {
+      composerBuffer = {
+        text: controller.composerDraft.text,
+        attachments: structuredClone(controller.composerDraft.attachments),
+      };
+    }
     promptBinding = controller.promptBinding;
     resolvedSystemPrompt = controller.resolvedSystemPrompt;
     isStreaming = controller.agent.state.isStreaming || controller.promptStatus === "streaming";
+    activeTurnStartedAt = controller.activeTurnStartedAt;
+    turnTimings = structuredClone(controller.turnTimings);
     errorMessage = controller.agent.state.error;
     currentModel = controller.agent.state.model;
     currentThinkingLevel = controller.agent.state.thinkingLevel as ThinkingLevel;
@@ -143,6 +172,7 @@
     if (nextController !== controller) {
       unsubscribeController?.();
       controller = nextController;
+      editDraft = null;
       unsubscribeController = controller?.subscribe(syncSurfaceState) ?? null;
     }
     syncSurfaceState();
@@ -190,9 +220,30 @@
 				sessionId: controller.target.workspaceSessionId,
 			});
 		}
-		await controller.sendPrompt(input);
+		if (input.editMessageTimestamp !== undefined) {
+			await controller.editCommittedUserMessage(input.editMessageTimestamp, input);
+		} else {
+			await controller.sendPrompt(input);
+		}
 		return true;
 	}
+
+  function editUserMessageFromTranscript(message: UserMessage, text: string): void {
+    if (!text.trim()) return;
+    if (String(editDraft?.messageTimestamp) === String(message.timestamp)) return;
+    const hasComposerDraft =
+      composerBuffer.text.trim().length > 0 || composerBuffer.attachments.length > 0;
+    if (hasComposerDraft) {
+      const confirmed = window.confirm(
+        "Editing this earlier message will replace the current composer draft. Send it to the backlog first if you want to keep it. Continue?",
+      );
+      if (!confirmed) return;
+    }
+    editDraft = {
+      messageTimestamp: message.timestamp,
+      text,
+    };
+  }
 
   async function listModelsForComposer() {
     if (!currentModel) return [];
@@ -386,9 +437,11 @@
       currentModel={currentModel ?? controller.agent.state.model}
       {pendingToolCalls}
       {isStreaming}
+      {turnTimings}
       semanticBlocks={transcriptSemanticBlocks}
       {workspaceMentionPaths}
       initialScroll={pane?.scroll ?? null}
+      {editingUserMessageTimestamp}
       onScrollStateChange={(scroll) => runtime.setPaneScroll(panelId, scroll)}
       onOpenArtifact={(filename) => void openArtifactFromTranscript(filename)}
       onOpenWorkspacePath={(path) => void openWorkspacePathFromTranscript(path)}
@@ -397,6 +450,7 @@
       onInspectWorkflow={inspectWorkflowFromTranscript}
       onInspectWorkflowTaskAttempt={inspectWorkflowTaskAttemptFromTranscript}
       onForkAssistantMessage={(message) => void forkFromAssistantMessage(message.timestamp)}
+      onEditUserMessage={editUserMessageFromTranscript}
       onReplyToWait={(block, text) => void replyToWaitFromTranscript(block, text)}
       onRetryFailure={(block) => void retryFailureFromTranscript(block)}
     />
@@ -404,14 +458,17 @@
       currentModel={currentModel ?? controller.agent.state.model}
       thinkingLevel={currentThinkingLevel}
       {isStreaming}
+      {activeTurnStartedAt}
       {errorMessage}
       {promptHistory}
       {queuedMessages}
+      {composerDraft}
+      draftStorageKey={controller.target.surfacePiSessionId}
+      {editDraft}
       {contextBudget}
       sessionName={surfaceDisplayTitle}
       targetLabel={pane?.target?.surface === "thread" ? "Messaging handler thread" : "Messaging orchestrator"}
       worktreeLabel={runtime.branch ?? runtime.workspaceLabel}
-      onAbort={() => void controller?.abort()}
       onOpenModelPicker={() => onOpenModelPicker(panelId)}
       onListModels={listModelsForComposer}
       onModelChange={(model) => {
@@ -419,6 +476,13 @@
         controller?.agent.setModel(model);
       }}
       onSend={send}
+      onDraftChange={(draft) => void controller.updateComposerDraft(draft)}
+      onBufferChange={(draft) => {
+        composerBuffer = structuredClone(draft);
+      }}
+      onCancelEditMessage={() => {
+        editDraft = null;
+      }}
       onEditQueuedMessage={(promptId) => controller.editQueuedPrompt(promptId)}
       onDeleteQueuedMessage={(promptId) => void controller.deleteQueuedPrompt(promptId)}
       onSteerQueuedMessage={(promptId) => void controller.steerQueuedPrompt(promptId)}

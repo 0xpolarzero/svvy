@@ -149,6 +149,46 @@ describe("structured session state write API", () => {
     expect(store.queueTitleGeneration("session-title")).toBeNull();
   });
 
+  it("persists and clears surface composer drafts", () => {
+    const store = createStore();
+    seedSession(store, "session-draft");
+
+    store.setComposerDraft({
+      sessionId: "session-draft",
+      surfacePiSessionId: "session-draft",
+      text: "Inspect parser state before sending",
+      attachments: [
+        {
+          id: "file:docs/prd.md",
+          kind: "file",
+          name: "prd.md",
+          path: "docs/prd.md",
+          workspaceRelativePath: "docs/prd.md",
+        },
+      ],
+    });
+
+    expect(store.getComposerDraft("session-draft")).toEqual(
+      expect.objectContaining({
+        sessionId: "session-draft",
+        surfacePiSessionId: "session-draft",
+        threadId: null,
+        text: "Inspect parser state before sending",
+        updatedAt: "2026-04-18T09:00:00.000Z",
+      }),
+    );
+    expect(store.getSessionState("session-draft").pi.updatedAt).toBe("2026-04-18T09:00:00.000Z");
+
+    store.setComposerDraft({
+      sessionId: "session-draft",
+      surfacePiSessionId: "session-draft",
+      text: "",
+      attachments: [],
+    });
+
+    expect(store.getComposerDraft("session-draft")).toBeNull();
+  });
+
   it("freezes auto titles after manual rename and cancels active title generation", () => {
     const store = createStore();
     seedSession(store, "session-manual-title");

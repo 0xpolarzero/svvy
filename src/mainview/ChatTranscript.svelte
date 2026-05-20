@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { getModels, type AssistantMessage, type Model, type ToolResultMessage, type UserMessage } from "@mariozechner/pi-ai";
 	import CheckIcon from "@lucide/svelte/icons/check";
+	import ClockIcon from "@lucide/svelte/icons/clock";
 	import CopyIcon from "@lucide/svelte/icons/copy";
 	import FileIcon from "@lucide/svelte/icons/file";
 	import FolderIcon from "@lucide/svelte/icons/folder";
 	import GitForkIcon from "@lucide/svelte/icons/git-fork";
 	import ImageIcon from "@lucide/svelte/icons/image";
+	import PencilIcon from "@lucide/svelte/icons/pencil";
 	import { createVirtualizer } from "@tanstack/svelte-virtual";
 	import { onDestroy, onMount, tick } from "svelte";
 	import { get } from "svelte/store";
@@ -34,12 +36,14 @@
 	import {
 		parseComposerAttachmentTextSignature,
 		type ComposerAttachment,
+		type ConversationTurnTiming,
 		type PromptTarget,
 		type WorkspaceHandlerThreadSummary,
 	} from "../shared/workspace-contract";
 	import { rpc } from "./rpc";
 	import Button from "./ui/Button.svelte";
 	import Tooltip from "./ui/Tooltip.svelte";
+	import { formatTurnDuration, formatTurnDurationTooltip } from "./working-timer";
 
 	const DEFAULT_TRANSCRIPT_ROW_GAP = 16;
 
@@ -52,6 +56,7 @@
 		currentModel?: Model<any> | null;
 		pendingToolCalls: ReadonlySet<string>;
 		isStreaming: boolean;
+		turnTimings: ConversationTurnTiming[];
 		workspaceMentionPaths?: ReadonlySet<string>;
 		semanticBlocks?: TranscriptSemanticBlock[];
 		onOpenArtifact: (filename: string) => void;
@@ -61,9 +66,11 @@
 		onInspectWorkflow?: (workflowId: string) => void;
 		onInspectWorkflowTaskAttempt?: (workflowTaskAttemptId: string) => void;
 		onForkAssistantMessage?: (message: AssistantMessage) => void;
+		onEditUserMessage?: (message: UserMessage, text: string) => void;
 		onReplyToWait?: (block: TranscriptSemanticBlock & { kind: "wait" }, text: string) => void;
 		onRetryFailure?: (block: TranscriptSemanticBlock & { kind: "failure" }) => void;
 		initialScroll?: { transcriptAnchorId: string | null; offsetPx: number } | null;
+		editingUserMessageTimestamp?: string | number | null;
 		onScrollStateChange?: (scroll: { transcriptAnchorId: string | null; offsetPx: number }) => void;
 	};
 
@@ -76,6 +83,7 @@
 		currentModel = null,
 		pendingToolCalls,
 		isStreaming,
+		turnTimings = [],
 		workspaceMentionPaths = new Set(),
 		semanticBlocks = [],
 		onOpenArtifact,
@@ -85,9 +93,11 @@
 		onInspectWorkflow,
 		onInspectWorkflowTaskAttempt,
 		onForkAssistantMessage,
+		onEditUserMessage,
 		onReplyToWait,
 		onRetryFailure,
 		initialScroll,
+		editingUserMessageTimestamp = null,
 		onScrollStateChange,
 	}: Props = $props();
 
@@ -107,6 +117,13 @@
 	let autoScroll = $state(true);
 	const resolvedSystemPrompt = $derived(systemPrompt?.trim() || null);
 	const streamingAssistant = $derived(streamMessage ?? null);
+	const turnTimingByAssistantTimestamp = $derived.by(() => {
+		const timings = new Map<string, ConversationTurnTiming>();
+		for (const timing of turnTimings) {
+			timings.set(String(timing.assistantMessageTimestamp), timing);
+		}
+		return timings;
+	});
 	type AssistantContentBlock = AssistantMessage["content"][number];
 	function thinkingDisplayText(block: Extract<AssistantContentBlock, { type: "thinking" }>): string {
 		if (block.thinking.trim()) return block.thinking;
@@ -168,6 +185,21 @@
 					block.type === "text" && parseComposerAttachmentTextSignature(block.textSignature).length === 0,
 			)
 			.map((block) => block.text);
+	}
+
+	function userDraftText(message: UserMessage): string {
+		return userTextLines(message).join("\n\n").trim();
+	}
+
+	function isEditingUserMessage(message: UserMessage): boolean {
+		return (
+			editingUserMessageTimestamp !== null &&
+			String(message.timestamp) === String(editingUserMessageTimestamp)
+		);
+	}
+
+	function assistantTurnTiming(message: AssistantMessage): ConversationTurnTiming | null {
+		return turnTimingByAssistantTimestamp.get(String(message.timestamp)) ?? null;
 	}
 
 	function userImageBlocks(message: UserMessage) {
@@ -678,10 +710,28 @@
 						class="message-row virtual-row user-row"
 						style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
 					>
-					<div class={`message-bubble user-bubble ${isHandlerObjectiveMessage(message) ? "handler-objective-bubble" : ""}`.trim()}>
+					<div
+						class={`message-bubble user-bubble ${isHandlerObjectiveMessage(message) ? "handler-objective-bubble" : ""} ${isEditingUserMessage(message) ? "editing-user-bubble" : ""}`.trim()}
+					>
 						<header>
 							<span>{isHandlerObjectiveMessage(message) ? "Objective" : "You"}</span>
-							<time>{formatTimestamp(message.timestamp)}</time>
+							<div class="message-header-actions">
+								<time>{formatTimestamp(message.timestamp)}</time>
+								{#if onEditUserMessage}
+									<Tooltip label={isStreaming ? "Wait for the current turn to finish" : "Edit message"}>
+										<Button
+											variant="ghost"
+											size="xs"
+											iconOnly
+											aria-label="Edit message"
+											disabled={isStreaming}
+											onclick={() => onEditUserMessage?.(message, userDraftText(message))}
+										>
+											<PencilIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+										</Button>
+									</Tooltip>
+								{/if}
+							</div>
 						</header>
 						{#each userTextLines(message) as line, lineIndex (`${message.timestamp}:line:${lineIndex}`)}
 							<p class="message-text">
@@ -748,6 +798,7 @@
 				{:else if row?.kind === "message" && row.message.role === "assistant"}
 					{@const message = row.message}
 					{@const messageBudget = assistantMessageContextBudget(message)}
+					{@const turnTiming = assistantTurnTiming(message)}
 					<article
 						data-index={virtualRow.index}
 						use:measureTranscriptRow
@@ -800,6 +851,20 @@
 						<footer class="assistant-message-footer">
 							<div class="assistant-message-actions" aria-label="Assistant message actions">
 								<time>{formatTimestamp(message.timestamp)}</time>
+								{#if turnTiming}
+									{@const turnDurationTooltip = formatTurnDurationTooltip(turnTiming.startedAt, turnTiming.finishedAt)}
+										<Tooltip label={turnDurationTooltip}>
+											<span class="assistant-turn-duration" aria-label={turnDurationTooltip}>
+												<ClockIcon
+													class="assistant-turn-duration-icon"
+													aria-hidden="true"
+													size={12}
+													strokeWidth={1.9}
+												/>
+												<span>{formatTurnDuration(turnTiming.startedAt, turnTiming.finishedAt)}</span>
+											</span>
+										</Tooltip>
+								{/if}
 								<Tooltip label="Fork session from this message">
 									<Button
 										variant="ghost"
@@ -969,18 +1034,30 @@
 		overflow: visible;
 	}
 
-	.user-bubble {
-		width: min(100%, 36rem);
-		padding: 0.68rem 0.78rem;
-		border: 1px solid var(--ui-border-soft);
-		background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
-	}
+		.user-bubble {
+			width: min(100%, 36rem);
+			padding: 0.68rem 0.78rem;
+			border: 1px solid var(--ui-border-soft);
+			background: color-mix(in oklab, var(--ui-surface-subtle) 62%, transparent);
+			transition:
+				background-color 160ms cubic-bezier(0.19, 1, 0.22, 1),
+				border-color 160ms cubic-bezier(0.19, 1, 0.22, 1),
+				box-shadow 160ms cubic-bezier(0.19, 1, 0.22, 1);
+		}
 
-	.handler-objective-bubble {
-		width: min(100%, 45.5rem);
-		border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-soft));
-		background: color-mix(in oklab, var(--ui-accent-soft) 34%, var(--ui-surface-subtle));
-	}
+		.handler-objective-bubble {
+			width: min(100%, 45.5rem);
+			border-color: color-mix(in oklab, var(--ui-accent) 34%, var(--ui-border-soft));
+			background: color-mix(in oklab, var(--ui-accent-soft) 34%, var(--ui-surface-subtle));
+		}
+
+		.editing-user-bubble {
+			border-color: color-mix(in oklab, var(--ui-accent) 62%, var(--ui-border-soft));
+			background: color-mix(in oklab, var(--ui-accent-soft) 46%, var(--ui-surface-subtle));
+			box-shadow:
+				inset 2px 0 0 color-mix(in oklab, var(--ui-accent) 78%, transparent),
+				0 0 0 1px color-mix(in oklab, var(--ui-accent) 16%, transparent);
+		}
 
 	.assistant-bubble {
 		background: transparent;
@@ -1064,6 +1141,13 @@
 		font-size: var(--text-xs);
 		color: var(--ui-text-secondary);
 		font-variant-numeric: tabular-nums;
+	}
+
+	.message-header-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.18rem;
+		min-width: 0;
 	}
 
 	.tool-result-actions {
@@ -1237,6 +1321,29 @@
 
 	.assistant-message-actions time {
 		margin-right: 0.16rem;
+	}
+
+	.assistant-turn-duration {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.2rem;
+		min-width: 0;
+		height: 1.38rem;
+		padding: 0 0.34rem;
+		border: 1px solid color-mix(in oklab, var(--ui-border-soft) 82%, transparent);
+		border-radius: var(--ui-radius-sm);
+		background: color-mix(in oklab, var(--ui-surface-subtle) 60%, transparent);
+		color: var(--ui-text-secondary);
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+		white-space: nowrap;
+	}
+
+	.assistant-turn-duration-icon {
+		flex: 0 0 auto;
+		color: color-mix(in oklab, var(--ui-warning) 76%, var(--ui-text-secondary));
 	}
 
 	.assistant-bubble:hover .assistant-message-footer,

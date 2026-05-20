@@ -239,7 +239,7 @@
       case "project-ci-check":
         return "ci";
       default:
-        return "empty";
+        return null;
     }
   }
 

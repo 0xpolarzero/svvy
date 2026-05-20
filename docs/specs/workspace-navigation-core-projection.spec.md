@@ -32,7 +32,6 @@ This section does not implement:
 - source editor, syntax highlighting, typecheck, or diagnostics surfaces
 - full workflow graph inspection
 - Dockview layout creation, panel placement editing, or expanded pane-layout workflows beyond the restore rules listed here
-- composer draft recovery
 - transient UI recovery
 
 Workflows library browsing belongs to the dedicated Workflows library surface.
@@ -384,11 +383,12 @@ The app should not restore:
 - open context menus
 - temporary popovers
 - unsaved inline edit state
-- in-progress composer draft text
 - selected transcript text
 - temporary transcript search highlights
 - stale live stream state
 - stale tool-running state
+
+In-progress composer draft text and chip-only attachments are not workspace shell restore state; they are durable surface state keyed by `surfacePiSessionId` and restore with the owning prompt surface.
 
 Live stream and tool-running state should come only from real durable runtime state after reconnect or bootstrap. The restore snapshot must not pretend an old stream is still alive.
 

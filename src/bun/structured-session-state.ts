@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
+import type { ComposerAttachment } from "../shared/workspace-contract";
 
 const DEFAULT_SIDEBAR_SECTION_SIZES = {
   pinned: 150,
@@ -126,6 +127,15 @@ export interface StructuredPiSessionRecord {
   messageCount: number;
   status: StructuredSessionStatus;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface StructuredComposerDraftRecord {
+  sessionId: string;
+  surfacePiSessionId: string;
+  threadId: string | null;
+  text: string;
+  attachments: ComposerAttachment[];
   updatedAt: string;
 }
 
@@ -791,6 +801,14 @@ export interface StructuredSessionStateStore {
   completeTitleGeneration(input: { sessionId: string; title: string }): StructuredPiSessionRecord;
   failTitleGeneration(input: { sessionId: string; error: string }): StructuredPiSessionRecord;
   markManualTitleOverride(input: { sessionId: string; title: string }): StructuredPiSessionRecord;
+  getComposerDraft(surfacePiSessionId: string): StructuredComposerDraftRecord | null;
+  setComposerDraft(input: {
+    sessionId: string;
+    surfacePiSessionId: string;
+    threadId?: string | null;
+    text: string;
+    attachments?: ComposerAttachment[];
+  }): StructuredComposerDraftRecord | null;
 }
 
 type SessionRow = {
@@ -836,6 +854,15 @@ type WorkspaceSidebarStateRow = {
   active_group_size_px: number;
   archived_group_collapsed: number;
   archived_group_size_px: number;
+  updated_at: string;
+};
+
+type ComposerDraftRow = {
+  session_id: string;
+  surface_pi_session_id: string;
+  thread_id: string | null;
+  text: string;
+  attachments_json: string | null;
   updated_at: string;
 };
 
@@ -1451,6 +1478,83 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       data: { title },
     });
     return this.mapPiSession(this.mustFindSessionRow(input.sessionId));
+  }
+
+  getComposerDraft(surfacePiSessionId: string): StructuredComposerDraftRecord | null {
+    const row =
+      (this.db
+        .query(`SELECT * FROM surface_composer_draft WHERE surface_pi_session_id = ? LIMIT 1`)
+        .get(surfacePiSessionId) as ComposerDraftRow | undefined) ?? null;
+    return row ? this.mapComposerDraft(row) : null;
+  }
+
+  setComposerDraft(input: {
+    sessionId: string;
+    surfacePiSessionId: string;
+    threadId?: string | null;
+    text: string;
+    attachments?: ComposerAttachment[];
+  }): StructuredComposerDraftRecord | null {
+    this.ensureSessionRow(input.sessionId);
+    const text = input.text;
+    const attachments = input.attachments ?? [];
+    const timestamp = this.now();
+
+    if (!text.trim() && attachments.length === 0) {
+      this.db
+        .query(`DELETE FROM surface_composer_draft WHERE surface_pi_session_id = ?`)
+        .run(input.surfacePiSessionId);
+      this.db
+        .query(`UPDATE session SET updated_at = ? WHERE session_id = ?`)
+        .run(timestamp, input.sessionId);
+      this.recordEvent({
+        sessionId: input.sessionId,
+        kind: "surface.composer_draft.cleared",
+        subjectKind: "session",
+        subjectId: input.sessionId,
+        at: timestamp,
+        data: { threadId: input.threadId ?? null },
+      });
+      return null;
+    }
+
+    this.db
+      .query(
+        `INSERT INTO surface_composer_draft (
+           session_id,
+           surface_pi_session_id,
+           thread_id,
+           text,
+           attachments_json,
+           updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(surface_pi_session_id) DO UPDATE SET
+           session_id = excluded.session_id,
+           thread_id = excluded.thread_id,
+           text = excluded.text,
+           attachments_json = excluded.attachments_json,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        input.sessionId,
+        input.surfacePiSessionId,
+        input.threadId ?? null,
+        text,
+        toJson(attachments),
+        timestamp,
+      );
+    this.db
+      .query(`UPDATE session SET updated_at = ? WHERE session_id = ?`)
+      .run(timestamp, input.sessionId);
+    this.recordEvent({
+      sessionId: input.sessionId,
+      kind: "surface.composer_draft.updated",
+      subjectKind: "session",
+      subjectId: input.sessionId,
+      at: timestamp,
+      data: { threadId: input.threadId ?? null },
+    });
+    return this.getComposerDraft(input.surfacePiSessionId);
   }
 
   startTurn(input: {
@@ -3499,6 +3603,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     const deleteRows = this.db.transaction((targetSessionId: string) => {
       const timestamp = this.now();
       for (const table of [
+        "surface_composer_draft",
         "surface_message_queue",
         "event",
         "artifact",
@@ -4250,6 +4355,17 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     };
   }
 
+  private mapComposerDraft(row: ComposerDraftRow): StructuredComposerDraftRecord {
+    return {
+      sessionId: row.session_id,
+      surfacePiSessionId: row.surface_pi_session_id,
+      threadId: row.thread_id,
+      text: row.text,
+      attachments: fromJson<ComposerAttachment[]>(row.attachments_json) ?? [],
+      updatedAt: row.updated_at,
+    };
+  }
+
   private mapTurn(row: TurnRow): StructuredTurnRecord {
     return {
       id: row.id,
@@ -4834,6 +4950,15 @@ function initializeSchema(db: Database): void {
       updated_at TEXT NOT NULL,
       delivered_at TEXT,
       cancelled_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS surface_composer_draft (
+      surface_pi_session_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      thread_id TEXT,
+      text TEXT NOT NULL,
+      attachments_json TEXT,
+      updated_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS recovery_work (
