@@ -3,6 +3,7 @@ import {
   formatWorkspaceTabAriaLabel,
   getVisibleWorkspaceTabCounts,
   reorderWorkspaceTabs,
+  summarizeWorkspaceTabCounts,
   type WorkspaceTabCounts,
 } from "./workspace-tabs";
 
@@ -27,6 +28,7 @@ describe("workspace tab counts", () => {
       running: 0,
       unread: 0,
       waiting: 0,
+      warning: 0,
       error: 0,
     };
 
@@ -39,6 +41,7 @@ describe("workspace tab counts", () => {
       running: 2,
       unread: 5,
       waiting: 1,
+      warning: 4,
       error: 3,
     };
 
@@ -46,11 +49,50 @@ describe("workspace tab counts", () => {
       { kind: "running", value: 2, label: "running" },
       { kind: "unread", value: 5, label: "unread" },
       { kind: "waiting", value: 1, label: "waiting" },
+      { kind: "warning", value: 4, label: "warnings" },
       { kind: "error", value: 3, label: "errors" },
     ]);
     expect(formatWorkspaceTabAriaLabel(workspace, counts)).toBe(
-      "svvy. 2 running, 5 unread, 1 waiting, 3 errors",
+      "svvy. 2 running, 5 unread, 1 waiting, 4 warnings, 3 errors",
     );
+  });
+
+  it("summarizes session state and unread app log warnings and errors", () => {
+    expect(
+      summarizeWorkspaceTabCounts({
+        sessions: [
+          {
+            status: "running",
+            isUnread: true,
+            threadIdsByStatus: {
+              waiting: ["thread-waiting"],
+              troubleshooting: ["thread-troubleshooting"],
+              runningHandler: ["thread-handler"],
+              runningWorkflow: ["thread-workflow"],
+            },
+          },
+          {
+            status: "error",
+            isUnread: false,
+            threadIdsByStatus: {
+              waiting: [],
+              troubleshooting: [],
+              runningHandler: [],
+              runningWorkflow: [],
+            },
+          },
+        ],
+        appLogSummary: {
+          unread: { total: 5, info: 1, warning: 2, error: 2 },
+        },
+      }),
+    ).toEqual({
+      running: 3,
+      unread: 1,
+      waiting: 1,
+      warning: 2,
+      error: 4,
+    });
   });
 });
 

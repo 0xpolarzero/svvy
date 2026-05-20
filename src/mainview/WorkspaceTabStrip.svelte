@@ -369,6 +369,11 @@
     background: var(--ui-status-waiting-soft);
   }
 
+  .workspace-tab-count.kind-warning {
+    color: var(--ui-warning);
+    background: var(--ui-warning-soft);
+  }
+
   .workspace-tab-count.kind-error {
     color: var(--ui-danger);
     background: var(--ui-danger-soft);

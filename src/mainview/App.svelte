@@ -10,8 +10,8 @@
 	import StatusCard from "./ui/StatusCard.svelte";
 	import type { WorkspaceTabStripItem } from "./WorkspaceTabStrip.svelte";
 	import {
-		EMPTY_WORKSPACE_TAB_COUNTS,
 		reorderWorkspaceTabs,
+		summarizeWorkspaceTabCounts,
 		type WorkspaceTabCounts,
 	} from "./workspace-tabs";
 	import type {
@@ -49,19 +49,10 @@
 	);
 
 	function summarizeWorkspace(runtime: ChatRuntime): WorkspaceTabCounts {
-		const counts = { ...EMPTY_WORKSPACE_TAB_COUNTS };
-		for (const session of runtime.sessions) {
-			if (session.status === "running") counts.running += 1;
-			if (session.isUnread) counts.unread += 1;
-			if (session.status === "waiting") counts.waiting += 1;
-			if (session.status === "error") counts.error += 1;
-			counts.waiting += session.threadIdsByStatus?.waiting.length ?? 0;
-			counts.error += session.threadIdsByStatus?.troubleshooting.length ?? 0;
-			counts.running +=
-				(session.threadIdsByStatus?.runningHandler.length ?? 0) +
-				(session.threadIdsByStatus?.runningWorkflow.length ?? 0);
-		}
-		return counts;
+		return summarizeWorkspaceTabCounts({
+			sessions: runtime.sessions,
+			appLogSummary: runtime.appLogSummary,
+		});
 	}
 
 	function toWorkspaceTabInfo(

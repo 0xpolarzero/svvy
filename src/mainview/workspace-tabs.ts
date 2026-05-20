@@ -1,9 +1,14 @@
-import type { WorkspaceTabInfo } from "../shared/workspace-contract";
+import type {
+  AppLogSummary,
+  WorkspaceSessionSummary,
+  WorkspaceTabInfo,
+} from "../shared/workspace-contract";
 
 export type WorkspaceTabCounts = {
   running: number;
   unread: number;
   waiting: number;
+  warning: number;
   error: number;
 };
 
@@ -19,6 +24,7 @@ export const EMPTY_WORKSPACE_TAB_COUNTS: WorkspaceTabCounts = {
   running: 0,
   unread: 0,
   waiting: 0,
+  warning: 0,
   error: 0,
 };
 
@@ -26,6 +32,7 @@ export const WORKSPACE_TAB_COUNT_LABELS: Record<WorkspaceTabCountKind, string> =
   running: "running",
   unread: "unread",
   waiting: "waiting",
+  warning: "warnings",
   error: "errors",
 };
 
@@ -33,8 +40,32 @@ export const WORKSPACE_TAB_COUNT_ORDER: WorkspaceTabCountKind[] = [
   "running",
   "unread",
   "waiting",
+  "warning",
   "error",
 ];
+
+export type WorkspaceTabSummaryInput = {
+  sessions: readonly Pick<WorkspaceSessionSummary, "status" | "isUnread" | "threadIdsByStatus">[];
+  appLogSummary?: Pick<AppLogSummary, "unread"> | null;
+};
+
+export function summarizeWorkspaceTabCounts(input: WorkspaceTabSummaryInput): WorkspaceTabCounts {
+  const counts = { ...EMPTY_WORKSPACE_TAB_COUNTS };
+  for (const session of input.sessions) {
+    if (session.status === "running") counts.running += 1;
+    if (session.isUnread) counts.unread += 1;
+    if (session.status === "waiting") counts.waiting += 1;
+    if (session.status === "error") counts.error += 1;
+    counts.waiting += session.threadIdsByStatus?.waiting.length ?? 0;
+    counts.error += session.threadIdsByStatus?.troubleshooting.length ?? 0;
+    counts.running +=
+      (session.threadIdsByStatus?.runningHandler.length ?? 0) +
+      (session.threadIdsByStatus?.runningWorkflow.length ?? 0);
+  }
+  counts.warning += input.appLogSummary?.unread.warning ?? 0;
+  counts.error += input.appLogSummary?.unread.error ?? 0;
+  return counts;
+}
 
 export function getVisibleWorkspaceTabCounts(
   counts: WorkspaceTabCounts,
