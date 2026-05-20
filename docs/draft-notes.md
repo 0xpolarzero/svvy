@@ -100,3 +100,5 @@
   - that's actually commands/snippets
 
 - we need first-class support for cross-session access, as in I have 5 agents working and I can open a new one and ask "who did x change" and it's easy for it to figure out
+
+- use codex automatic review as default instead of full approvals
