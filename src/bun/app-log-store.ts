@@ -309,7 +309,9 @@ class SqliteAppLogStore implements AppLogStore {
   }
 
   private enforceRetention(): void {
-    const cutoff = new Date(Date.now() - this.retentionDays * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff = new Date(
+      Date.parse(this.now()) - this.retentionDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
     this.db.query(`DELETE FROM app_log WHERE created_at < ?`).run(cutoff);
     this.db
       .query(
