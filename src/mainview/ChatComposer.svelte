@@ -54,7 +54,7 @@
 		currentModel: Model<any> | null;
 		thinkingLevel: ThinkingLevel;
 		isStreaming: boolean;
-		activeTurnStartedAt?: string | null;
+		activeTurnStartedAt: string | null;
 		promptHistory: PromptHistoryEntry[];
 		errorMessage?: string;
 		contextBudget?: ContextBudget | null;
@@ -86,7 +86,7 @@
 		currentModel,
 		thinkingLevel,
 		isStreaming,
-		activeTurnStartedAt = null,
+		activeTurnStartedAt,
 		promptHistory,
 		errorMessage,
 		contextBudget,

@@ -720,8 +720,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionMode = snapshot.sessionMode;
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
-    this.activeTurnId = snapshot.activeTurnId ?? null;
-    this.activeTurnStartedAt = snapshot.activeTurnStartedAt ?? null;
+    this.activeTurnId = snapshot.activeTurnId;
+    this.activeTurnStartedAt = snapshot.activeTurnStartedAt;
     this.turnTimings = structuredClone(snapshot.turnTimings);
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
     this.composerDraft = structuredClone(snapshot.composerDraft);
@@ -813,8 +813,8 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionMode = snapshotForAgent.sessionMode;
     this.sessionAgentKey = snapshotForAgent.sessionAgentKey;
     this.promptStatus = snapshotForAgent.promptStatus;
-    this.activeTurnId = snapshotForAgent.activeTurnId ?? null;
-    this.activeTurnStartedAt = snapshotForAgent.activeTurnStartedAt ?? null;
+    this.activeTurnId = snapshotForAgent.activeTurnId;
+    this.activeTurnStartedAt = snapshotForAgent.activeTurnStartedAt;
     this.turnTimings = structuredClone(snapshotForAgent.turnTimings);
     this.queuedPrompts = structuredClone(snapshotForAgent.queuedMessages ?? []);
     this.composerDraft = structuredClone(snapshotForAgent.composerDraft);

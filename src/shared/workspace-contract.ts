@@ -1127,8 +1127,8 @@ export interface ConversationSurfaceSnapshot {
     stale: boolean;
   };
   promptStatus: "idle" | "streaming";
-  activeTurnId?: string | null;
-  activeTurnStartedAt?: string | null;
+  activeTurnId: string | null;
+  activeTurnStartedAt: string | null;
   turnTimings: ConversationTurnTiming[];
 }
 

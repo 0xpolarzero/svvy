@@ -83,7 +83,7 @@
 		currentModel = null,
 		pendingToolCalls,
 		isStreaming,
-		turnTimings = [],
+		turnTimings,
 		workspaceMentionPaths = new Set(),
 		semanticBlocks = [],
 		onOpenArtifact,

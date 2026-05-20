@@ -2423,9 +2423,11 @@ describe("WorkspaceSessionCatalog", () => {
               turn.surfacePiSessionId === created.target.surfacePiSessionId &&
               turn.status === "running",
           );
-        expect(runningTurn).toBeDefined();
-        expect(snapshot.activeTurnId).toBe(runningTurn?.id);
-        expect(snapshot.activeTurnStartedAt).toBe(runningTurn?.startedAt);
+        if (!runningTurn) {
+          throw new Error("Expected an active running turn.");
+        }
+        expect(snapshot.activeTurnId).toBe(runningTurn.id);
+        expect(snapshot.activeTurnStartedAt).toBe(runningTurn.startedAt);
         expect(snapshot.queuedMessages).toEqual([]);
         expect(userMessageText(snapshot.pendingUserMessage)).toBe("Run the queued turn.");
         expect(

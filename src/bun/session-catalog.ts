@@ -280,6 +280,14 @@ interface VisibleStreamState {
 
 type WorkspaceSessionInfo = Awaited<ReturnType<typeof SessionManager.list>>[number];
 
+function messageTimestampMs(timestamp: string | number): number {
+  if (typeof timestamp === "number") return timestamp;
+  const numericTimestamp = Number(timestamp);
+  if (Number.isFinite(numericTimestamp)) return numericTimestamp;
+  const parsedTimestamp = Date.parse(timestamp);
+  return Number.isFinite(parsedTimestamp) ? parsedTimestamp : 0;
+}
+
 export type TitleGenerationLogEvent =
   | {
       level: "info";
@@ -1931,7 +1939,9 @@ export class WorkspaceSessionCatalog {
       .toSorted((left, right) => Date.parse(left.startedAt) - Date.parse(right.startedAt));
     const assistantMessages = messages
       .filter((message) => message.role === "assistant")
-      .toSorted((left, right) => Number(left.timestamp) - Number(right.timestamp));
+      .toSorted(
+        (left, right) => messageTimestampMs(left.timestamp) - messageTimestampMs(right.timestamp),
+      );
     const timings: ConversationTurnTiming[] = [];
     let assistantIndex = 0;
 
@@ -1951,7 +1961,7 @@ export class WorkspaceSessionCatalog {
         if (!message) {
           break;
         }
-        const messageTimestamp = Number(message.timestamp);
+        const messageTimestamp = messageTimestampMs(message.timestamp);
         if (messageTimestamp < turnStartedAtMs) {
           assistantIndex += 1;
           continue;
