@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { createHotkeys } from "@tanstack/svelte-hotkeys";
   import PanelLeftIcon from "@lucide/svelte/icons/panel-left";
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
@@ -870,12 +870,24 @@
 
   async function handleCreateSession() {
     await runSessionMutation(() => runtime.createSession({}, { kind: "new-panel", direction: "right" }));
+    await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
   }
 
   async function handleCreateDumbSession() {
     await runSessionMutation(() =>
       runtime.createSession({ mode: "dumb" }, { kind: "new-panel", direction: "right" }),
     );
+    await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
+  }
+
+  async function focusComposerForPanel(panelId: string | null | undefined) {
+    if (!panelId) return;
+    await tick();
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    const pane = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="workspace-pane"]')).find(
+      (candidate) => candidate.dataset.panelId === panelId,
+    );
+    pane?.querySelector<HTMLTextAreaElement>(".composer-shell textarea")?.focus({ preventScroll: true });
   }
 
   async function handleSelectCurrentSessionMode(mode: SessionMode) {

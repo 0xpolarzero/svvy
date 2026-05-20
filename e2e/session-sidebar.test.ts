@@ -232,6 +232,17 @@ test("creates a new session, activates it, and keeps it after relaunch", async (
         await expectMainTitle(page, "New Session");
         await expectActiveSessionTitle(page, "New Session");
         expect((await readSessionTitles(page))[0]).toBe("New Session");
+        expect(
+          await page.evaluate(
+            () =>
+              document.activeElement instanceof HTMLTextAreaElement &&
+              document.activeElement
+                .closest('[data-testid="workspace-pane"]')
+                ?.getAttribute("data-panel-id") !== null &&
+              document.activeElement.placeholder ===
+                "Ask svvy to inspect the repo, make a change, or run Project CI.",
+          ),
+        ).toBe(true);
       },
     );
 

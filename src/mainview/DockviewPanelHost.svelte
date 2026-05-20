@@ -353,7 +353,12 @@
 {:else if pane?.target?.surface === "command" || pane?.target?.surface === "workflow-task-attempt" || pane?.target?.surface === "artifact" || pane?.target?.surface === "project-ci-check"}
   <RelatedInspectorPane {runtime} target={pane.target} />
 {:else if controller}
-  <section class="dockview-chat-panel" class:has-prompt-banner={promptBinding?.stale} data-testid="workspace-pane">
+  <section
+    class="dockview-chat-panel"
+    class:has-prompt-banner={promptBinding?.stale}
+    data-testid="workspace-pane"
+    data-panel-id={panelId}
+  >
     {#if promptBinding?.stale}
       <div class="prompt-stale-banner" role="status">
         <span>
@@ -426,7 +431,12 @@
     />
   </section>
 {:else}
-  <section class="dockview-empty-panel" aria-hidden="true" data-testid="workspace-pane"></section>
+  <section
+    class="dockview-empty-panel"
+    aria-hidden="true"
+    data-testid="workspace-pane"
+    data-panel-id={panelId}
+  ></section>
 {/if}
 
 <style>
