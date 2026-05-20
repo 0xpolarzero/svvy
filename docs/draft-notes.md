@@ -97,3 +97,6 @@
     - counter-intuitive because of bad naming, but "design" probably needs more work for better results (more need to steer handlers instead of steering orchestrator "once" and let it compound) but better upside because of more fine-grained orchestrator pollution
 
 - saved messages; for messages that are frequently sent you can just save them and then have a picker + autocomplete proposition; avoids storing everything in AGENTS.md when something can be specific for one task that is often asked
+  - that's actually commands/snippets
+
+- we need first-class support for cross-session access, as in I have 5 agents working and I can open a new one and ask "who did x change" and it's easy for it to figure out
