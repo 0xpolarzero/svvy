@@ -576,6 +576,14 @@
     return dockview?.panels.find((panel) => panel.id === panelId);
   }
 
+  function runtimePanels(): WorkspaceDockviewPanelState[] {
+    return runtime.paneLayout.panels;
+  }
+
+  function runtimeFocusedPanelId(): string | null {
+    return runtime.paneLayout.focusedPanelId;
+  }
+
   function getPanelRenderer(panel: WorkspaceDockviewPanelState): DockviewPanelRenderer {
     const surface = panel.binding?.surface;
     return surface === "orchestrator" || surface === "thread" ? "always" : "onlyWhenVisible";
@@ -591,9 +599,11 @@
 
   function syncDockviewPanels(): void {
     if (!dockview) return;
+    const nextPanels = runtimePanels();
+    const nextFocusedPanelId = runtimeFocusedPanelId();
     applying = true;
     try {
-      for (const panel of panels) {
+      for (const panel of nextPanels) {
         const existingPanel = getDockviewPanel(panel.panelId);
         const renderKey = getPanelRenderKey(panel);
         if (!existingPanel) {
@@ -608,7 +618,7 @@
             renderer: getPanelRenderer(panel),
             minimumWidth: 0,
             minimumHeight: 0,
-            inactive: panel.panelId !== focusedPanelId,
+            inactive: panel.panelId !== nextFocusedPanelId,
             position:
               dockview.totalPanels > 0
                 ? {
@@ -626,12 +636,12 @@
         }
       }
       for (const panel of dockview.panels) {
-        if (!panels.some((candidate) => candidate.panelId === panel.id)) {
+        if (!nextPanels.some((candidate) => candidate.panelId === panel.id)) {
           dockview.removePanel(panel);
           panelRenderKeys.delete(panel.id);
         }
       }
-      const focused = focusedPanelId ? getDockviewPanel(focusedPanelId) : undefined;
+      const focused = nextFocusedPanelId ? getDockviewPanel(nextFocusedPanelId) : undefined;
       if (focused && dockview.activePanel?.id !== focused.id) {
         dockview.setActivePanel(focused);
       }
@@ -651,7 +661,11 @@
   onMount(() => {
     createDockview();
     observeDockviewHostSize();
-    unsubscribeRuntime = runtime.subscribe(refreshSurfaceTabs);
+    unsubscribeRuntime = runtime.subscribe(() => {
+      syncDockviewPanels();
+      refreshSurfaceTabs();
+      scheduleDockviewLayout();
+    });
   });
 
   onDestroy(() => {

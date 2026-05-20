@@ -29,6 +29,14 @@ describe("default workspace renderer shell", () => {
     expect(appSource).toContain("workspaceTabId");
   });
 
+  it("uses the initially opened user workspace before falling back to the default workspace", async () => {
+    const appSource = await readFile(new URL("./App.svelte", import.meta.url), "utf8");
+
+    expect(appSource).toContain("const openWorkspaces = await rpc.request.getOpenWorkspaces();");
+    expect(appSource).toContain('openWorkspaces.find((workspace) => workspace.kind === "user")');
+    expect(appSource).toContain("await rpc.request.getDefaultWorkspace()");
+  });
+
   it("routes workspace opening commands to current-tab and new-tab flows", async () => {
     const appSource = await readFile(new URL("./App.svelte", import.meta.url), "utf8");
     const workspaceSource = await readFile(

@@ -241,8 +241,11 @@
 
 			tabs = restoredTabs;
 			if (!tabs.length) {
-				const defaultInfo = await rpc.request.getDefaultWorkspace();
-				tabs = [await createWorkspaceTab(defaultInfo)];
+				const openWorkspaces = await rpc.request.getOpenWorkspaces();
+				const initialWorkspace =
+					openWorkspaces.find((workspace) => workspace.kind === "user") ??
+					(await rpc.request.getDefaultWorkspace());
+				tabs = [await createWorkspaceTab(initialWorkspace)];
 			}
 			knownWorkspaces = mergeKnownWorkspaces(
 				knownWorkspaces,

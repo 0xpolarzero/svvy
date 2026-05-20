@@ -21,13 +21,12 @@ async function createPaneLayoutPage(app: SvvyApp): Promise<Page> {
 
 async function waitForDockviewShell(page: Page): Promise<void> {
   await page.locator('[data-testid="dockview-workbench"]').waitFor({ state: "visible" });
-  await page.locator('[data-testid="workspace-pane"]').first().waitFor({ state: "visible" });
   await expectNoUnavailablePane(page);
 }
 
 async function expectNoUnavailablePane(page: Page): Promise<void> {
   expect(await page.locator(".dockview-empty-panel").count()).toBe(0);
-  expect(await page.getByText("Surface unavailable").count()).toBe(0);
+  expect((await page.locator("body").textContent()).includes("Surface unavailable")).toBe(false);
 }
 
 async function waitForWorkspacePaneCount(
@@ -108,6 +107,9 @@ test("opens, duplicates, resizes, and closes Dockview panels without custom pane
       const page = await createPaneLayoutPage(app);
       await waitForDockviewShell(page);
 
+      await waitForWorkspacePaneCount(page, 0);
+      await waitForDockviewTabCount(page, 0);
+      await clickSessionByTitle(page, "Dockview Layout Seed");
       await waitForWorkspacePaneCount(page, 1);
       await waitForDockviewTabCount(page, 1);
       await expectNoUnavailablePane(page);
@@ -172,14 +174,12 @@ test("opens session and workspace-scoped surface panes without unavailable Dockv
       const page = await createPaneLayoutPage(app);
       await waitForDockviewShell(page);
 
-      const activeSessionTitle =
-        (await page.locator('.session-main[aria-current="true"] strong').textContent())?.trim() ??
-        "";
-      const openedSessionTitle =
-        activeSessionTitle === "First Pane Target" ? "Second Pane Target" : "First Pane Target";
+      await waitForWorkspacePaneCount(page, 0);
+      await waitForDockviewTabCount(page, 0);
+      const openedSessionTitle = "First Pane Target";
       await clickSessionByTitle(page, openedSessionTitle);
-      await waitForWorkspacePaneCount(page, 2);
-      await waitForDockviewTabCount(page, 2);
+      await waitForWorkspacePaneCount(page, 1);
+      await waitForDockviewTabCount(page, 1);
       expect(openedSessionTitle).toMatch(/Pane Target/);
       await expectNoUnavailablePane(page);
 
@@ -191,7 +191,7 @@ test("opens session and workspace-scoped surface panes without unavailable Dockv
       await page.locator(".saved-workflow-library").waitFor({
         state: "visible",
       });
-      await waitForDockviewTabCount(page, 3);
+      await waitForDockviewTabCount(page, 2);
       await expectNoUnavailablePane(page);
 
       await page
@@ -200,7 +200,7 @@ test("opens session and workspace-scoped surface panes without unavailable Dockv
         .first()
         .click({ force: true });
       await page.locator(".app-logs-pane").waitFor({ state: "visible" });
-      await waitForDockviewTabCount(page, 4);
+      await waitForDockviewTabCount(page, 3);
       await expectNoUnavailablePane(page);
     },
   );
