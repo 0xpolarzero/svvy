@@ -109,6 +109,7 @@
 	let transcriptStickToBottom = $state(true);
 	let transcriptAnchorIndex = $state(0);
 	let copiedAssistantMessageTimestamp = $state<string | null>(null);
+	let copiedUserMessageTimestamp = $state<string | null>(null);
 	let transcriptSessionId: string | undefined = undefined;
 	let transcriptSessionInitialized = false;
 	let restoredInitialScrollForSession: string | undefined = undefined;
@@ -339,9 +340,25 @@
 			clearTimeout(copyResetTimer);
 		}
 		await copyTextToClipboard(text);
+		copiedUserMessageTimestamp = null;
 		copiedAssistantMessageTimestamp = message.timestamp;
 		copyResetTimer = window.setTimeout(() => {
 			copiedAssistantMessageTimestamp = null;
+			copyResetTimer = null;
+		}, 1800);
+	}
+
+	async function handleCopyUserMessage(message: UserMessage) {
+		const text = userDraftText(message);
+		if (!text) return;
+		if (copyResetTimer) {
+			clearTimeout(copyResetTimer);
+		}
+		await copyTextToClipboard(text);
+		copiedAssistantMessageTimestamp = null;
+		copiedUserMessageTimestamp = String(message.timestamp);
+		copyResetTimer = window.setTimeout(() => {
+			copiedUserMessageTimestamp = null;
 			copyResetTimer = null;
 		}, 1800);
 	}
@@ -717,6 +734,22 @@
 							<span>{isHandlerObjectiveMessage(message) ? "Objective" : "You"}</span>
 							<div class="message-header-actions">
 								<time>{formatTimestamp(message.timestamp)}</time>
+								<Tooltip label="Copy message" disabled={!userDraftText(message)}>
+									<Button
+										variant="ghost"
+										size="xs"
+										iconOnly
+										aria-label="Copy message"
+										disabled={!userDraftText(message)}
+										onclick={() => void handleCopyUserMessage(message)}
+									>
+										{#if copiedUserMessageTimestamp === String(message.timestamp)}
+											<CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+										{:else}
+											<CopyIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+										{/if}
+									</Button>
+								</Tooltip>
 								{#if onEditUserMessage}
 									<Tooltip label={isStreaming ? "Wait for the current turn to finish" : "Edit message"}>
 										<Button

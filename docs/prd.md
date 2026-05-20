@@ -46,7 +46,7 @@ The shipped product must let a user:
 - delegate bounded work while keeping top-level strategy and state visible
 - talk directly inside delegated thread surfaces when that work needs clarification or follow-up
 - queue follow-up user messages against a running orchestrator or handler-thread surface without creating a concurrent turn, losing the prompt, or retargeting it to another surface
-- edit any committed user message in an orchestrator or handler-thread transcript, see which committed message is currently being edited, receive a warning before replacing an existing composer draft, then send the revised text by moving the same pi surface back to that message's parent state and continuing normally from the edited message
+- copy or edit any committed user message in an orchestrator or handler-thread transcript, see which committed message is currently being edited, receive a warning before replacing an existing composer draft, then send the revised text by moving the same pi surface back to that message's parent state and continuing normally from the edited message
 - configure, run, and interpret Project CI as first-class product behavior
 - save a reusable authored workflow into the workspace workflow library and discover it later
 - use `Cmd+Shift+P` to open the shared palette with `>` prefilled for product actions, and `Cmd+P` to open the same palette as the reserved file quick-open entry point
@@ -903,7 +903,7 @@ Read APIs and renderer code must not compensate for missing lifecycle writes wit
 
 If the target surface already has an active prompt lock, the composer submit does not enter this flow immediately. It creates a surface-local queued-message record and waits for the same `surfacePiSessionId` to become available. Delivery of that queued message then enters the normal flow as a real user message and normal turn for that surface.
 
-When the user edits a committed user transcript message, the selected transcript message stays visibly marked while its text is loaded into the composer. If the composer already contains text or attachments, `svvy` warns that the edit will replace the current draft and points the user toward preserving it through the planned backlog flow before continuing. The edited send targets the same `surfacePiSessionId` and uses pi's session tree semantics to move the active surface leaf to the parent of the original user message before submitting the revised user message. The old branch remains historical session data, but the visible live surface continues from the new edited branch. This is not a fork, queued-message restore, transcript rewrite, or hidden prose reconstruction.
+Committed user transcript messages expose a copy action for their visible text and a separate edit action. When the user edits a committed user transcript message, the selected transcript message stays visibly marked while its text is loaded into the composer. If the composer already contains text or attachments, `svvy` warns that the edit will replace the current draft and points the user toward preserving it through the planned backlog flow before continuing. The edited send targets the same `surfacePiSessionId` and uses pi's session tree semantics to move the active surface leaf to the parent of the original user message before submitting the revised user message. The old branch remains historical session data, but the visible live surface continues from the new edited branch. This is not a fork, queued-message restore, transcript rewrite, or hidden prose reconstruction.
 
 ### Main Orchestrator Loop
 
