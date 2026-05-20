@@ -2350,6 +2350,7 @@ describe("WorkspaceSessionCatalog", () => {
       );
 
       try {
+        (managed as unknown as { activeStreamSequence: number }).activeStreamSequence = 42;
         await catalog.sendPrompt({
           ...DEFAULTS,
           target: created.target,
@@ -2386,6 +2387,7 @@ describe("WorkspaceSessionCatalog", () => {
               payload.target.surfacePiSessionId === created.target.surfacePiSessionId &&
               userMessageText(payload.snapshot?.pendingUserMessage ?? null) ===
                 "Run the queued turn." &&
+              payload.snapshot?.streamSequence === 0 &&
               payload.snapshot?.queuedMessages.length === 0,
           ),
         ).toBe(true);

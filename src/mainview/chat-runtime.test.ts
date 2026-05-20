@@ -2538,6 +2538,7 @@ describe("createChatRuntime", () => {
         delta: "Scanning",
       },
     });
+    const firstDeltaStreamMessage = controller.agent.state.streamMessage;
     harness.emitSurfaceSync({
       reason: "stream.patch",
       target: threadTarget,
@@ -2551,6 +2552,7 @@ describe("createChatRuntime", () => {
 
     expect(controller.agent.state.messages).toHaveLength(1);
     const patchedStreamMessage = controller.agent.state.streamMessage;
+    expect(patchedStreamMessage).not.toBe(firstDeltaStreamMessage);
     expect(
       patchedStreamMessage?.role === "assistant" ? patchedStreamMessage.content[0] : null,
     ).toMatchObject({
@@ -2583,6 +2585,7 @@ describe("createChatRuntime", () => {
     });
 
     const continuedStreamMessage = controller.agent.state.streamMessage;
+    expect(continuedStreamMessage).not.toBe(patchedStreamMessage);
     expect(
       continuedStreamMessage?.role === "assistant" ? continuedStreamMessage.content[0] : null,
     ).toMatchObject({
@@ -2598,6 +2601,132 @@ describe("createChatRuntime", () => {
 
     expect(controller.agent.state.streamMessage).toBeNull();
     expect(controller.promptStatus).toBe("idle");
+
+    runtime.dispose();
+  });
+
+  it("accepts a fresh stream sequence when dispatching after a previous stream snapshot", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const finishPrompt = createDeferred<void>();
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Streaming Handler", "worker ready")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [assistantMessage("Previous turn")],
+          streamSequence: 9,
+        }),
+      ],
+    });
+
+    harness.setPromptHandler(threadTarget.surfacePiSessionId, async () => {
+      const streamMessage = assistantMessage("");
+      streamMessage.content = [];
+      harness.emitSurfaceSync({
+        reason: "stream.patch",
+        target: threadTarget,
+        streamPatch: { type: "start", sequence: 1, message: streamMessage },
+      });
+      harness.emitSurfaceSync({
+        reason: "stream.patch",
+        target: threadTarget,
+        streamPatch: { type: "text_start", sequence: 2, contentIndex: 0 },
+      });
+      harness.emitSurfaceSync({
+        reason: "stream.patch",
+        target: threadTarget,
+        streamPatch: {
+          type: "text_delta",
+          sequence: 3,
+          contentIndex: 0,
+          delta: "Visible fresh stream",
+        },
+      });
+      await finishPrompt.promise;
+      return { assistantText: "Final fresh stream" };
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    const controller = runtime.getPaneController("secondary");
+    if (!controller) {
+      throw new Error("Expected a restored controller.");
+    }
+
+    const prompt = controller.sendPrompt({ text: "Run a fresh turn", attachments: [] });
+    try {
+      await waitFor(() => {
+        const streamMessage = controller.agent.state.streamMessage;
+        const firstBlock = streamMessage?.role === "assistant" ? streamMessage.content[0] : null;
+        return firstBlock?.type === "text" && firstBlock.text === "Visible fresh stream";
+      });
+    } finally {
+      finishPrompt.resolve();
+    }
+    await prompt;
+
+    runtime.dispose();
+  });
+
+  it("accepts the stream start after a streaming snapshot without a stream message", async () => {
+    const threadTarget = createThreadTarget("session-1", "thread-session-1", "thread-123");
+    const harness = createFakeRpc({
+      sessions: [createSummary("session-1", "Streaming Handler", "worker ready")],
+      surfaces: [
+        createSurfaceSnapshot({
+          target: threadTarget,
+          messages: [assistantMessage("Previous turn")],
+        }),
+      ],
+    });
+
+    const runtime = await createRuntime(harness);
+    await runtime.openSurface(threadTarget, "secondary");
+    const controller = runtime.getPaneController("secondary");
+    if (!controller) {
+      throw new Error("Expected a restored controller.");
+    }
+
+    harness.emitSurfaceSync({
+      reason: "background.started",
+      target: threadTarget,
+      snapshot: createSurfaceSnapshot({
+        target: threadTarget,
+        messages: [assistantMessage("Previous turn"), userMessage("Run another turn")],
+        promptStatus: "streaming",
+        streamMessage: null,
+        streamSequence: 1,
+      }),
+    });
+
+    const streamMessage = assistantMessage("");
+    streamMessage.content = [];
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: { type: "start", sequence: 1, message: streamMessage },
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: { type: "text_start", sequence: 2, contentIndex: 0 },
+    });
+    harness.emitSurfaceSync({
+      reason: "stream.patch",
+      target: threadTarget,
+      streamPatch: {
+        type: "text_delta",
+        sequence: 3,
+        contentIndex: 0,
+        delta: "Visible stream after snapshot",
+      },
+    });
+
+    const visibleStream = controller.agent.state.streamMessage;
+    expect(visibleStream?.role === "assistant" ? visibleStream.content[0] : null).toMatchObject({
+      type: "text",
+      text: "Visible stream after snapshot",
+    });
 
     runtime.dispose();
   });

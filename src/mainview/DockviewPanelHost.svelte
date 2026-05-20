@@ -55,7 +55,6 @@
   let sessions = $state<WorkspaceSessionSummary[]>([]);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
   let messages = $state<ChatSurfaceController["agent"]["state"]["messages"]>([]);
-  let streamMessage = $state<ChatSurfaceController["agent"]["state"]["streamMessage"]>(null);
   let pendingToolCalls = $state(new Set<string>());
   let queuedMessages = $state<QueuedPrompt[]>([]);
   let promptBinding = $state<ChatSurfaceController["promptBinding"]>(undefined);
@@ -67,6 +66,7 @@
   let handlerThreads = $state<WorkspaceHandlerThreadSummary[]>([]);
   let handlerThreadsSessionId = $state<string | null>(null);
   let handlerThreadLoadToken = 0;
+  let controllerRevision = $state(0);
   let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
   let unsubscribeRuntime = $state<(() => void) | null>(null);
   let unsubscribeController = $state<(() => void) | null>(null);
@@ -96,19 +96,21 @@
       pane?.target?.surface === "thread" ? "Handler Thread" : "Orchestrator",
     ),
   );
-  const visibleStreamMessage = $derived(
-    controller?.promptStatus === "streaming" && streamMessage?.role === "assistant"
-      ? streamMessage
-      : undefined,
-  );
+  const visibleStreamMessage = $derived.by(() => {
+    void controllerRevision;
+    const message = controller?.agent.state.streamMessage;
+    return controller?.promptStatus === "streaming" && message?.role === "assistant"
+      ? message
+      : undefined;
+  });
   const queuedPromptRefresh = $derived(
     queuedMessages.find((message) => message.kind === "prompt_refresh") ?? null,
   );
 
   function syncSurfaceState() {
+    controllerRevision += 1;
     if (!controller) {
       messages = [];
-      streamMessage = null;
       pendingToolCalls = new Set();
       queuedMessages = [];
       promptBinding = undefined;
@@ -124,7 +126,6 @@
     }
 
     messages = [...controller.agent.state.messages];
-    streamMessage = controller.agent.state.streamMessage;
     pendingToolCalls = new Set(controller.agent.state.pendingToolCalls);
     queuedMessages = [...controller.queuedPrompts];
     promptBinding = controller.promptBinding;

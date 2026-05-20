@@ -116,6 +116,24 @@ describe("default workspace renderer shell", () => {
     expect(panelHostSource).toContain("onRetryFailure=");
   });
 
+  it("renders the live streaming assistant outside virtualized transcript rows", async () => {
+    const transcriptSource = await readFile(
+      new URL("./ChatTranscript.svelte", import.meta.url),
+      "utf8",
+    );
+    const virtualListStart = transcriptSource.indexOf("{#each virtualRows as virtualRow");
+    const virtualListEnd = transcriptSource.indexOf("{#if streamingAssistant}");
+    const streamingRowStart = transcriptSource.indexOf(
+      '<article class="message-row assistant-row streaming-row"',
+    );
+
+    expect(virtualListStart).toBeGreaterThanOrEqual(0);
+    expect(virtualListEnd).toBeGreaterThan(virtualListStart);
+    expect(streamingRowStart).toBeGreaterThan(virtualListEnd);
+    expect(transcriptSource).not.toContain('kind: "streaming"');
+    expect(transcriptSource).toContain("scroller.scrollTop = scroller.scrollHeight;");
+  });
+
   it("does not keep focus-global artifact or inspector surfaces in the workspace shell", async () => {
     const workspaceSource = await readFile(
       new URL("./ChatWorkspace.svelte", import.meta.url),

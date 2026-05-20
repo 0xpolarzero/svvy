@@ -571,10 +571,42 @@ function applySurfaceSnapshotToAgent(
   agent.setTools(currentTools);
 }
 
-function ensureStreamContentIndex(message: AssistantMessage, contentIndex: number): void {
-  while (message.content.length <= contentIndex) {
-    message.content.push({ type: "text", text: "" });
+function applyStreamPatchToMessage(
+  message: AssistantMessage,
+  patch: Exclude<SurfaceStreamPatch, { type: "clear" | "start" }>,
+): AssistantMessage {
+  const content = [...message.content];
+  while (content.length <= patch.contentIndex) {
+    content.push({ type: "text", text: "" });
   }
+
+  if (patch.type === "text_start") {
+    content[patch.contentIndex] = { type: "text", text: "" };
+  } else if (patch.type === "thinking_start") {
+    content[patch.contentIndex] = { type: "thinking", thinking: "" };
+  } else if (patch.type === "text_delta") {
+    const block = content[patch.contentIndex];
+    if (block?.type === "text") {
+      content[patch.contentIndex] = { ...block, text: block.text + patch.delta };
+    }
+  } else if (patch.type === "thinking_delta") {
+    const block = content[patch.contentIndex];
+    if (block?.type === "thinking") {
+      content[patch.contentIndex] = { ...block, thinking: block.thinking + patch.delta };
+    }
+  } else if (patch.type === "text_end") {
+    content[patch.contentIndex] = { type: "text", text: patch.content };
+  } else if (patch.type === "thinking_end") {
+    content[patch.contentIndex] = { type: "thinking", thinking: patch.content };
+  } else if (
+    patch.type === "toolcall_start" ||
+    patch.type === "toolcall_delta" ||
+    patch.type === "toolcall_end"
+  ) {
+    content[patch.contentIndex] = structuredClone(patch.toolCall);
+  }
+
+  return { ...message, content };
 }
 
 function applySurfaceStreamPatchToAgent(agent: SurfaceAgent, patch: SurfaceStreamPatch): void {
@@ -596,44 +628,10 @@ function applySurfaceStreamPatchToAgent(agent: SurfaceAgent, patch: SurfaceStrea
     return;
   }
 
-  ensureStreamContentIndex(message, patch.contentIndex);
-  if (patch.type === "text_start") {
-    message.content[patch.contentIndex] = { type: "text", text: "" };
-    return;
-  }
-  if (patch.type === "thinking_start") {
-    message.content[patch.contentIndex] = { type: "thinking", thinking: "" };
-    return;
-  }
-  if (patch.type === "text_delta") {
-    const block = message.content[patch.contentIndex];
-    if (block?.type === "text") {
-      block.text += patch.delta;
-    }
-    return;
-  }
-  if (patch.type === "thinking_delta") {
-    const block = message.content[patch.contentIndex];
-    if (block?.type === "thinking") {
-      block.thinking += patch.delta;
-    }
-    return;
-  }
-  if (patch.type === "text_end") {
-    message.content[patch.contentIndex] = { type: "text", text: patch.content };
-    return;
-  }
-  if (patch.type === "thinking_end") {
-    message.content[patch.contentIndex] = { type: "thinking", thinking: patch.content };
-    return;
-  }
-  if (
-    patch.type === "toolcall_start" ||
-    patch.type === "toolcall_delta" ||
-    patch.type === "toolcall_end"
-  ) {
-    message.content[patch.contentIndex] = structuredClone(patch.toolCall);
-  }
+  setSurfaceAgentStreamState(agent, {
+    isStreaming: true,
+    streamMessage: applyStreamPatchToMessage(message, patch),
+  });
 }
 
 function createInitialAgent(
@@ -704,7 +702,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
-    this.lastStreamSequence = snapshot.streamSequence;
+    this.lastStreamSequence = snapshot.streamMessage ? snapshot.streamSequence : 0;
     this.agent = createInitialAgent(snapshot, this.createStreamFn());
 
     const originalSetModel = this.agent.setModel.bind(this.agent);
@@ -767,7 +765,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.sessionAgentKey = snapshot.sessionAgentKey;
     this.promptStatus = snapshot.promptStatus;
     this.queuedPrompts = structuredClone(snapshot.queuedMessages ?? []);
-    this.lastStreamSequence = snapshot.streamSequence;
+    this.lastStreamSequence = snapshot.streamMessage ? snapshot.streamSequence : 0;
 
     this.suppressSurfaceMutationSync = true;
     this.applyingSnapshot = true;
@@ -947,6 +945,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
 
     this.promptDispatchInFlight = true;
     this.promptStatus = "streaming";
+    this.lastStreamSequence = 0;
     setSurfaceAgentStreamState(this.agent, { isStreaming: true, streamMessage: null });
     this.agent.replaceMessages(
       buildDisplayMessages({ ...this.snapshotFromState(), pendingUserMessage: userMessage }),
@@ -960,6 +959,9 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       });
       this.target = normalizePromptTarget(response.target);
       this.agent.sessionId = response.target.surfacePiSessionId;
+      if (response.snapshot) {
+        this.applySnapshot(response.snapshot);
+      }
     } catch (error) {
       const failure = createFailureMessage(error, provider, model, "error");
       this.promptStatus = "idle";

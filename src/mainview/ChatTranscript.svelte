@@ -118,8 +118,7 @@
 	type TranscriptRow =
 		| { kind: "system"; key: string; systemPrompt: string }
 		| { kind: "semantic"; key: string; block: TranscriptSemanticBlock }
-		| { kind: "message"; key: string; message: UserMessage | AssistantMessage | ToolResultMessage }
-		| { kind: "streaming"; key: string; message: AssistantMessage };
+		| { kind: "message"; key: string; message: UserMessage | AssistantMessage | ToolResultMessage };
 	const transcriptRows = $derived.by<TranscriptRow[]>(() => {
 		const rows: TranscriptRow[] = [];
 		if (resolvedSystemPrompt) {
@@ -130,9 +129,6 @@
 		}
 		for (const message of conversation.visibleMessages) {
 			rows.push({ kind: "message", key: `${message.role}:${message.timestamp}`, message });
-		}
-		if (streamingAssistant) {
-			rows.push({ kind: "streaming", key: `streaming:${streamingAssistant.timestamp}`, message: streamingAssistant });
 		}
 		return rows;
 	});
@@ -159,7 +155,6 @@
 		if (!row) return 132;
 		if (row.kind === "system") return 92;
 		if (row.kind === "semantic") return 156;
-		if (row.kind === "streaming") return 180;
 		if (row.message.role === "user") return 96;
 		if (row.message.role === "toolResult") return 148;
 		return 172;
@@ -585,9 +580,13 @@
 		if (!scroller || !autoScroll) return;
 		void tick().then(() => {
 			if (!scroller) return;
-			get(transcriptVirtualizer).scrollToIndex(Math.max(0, transcriptRows.length - 1), {
-				align: "end",
-			});
+			if (streamingAssistant) {
+				scroller.scrollTop = scroller.scrollHeight;
+			} else {
+				get(transcriptVirtualizer).scrollToIndex(Math.max(0, transcriptRows.length - 1), {
+					align: "end",
+				});
+			}
 			transcriptScrollTop = scroller.scrollTop;
 		});
 	});
@@ -861,14 +860,12 @@
 							onopen={onOpenArtifact}
 						/>
 					</article>
-				{:else if row?.kind === "streaming"}
-					{@const message = row.message}
-			<article
-				data-index={virtualRow.index}
-				use:measureTranscriptRow
-				class="message-row virtual-row assistant-row"
-				style={`transform: translate3d(0, ${virtualRow.start}px, 0);`}
-			>
+				{/if}
+			{/each}
+		</div>
+		{#if streamingAssistant}
+			{@const message = streamingAssistant}
+			<article class="message-row assistant-row streaming-row" aria-live="polite">
 				<div class="message-bubble assistant-bubble streaming">
 					<header>
 						<div>
@@ -912,11 +909,9 @@
 					</footer>
 				</div>
 			</article>
-				{/if}
-			{/each}
+		{/if}
 		</div>
 	</div>
-</div>
 
 <style>
 	.chat-transcript {

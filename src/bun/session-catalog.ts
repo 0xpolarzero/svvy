@@ -1781,7 +1781,7 @@ export class WorkspaceSessionCatalog {
       streamMessage: session.activeStreamMessage
         ? structuredClone(session.activeStreamMessage)
         : null,
-      streamSequence: session.activeStreamSequence,
+      streamSequence: session.activeStreamMessage ? session.activeStreamSequence : 0,
       promptStatus: session.activePrompt ? "streaming" : "idle",
     };
   }
@@ -3619,6 +3619,7 @@ export class WorkspaceSessionCatalog {
       session.lastPromptSuppressedQueueDrain = false;
       session.lastPromptRestoredQueueItem = false;
       session.activePrompt = true;
+      session.activeStreamSequence = 0;
       session.activeStreamMessage = null;
 
       const promptOptions: SendAgentPromptOptions = {
