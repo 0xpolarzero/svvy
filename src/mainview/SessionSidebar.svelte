@@ -523,15 +523,22 @@
     >
       <div class="sidebar-action-row new-session-row">
         <Tooltip
-          label="New session behavior"
+          label=""
           side="right"
           block
           delayMs={2000}
           details={[
-            { icon: "mouse-left", label: "New session in focused pane" },
-            { shortcut: newSessionReadableShortcut, label: "New session in focused pane" },
-            { shortcut: "Cmd", icon: "mouse-left", label: "New session in new pane" },
-            { shortcut: newSessionInNewPaneReadableShortcut, label: "New session in new pane" },
+            {
+              label: "New session in focused pane",
+              hints: [{ icon: "mouse-left" }, { shortcut: newSessionReadableShortcut }],
+            },
+            {
+              label: "New session in new pane",
+              hints: [
+                { shortcut: "⌘", icon: "mouse-left" },
+                { shortcut: newSessionInNewPaneReadableShortcut },
+              ],
+            },
           ]}
         >
           <button

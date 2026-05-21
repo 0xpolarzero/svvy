@@ -6,11 +6,16 @@
 
 	type TooltipSide = "top" | "bottom" | "left" | "right";
 	type TooltipDetailIcon = "mouse-left";
+	type TooltipDetailHint = {
+		shortcut?: string | null;
+		icon?: TooltipDetailIcon;
+	};
 	type TooltipDetail = {
 		label: string;
 		value?: string | null;
 		shortcut?: string | null;
 		icon?: TooltipDetailIcon;
+		hints?: TooltipDetailHint[];
 	};
 
 	type Props = HTMLAttributes<HTMLSpanElement> & {
@@ -70,22 +75,35 @@
 			const listElement = document.createElement("span");
 			listElement.className = "ui-tooltip-details";
 			for (const detail of details) {
+				const hints = detail.hints ?? [{ shortcut: detail.shortcut, icon: detail.icon }];
+				const visibleHints = hints.filter((hint) => hint.shortcut || hint.icon);
 				const rowElement = document.createElement("span");
-				rowElement.className = `ui-tooltip-detail ${detail.shortcut || detail.icon ? "has-leading" : ""}`.trim();
-				const leadingElement = detail.shortcut || detail.icon ? document.createElement("span") : null;
+				rowElement.className = `ui-tooltip-detail ${visibleHints.length > 0 ? "has-leading" : ""}`.trim();
+				const leadingElement = visibleHints.length > 0 ? document.createElement("span") : null;
 				if (leadingElement) {
 					leadingElement.className = "ui-tooltip-leading";
 				}
-				if (detail.shortcut) {
-					const shortcutElement = document.createElement("kbd");
-					shortcutElement.className = "ui-kbd ui-tooltip-shortcut";
-					appendKeyboardShortcutParts(shortcutElement, detail.shortcut);
-					leadingElement?.append(shortcutElement);
-				}
-				if (detail.icon) {
-					leadingElement?.append(createTooltipDetailIcon(detail.icon));
-				}
 				if (leadingElement) {
+					visibleHints.forEach((hint, index) => {
+						if (index > 0) {
+							const separator = document.createElement("span");
+							separator.className = "ui-tooltip-leading-separator";
+							separator.textContent = "or";
+							leadingElement.append(separator);
+						}
+						const hintElement = document.createElement("span");
+						hintElement.className = "ui-tooltip-hint";
+						if (hint.shortcut) {
+							const shortcutElement = document.createElement("kbd");
+							shortcutElement.className = "ui-kbd ui-tooltip-shortcut";
+							appendKeyboardShortcutParts(shortcutElement, hint.shortcut);
+							hintElement.append(shortcutElement);
+						}
+						if (hint.icon) {
+							hintElement.append(createTooltipDetailIcon(hint.icon));
+						}
+						leadingElement.append(hintElement);
+					});
 					rowElement.append(leadingElement);
 				}
 				const labelElement = document.createElement("span");
@@ -429,6 +447,17 @@
 		align-items: center;
 		gap: 0.36rem;
 		min-width: 0;
+	}
+
+	:global(.ui-tooltip-hint) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.28rem;
+	}
+
+	:global(.ui-tooltip-leading-separator) {
+		color: var(--ui-text-muted);
+		font-size: 0.72rem;
 	}
 
 	:global(.ui-tooltip-value) {
