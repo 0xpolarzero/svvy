@@ -3,6 +3,7 @@
     id: string;
     label: string;
     disabled?: boolean;
+    keepOpen?: boolean;
     tone?: "default" | "danger";
   };
 
@@ -25,7 +26,9 @@
   function selectItem(item: ContextMenuItem) {
     if (item.disabled) return;
     onSelect(item);
-    onClose?.();
+    if (!item.keepOpen) {
+      onClose?.();
+    }
   }
 </script>
 

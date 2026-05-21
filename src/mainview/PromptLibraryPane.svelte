@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CheckIcon from "@lucide/svelte/icons/check";
   import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import RotateCcwIcon from "@lucide/svelte/icons/rotate-ccw";
@@ -9,10 +10,10 @@
   import Button from "./ui/Button.svelte";
   import Checkbox from "./ui/Checkbox.svelte";
   import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
-  import Dialog from "./ui/Dialog.svelte";
   import Input from "./ui/Input.svelte";
   import TextArea from "./ui/TextArea.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+  import { dismissConfirmation } from "./ui/dismiss-confirmation";
   import type {
     PromptLibraryActor,
     PromptLibraryContextPack,
@@ -107,7 +108,7 @@
   let instantSaveQueue: Promise<void> = Promise.resolve();
   let error = $state<string | null>(null);
   let actionMessage = $state<string | null>(null);
-  let resetCandidate = $state<PromptLibraryBlock | null>(null);
+  let confirmingBlockAction = $state<{ blockId: string; action: "reset" | "delete" } | null>(null);
 
   const allBlocks = $derived([
     ...(readModel?.sections.instructions ?? []),
@@ -568,7 +569,7 @@
       autosaveStatus !== "dirty" &&
       autosaveStatus !== "saving" &&
       !autosaveTimer &&
-      !resetCandidate
+      !confirmingBlockAction
     );
   }
 
@@ -867,6 +868,7 @@
       actionMessage = err instanceof Error ? err.message : "Unable to delete prompt block.";
     } finally {
       saving = false;
+      confirmingBlockAction = null;
     }
   }
 
@@ -906,8 +908,22 @@
       actionMessage = err instanceof Error ? err.message : "Unable to reset prompt block.";
     } finally {
       saving = false;
-      resetCandidate = null;
+      confirmingBlockAction = null;
     }
+  }
+
+  function requestBlockAction(block: PromptLibraryBlock, action: "reset" | "delete") {
+    if (action === "reset" && !canResetBlock(block)) return;
+    if (action === "delete" && !canDeleteBlock(block)) return;
+    confirmingBlockAction = { blockId: block.id, action };
+  }
+
+  function cancelBlockActionConfirmation() {
+    confirmingBlockAction = null;
+  }
+
+  function isConfirmingBlockAction(block: PromptLibraryBlock, action: "reset" | "delete") {
+    return confirmingBlockAction?.blockId === block.id && confirmingBlockAction.action === action;
   }
 
   function stateTone(state: PromptLibraryBlockState): "neutral" | "info" | "success" | "warning" {
@@ -1057,34 +1073,58 @@
               <p>{SECTION_LABELS[selectedBlock.section]}</p>
               <h3>{draftTitle || selectedBlock.title}</h3>
             </div>
-            <div class="detail-actions">
+            <div
+              class="detail-actions"
+              use:dismissConfirmation={{
+                active: confirmingBlockAction?.blockId === selectedBlock.id,
+                onDismiss: cancelBlockActionConfirmation,
+              }}
+            >
               <span class={`save-status save-status-${autosaveStatus}`}>{saveStatusLabel}</span>
-              <Tooltip label={resetBlockLabel(selectedBlock)} disabled={saving || !canResetBlock(selectedBlock)}>
+              <Tooltip
+                label={isConfirmingBlockAction(selectedBlock, "reset") ? "Confirm reset" : resetBlockLabel(selectedBlock)}
+                disabled={saving || (!isConfirmingBlockAction(selectedBlock, "reset") && !canResetBlock(selectedBlock))}
+              >
                 <Button
                   class="detail-action-button"
                   variant="ghost"
                   size="xs"
                   iconOnly
-                  disabled={saving || !canResetBlock(selectedBlock)}
-                  aria-label={resetBlockLabel(selectedBlock)}
-                  onclick={() => {
-                    resetCandidate = selectedBlock;
-                  }}
+                  disabled={saving || (!isConfirmingBlockAction(selectedBlock, "reset") && !canResetBlock(selectedBlock))}
+                  aria-label={isConfirmingBlockAction(selectedBlock, "reset") ? `Confirm reset ${blockKindLabel(selectedBlock)}` : resetBlockLabel(selectedBlock)}
+                  onclick={() =>
+                    isConfirmingBlockAction(selectedBlock, "reset")
+                      ? void resetBlock(selectedBlock)
+                      : requestBlockAction(selectedBlock, "reset")}
                 >
-                  <RotateCcwIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {#if isConfirmingBlockAction(selectedBlock, "reset")}
+                    <CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {:else}
+                    <RotateCcwIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {/if}
                 </Button>
               </Tooltip>
-              <Tooltip label={deleteBlockLabel(selectedBlock)} disabled={saving}>
+              <Tooltip
+                label={isConfirmingBlockAction(selectedBlock, "delete") ? "Confirm delete" : deleteBlockLabel(selectedBlock)}
+                disabled={saving || (!isConfirmingBlockAction(selectedBlock, "delete") && !canDeleteBlock(selectedBlock))}
+              >
                 <Button
                   class="detail-action-button detail-danger-button"
                   variant="ghost"
                   size="xs"
                   iconOnly
-                  disabled={saving || !canDeleteBlock(selectedBlock)}
-                  aria-label={deleteBlockLabel(selectedBlock)}
-                  onclick={() => deleteBlock(selectedBlock)}
+                  disabled={saving || (!isConfirmingBlockAction(selectedBlock, "delete") && !canDeleteBlock(selectedBlock))}
+                  aria-label={isConfirmingBlockAction(selectedBlock, "delete") ? `Confirm delete ${blockKindLabel(selectedBlock)}` : deleteBlockLabel(selectedBlock)}
+                  onclick={() =>
+                    isConfirmingBlockAction(selectedBlock, "delete")
+                      ? void deleteBlock(selectedBlock)
+                      : requestBlockAction(selectedBlock, "delete")}
                 >
-                  <Trash2Icon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {#if isConfirmingBlockAction(selectedBlock, "delete")}
+                    <CheckIcon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {:else}
+                    <Trash2Icon aria-hidden="true" size={13} strokeWidth={1.9} />
+                  {/if}
                 </Button>
               </Tooltip>
             </div>
@@ -1298,28 +1338,6 @@
     </div>
   {/if}
 </section>
-
-{#if resetCandidate}
-  {@const blockToReset = resetCandidate}
-  <Dialog
-    title={resetBlockLabel(blockToReset)}
-    eyebrow="Context Library"
-    description={`This restores "${blockToReset.title}" to its builtin ${blockKindLabel(blockToReset)} text, enabled state, scope, and actor settings. Current edits for this ${blockKindLabel(blockToReset)} will be discarded.`}
-    width="md"
-    onClose={() => {
-      resetCandidate = null;
-    }}
-  >
-    <div class="reset-dialog-actions">
-      <Button size="sm" variant="ghost" onclick={() => {
-        resetCandidate = null;
-      }}>Cancel</Button>
-      <Button size="sm" variant="danger" disabled={saving} onclick={() => void resetBlock(blockToReset)}>
-        Reset
-      </Button>
-    </div>
-  </Dialog>
-{/if}
 
 <style>
   .prompt-library {
@@ -1658,12 +1676,6 @@
     color: color-mix(in oklab, var(--ui-warning) 42%, var(--ui-text-primary));
     font-size: var(--text-xs);
     line-height: 1.4;
-  }
-
-  .reset-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.42rem;
   }
 
   .field {

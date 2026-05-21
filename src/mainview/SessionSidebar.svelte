@@ -160,6 +160,7 @@
     x: number;
     y: number;
   } | null>(null);
+  let confirmingDeleteSessionId = $state<string | null>(null);
   let sessionContextMenuElement = $state<ContextMenu | null>(null);
   let relativeTimeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   let relativeTimeInterval: ReturnType<typeof window.setInterval> | null = null;
@@ -280,6 +281,7 @@
       closeNewSessionMenu();
       shortcutAction = null;
       sessionContextMenu = null;
+      confirmingDeleteSessionId = null;
     }
   }
 
@@ -288,7 +290,7 @@
     if (sessionContextMenuElement?.contains(target)) {
       return;
     }
-    sessionContextMenu = null;
+    closeSessionContextMenu();
   }
 
   function handleWindowPointerMove(event: PointerEvent) {
@@ -374,10 +376,12 @@
       x: Math.max(8, Math.min(x, window.innerWidth - 220)),
       y: Math.max(8, Math.min(y, window.innerHeight - 190)),
     };
+    confirmingDeleteSessionId = null;
   }
 
   function closeSessionContextMenu() {
     sessionContextMenu = null;
+    confirmingDeleteSessionId = null;
   }
 
   function runSessionContextAction(action: () => void) {
@@ -407,7 +411,8 @@
       },
       {
         id: "delete",
-        label: "Delete",
+        label: confirmingDeleteSessionId === session.id ? "Confirm" : "Delete",
+        keepOpen: confirmingDeleteSessionId !== session.id,
         tone: "danger",
       },
     ];
@@ -437,6 +442,10 @@
       return;
     }
     if (item.id === "delete") {
+      if (confirmingDeleteSessionId !== session.id) {
+        confirmingDeleteSessionId = session.id;
+        return;
+      }
       runSessionContextAction(() => onDeleteSession(session));
     }
   }

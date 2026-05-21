@@ -1,10 +1,12 @@
 <script lang="ts">
+	import CheckIcon from "@lucide/svelte/icons/check";
 	import CheckCircle2Icon from "@lucide/svelte/icons/check-circle-2";
 	import CircleIcon from "@lucide/svelte/icons/circle";
 	import ExternalLinkIcon from "@lucide/svelte/icons/external-link";
 	import InfoIcon from "@lucide/svelte/icons/info";
 	import KeyIcon from "@lucide/svelte/icons/key";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
+	import Trash2Icon from "@lucide/svelte/icons/trash-2";
 	import { onMount } from "svelte";
 	import { searchScore } from "./chat-format";
 	import type { ProviderAuthInfo } from "../shared/workspace-contract";
@@ -19,6 +21,8 @@
 	import Button from "./ui/Button.svelte";
 	import Dialog from "./ui/Dialog.svelte";
 	import Input from "./ui/Input.svelte";
+	import Tooltip from "./ui/Tooltip.svelte";
+	import { dismissConfirmation } from "./ui/dismiss-confirmation";
 
 	type Props = {
 		workspaceId: string | null;
@@ -251,6 +255,7 @@
 	}
 
 	async function handleOAuth(providerId: string) {
+		confirmingProviderRemoval = null;
 		oauthLoading[providerId] = true;
 		saveMessage[providerId] = "";
 		try {
@@ -272,7 +277,7 @@
 	async function handleRemove(providerId: string) {
 		if (confirmingProviderRemoval !== providerId) {
 			confirmingProviderRemoval = providerId;
-			saveMessage[providerId] = "Click Confirm remove to revoke this credential.";
+			saveMessage[providerId] = "";
 			return;
 		}
 		try {
@@ -284,6 +289,10 @@
 		} catch (err) {
 			saveMessage[providerId] = err instanceof Error ? err.message : "Failed to remove provider";
 		}
+	}
+
+	function cancelProviderRemovalConfirmation() {
+		confirmingProviderRemoval = null;
 	}
 </script>
 
@@ -462,51 +471,80 @@
 												{/if}
 											</div>
 
-											<div class="provider-actions">
+											<div
+												class="provider-actions"
+												use:dismissConfirmation={{
+													active: isConfirmingRemoval,
+													onDismiss: cancelProviderRemovalConfirmation,
+												}}
+											>
 												{#if isEditing}
 													<ProviderApiKeyForm
 														onSave={(apiKey) => handleSaveApiKey(info.provider, apiKey)}
 														onCancel={() => (editingProvider = null)}
 													/>
 												{:else}
-													{#if info.hasKey && info.keyType !== "env"}
-														<Button
-															variant={isConfirmingRemoval ? "danger" : "ghost"}
-															size="xs"
-															class="row-action action-danger"
-															onclick={() => handleRemove(info.provider)}
-															aria-label={isConfirmingRemoval
-																? `Confirm removing ${info.provider} credentials`
-																: `Remove ${info.provider} credentials`}
-														>
-															{isConfirmingRemoval ? "Confirm remove" : "Remove"}
-														</Button>
-													{/if}
 													{#if info.keyType !== "env"}
-														<Button
-															variant="ghost"
-															size="xs"
-															class="row-action"
-															aria-label={info.hasKey ? "Change API key" : "Add API key"}
-															onclick={() => {
-																editingProvider = info.provider;
-															}}
-														>
-															<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
-															{info.hasKey ? "Key" : "Add key"}
-														</Button>
+														<Tooltip label={info.hasKey ? "Change API key" : "Add API key"}>
+															<Button
+																variant="ghost"
+																size="xs"
+																iconOnly
+																class="row-action"
+																aria-label={info.hasKey ? `Change ${info.provider} API key` : `Add ${info.provider} API key`}
+																onclick={() => {
+																	confirmingProviderRemoval = null;
+																	editingProvider = info.provider;
+																}}
+															>
+																<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+															</Button>
+														</Tooltip>
 													{/if}
 													{#if info.supportsOAuth && info.keyType !== "env"}
-														<Button
-															variant="ghost"
-															size="xs"
-															class="row-action action-success"
-															disabled={oauthLoading[info.provider]}
-															onclick={() => handleOAuth(info.provider)}
-														>
-															<ExternalLinkIcon aria-hidden="true" size={12} strokeWidth={1.9} />
-															{oauthLoading[info.provider] ? "Waiting" : "OAuth"}
-														</Button>
+														<Tooltip label={oauthLoading[info.provider] ? "Waiting for OAuth" : "Connect with OAuth"}>
+															<Button
+																variant="ghost"
+																size="xs"
+																iconOnly
+																class="row-action action-success"
+																disabled={oauthLoading[info.provider]}
+																loading={oauthLoading[info.provider]}
+																aria-label={`Connect ${info.provider} with OAuth`}
+																onclick={() => handleOAuth(info.provider)}
+															>
+																<ExternalLinkIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+															</Button>
+														</Tooltip>
+													{/if}
+													{#if info.hasKey && info.keyType !== "env"}
+														{#if isConfirmingRemoval}
+															<Tooltip label="Confirm remove">
+																<Button
+																	variant="ghost"
+																	size="xs"
+																	iconOnly
+																	class="row-action action-danger"
+																	aria-label={`Confirm removing ${info.provider} credentials`}
+																	onclick={() => handleRemove(info.provider)}
+																>
+																	<CheckIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+																</Button>
+															</Tooltip>
+														{:else}
+															<Tooltip label="Remove credentials">
+																<Button
+																	variant="ghost"
+																	size="xs"
+																	iconOnly
+																	class="row-action action-danger"
+																	aria-label={`Remove ${info.provider} credentials`}
+																	onclick={() => handleRemove(info.provider)}
+																>
+																	<Trash2Icon aria-hidden="true" size={12} strokeWidth={1.9} />
+																</Button>
+															</Tooltip>
+														{/if}
 													{/if}
 												{/if}
 											</div>
@@ -558,7 +596,13 @@
 									{/if}
 								</div>
 								{#if option.id}
-									<div class="provider-actions">
+									<div
+										class="provider-actions"
+										use:dismissConfirmation={{
+											active: confirmingProviderRemoval === option.id,
+											onDismiss: cancelProviderRemovalConfirmation,
+										}}
+									>
 										{#if editingProvider === option.id}
 											<ProviderApiKeyForm
 												placeholder={`Paste ${option.label} API key...`}
@@ -566,22 +610,50 @@
 												onCancel={() => (editingProvider = null)}
 											/>
 										{:else}
-											{#if info?.hasKey && info.keyType !== "env"}
-												<Button variant="ghost" size="xs" class="row-action action-danger" onclick={() => handleRemove(option.id)}>
-													Remove
+											<Tooltip label={info?.hasKey ? "Change API key" : "Add API key"}>
+												<Button
+													variant="ghost"
+													size="xs"
+													iconOnly
+													class="row-action"
+													aria-label={info?.hasKey ? `Change ${option.label} API key` : `Add ${option.label} API key`}
+													onclick={() => {
+														confirmingProviderRemoval = null;
+														editingProvider = option.id;
+													}}
+												>
+													<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
 												</Button>
+											</Tooltip>
+											{#if info?.hasKey && info.keyType !== "env"}
+												{#if confirmingProviderRemoval === option.id}
+													<Tooltip label="Confirm remove">
+														<Button
+															variant="ghost"
+															size="xs"
+															iconOnly
+															class="row-action action-danger"
+															aria-label={`Confirm removing ${option.label} credentials`}
+															onclick={() => handleRemove(option.id)}
+														>
+															<CheckIcon aria-hidden="true" size={12} strokeWidth={1.9} />
+														</Button>
+													</Tooltip>
+												{:else}
+													<Tooltip label="Remove credentials">
+														<Button
+															variant="ghost"
+															size="xs"
+															iconOnly
+															class="row-action action-danger"
+															aria-label={`Remove ${option.label} credentials`}
+															onclick={() => handleRemove(option.id)}
+														>
+															<Trash2Icon aria-hidden="true" size={12} strokeWidth={1.9} />
+														</Button>
+													</Tooltip>
+												{/if}
 											{/if}
-											<Button
-												variant="ghost"
-												size="xs"
-												class="row-action"
-												onclick={() => {
-													editingProvider = option.id;
-												}}
-											>
-												<KeyIcon aria-hidden="true" size={12} strokeWidth={1.9} />
-												{info?.hasKey ? "Key" : "Add key"}
-											</Button>
 										{/if}
 									</div>
 								{/if}

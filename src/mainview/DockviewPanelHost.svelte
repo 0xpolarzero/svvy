@@ -9,6 +9,8 @@
   import PromptLibraryPane from "./PromptLibraryPane.svelte";
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
   import WorkflowInspectorPane from "./WorkflowInspectorPane.svelte";
+  import Button from "./ui/Button.svelte";
+  import Dialog from "./ui/Dialog.svelte";
   import { projectConversation } from "./conversation-projection";
   import { getVisibleCommandRollups } from "./command-inspector";
   import { buildSurfaceContextBudget } from "./context-budget";
@@ -87,6 +89,7 @@
   let controllerRevision = $state(0);
   let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
   let editDraft = $state<ComposerEditDraft | null>(null);
+  let pendingEditMessage = $state<{ message: UserMessage; text: string } | null>(null);
   let unsubscribeRuntime = $state<(() => void) | null>(null);
   let unsubscribeController = $state<(() => void) | null>(null);
 
@@ -232,21 +235,24 @@
 		return true;
 	}
 
+  function startEditingUserMessage(message: UserMessage, text: string): void {
+    editDraft = {
+      messageTimestamp: message.timestamp,
+      text,
+    };
+    pendingEditMessage = null;
+  }
+
   function editUserMessageFromTranscript(message: UserMessage, text: string): void {
     if (!text.trim()) return;
     if (String(editDraft?.messageTimestamp) === String(message.timestamp)) return;
     const hasComposerDraft =
       composerBuffer.text.trim().length > 0 || composerBuffer.attachments.length > 0;
     if (hasComposerDraft) {
-      const confirmed = window.confirm(
-        "Editing this earlier message will replace the current composer draft. Send it to the backlog first if you want to keep it. Continue?",
-      );
-      if (!confirmed) return;
+      pendingEditMessage = { message, text };
+      return;
     }
-    editDraft = {
-      messageTimestamp: message.timestamp,
-      text,
-    };
+    startEditingUserMessage(message, text);
   }
 
   async function listModelsForComposer() {
@@ -509,6 +515,41 @@
   ></section>
 {/if}
 
+{#if pendingEditMessage}
+  <Dialog
+    title="Replace Composer Draft"
+    eyebrow="Transcript"
+    description="Editing this earlier message will replace the current composer draft."
+    width="md"
+    onClose={() => {
+      pendingEditMessage = null;
+    }}
+  >
+    <div class="edit-message-dialog">
+      <p>
+        TODO: Later when backlog queue feature is implemented, if there is any content in the composer when trying to edit we will just put that content into the backlog.
+      </p>
+      <div class="edit-message-dialog-actions">
+        <Button size="sm" variant="ghost" onclick={() => {
+          pendingEditMessage = null;
+        }}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          variant="primary"
+          onclick={() => {
+            if (!pendingEditMessage) return;
+            startEditingUserMessage(pendingEditMessage.message, pendingEditMessage.text);
+          }}
+        >
+          Continue
+        </Button>
+      </div>
+    </div>
+  </Dialog>
+{/if}
+
 <style>
   .dockview-chat-panel {
     display: grid;
@@ -562,5 +603,23 @@
     min-height: 0;
     color: var(--ui-text-muted);
     background: var(--ui-panel);
+  }
+
+  .edit-message-dialog {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .edit-message-dialog p {
+    margin: 0;
+    color: var(--ui-text-secondary);
+    font-size: var(--text-sm);
+    line-height: 1.5;
+  }
+
+  .edit-message-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.42rem;
   }
 </style>

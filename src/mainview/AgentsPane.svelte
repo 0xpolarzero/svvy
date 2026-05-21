@@ -7,7 +7,6 @@
   import LockIcon from "@lucide/svelte/icons/lock";
   import PlusIcon from "@lucide/svelte/icons/plus";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import XIcon from "@lucide/svelte/icons/x";
   import { getModel, type Model } from "@mariozechner/pi-ai";
   import { onDestroy } from "svelte";
   import { flip } from "svelte/animate";
@@ -31,6 +30,7 @@
   import CompactSelect, { type CompactSelectOption } from "./ui/CompactSelect.svelte";
   import Input from "./ui/Input.svelte";
   import Tooltip from "./ui/Tooltip.svelte";
+  import { dismissConfirmation } from "./ui/dismiss-confirmation";
   import { queuedMessageOrderChanged, reorderQueuedMessageItems } from "./queued-message-order";
 
   type Props = {
@@ -206,6 +206,10 @@
     } finally {
       deletingProfileId = null;
     }
+  }
+
+  function cancelDeleteProfileConfirmation() {
+    confirmingDeleteProfileId = null;
   }
 
   function getDropTarget(clientY: number): string | null {
@@ -591,33 +595,25 @@
           <span>Follow composer</span>
         </label>
       </Tooltip>
-      <div class="agent-row-actions">
+      <div
+        class="agent-row-actions"
+        use:dismissConfirmation={{
+          active: confirmingDeleteProfileId === profile.id,
+          onDismiss: cancelDeleteProfileConfirmation,
+        }}
+      >
         {#if category === "orchestrator"}
-          {#if confirmingDeleteProfileId === profile.id}
-            <Tooltip label="Cancel delete">
-              <button
-                type="button"
-                class="agent-icon-button"
-                aria-label={`Cancel deleting ${profile.name}`}
-                disabled={deletingProfileId === profile.id}
-                onclick={() => (confirmingDeleteProfileId = null)}
-              >
-                <XIcon size={13} aria-hidden="true" />
-              </button>
-            </Tooltip>
-          {:else}
-            <Tooltip label="Duplicate profile">
-              <button
-                type="button"
-                class="agent-icon-button"
-                aria-label={`Duplicate ${profile.name}`}
-                disabled={savingProfileId === profile.id}
-                onclick={() => void createOrchestratorProfile(profile)}
-              >
-                <CopyPlusIcon size={13} aria-hidden="true" />
-              </button>
-            </Tooltip>
-          {/if}
+          <Tooltip label="Duplicate profile">
+            <button
+              type="button"
+              class="agent-icon-button"
+              aria-label={`Duplicate ${profile.name}`}
+              disabled={savingProfileId === profile.id}
+              onclick={() => void createOrchestratorProfile(profile)}
+            >
+              <CopyPlusIcon size={13} aria-hidden="true" />
+            </button>
+          </Tooltip>
         {:else}
           <span class="agent-action-spacer" aria-hidden="true"></span>
         {/if}
