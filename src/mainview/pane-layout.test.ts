@@ -3,6 +3,7 @@ import type { SerializedDockview } from "dockview-core";
 import {
   createPanelChrome,
   createEmptyPaneLayout,
+  getSidebarPaneOpenTarget,
   getSidebarSessionOpenTarget,
   normalizePaneLayout,
   removeDockviewPanel,
@@ -18,6 +19,21 @@ describe("getSidebarSessionOpenTarget", () => {
 
   it("opens command-clicked sidebar sessions in a new right pane", () => {
     expect(getSidebarSessionOpenTarget({ metaKey: true })).toEqual({
+      kind: "new-panel",
+      direction: "right",
+    });
+  });
+});
+
+describe("getSidebarPaneOpenTarget", () => {
+  it("opens normal sidebar pane clicks in the focused pane", () => {
+    expect(getSidebarPaneOpenTarget({ metaKey: false })).toEqual({
+      kind: "focused-panel",
+    });
+  });
+
+  it("opens command-clicked sidebar panes in a new right pane", () => {
+    expect(getSidebarPaneOpenTarget({ metaKey: true })).toEqual({
       kind: "new-panel",
       direction: "right",
     });

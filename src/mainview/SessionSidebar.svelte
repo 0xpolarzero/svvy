@@ -35,6 +35,8 @@
   import CompactCombobox, { type CompactComboboxOption } from "./ui/CompactCombobox.svelte";
   import ContextMenu, { type ContextMenuItem } from "./ui/ContextMenu.svelte";
 
+  const NEW_SESSION_MENU_CLOSE_DELAY_MS = 500;
+
   type SidebarPaneLocation = {
     paneId: string;
     label: string;
@@ -59,8 +61,16 @@
     errorMessage?: string;
     onCreateSession: (event?: MouseEvent, agentProfileId?: string) => void;
     onOpenSession: (sessionId: string, event: MouseEvent) => void;
-    onOpenHandlerThread?: (sessionId: string, thread: WorkspaceSidebarHandlerThreadRow) => void;
-    onOpenWorkflowRun?: (sessionId: string, workflow: WorkspaceSidebarWorkflowRow) => void;
+    onOpenHandlerThread?: (
+      sessionId: string,
+      thread: WorkspaceSidebarHandlerThreadRow,
+      event: MouseEvent,
+    ) => void;
+    onOpenWorkflowRun?: (
+      sessionId: string,
+      workflow: WorkspaceSidebarWorkflowRow,
+      event: MouseEvent,
+    ) => void;
     onRenameSession: (session: WorkspaceSessionSummary) => void;
     onPinSession: (session: WorkspaceSessionSummary) => void;
     onUnpinSession: (session: WorkspaceSessionSummary) => void;
@@ -76,10 +86,10 @@
     ) => void | Promise<void>;
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
-    onOpenWorkflowLibrary?: () => void;
-    onOpenAgents?: () => void;
-    onOpenPromptLibrary?: () => void;
-    onOpenAppLogs?: () => void;
+    onOpenWorkflowLibrary?: (event?: MouseEvent) => void;
+    onOpenAgents?: (event?: MouseEvent) => void;
+    onOpenPromptLibrary?: (event?: MouseEvent) => void;
+    onOpenAppLogs?: (event?: MouseEvent) => void;
     onOpenSettings?: () => void;
     onListWorkspaceBranches?: () => Promise<WorkspaceBranchInfo[]>;
     onSwitchWorkspaceBranch?: (branch: string) => Promise<void>;
@@ -144,6 +154,7 @@
   let branchMenuLoading = $state(false);
   let branchMenuError = $state<string | null>(null);
   let branchOptions = $state<WorkspaceBranchInfo[]>([]);
+  let primaryActionsElement = $state<HTMLElement | null>(null);
   let sessionContextMenu = $state<{
     session: WorkspaceSessionSummary;
     x: number;
@@ -152,6 +163,7 @@
   let sessionContextMenuElement = $state<ContextMenu | null>(null);
   let relativeTimeTimeout: ReturnType<typeof window.setTimeout> | null = null;
   let relativeTimeInterval: ReturnType<typeof window.setInterval> | null = null;
+  let newSessionMenuCloseTimeout: ReturnType<typeof window.setTimeout> | null = null;
   let resizingSessionSections = $state<{
     from: WorkspaceSessionNavigationSectionId;
     to: WorkspaceSessionNavigationSectionId;
@@ -172,6 +184,10 @@
   const workflowsDisplayShortcut = getShortcutCompact("surface.workflows.open");
   const agentsDisplayShortcut = getShortcutCompact("surface.agents.open");
   const contextDisplayShortcut = getShortcutCompact("surface.context.open");
+  const paneOpenTooltipDetails: { label: string; shortcut?: string; icon: "mouse-left" }[] = [
+    { icon: "mouse-left", label: "Replace focused pane" },
+    { shortcut: "⌘", icon: "mouse-left", label: "Open in a new pane" },
+  ];
 
   $effect(() => {
     function updateRelativeTimeNow() {
@@ -196,18 +212,72 @@
     };
   });
 
+  $effect(() => {
+    return () => {
+      cancelNewSessionMenuClose();
+    };
+  });
+
+  function cancelNewSessionMenuClose() {
+    if (!newSessionMenuCloseTimeout) return;
+    window.clearTimeout(newSessionMenuCloseTimeout);
+    newSessionMenuCloseTimeout = null;
+  }
+
+  function openNewSessionMenu() {
+    cancelNewSessionMenuClose();
+    showNewSessionMenu = true;
+  }
+
+  function closeNewSessionMenu() {
+    cancelNewSessionMenuClose();
+    showNewSessionMenu = false;
+  }
+
+  function scheduleNewSessionMenuClose() {
+    cancelNewSessionMenuClose();
+    newSessionMenuCloseTimeout = window.setTimeout(() => {
+      showNewSessionMenu = false;
+      newSessionMenuCloseTimeout = null;
+    }, NEW_SESSION_MENU_CLOSE_DELAY_MS);
+  }
+
+  function handlePrimaryActionsPointerLeave() {
+    scheduleNewSessionMenuClose();
+  }
+
+  function handleNewSessionMenuPointerLeave(event: MouseEvent) {
+    const next = event.relatedTarget as Node | null;
+    if (next && primaryActionsElement?.contains(next)) {
+      return;
+    }
+    scheduleNewSessionMenuClose();
+  }
+
   function handleNewSessionMenuFocusOut(event: FocusEvent) {
     const current = event.currentTarget as HTMLElement | null;
     const next = event.relatedTarget as Node | null;
     if (current && next && current.contains(next)) {
       return;
     }
-    showNewSessionMenu = false;
+    if (next && primaryActionsElement?.contains(next)) {
+      return;
+    }
+    scheduleNewSessionMenuClose();
+  }
+
+  function handlePrimaryActionsFocusOut(event: FocusEvent) {
+    const current = event.currentTarget as HTMLElement | null;
+    const next = event.relatedTarget as Node | null;
+    if (current && next && current.contains(next)) {
+      return;
+    }
+    scheduleNewSessionMenuClose();
   }
 
   function handleWindowKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
-      showNewSessionMenu = false;
+      closeNewSessionMenu();
       shortcutAction = null;
       sessionContextMenu = null;
     }
@@ -516,121 +586,132 @@
 
   <div class="sidebar-actions" aria-label="Session actions">
     <div
-      class="new-session-menu-shell"
-      class:menu-open={showNewSessionMenu}
+      class="sidebar-primary-actions"
       role="group"
-      aria-label="New session options"
-      onmouseenter={() => (showNewSessionMenu = true)}
-      onmouseleave={() => (showNewSessionMenu = false)}
-      onfocusin={() => (showNewSessionMenu = true)}
-      onfocusout={handleNewSessionMenuFocusOut}
+      aria-label="Primary sidebar actions"
+      bind:this={primaryActionsElement}
+      onmouseenter={cancelNewSessionMenuClose}
+      onfocusin={cancelNewSessionMenuClose}
+      onmouseleave={handlePrimaryActionsPointerLeave}
+      onfocusout={handlePrimaryActionsFocusOut}
     >
-      <div class="sidebar-action-row new-session-row">
-        <Tooltip
-          label=""
-          side="right"
-          block
-          delayMs={2000}
-          details={[
-            {
-              label: "New orchestrator in focused pane",
-              hints: [{ icon: "mouse-left" }, { shortcut: newSessionReadableShortcut }],
-            },
-            {
-              label: "New orchestrator in new pane",
-              hints: [
-                { shortcut: "⌘", icon: "mouse-left" },
-                { shortcut: newSessionInNewPaneReadableShortcut },
-              ],
-            },
-          ]}
-        >
-          <button
-            type="button"
-            class={`sidebar-action-main ${shortcutAction === "new" ? "shortcut-open" : ""}`.trim()}
-            onmouseenter={() => showShortcut("new")}
-            onmouseleave={() => hideShortcut("new")}
-            onfocus={() => showShortcut("new")}
-            onblur={() => hideShortcut("new")}
-            onclick={(event) => {
-              showNewSessionMenu = false;
-              onCreateSession(event);
-            }}
-            disabled={busy}
-            aria-label="Create a new orchestrator"
+      <div
+        class="new-session-menu-shell"
+        class:menu-open={showNewSessionMenu}
+        role="group"
+        aria-label="New session options"
+        onmouseenter={openNewSessionMenu}
+        onmouseleave={handleNewSessionMenuPointerLeave}
+        onfocusin={openNewSessionMenu}
+        onfocusout={handleNewSessionMenuFocusOut}
+      >
+        <div class="sidebar-action-row new-session-row">
+          <Tooltip
+            label=""
+            side="right"
+            block
+            delayMs={2000}
+            details={[
+              {
+                label: "New orchestrator in focused pane",
+                hints: [{ icon: "mouse-left" }, { shortcut: newSessionReadableShortcut }],
+              },
+              {
+                label: "New orchestrator in new pane",
+                hints: [
+                  { shortcut: "⌘", icon: "mouse-left" },
+                  { shortcut: newSessionInNewPaneReadableShortcut },
+                ],
+              },
+            ]}
           >
-            <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
-            <span class="new-orchestrator-main-copy">
-              <span class="sidebar-action-label">New orchestrator</span>
-              {#if orchestratorProfiles[0]}
-                <span class="new-orchestrator-default">
-                  <span>{orchestratorProfiles[0].model}</span>
-                  <span>{orchestratorProfiles[0].reasoningEffort}</span>
-                </span>
-              {/if}
-            </span>
-            <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
-          </button>
-        </Tooltip>
-      </div>
-      <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
-        <div class="new-session-accordion-inner">
-          {#each orchestratorProfiles.slice(1) as profile (profile.id)}
             <button
               type="button"
-              class="sidebar-action-row new-session-child profile-picker-row"
-              disabled={busy}
-              tabindex={showNewSessionMenu ? 0 : -1}
+              class={`sidebar-action-main ${shortcutAction === "new" ? "shortcut-open" : ""}`.trim()}
+              onmouseenter={() => showShortcut("new")}
+              onmouseleave={() => hideShortcut("new")}
+              onfocus={() => showShortcut("new")}
+              onblur={() => hideShortcut("new")}
               onclick={(event) => {
-                showNewSessionMenu = false;
-                onCreateSession(event, profile.id);
+                closeNewSessionMenu();
+                onCreateSession(event);
               }}
+              disabled={busy}
+              aria-label="Create a new orchestrator"
             >
-              <span class="sidebar-action-icon"><BotIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
-              <span class="profile-picker-content">
-                <span class="sidebar-action-label">{profile.name}</span>
-                <span class="profile-picker-badges">
-                  <span>{profile.model}</span>
-                  <span>{profile.reasoningEffort}</span>
-                </span>
+              <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
+              <span class="new-orchestrator-main-copy">
+                <span class="sidebar-action-label">New orchestrator</span>
+                {#if orchestratorProfiles[0]}
+                  <span class="new-orchestrator-default">
+                    <span>{orchestratorProfiles[0].model}</span>
+                    <span>{orchestratorProfiles[0].reasoningEffort}</span>
+                  </span>
+                {/if}
               </span>
+              <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
             </button>
-          {/each}
+          </Tooltip>
+        </div>
+        <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
+          <div class="new-session-accordion-inner">
+            {#each orchestratorProfiles.slice(1) as profile (profile.id)}
+              <button
+                type="button"
+                class="sidebar-action-row new-session-child profile-picker-row"
+                disabled={busy}
+                tabindex={showNewSessionMenu ? 0 : -1}
+                onclick={(event) => {
+                  closeNewSessionMenu();
+                  onCreateSession(event, profile.id);
+                }}
+              >
+                <span class="sidebar-action-icon"><BotIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
+                <span class="profile-picker-content">
+                  <span class="sidebar-action-label">{profile.name}</span>
+                  <span class="profile-picker-badges">
+                    <span>{profile.model}</span>
+                    <span>{profile.reasoningEffort}</span>
+                  </span>
+                </span>
+              </button>
+            {/each}
+          </div>
         </div>
       </div>
+      {#if onOpenSearch}
+        <button
+          class={`sidebar-action-row ${shortcutAction === "search" ? "shortcut-open" : ""}`.trim()}
+          type="button"
+          aria-label="Open quick open"
+          onmouseenter={() => showShortcut("search")}
+          onmouseleave={() => hideShortcut("search")}
+          onfocus={() => showShortcut("search")}
+          onblur={() => hideShortcut("search")}
+          onclick={onOpenSearch}
+        >
+          <span class="sidebar-action-icon"><SearchIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+          <span class="sidebar-action-label">Search</span>
+          <Kbd value={quickOpenDisplayShortcut} class="sidebar-action-shortcut" />
+        </button>
+      {/if}
+      {#if onOpenCommandPalette}
+        <button
+          class={`sidebar-action-row ${shortcutAction === "commands" ? "shortcut-open" : ""}`.trim()}
+          type="button"
+          aria-label="Open command palette"
+          onmouseenter={() => showShortcut("commands")}
+          onmouseleave={() => hideShortcut("commands")}
+          onfocus={() => showShortcut("commands")}
+          onblur={() => hideShortcut("commands")}
+          onclick={onOpenCommandPalette}
+        >
+          <span class="sidebar-action-icon"><CommandIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+          <span class="sidebar-action-label">Command palette</span>
+          <Kbd value={commandPaletteDisplayShortcut} class="sidebar-action-shortcut" />
+        </button>
+      {/if}
     </div>
-    {#if onOpenSearch}
-      <button
-        class={`sidebar-action-row ${shortcutAction === "search" ? "shortcut-open" : ""}`.trim()}
-        type="button"
-        aria-label="Open quick open"
-        onmouseenter={() => showShortcut("search")}
-        onmouseleave={() => hideShortcut("search")}
-        onfocus={() => showShortcut("search")}
-        onblur={() => hideShortcut("search")}
-        onclick={onOpenSearch}
-      >
-        <span class="sidebar-action-icon"><SearchIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-        <span class="sidebar-action-label">Search</span>
-        <Kbd value={quickOpenDisplayShortcut} class="sidebar-action-shortcut" />
-      </button>
-    {/if}
-    {#if onOpenCommandPalette}
-      <button
-        class={`sidebar-action-row ${shortcutAction === "commands" ? "shortcut-open" : ""}`.trim()}
-        type="button"
-        aria-label="Open command palette"
-        onmouseenter={() => showShortcut("commands")}
-        onmouseleave={() => hideShortcut("commands")}
-        onfocus={() => showShortcut("commands")}
-        onblur={() => hideShortcut("commands")}
-        onclick={onOpenCommandPalette}
-      >
-        <span class="sidebar-action-icon"><CommandIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-        <span class="sidebar-action-label">Command palette</span>
-        <Kbd value={commandPaletteDisplayShortcut} class="sidebar-action-shortcut" />
-      </button>
-    {/if}
   </div>
 
   {#if errorMessage}
@@ -647,7 +728,7 @@
           <button
             type="button"
             class={`sidebar-child-row handler-row status-${thread.status} ${session.id === activeSessionId && thread.threadId === activeThreadId ? "active" : ""} ${threadPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(threadPaneLocations)} ${threadWorking ? "working" : ""}`.trim()}
-            onclick={() => onOpenHandlerThread?.(session.id, thread)}
+            onclick={(event) => onOpenHandlerThread?.(session.id, thread, event)}
           >
             <span class="sidebar-child-content">
               <span class="sidebar-child-title">{thread.title}</span>
@@ -672,7 +753,7 @@
                 <button
                   type="button"
                   class={`sidebar-child-row workflow-row status-${workflow.status} ${workflowPaneLocations.length > 0 ? "open-in-pane" : ""} open-tone-${getPaneTone(workflowPaneLocations)} ${workflowWorking ? "working" : ""}`.trim()}
-                  onclick={() => onOpenWorkflowRun?.(session.id, workflow)}
+                  onclick={(event) => onOpenWorkflowRun?.(session.id, workflow, event)}
                 >
                   <span class="sidebar-child-content">
                     <span class="sidebar-child-title">{workflow.workflowName}</span>
@@ -768,7 +849,7 @@
   {#if onOpenWorkflowLibrary || onOpenAgents || onOpenPromptLibrary || onOpenAppLogs}
     <div class="sidebar-lower-nav">
       {#if onOpenAppLogs}
-        <Tooltip label={appLogUnreadTitle} side="right" block>
+        <Tooltip label={appLogUnreadTitle} side="right" block details={paneOpenTooltipDetails}>
           <button
             class={`sidebar-action-row reference-nav-row logs-nav-row ${(appLogSummary?.unread.error ?? 0) > 0 ? "has-errors" : ""} ${shortcutAction === "logs" ? "shortcut-open" : ""}`.trim()}
             type="button"
@@ -777,7 +858,7 @@
             onmouseleave={() => hideShortcut("logs")}
             onfocus={() => showShortcut("logs")}
             onblur={() => hideShortcut("logs")}
-            onclick={onOpenAppLogs}
+            onclick={(event) => onOpenAppLogs(event)}
           >
             <span class="sidebar-action-icon"><LogsIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Logs</span>
@@ -793,7 +874,7 @@
         </Tooltip>
       {/if}
       {#if onOpenAgents}
-        <Tooltip label="Open agent profiles" side="right" block>
+        <Tooltip label="Open agent profiles" side="right" block details={paneOpenTooltipDetails}>
           <button
             class={`sidebar-action-row reference-nav-row ${shortcutAction === "agents" ? "shortcut-open" : ""}`.trim()}
             type="button"
@@ -802,7 +883,7 @@
             onmouseleave={() => hideShortcut("agents")}
             onfocus={() => showShortcut("agents")}
             onblur={() => hideShortcut("agents")}
-            onclick={onOpenAgents}
+            onclick={(event) => onOpenAgents(event)}
           >
             <span class="sidebar-action-icon"><BotIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Agents</span>
@@ -811,7 +892,7 @@
         </Tooltip>
       {/if}
       {#if onOpenPromptLibrary}
-        <Tooltip label="Open context library" side="right" block>
+        <Tooltip label="Open context library" side="right" block details={paneOpenTooltipDetails}>
           <button
             class={`sidebar-action-row reference-nav-row ${shortcutAction === "context" ? "shortcut-open" : ""}`.trim()}
             type="button"
@@ -820,7 +901,7 @@
             onmouseleave={() => hideShortcut("context")}
             onfocus={() => showShortcut("context")}
             onblur={() => hideShortcut("context")}
-            onclick={onOpenPromptLibrary}
+            onclick={(event) => onOpenPromptLibrary(event)}
           >
             <span class="sidebar-action-icon"><FileTextIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Context</span>
@@ -829,7 +910,7 @@
         </Tooltip>
       {/if}
       {#if onOpenWorkflowLibrary}
-        <Tooltip label="Open workflow assets" side="right" block>
+        <Tooltip label="Open workflow assets" side="right" block details={paneOpenTooltipDetails}>
           <button
             class={`sidebar-action-row reference-nav-row ${shortcutAction === "workflows" ? "shortcut-open" : ""}`.trim()}
             type="button"
@@ -838,7 +919,7 @@
             onmouseleave={() => hideShortcut("workflows")}
             onfocus={() => showShortcut("workflows")}
             onblur={() => hideShortcut("workflows")}
-            onclick={onOpenWorkflowLibrary}
+            onclick={(event) => onOpenWorkflowLibrary(event)}
           >
             <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Workflows</span>
@@ -923,6 +1004,12 @@
     padding: 0.08rem 0.72rem 0.7rem;
     position: relative;
     z-index: 8;
+  }
+
+  .sidebar-primary-actions {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
   }
 
   .new-session-menu-shell {

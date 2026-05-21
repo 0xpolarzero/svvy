@@ -61,6 +61,7 @@
   } from "./chat-runtime";
   import {
     createEmptyPaneLayout,
+    getSidebarPaneOpenTarget,
     getSidebarSessionOpenTarget,
     type PaneOpenTarget,
     type WorkspaceLayoutSlotId,
@@ -1227,7 +1228,11 @@
     void openWorkflowInspector(projectCiStatus.latestRun.workflowRunId);
   }
 
-  function openWorkflowInspector(workflowRunId: string, sessionId = activeSessionId): void {
+  function openWorkflowInspector(
+    workflowRunId: string,
+    sessionId = activeSessionId,
+    openTarget: PaneOpenTarget = { kind: "split", panelId: focusedPanelId, direction: "right" },
+  ): void {
     if (!sessionId) return;
     void runtime.openSurface(
       {
@@ -1235,44 +1240,44 @@
         surface: "workflow-inspector",
         workflowRunId,
       },
-      { kind: "split", panelId: focusedPanelId, direction: "right" },
+      openTarget,
     );
   }
 
-  function openSavedWorkflowLibrary(): void {
+  function openSavedWorkflowLibrary(event?: MouseEvent): void {
     void runtime.openSurface(
       {
         surface: "saved-workflow-library",
       },
-      { kind: "split", panelId: focusedPanelId, direction: "right" },
+      getSidebarPaneOpenTarget(event),
     );
   }
 
-  function openAgentsPane(): void {
+  function openAgentsPane(event?: MouseEvent): void {
     void runtime.openSurface(
       {
         surface: "agents",
       },
-      { kind: "split", panelId: focusedPanelId, direction: "right" },
+      getSidebarPaneOpenTarget(event),
     );
   }
 
-  function openAppLogs(): void {
+  function openAppLogs(event?: MouseEvent): void {
     void runtime.openSurface(
       {
         surface: "app-logs",
       },
-      { kind: "split", panelId: focusedPanelId, direction: "right" },
+      getSidebarPaneOpenTarget(event),
     );
     void runtime.markAppLogsSeen(runtime.appLogSummary.latestSeq);
   }
 
-  function openPromptLibrary(): void {
+  function openPromptLibrary(event?: MouseEvent): void {
     void runtime.openSurface(
       {
         surface: "prompt-library",
       },
-      { kind: "split", panelId: focusedPanelId, direction: "right" },
+      getSidebarPaneOpenTarget(event),
     );
   }
 
@@ -1300,6 +1305,7 @@
   function handleOpenSidebarHandlerThread(
     sessionId: string,
     thread: Pick<WorkspaceSidebarHandlerThreadRow, "threadId" | "surfacePiSessionId">,
+    event?: MouseEvent,
   ) {
     void runSessionMutation(() =>
       runtime.openSurface(
@@ -1309,7 +1315,7 @@
           surfacePiSessionId: thread.surfacePiSessionId,
           threadId: thread.threadId,
         },
-        { kind: "new-panel", direction: "right" },
+        getSidebarPaneOpenTarget(event),
       ),
     );
   }
@@ -1317,8 +1323,9 @@
   function handleOpenSidebarWorkflowRun(
     sessionId: string,
     workflow: Pick<WorkspaceSidebarWorkflowRow, "workflowRunId">,
+    event?: MouseEvent,
   ) {
-    openWorkflowInspector(workflow.workflowRunId, sessionId);
+    openWorkflowInspector(workflow.workflowRunId, sessionId, getSidebarPaneOpenTarget(event));
   }
 
   async function sendPromptToHandlerThread(
@@ -1720,7 +1727,7 @@
           onOpenSearch={() => openPalette("search")}
           onOpenCommandPalette={() => openPalette("commands")}
           onOpenAppLogs={openAppLogs}
-          onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
+          onOpenWorkflowLibrary={openSavedWorkflowLibrary}
           onOpenAgents={openAgentsPane}
           onOpenPromptLibrary={openPromptLibrary}
           onOpenSettings={onOpenSettings}
