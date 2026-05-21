@@ -1733,6 +1733,7 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
       appMenuItem("workspace.openInNewTab"),
       { type: "separator" },
       appMenuItem("session.new"),
+      appMenuItem("session.newPane"),
       appMenuItem("session.dumb"),
     ],
   },

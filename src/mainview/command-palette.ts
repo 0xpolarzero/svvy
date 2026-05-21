@@ -246,7 +246,7 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       label: "New Dumb Session",
       category: "session",
       aliases: ["dumb session", "scratch session", "fast session", "lightweight orchestrator"],
-      shortcut: getShortcutReadable("session.dumb"),
+      shortcut: null,
       availability: { kind: "available" },
       execute: { kind: "create-session", mode: "dumb" },
     },

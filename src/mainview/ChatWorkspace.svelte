@@ -62,6 +62,7 @@
   import {
     createEmptyPaneLayout,
     getSidebarSessionOpenTarget,
+    type PaneOpenTarget,
     type WorkspaceLayoutSlotId,
     type WorkspaceLayoutSlotSummary,
   } from "./pane-layout";
@@ -539,9 +540,9 @@
         options: () => workspaceShortcutOptions("session.new"),
       },
       {
-        hotkey: getShortcutHotkey("session.dumb"),
-        callback: () => void handleCreateDumbSession(),
-        options: () => workspaceShortcutOptions("session.dumb"),
+        hotkey: getShortcutHotkey("session.newPane"),
+        callback: () => void handleCreateSessionInNewPane(),
+        options: () => workspaceShortcutOptions("session.newPane"),
       },
       {
         hotkey: getShortcutHotkey("sidebar.toggle"),
@@ -774,6 +775,9 @@
       case "session.new":
         void handleCreateSession();
         return;
+      case "session.newPane":
+        void handleCreateSessionInNewPane();
+        return;
       case "session.dumb":
         void handleCreateDumbSession();
         return;
@@ -868,7 +872,16 @@
     );
   }
 
-  async function handleCreateSession() {
+  function getNewSessionOpenTarget(event?: Pick<MouseEvent, "metaKey">): PaneOpenTarget {
+    return event?.metaKey ? { kind: "new-panel", direction: "right" } : { kind: "focused-panel" };
+  }
+
+  async function handleCreateSession(event?: MouseEvent) {
+    await runSessionMutation(() => runtime.createSession({}, getNewSessionOpenTarget(event)));
+    await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
+  }
+
+  async function handleCreateSessionInNewPane() {
     await runSessionMutation(() => runtime.createSession({}, { kind: "new-panel", direction: "right" }));
     await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
   }

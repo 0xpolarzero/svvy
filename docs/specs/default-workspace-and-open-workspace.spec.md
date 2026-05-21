@@ -331,8 +331,8 @@ Existing keybindings remain:
 
 | Action | macOS | Windows/Linux |
 | --- | --- | --- |
-| New Session | `Cmd+N` | `Ctrl+N` |
-| New Dumb Session | `Cmd+Shift+N` | `Ctrl+Shift+N` |
+| New Session in Focused Pane | `Cmd+N` | `Ctrl+N` |
+| New Session in New Pane | `Cmd+Shift+N` | `Ctrl+Shift+N` |
 | Quick Open | `Cmd+P` | `Ctrl+P` |
 | Command Palette | `Cmd+Shift+P` | `Ctrl+Shift+P` |
 | Toggle Sidebar | `Cmd+B` | `Ctrl+B` |

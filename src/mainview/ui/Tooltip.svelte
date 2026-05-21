@@ -72,14 +72,21 @@
 			for (const detail of details) {
 				const rowElement = document.createElement("span");
 				rowElement.className = `ui-tooltip-detail ${detail.shortcut || detail.icon ? "has-leading" : ""}`.trim();
+				const leadingElement = detail.shortcut || detail.icon ? document.createElement("span") : null;
+				if (leadingElement) {
+					leadingElement.className = "ui-tooltip-leading";
+				}
 				if (detail.shortcut) {
 					const shortcutElement = document.createElement("kbd");
 					shortcutElement.className = "ui-kbd ui-tooltip-shortcut";
 					appendKeyboardShortcutParts(shortcutElement, detail.shortcut);
-					rowElement.append(shortcutElement);
+					leadingElement?.append(shortcutElement);
 				}
 				if (detail.icon) {
-					rowElement.append(createTooltipDetailIcon(detail.icon));
+					leadingElement?.append(createTooltipDetailIcon(detail.icon));
+				}
+				if (leadingElement) {
+					rowElement.append(leadingElement);
 				}
 				const labelElement = document.createElement("span");
 				labelElement.className = "ui-tooltip-label";
@@ -415,6 +422,13 @@
 
 	:global(.ui-tooltip-detail.has-leading) {
 		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
+
+	:global(.ui-tooltip-leading) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.36rem;
+		min-width: 0;
 	}
 
 	:global(.ui-tooltip-value) {

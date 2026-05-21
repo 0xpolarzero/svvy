@@ -12,12 +12,18 @@ describe("native app menu workspace actions", () => {
       "workspace.open",
       "workspace.newTab",
       "workspace.openInNewTab",
+      "session.new",
+      "session.newPane",
+      "session.dumb",
     ];
 
     for (const action of actions) {
       expect(isAppMenuAction(action)).toBe(true);
-      expect(getShortcutAccelerator(action)).toBeTruthy();
     }
+
+    expect(getShortcutAccelerator("session.new")).toBe("CommandOrControl+N");
+    expect(getShortcutAccelerator("session.newPane")).toBe("CommandOrControl+Shift+N");
+    expect(getShortcutAccelerator("session.dumb")).toBeNull();
   });
 
   it("wires File menu workspace actions from the shortcut registry", async () => {
@@ -26,6 +32,9 @@ describe("native app menu workspace actions", () => {
     expect(source).toContain('appMenuItem("workspace.open")');
     expect(source).toContain('appMenuItem("workspace.newTab")');
     expect(source).toContain('appMenuItem("workspace.openInNewTab")');
+    expect(source).toContain('appMenuItem("session.new")');
+    expect(source).toContain('appMenuItem("session.newPane")');
+    expect(source).toContain('appMenuItem("session.dumb")');
     expect(source).toContain("sendAppMenuAction");
   });
 });

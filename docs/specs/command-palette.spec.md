@@ -141,7 +141,7 @@ Scopes include:
 - `dialog`
 - `input`
 
-The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, new session, new dumb session, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Workflows, and `Cmd+Shift+3` for Context, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
+The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, `Cmd+N` for a new session in the focused pane, `Cmd+Shift+N` for a new session in a new pane, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Workflows, and `Cmd+Shift+3` for Context, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
 
 TanStack Hotkeys owns renderer keyboard subscription, chord matching, scoped attachment, conflict handling, and input suppression. It does not own product semantics. Hotkey callbacks dispatch product actions through the shortcut registry and command/action registry rather than executing unrelated product behavior directly.
 
@@ -219,7 +219,7 @@ Command-related action controls use two distinct feedback layers:
 - an instant in-control shortcut hint for controls with a direct keybinding
 - a delayed explanatory tooltip that appears after 500 ms of hover or keyboard focus
 
-The instant hint uses the compact display shortcut from the product shortcut registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. This is the preferred treatment for explicit labeled sidebar actions such as new session, command palette, and quick open; those actions do not also need an explanatory tooltip.
+The instant hint uses the compact display shortcut from the product shortcut registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. For the sidebar New Session control, the delayed tooltip also explains click, `Cmd+N`, `Cmd`-click, and `Cmd+Shift+N` placement because the same control supports focused-pane and new-pane creation. For other explicit labeled sidebar actions such as command palette and quick open, the instant hint is usually sufficient and those actions do not also need an explanatory tooltip.
 
 The delayed tooltip uses the readable shortcut form from the same registry, such as `Cmd+N`, when a shortcut exists, but renders it with the same segmented keycap treatment as compact hints. It explains icon-only or ambiguous actions rather than repeating obvious sidebar labels. Native browser `title` tooltips must not be used for these product action buttons because their delay, styling, and shortcut rendering are browser-controlled.
 

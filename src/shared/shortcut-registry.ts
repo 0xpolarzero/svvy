@@ -9,6 +9,7 @@ export type ShortcutActionId =
   | "workspace.newTab"
   | "workspace.openInNewTab"
   | "session.new"
+  | "session.newPane"
   | "session.dumb"
   | "sidebar.toggle"
   | "surface.logs.open"
@@ -27,6 +28,7 @@ export type AppMenuAction = Extract<
   | "workspace.newTab"
   | "workspace.openInNewTab"
   | "session.new"
+  | "session.newPane"
   | "session.dumb"
   | "sidebar.toggle"
   | "surface.logs.open"
@@ -113,13 +115,23 @@ export const SHORTCUTS = {
     inputPolicy: "allow-while-typing",
     commandActionId: "session.new",
   },
-  "session.dumb": {
-    id: "session.dumb",
-    label: "New Dumb Session",
+  "session.newPane": {
+    id: "session.newPane",
+    label: "New Session in New Pane",
     hotkey: "Mod+Shift+N",
     readableShortcut: "Cmd+Shift+N",
     compactShortcut: "⌘⇧N",
     accelerator: "CommandOrControl+Shift+N",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+  },
+  "session.dumb": {
+    id: "session.dumb",
+    label: "New Dumb Session",
+    hotkey: "",
+    readableShortcut: "",
+    compactShortcut: "",
+    accelerator: null,
     scope: "workspace-shell",
     inputPolicy: "allow-while-typing",
     commandActionId: "session.dumb",
@@ -231,10 +243,21 @@ export function shouldShortcutIgnoreInputs(id: ShortcutActionId): boolean {
   return getShortcut(id).inputPolicy === "suppress-while-typing";
 }
 
+const APP_MENU_ACTION_IDS = new Set<string>([
+  "commandPalette.open",
+  "quickOpen.open",
+  "workspace.open",
+  "workspace.newTab",
+  "workspace.openInNewTab",
+  "session.new",
+  "session.newPane",
+  "session.dumb",
+  "sidebar.toggle",
+  "surface.logs.open",
+  "surface.workflows.open",
+  "surface.context.open",
+]);
+
 export function isAppMenuAction(value: unknown): value is AppMenuAction {
-  return (
-    typeof value === "string" &&
-    value in SHORTCUTS &&
-    !!SHORTCUTS[value as ShortcutActionId].accelerator
-  );
+  return typeof value === "string" && APP_MENU_ACTION_IDS.has(value);
 }

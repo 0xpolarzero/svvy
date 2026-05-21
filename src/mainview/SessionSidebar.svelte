@@ -11,7 +11,7 @@
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import ZapIcon from "@lucide/svelte/icons/zap";
   import type { ContextBudget } from "../shared/context-budget";
-  import { getShortcutCompact } from "../shared/shortcut-registry";
+  import { getShortcutCompact, getShortcutReadable } from "../shared/shortcut-registry";
   import type {
     AppLogSummary,
     WorkspaceBranchInfo,
@@ -55,7 +55,7 @@
     appLogSummary?: AppLogSummary | null;
     busy?: boolean;
     errorMessage?: string;
-    onCreateSession: () => void;
+    onCreateSession: (event?: MouseEvent) => void;
     onCreateDumbSession: () => void;
     onOpenSession: (sessionId: string, event: MouseEvent) => void;
     onOpenHandlerThread?: (sessionId: string, thread: WorkspaceSidebarHandlerThreadRow) => void;
@@ -161,7 +161,8 @@
     {},
   );
   const newSessionDisplayShortcut = getShortcutCompact("session.new");
-  const dumbSessionDisplayShortcut = getShortcutCompact("session.dumb");
+  const newSessionReadableShortcut = getShortcutReadable("session.new");
+  const newSessionInNewPaneReadableShortcut = getShortcutReadable("session.newPane");
   const quickOpenDisplayShortcut = getShortcutCompact("quickOpen.open");
   const commandPaletteDisplayShortcut = getShortcutCompact("commandPalette.open");
   const appLogsDisplayShortcut = getShortcutCompact("surface.logs.open");
@@ -521,24 +522,37 @@
       onfocusout={handleNewSessionMenuFocusOut}
     >
       <div class="sidebar-action-row new-session-row">
-        <button
-          type="button"
-          class={`sidebar-action-main ${shortcutAction === "new" ? "shortcut-open" : ""}`.trim()}
-          onmouseenter={() => showShortcut("new")}
-          onmouseleave={() => hideShortcut("new")}
-          onfocus={() => showShortcut("new")}
-          onblur={() => hideShortcut("new")}
-          onclick={() => {
-            showNewSessionMenu = false;
-            onCreateSession();
-          }}
-          disabled={busy}
-          aria-label="Create a new session"
+        <Tooltip
+          label="New session behavior"
+          side="right"
+          block
+          delayMs={2000}
+          details={[
+            { icon: "mouse-left", label: "New session in focused pane" },
+            { shortcut: newSessionReadableShortcut, label: "New session in focused pane" },
+            { shortcut: "Cmd", icon: "mouse-left", label: "New session in new pane" },
+            { shortcut: newSessionInNewPaneReadableShortcut, label: "New session in new pane" },
+          ]}
         >
-          <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
-          <span class="sidebar-action-label">New session</span>
-          <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
-        </button>
+          <button
+            type="button"
+            class={`sidebar-action-main ${shortcutAction === "new" ? "shortcut-open" : ""}`.trim()}
+            onmouseenter={() => showShortcut("new")}
+            onmouseleave={() => hideShortcut("new")}
+            onfocus={() => showShortcut("new")}
+            onblur={() => hideShortcut("new")}
+            onclick={(event) => {
+              showNewSessionMenu = false;
+              onCreateSession(event);
+            }}
+            disabled={busy}
+            aria-label="Create a new session"
+          >
+            <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">New session</span>
+            <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
+          </button>
+        </Tooltip>
       </div>
       <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
         <div class="new-session-accordion-inner">
@@ -547,10 +561,6 @@
             class={`sidebar-action-row new-session-child ${shortcutAction === "dumb" ? "shortcut-open" : ""}`.trim()}
             disabled={busy}
             tabindex={showNewSessionMenu ? 0 : -1}
-            onmouseenter={() => showShortcut("dumb")}
-            onmouseleave={() => hideShortcut("dumb")}
-            onfocus={() => showShortcut("dumb")}
-            onblur={() => hideShortcut("dumb")}
             onclick={() => {
               showNewSessionMenu = false;
               onCreateDumbSession();
@@ -558,7 +568,6 @@
           >
             <span class="sidebar-action-icon"><ZapIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">New dumb session</span>
-            <Kbd value={dumbSessionDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </div>
       </div>

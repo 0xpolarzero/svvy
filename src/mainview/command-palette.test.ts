@@ -212,6 +212,30 @@ describe("command palette shortcuts", () => {
       accelerator: "CommandOrControl+Shift+O",
       commandActionId: "workspace.openInNewTab",
     });
+    expect(getShortcutHotkey("session.new")).toBe("Mod+N");
+    expect(getShortcutReadable("session.new")).toBe("Cmd+N");
+    expect(getShortcut("session.new")).toMatchObject({
+      label: "New Session",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+      accelerator: "CommandOrControl+N",
+      commandActionId: "session.new",
+    });
+    expect(getShortcutHotkey("session.newPane")).toBe("Mod+Shift+N");
+    expect(getShortcutReadable("session.newPane")).toBe("Cmd+Shift+N");
+    expect(getShortcut("session.newPane")).toMatchObject({
+      label: "New Session in New Pane",
+      scope: "workspace-shell",
+      inputPolicy: "allow-while-typing",
+      accelerator: "CommandOrControl+Shift+N",
+    });
+    expect(getShortcut("session.dumb")).toMatchObject({
+      label: "New Dumb Session",
+      hotkey: "",
+      readableShortcut: "",
+      compactShortcut: "",
+      accelerator: null,
+    });
     expect(getShortcutHotkey("surface.logs.open")).toBe("Mod+Shift+1");
     expect(getShortcutReadable("surface.workflows.open")).toBe("Cmd+Shift+2");
     expect(getShortcut("surface.context.open")).toMatchObject({
@@ -227,6 +251,7 @@ describe("command palette shortcuts", () => {
     expect(shouldShortcutIgnoreInputs("workspace.newTab")).toBe(false);
     expect(shouldShortcutIgnoreInputs("workspace.openInNewTab")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.new")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("session.newPane")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.dumb")).toBe(false);
     expect(shouldShortcutIgnoreInputs("sidebar.toggle")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.logs.open")).toBe(false);
@@ -286,7 +311,7 @@ describe("command palette shortcuts", () => {
     ).toEqual(["Cmd+N", "Enter", "Cmd+Enter"]);
     expect(
       getCommandActionShortcutHints(actions.find((action) => action.id === "session.dumb")!),
-    ).toEqual(["Cmd+Shift+N", "Enter", "Cmd+Enter"]);
+    ).toEqual(["Enter", "Cmd+Enter"]);
     expect(
       getCommandActionShortcutHints(
         actions.find((action) => action.id === "session.open.session-1")!,
