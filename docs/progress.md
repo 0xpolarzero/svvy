@@ -222,17 +222,17 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 
 - [x] Define the stored shape for pi-backed agent profile settings used by orchestrator and handler surfaces. Commit(s): `8e19462`
 - [x] Keep agent profiles separate from requestable context packs so Project CI uses normal handler-thread execution plus `context: ["ci"]`. Commit(s): `2a5dbbe`
-- [x] Seed initial app-wide values for the default orchestrator profile and special profiles. Commit(s): `8e19462`
+- [x] Seed initial app-wide values for the default orchestrator profile, the `threadHandler` profile, and internal title-naming settings. Commit(s): `8e19462`, `354db28`
 - [x] Build a POC settings model for editing app-wide agent profile defaults. Commit(s): `8e19462`
 - [x] Persist app-wide agent profile settings. Commit(s): `8e19462`
 - [x] Build a POC New orchestrator creation flow with profile-backed orchestrator selection. Commit(s): `8e19462`
 - [x] Persist the orchestrator profile snapshot and prompt selection used by created sessions. Commit(s): `8e19462`
 - [x] Persist per-session orchestrator profile overrides. Commit(s): `8e19462`
 - [x] Persist per-thread overrides for handler-thread agent profile settings when a delegated thread needs a specific model or reasoning level. Commit(s): `8e19462`
-- [ ] Keep the Agents sidebar pane between Logs and Context, with orchestrator profiles plus the `threadHandler` special profile owned there instead of in General settings.
-- [ ] Drive the New orchestrator picker order, profile-specific command palette actions, and surface profile badges from Agents-pane orchestrator profile order.
-- [ ] Keep the default orchestrator profile locked, first, non-draggable, non-deletable, and editable for settings.
-- [ ] Keep the `threadHandler` special profile available for delegated handler-thread surfaces.
+- [x] Keep the Agents sidebar pane between Logs and Context, with orchestrator profiles plus the `threadHandler` special profile owned there instead of in General settings. Commit(s): `2b97c46648`, `b714aa26f9`
+- [x] Drive the New orchestrator picker order, profile-specific command palette actions, and surface profile badges from Agents-pane orchestrator profile order. Commit(s): `2b97c46648`, `031510ba2b`
+- [x] Keep the default orchestrator profile locked, first, non-draggable, non-deletable, and editable for settings. Commit(s): `2b97c46648`, `b714aa26f9`
+- [x] Keep the `threadHandler` special profile available for delegated handler-thread surfaces. Commit(s): `2b97c46648`, `b714aa26f9`
 - [x] Show the current focused-surface agent profile summary in pane chrome. Commit(s): `8e19462`
 - [ ] Use TanStack Form for complex agent profile, provider key, web-provider, and app-preference settings forms, including direct-save semantics, validation, dirty state, reset/cancel, pending submit state, async save errors, and pi-normalized provider/model/reasoning constraints.
 - [ ] Define future workflow-agent and extension-provided profile surfaces without coupling shipped product workflow runtime to repo-root `workflows/`.
@@ -241,14 +241,14 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 ## 12. Session Titles
 
 - [x] Define the stored title states for top-level sessions and handler threads. Commit(s): `b510857`, `fe53a3b`
-- [x] Add `namer` as a pi-backed special agent profile for one-shot top-level session naming rather than as a Smithers workflow agent. Commit(s): `354db28`
-- [x] Seed the internal title namer settings to `openai-codex`/`gpt-5.4-mini` with low reasoning effort and treat its settings prompt as the only naming instruction, without exposing titleNamer as a special profile while only the thread handler is currently special. Commit(s): `354db28`
+- [x] Add internal pi-backed title-naming settings for one-shot top-level session naming rather than a Smithers workflow agent. Commit(s): `354db28`
+- [x] Seed the internal title-naming settings to `openai-codex`/`gpt-5.4-mini` with low reasoning effort and treat its settings prompt as the only naming instruction, without exposing title naming as a special profile. Commit(s): `354db28`
 - [x] Build a POC event-driven title-generation flow that starts a durable one-shot naming job concurrently with the first real top-level user turn without waiting for the orchestrator response. Commit(s): `354db28`
 - [x] Use the first live composer draft or first submitted user message as the provisional visible session title until the namer-generated title lands. Commit(s): `5378dcb`
 - [x] Persist generated top-level session titles, title-generation lifecycle state, and the first-turn trigger so app restart cannot duplicate or lose title generation. Commit(s): `354db28`
 - [x] Block manual session rename while a title-generation job is pending or running, then release the lock after success, failure, or cancellation. Commit(s): `354db28`
 - [x] Freeze auto-titling after manual rename or after the first successful generated title. Commit(s): `354db28`
-- [x] Generate handler-thread titles with the same `namer` special profile used for top-level sessions, using the orchestrator-supplied `thread_start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
+- [x] Generate handler-thread titles with the same internal title-naming settings used for top-level sessions, using the orchestrator-supplied `thread_start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
 
 ## 13. Composer Mention Links
 
@@ -357,7 +357,7 @@ This UI should land first as a read-only workflow-library browser with an extern
 - [x] Show saved asset title, summary, kind, path, source preview, validation status, and diagnostics in the Workflows library surface. Commit(s): `ab00e2c`
 - [x] Add open-in-editor actions for saved workflow source files and artifact workflow source files. Commit(s): `ab00e2c`
 - [x] Allow deleting a saved workflow definition, prompt, component, or entry from the library without deleting historical artifact workflows that previously used it. Commit(s): `ab00e2c`
-- [x] Rename the sidebar label from `Saved Workflows` to `Workflows` while preserving the existing saved workflow and artifact workflow library behavior. Commit(s): pending
+- [x] Keep the sidebar Workflows entry pointed at the Workflows library surface for saved workflow assets and artifact workflow groups. Commit(s): `118fd39c9f`
 
 ## 19. App Logs Surface
 
