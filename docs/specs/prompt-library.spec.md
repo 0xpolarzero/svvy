@@ -14,7 +14,7 @@
   - define app-global and workspace-scoped prompt blocks
   - define internal prompt revision binding and user-named snapshots
   - define stale-prompt warnings, diffs, and update behavior
-  - define the sidebar rename from `Saved Workflows` to `Workflows`
+  - define the sidebar reference-pane order
 
 ## Purpose
 
@@ -156,9 +156,7 @@ Workflows
 
 `Agents` opens the app-wide agent profile pane. It sits between Logs and Context so model/profile selection is adjacent to prompt composition without owning reusable prompt text.
 
-`Saved Workflows` is renamed to `Workflows`.
-
-The renamed `Workflows` entry still opens the Workflows library surface. The label change reflects that the surface presents saved workflow assets plus artifact workflow groups and should not overstate that the only useful concept is "saved".
+`Workflows` opens the Workflows library surface. The label reflects that the surface presents saved workflow assets plus artifact workflow groups.
 
 The `Context` entry opens the Context pane.
 
@@ -260,8 +258,8 @@ Every instruction block supports:
 - set scope below actor inclusion through an App global checkbox and disabled-when-global workspace multi-select combobox, with a caption that says either every workspace applies or `Applies in n workspaces`
 - debounced text autosave with visible dirty, saving, saved-at, and failed-save states
 - immediate persistence for enabled, scope, and actor inclusion controls
-- delete when the block is custom
-- reset this block to its shipped default when the block has a default snapshot
+- delete when the block is custom, with inline confirmation
+- reset this block to its shipped default when the block has a default snapshot, with inline confirmation
 - compare with default when the block has a default snapshot and differs from it
 
 Delete is available only for custom instruction blocks.
@@ -274,7 +272,7 @@ When disabling a shipped block, or removing an actor from one, the UI shows inli
 This changes shipped prompt guidance. Reset this block to restore it.
 ```
 
-Resetting a block requires a confirmation dialog because it discards the current prompt text and state for that block.
+Resetting a block requires inline confirmation because it discards the current prompt text and state for that block.
 
 ### Instruction Block Reset
 
@@ -288,7 +286,7 @@ It must:
 - restore the shipped actor selections
 - restore the shipped scope
 
-The confirmation dialog copy should be explicit:
+The inline confirmation copy should be explicit:
 
 ```text
 This restores this instruction to its shipped prompt text, enabled state, scope, and actor settings.
@@ -877,10 +875,9 @@ The Context pane should use inline warnings for actions that affect shipped defa
 - deleting a custom instruction or context pack
 - removing an actor from a shipped instruction
 - turning off default loading for a shipped context pack
-- resetting all instructions
-- resetting all context packs
+- resetting a shipped instruction or context pack
 
-Only broad reset actions need a confirmation step.
+Reset and custom-delete actions use inline confirmation on the row. The Context pane does not expose broad reset-all actions.
 
 ## Storage Ownership
 
@@ -949,7 +946,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - The user can add, edit, delete, disable, scope, and reset custom instruction blocks.
 - The user can add, edit, delete, disable, scope, and reset custom context packs.
 - Builtin blocks are editable, disableable, scopeable, and resettable, but not deletable.
-- Reset is scoped to one selected block and requires confirmation.
+- Reset is scoped to one selected block and requires inline confirmation.
 - Edited shipped blocks are marked `Edited`, not `Builtin`.
 - Builtin and edited badges are compact, muted metadata.
 - Blocks are app-global by default.
@@ -966,8 +963,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 
 ### Phase 1: Read Model And Navigation
 
-- Rename `Saved Workflows` to `Workflows`.
-- Add the `Context` sidebar entry.
+- Keep the sidebar reference-pane order as Logs, Agents, Context, and Workflows.
 - Add the Context pane with `Instructions`, `Context Packs`, and `Actors`.
 - Project current hardcoded instruction and context material as structured builtin blocks.
 - Show generated prompt parts and pi-discovered runtime standards sources inside actor recipes.
