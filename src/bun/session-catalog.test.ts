@@ -22,6 +22,7 @@ import {
   DEFAULT_ORCHESTRATOR_PROFILE_ID,
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
   DEFAULT_THREAD_HANDLER_PROMPT,
+  type AgentProfileSettings,
 } from "../shared/agent-settings";
 import { buildSystemPrompt } from "./default-system-prompt";
 import {
@@ -429,6 +430,29 @@ async function setSurfaceThoughtLevel(
     return;
   }
   await setSurfaceThoughtLevelFn.call(catalog, target, level);
+}
+
+function getCatalogAgentProfiles(catalog: WorkspaceSessionCatalog): AgentProfileSettings[] {
+  return (
+    catalog as unknown as {
+      agentSettingsStore: {
+        getState: () => { agents: { orchestrators: AgentProfileSettings[] } };
+      };
+    }
+  ).agentSettingsStore.getState().agents.orchestrators;
+}
+
+function setCatalogAgentProfile(
+  catalog: WorkspaceSessionCatalog,
+  profile: AgentProfileSettings,
+): void {
+  (
+    catalog as unknown as {
+      agentSettingsStore: {
+        setAgentProfile: (profile: AgentProfileSettings) => unknown;
+      };
+    }
+  ).agentSettingsStore.setAgentProfile(profile);
 }
 
 async function createHandlerThreadHarness(
@@ -2983,6 +3007,81 @@ describe("WorkspaceSessionCatalog", () => {
       ).toBe(false);
     } finally {
       catalog.setSurfaceSyncListener(null);
+      await catalog.dispose();
+    }
+  });
+
+  it("updates orchestrator profile defaults from composer changes only when enabled", async () => {
+    const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
+    const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
+    const syncedProfile: AgentProfileSettings = {
+      id: "composer-synced",
+      kind: "orchestrator",
+      name: "Composer synced",
+      provider: "openai",
+      model: "gpt-4o",
+      reasoningEffort: "medium",
+      systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+      extensions: [],
+      updateFromComposer: true,
+      builtin: false,
+      locked: false,
+    };
+    const fixedProfile: AgentProfileSettings = {
+      ...syncedProfile,
+      id: "fixed-profile",
+      name: "Fixed profile",
+      updateFromComposer: false,
+    };
+
+    try {
+      setCatalogAgentProfile(catalog, syncedProfile);
+      setCatalogAgentProfile(catalog, fixedProfile);
+
+      const synced = await catalog.createSession(
+        { title: "Synced profile", agentProfileId: syncedProfile.id },
+        {
+          provider: syncedProfile.provider,
+          model: syncedProfile.model,
+          thinkingLevel: syncedProfile.reasoningEffort,
+          agentProfileId: syncedProfile.id,
+          agentProfileSettings: syncedProfile,
+        },
+      );
+      await setSurfaceModel(catalog, synced.target, "gpt-4.1-mini");
+      await setSurfaceThoughtLevel(catalog, synced.target, "high");
+
+      const syncedAfter = getCatalogAgentProfiles(catalog).find(
+        (profile) => profile.id === syncedProfile.id,
+      );
+      expect(syncedAfter).toMatchObject({
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        reasoningEffort: "high",
+      });
+
+      const fixed = await catalog.createSession(
+        { title: "Fixed profile", agentProfileId: fixedProfile.id },
+        {
+          provider: fixedProfile.provider,
+          model: fixedProfile.model,
+          thinkingLevel: fixedProfile.reasoningEffort,
+          agentProfileId: fixedProfile.id,
+          agentProfileSettings: fixedProfile,
+        },
+      );
+      await setSurfaceModel(catalog, fixed.target, "gpt-4.1-mini");
+      await setSurfaceThoughtLevel(catalog, fixed.target, "high");
+
+      const fixedAfter = getCatalogAgentProfiles(catalog).find(
+        (profile) => profile.id === fixedProfile.id,
+      );
+      expect(fixedAfter).toMatchObject({
+        provider: "openai",
+        model: "gpt-4o",
+        reasoningEffort: "medium",
+      });
+    } finally {
       await catalog.dispose();
     }
   });

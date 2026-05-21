@@ -1474,8 +1474,15 @@ export class WorkspaceSessionCatalog {
     session.provider = provider;
     session.model = model;
     session.recreateOnNextPrompt = true;
+    const profileChanged = this.updateOrchestratorProfileFromComposer(target, session, {
+      provider,
+      model,
+    });
 
     if (session.activePrompt) {
+      if (profileChanged) {
+        await this.emitWorkspaceSync("workspace.updated");
+      }
       return { ok: true, target: structuredClone(target) };
     }
 
@@ -1513,9 +1520,15 @@ export class WorkspaceSessionCatalog {
     }
 
     session.thinkingLevel = level;
+    const profileChanged = this.updateOrchestratorProfileFromComposer(target, session, {
+      reasoningEffort: level,
+    });
 
     if (session.activePrompt) {
       session.recreateOnNextPrompt = true;
+      if (profileChanged) {
+        await this.emitWorkspaceSync("workspace.updated");
+      }
       return { ok: true, target: structuredClone(target) };
     }
 
@@ -1531,6 +1544,32 @@ export class WorkspaceSessionCatalog {
     });
     await this.emitWorkspaceSync("workspace.updated");
     return { ok: true, target: structuredClone(target) };
+  }
+
+  private updateOrchestratorProfileFromComposer(
+    target: PromptTarget,
+    session: ManagedSession,
+    updates: Partial<Pick<AgentProfileSettings, "provider" | "model" | "reasoningEffort">>,
+  ): boolean {
+    if (target.surface !== "orchestrator") {
+      return false;
+    }
+    const profile = this.agentSettingsStore
+      .getState()
+      .agents.orchestrators.find((agent) => agent.id === session.agentProfileId);
+    if (!profile?.updateFromComposer) {
+      return false;
+    }
+    const nextProfile = { ...profile, ...updates };
+    if (
+      nextProfile.provider === profile.provider &&
+      nextProfile.model === profile.model &&
+      nextProfile.reasoningEffort === profile.reasoningEffort
+    ) {
+      return false;
+    }
+    this.agentSettingsStore.setAgentProfile(nextProfile);
+    return true;
   }
 
   private async ensureManagedSurfaceForPrompt(

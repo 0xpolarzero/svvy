@@ -577,12 +577,10 @@
         />
       </div>
       <Tooltip
-        label="Composer inheritance"
+        label=""
         details={[
-          {
-            label:
-              "When enabled, new orchestrators created from this profile use the latest model and reasoning picked directly in the composer.",
-          },
+          { label: "Enabled: sessions using this profile save composer model/reasoning changes back to the profile." },
+          { label: "Disabled: composer changes stay in the current session; new sessions use the profile settings." },
         ]}
       >
         <label class="composer-sync-field">
