@@ -7,10 +7,11 @@
   import SettingsIcon from "@lucide/svelte/icons/settings";
   import LogsIcon from "@lucide/svelte/icons/logs";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
+  import BotIcon from "@lucide/svelte/icons/bot";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
-  import ZapIcon from "@lucide/svelte/icons/zap";
   import type { ContextBudget } from "../shared/context-budget";
+  import type { AgentProfileSettings } from "../shared/agent-settings";
   import { getShortcutCompact, getShortcutReadable } from "../shared/shortcut-registry";
   import type {
     AppLogSummary,
@@ -52,11 +53,11 @@
     paneLocationsBySessionId?: Record<string, SidebarPaneLocation[]>;
     paneLocationsByThreadId?: Record<string, SidebarPaneLocation[]>;
     paneLocationsByWorkflowRunId?: Record<string, SidebarPaneLocation[]>;
+    orchestratorProfiles?: AgentProfileSettings[];
     appLogSummary?: AppLogSummary | null;
     busy?: boolean;
     errorMessage?: string;
-    onCreateSession: (event?: MouseEvent) => void;
-    onCreateDumbSession: () => void;
+    onCreateSession: (event?: MouseEvent, agentProfileId?: string) => void;
     onOpenSession: (sessionId: string, event: MouseEvent) => void;
     onOpenHandlerThread?: (sessionId: string, thread: WorkspaceSidebarHandlerThreadRow) => void;
     onOpenWorkflowRun?: (sessionId: string, workflow: WorkspaceSidebarWorkflowRow) => void;
@@ -76,6 +77,7 @@
     onOpenSearch?: () => void;
     onOpenCommandPalette?: () => void;
     onOpenWorkflowLibrary?: () => void;
+    onOpenAgents?: () => void;
     onOpenPromptLibrary?: () => void;
     onOpenAppLogs?: () => void;
     onOpenSettings?: () => void;
@@ -93,11 +95,11 @@
     paneLocationsBySessionId = {},
     paneLocationsByThreadId = {},
     paneLocationsByWorkflowRunId = {},
+    orchestratorProfiles = [],
     appLogSummary = null,
     busy = false,
     errorMessage,
     onCreateSession,
-    onCreateDumbSession,
     onOpenSession,
     onOpenHandlerThread,
     onOpenWorkflowRun,
@@ -114,6 +116,7 @@
     onOpenSearch,
     onOpenCommandPalette,
     onOpenWorkflowLibrary,
+    onOpenAgents,
     onOpenPromptLibrary,
     onOpenAppLogs,
     onOpenSettings,
@@ -167,6 +170,7 @@
   const commandPaletteDisplayShortcut = getShortcutCompact("commandPalette.open");
   const appLogsDisplayShortcut = getShortcutCompact("surface.logs.open");
   const workflowsDisplayShortcut = getShortcutCompact("surface.workflows.open");
+  const agentsDisplayShortcut = getShortcutCompact("surface.agents.open");
   const contextDisplayShortcut = getShortcutCompact("surface.context.open");
 
   $effect(() => {
@@ -529,11 +533,11 @@
           delayMs={2000}
           details={[
             {
-              label: "New session in focused pane",
+              label: "New orchestrator in focused pane",
               hints: [{ icon: "mouse-left" }, { shortcut: newSessionReadableShortcut }],
             },
             {
-              label: "New session in new pane",
+              label: "New orchestrator in new pane",
               hints: [
                 { shortcut: "⌘", icon: "mouse-left" },
                 { shortcut: newSessionInNewPaneReadableShortcut },
@@ -553,29 +557,45 @@
               onCreateSession(event);
             }}
             disabled={busy}
-            aria-label="Create a new session"
+            aria-label="Create a new orchestrator"
           >
             <span class="sidebar-action-icon"><PlusIcon aria-hidden="true" size={15} strokeWidth={1.9} /></span>
-            <span class="sidebar-action-label">New session</span>
+            <span class="new-orchestrator-main-copy">
+              <span class="sidebar-action-label">New orchestrator</span>
+              {#if orchestratorProfiles[0]}
+                <span class="new-orchestrator-default">
+                  <span>{orchestratorProfiles[0].model}</span>
+                  <span>{orchestratorProfiles[0].reasoningEffort}</span>
+                </span>
+              {/if}
+            </span>
             <Kbd value={newSessionDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </Tooltip>
       </div>
       <div class="new-session-accordion" aria-hidden={!showNewSessionMenu}>
         <div class="new-session-accordion-inner">
-          <button
-            type="button"
-            class={`sidebar-action-row new-session-child ${shortcutAction === "dumb" ? "shortcut-open" : ""}`.trim()}
-            disabled={busy}
-            tabindex={showNewSessionMenu ? 0 : -1}
-            onclick={() => {
-              showNewSessionMenu = false;
-              onCreateDumbSession();
-            }}
-          >
-            <span class="sidebar-action-icon"><ZapIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
-            <span class="sidebar-action-label">New dumb session</span>
-          </button>
+          {#each orchestratorProfiles.slice(1) as profile (profile.id)}
+            <button
+              type="button"
+              class="sidebar-action-row new-session-child profile-picker-row"
+              disabled={busy}
+              tabindex={showNewSessionMenu ? 0 : -1}
+              onclick={(event) => {
+                showNewSessionMenu = false;
+                onCreateSession(event, profile.id);
+              }}
+            >
+              <span class="sidebar-action-icon"><BotIcon aria-hidden="true" size={14} strokeWidth={1.9} /></span>
+              <span class="profile-picker-content">
+                <span class="sidebar-action-label">{profile.name}</span>
+                <span class="profile-picker-badges">
+                  <span>{profile.model}</span>
+                  <span>{profile.reasoningEffort}</span>
+                </span>
+              </span>
+            </button>
+          {/each}
         </div>
       </div>
     </div>
@@ -745,7 +765,7 @@
     />
   {/if}
 
-  {#if onOpenWorkflowLibrary || onOpenPromptLibrary || onOpenAppLogs}
+  {#if onOpenWorkflowLibrary || onOpenAgents || onOpenPromptLibrary || onOpenAppLogs}
     <div class="sidebar-lower-nav">
       {#if onOpenAppLogs}
         <Tooltip label={appLogUnreadTitle} side="right" block>
@@ -772,21 +792,21 @@
           </button>
         </Tooltip>
       {/if}
-      {#if onOpenWorkflowLibrary}
-        <Tooltip label="Open workflow assets" side="right" block>
+      {#if onOpenAgents}
+        <Tooltip label="Open agent profiles" side="right" block>
           <button
-            class={`sidebar-action-row reference-nav-row ${shortcutAction === "workflows" ? "shortcut-open" : ""}`.trim()}
+            class={`sidebar-action-row reference-nav-row ${shortcutAction === "agents" ? "shortcut-open" : ""}`.trim()}
             type="button"
-            aria-label="Open workflows"
-            onmouseenter={() => showShortcut("workflows")}
-            onmouseleave={() => hideShortcut("workflows")}
-            onfocus={() => showShortcut("workflows")}
-            onblur={() => hideShortcut("workflows")}
-            onclick={onOpenWorkflowLibrary}
+            aria-label="Open agent profiles"
+            onmouseenter={() => showShortcut("agents")}
+            onmouseleave={() => hideShortcut("agents")}
+            onfocus={() => showShortcut("agents")}
+            onblur={() => hideShortcut("agents")}
+            onclick={onOpenAgents}
           >
-            <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
-            <span class="sidebar-action-label">Workflows</span>
-            <Kbd value={workflowsDisplayShortcut} class="sidebar-action-shortcut" />
+            <span class="sidebar-action-icon"><BotIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">Agents</span>
+            <Kbd value={agentsDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </Tooltip>
       {/if}
@@ -805,6 +825,24 @@
             <span class="sidebar-action-icon"><FileTextIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
             <span class="sidebar-action-label">Context</span>
             <Kbd value={contextDisplayShortcut} class="sidebar-action-shortcut" />
+          </button>
+        </Tooltip>
+      {/if}
+      {#if onOpenWorkflowLibrary}
+        <Tooltip label="Open workflow assets" side="right" block>
+          <button
+            class={`sidebar-action-row reference-nav-row ${shortcutAction === "workflows" ? "shortcut-open" : ""}`.trim()}
+            type="button"
+            aria-label="Open workflows"
+            onmouseenter={() => showShortcut("workflows")}
+            onmouseleave={() => hideShortcut("workflows")}
+            onfocus={() => showShortcut("workflows")}
+            onblur={() => hideShortcut("workflows")}
+            onclick={onOpenWorkflowLibrary}
+          >
+            <span class="sidebar-action-icon"><WorkflowIcon size={15} aria-hidden="true" strokeWidth={1.9} /></span>
+            <span class="sidebar-action-label">Workflows</span>
+            <Kbd value={workflowsDisplayShortcut} class="sidebar-action-shortcut" />
           </button>
         </Tooltip>
       {/if}
@@ -1003,6 +1041,11 @@
     padding: 0;
   }
 
+  .new-session-menu-shell.menu-open .new-session-row,
+  .new-session-row:focus-within {
+    padding-bottom: 1.28rem;
+  }
+
   .sidebar-action-main {
     grid-column: 1 / -1;
     display: grid;
@@ -1019,6 +1062,64 @@
     font: inherit;
     text-align: left;
     cursor: pointer;
+  }
+
+  .sidebar-action-main:hover,
+  .sidebar-action-main:focus-visible,
+  .sidebar-action-main:focus-within,
+  .new-session-menu-shell.menu-open .sidebar-action-main {
+    min-height: var(--sidebar-row-height);
+  }
+
+  .new-orchestrator-main-copy {
+    display: grid;
+    min-width: 0;
+    position: relative;
+  }
+
+  .new-orchestrator-default {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.28rem;
+    min-width: 0;
+    max-height: 0;
+    overflow: hidden;
+    position: absolute;
+    top: calc(100% + 0.13rem);
+    left: 0;
+    width: max-content;
+    max-width: calc(100vw - 3rem);
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    line-height: 1.25;
+    opacity: 0;
+    transform: translateY(-0.08rem);
+    transition:
+      max-height 150ms cubic-bezier(0.19, 1, 0.22, 1),
+      opacity 120ms cubic-bezier(0.19, 1, 0.22, 1),
+      transform 150ms cubic-bezier(0.19, 1, 0.22, 1);
+  }
+
+  .sidebar-action-main:hover .new-orchestrator-default,
+  .sidebar-action-main:focus-visible .new-orchestrator-default,
+  .sidebar-action-main:focus-within .new-orchestrator-default,
+  .new-session-menu-shell.menu-open .new-orchestrator-default {
+    max-height: 1.05rem;
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .new-orchestrator-default span {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 0.04rem 0.24rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
+    border-radius: var(--ui-radius-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sidebar-action-main:focus-visible {
@@ -1061,6 +1162,40 @@
 
   .new-session-child .sidebar-action-icon {
     color: var(--ui-text-tertiary);
+  }
+
+  .profile-picker-row {
+    grid-template-columns: 1.1rem minmax(0, 1fr);
+    align-items: start;
+    padding-block: 0.34rem;
+  }
+
+  .profile-picker-content {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+  }
+
+  .profile-picker-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.16rem;
+    min-width: 0;
+  }
+
+  .profile-picker-badges span {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 0.04rem 0.24rem;
+    border: 1px solid color-mix(in oklab, var(--ui-border-soft) 70%, transparent);
+    border-radius: var(--ui-radius-sm);
+    color: var(--ui-text-tertiary);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sidebar-sections {

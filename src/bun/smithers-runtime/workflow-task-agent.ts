@@ -29,7 +29,7 @@ import type { StructuredSessionStateStore } from "../structured-session-state";
 import { createSvvyDirectTools } from "../svvy-direct-tools";
 import { createListToolsTool } from "../list-tools-tool";
 import { createWebProvider } from "../web-runtime/provider-registry";
-import { createSessionAgentSettingsStore } from "../session-agent-settings";
+import { createAgentSettingsStore } from "../agent-settings-store";
 import { buildSystemPrompt, WORKFLOW_TASK_SYSTEM_PROMPT } from "../default-system-prompt";
 import { createWorkflowLibrary } from "./workflow-library";
 import {
@@ -108,7 +108,7 @@ export function createWorkflowTaskAgent(options: WorkflowTaskAgentOptions): Agen
       const config = options.config ?? createDefaultWorkflowTaskAgentConfig();
       const webProvider = createWebProvider(
         {
-          provider: createSessionAgentSettingsStore({
+          provider: createAgentSettingsStore({
             cwd: options.workspaceRoot,
             agentDir: options.agentDir,
           }).getState().appPreferences.webProvider,

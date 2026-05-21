@@ -55,8 +55,13 @@ import type {
   UpdatePromptLibraryRequest,
 } from "../shared/prompt-library";
 import { createChatStorage, type ChatStorage } from "./chat-storage";
-import { DEFAULT_AGENT_SETTINGS, type ReasoningEffort } from "../shared/agent-settings";
-import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
+import {
+  DEFAULT_AGENT_SETTINGS,
+  type AgentSettingsState,
+  type ReasoningEffort,
+  type AgentProfileSettings,
+  type AgentProfileId,
+} from "../shared/agent-settings";
 import type { AppMenuAction } from "../shared/shortcut-registry";
 import {
   addDockviewPanel,
@@ -178,8 +183,7 @@ export interface ChatSurfaceController {
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
   externalContextSources: PromptLibraryExternalSource[];
-  sessionMode: SessionMode;
-  sessionAgentKey: SessionAgentKey;
+  agentProfileId: AgentProfileId;
   promptStatus: PromptStatus;
   activeTurnId: string | null;
   activeTurnStartedAt: string | null;
@@ -240,7 +244,9 @@ export interface ChatRuntimeRpcClient {
     renamePromptLibrarySnapshot: typeof rpc.request.renamePromptLibrarySnapshot;
     restorePromptLibrarySnapshot: typeof rpc.request.restorePromptLibrarySnapshot;
     getPromptLibraryExternalSources: typeof rpc.request.getPromptLibraryExternalSources;
-    updateSessionAgentDefault: typeof rpc.request.updateSessionAgentDefault;
+    updateAgentProfile: typeof rpc.request.updateAgentProfile;
+    deleteAgentProfile: typeof rpc.request.deleteAgentProfile;
+    reorderOrchestratorAgents: typeof rpc.request.reorderOrchestratorAgents;
     updateWorkflowAgent: typeof rpc.request.updateWorkflowAgent;
     updateAppPreferences: typeof rpc.request.updateAppPreferences;
     ensureWorkflowAgentsComponent: typeof rpc.request.ensureWorkflowAgentsComponent;
@@ -279,7 +285,6 @@ export interface ChatRuntimeRpcClient {
     openSurface: typeof rpc.request.openSurface;
     closeSurface: typeof rpc.request.closeSurface;
     renameSession: typeof rpc.request.renameSession;
-    setSessionMode: typeof rpc.request.setSessionMode;
     forkSession: typeof rpc.request.forkSession;
     deleteSession: typeof rpc.request.deleteSession;
     pinSession: typeof rpc.request.pinSession;
@@ -413,7 +418,6 @@ export interface ChatRuntime {
   ) => Promise<void>;
   closePaneSurface: (panelId: string) => Promise<void>;
   renameSession: (sessionId: string, title: string) => Promise<void>;
-  setSessionMode: (panelId: string, mode: SessionMode) => Promise<void>;
   forkSession: (
     sessionId: string,
     title?: string,
@@ -457,6 +461,10 @@ export interface ChatRuntime {
     Record<PromptLibraryActor, PromptLibraryGeneratedEntry[]>
   >;
   getPromptLibraryExternalSources: () => Promise<PromptLibraryExternalSource[]>;
+  getAgentSettings: () => Promise<AgentSettingsState>;
+  updateAgentProfile: (profile: AgentProfileSettings) => Promise<AgentSettingsState>;
+  deleteAgentProfile: (id: AgentProfileId) => Promise<AgentSettingsState>;
+  reorderOrchestratorAgents: (ids: AgentProfileId[]) => Promise<AgentSettingsState>;
   updatePromptLibrary: (request: UpdatePromptLibraryRequest) => Promise<PromptLibraryState>;
   resetPromptLibrary: () => Promise<PromptLibraryState>;
   listPromptLibrarySnapshots: () => Promise<PromptLibrarySnapshotSummary[]>;
@@ -530,6 +538,7 @@ function isRestorableStaticTarget(
   return (
     (options.allowOpenWorkspace && target.surface === "open-workspace") ||
     target.surface === "app-logs" ||
+    target.surface === "agents" ||
     target.surface === "prompt-library" ||
     target.surface === "saved-workflow-library"
   );
@@ -704,8 +713,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
   resolvedSystemPrompt: string;
   promptBinding?: ConversationSurfaceSnapshot["promptBinding"];
   externalContextSources: PromptLibraryExternalSource[];
-  sessionMode: SessionMode;
-  sessionAgentKey: SessionAgentKey;
+  agentProfileId: AgentProfileId;
   promptStatus: PromptStatus;
   activeTurnId: string | null;
   activeTurnStartedAt: string | null;
@@ -733,8 +741,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.resolvedSystemPrompt = snapshot.resolvedSystemPrompt;
     this.promptBinding = snapshot.promptBinding;
     this.externalContextSources = structuredClone(snapshot.externalContextSources ?? []);
-    this.sessionMode = snapshot.sessionMode;
-    this.sessionAgentKey = snapshot.sessionAgentKey;
+    this.agentProfileId = snapshot.agentProfileId;
     this.promptStatus = snapshot.promptStatus;
     this.activeTurnId = snapshot.activeTurnId;
     this.activeTurnStartedAt = snapshot.activeTurnStartedAt;
@@ -826,8 +833,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
     this.resolvedSystemPrompt = snapshotForAgent.resolvedSystemPrompt;
     this.promptBinding = snapshotForAgent.promptBinding;
     this.externalContextSources = structuredClone(snapshotForAgent.externalContextSources ?? []);
-    this.sessionMode = snapshotForAgent.sessionMode;
-    this.sessionAgentKey = snapshotForAgent.sessionAgentKey;
+    this.agentProfileId = snapshotForAgent.agentProfileId;
     this.promptStatus = snapshotForAgent.promptStatus;
     this.activeTurnId = snapshotForAgent.activeTurnId;
     this.activeTurnStartedAt = snapshotForAgent.activeTurnStartedAt;
@@ -1229,8 +1235,7 @@ class SurfaceControllerImpl implements ChatSurfaceControllerInternal {
       reasoningEffort:
         (this.agent.state.thinkingLevel as ReasoningEffort | undefined) ??
         DEFAULT_AGENT_SETTINGS.reasoningEffort,
-      sessionMode: this.sessionMode,
-      sessionAgentKey: this.sessionAgentKey,
+      agentProfileId: this.agentProfileId,
       systemPrompt: this.agent.state.systemPrompt,
       resolvedSystemPrompt: this.resolvedSystemPrompt,
       externalContextSources: structuredClone(this.externalContextSources),
@@ -2320,6 +2325,7 @@ export async function createChatRuntime(
         target.surface === "artifact" ||
         target.surface === "project-ci-check" ||
         target.surface === "saved-workflow-library" ||
+        target.surface === "agents" ||
         target.surface === "prompt-library" ||
         target.surface === "app-logs" ||
         target.surface === "open-workspace"
@@ -2383,18 +2389,6 @@ export async function createChatRuntime(
     },
     renameSession: async (sessionId, title) => {
       await rpcClient.request.renameSession(scoped({ sessionId, title }));
-      await refreshSessions();
-    },
-    setSessionMode: async (panelId, mode) => {
-      const target = paneLayout.panels.find((pane) => pane.panelId === panelId)?.binding ?? null;
-      if (!isPromptTarget(target) || target.surface !== "orchestrator") {
-        return;
-      }
-      const response = await rpcClient.request.setSessionMode(scoped({ target, mode }));
-      if (!response.ok || !response.snapshot) {
-        throw new Error(response.error ?? "Session mode update failed.");
-      }
-      await bindPaneToSnapshot(panelId, response.snapshot);
       await refreshSessions();
     },
     forkSession: async (sessionId, title, openTarget, forkOptions) => {
@@ -2555,6 +2549,11 @@ export async function createChatRuntime(
       );
       return result.opened;
     },
+    getAgentSettings: () => rpcClient.request.getAgentSettings(scoped()),
+    updateAgentProfile: (profile) => rpcClient.request.updateAgentProfile(scoped({ profile })),
+    deleteAgentProfile: (id) => rpcClient.request.deleteAgentProfile(scoped({ id })),
+    reorderOrchestratorAgents: (ids) =>
+      rpcClient.request.reorderOrchestratorAgents(scoped({ ids })),
     getPromptLibrary: () => rpcClient.request.getPromptLibrary(scoped()),
     getPromptLibraryDefaults: () => rpcClient.request.getPromptLibraryDefaults(scoped()),
     getPromptLibraryGeneratedEntries: () =>

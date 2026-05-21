@@ -2,14 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   DEFAULT_AGENT_SETTINGS_STATE,
+  DEFAULT_ORCHESTRATOR_PROFILE_ID,
   type AgentSettingsState,
+  type AgentProfileId,
+  type AgentProfileSettings,
   type AppAppearance,
   type AppPreferences,
   type PreferredExternalEditor,
   type WebProviderId,
-  type SessionAgentDefaults,
-  type SessionAgentKey,
-  type SessionAgentSettings,
+  type AgentPromptSettings,
   type WorkflowAgentKey,
   type WorkflowAgentSettings,
   type WorkflowAgentToolName,
@@ -19,19 +20,21 @@ import {
   type WorkflowTaskAgentConfig,
 } from "./smithers-runtime/workflow-authoring-contract";
 
-export type SessionAgentSettingsStore = {
+export type AgentSettingsStore = {
   getState(): AgentSettingsState;
-  setSessionAgentDefault(key: SessionAgentKey, settings: SessionAgentSettings): AgentSettingsState;
+  setAgentProfile(profile: AgentProfileSettings): AgentSettingsState;
+  deleteAgentProfile(id: AgentProfileId): AgentSettingsState;
+  reorderOrchestratorProfiles(ids: AgentProfileId[]): AgentSettingsState;
   setWorkflowAgent(key: WorkflowAgentKey, settings: WorkflowAgentSettings): AgentSettingsState;
   setAppPreferences(preferences: AppPreferences): AgentSettingsState;
   ensureWorkflowAgentsComponent(): string;
 };
 
-export function createSessionAgentSettingsStore(input: {
+export function createAgentSettingsStore(input: {
   cwd: string;
   agentDir: string;
-}): SessionAgentSettingsStore {
-  const settingsPath = join(input.agentDir, "session-agent-settings.json");
+}): AgentSettingsStore {
+  const settingsPath = join(input.agentDir, "agent-settings.json");
   const workflowAgentsPath = join(input.cwd, ".svvy", "workflows", "components", "agents.ts");
 
   const readState = (): AgentSettingsState => {
@@ -56,9 +59,78 @@ export function createSessionAgentSettingsStore(input: {
 
   return {
     getState: readState,
-    setSessionAgentDefault: (key, settings) => {
+    setAgentProfile: (profile) => {
       const state = readState();
-      state.sessionAgents[key] = normalizeSessionAgentSettings(settings);
+      const normalizedProfile = normalizeAgentProfile(profile);
+      const existingOrchestratorIndex = state.agents.orchestrators.findIndex(
+        (agent) => agent.id === normalizedProfile.id,
+      );
+      const orchestrators =
+        normalizedProfile.kind === "orchestrator"
+          ? existingOrchestratorIndex >= 0
+            ? state.agents.orchestrators.map((agent, index) =>
+                index === existingOrchestratorIndex
+                  ? normalizeAgentProfile({
+                      ...normalizedProfile,
+                      builtin: agent.builtin,
+                      locked: agent.locked,
+                    })
+                  : agent,
+              )
+            : [
+                ...state.agents.orchestrators,
+                normalizeAgentProfile({
+                  ...normalizedProfile,
+                  builtin: false,
+                  locked: false,
+                }),
+              ]
+          : state.agents.orchestrators;
+      state.agents = normalizeAgentProfileState({
+        ...state.agents,
+        orchestrators,
+        special:
+          normalizedProfile.kind === "special"
+            ? {
+                ...state.agents.special,
+                threadHandler:
+                  normalizedProfile.id === state.agents.special.threadHandler.id
+                    ? normalizeAgentProfile({
+                        ...normalizedProfile,
+                        kind: "special",
+                        builtin: true,
+                        locked: true,
+                      })
+                    : state.agents.special.threadHandler,
+              }
+            : state.agents.special,
+      });
+      return writeState(state);
+    },
+    deleteAgentProfile: (id) => {
+      const state = readState();
+      state.agents = normalizeAgentProfileState({
+        ...state.agents,
+        orchestrators: state.agents.orchestrators.filter(
+          (agent) => agent.id !== id || agent.locked,
+        ),
+      });
+      return writeState(state);
+    },
+    reorderOrchestratorProfiles: (ids) => {
+      const state = readState();
+      const byId = new Map(state.agents.orchestrators.map((agent) => [agent.id, agent]));
+      const locked = state.agents.orchestrators.filter((agent) => agent.locked);
+      const ordered = ids
+        .map((id) => byId.get(id))
+        .filter((agent): agent is AgentProfileSettings => agent !== undefined && !agent.locked);
+      const missing = state.agents.orchestrators.filter(
+        (agent) => !agent.locked && !ids.includes(agent.id),
+      );
+      state.agents = normalizeAgentProfileState({
+        ...state.agents,
+        orchestrators: [...locked, ...ordered, ...missing],
+      });
       return writeState(state);
     },
     setWorkflowAgent: (key, settings) => {
@@ -81,36 +153,15 @@ export function normalizeAgentSettingsState(
   input: Partial<AgentSettingsState>,
 ): AgentSettingsState {
   const defaults = structuredClone(DEFAULT_AGENT_SETTINGS_STATE);
-  const sessionAgents = (input.sessionAgents ?? {}) as Partial<AgentSettingsState["sessionAgents"]>;
   const workflowAgents = (input.workflowAgents ?? {}) as Partial<
     AgentSettingsState["workflowAgents"]
   >;
-  const namerInput = {
-    ...defaults.sessionAgents.namer,
-    ...sessionAgents.namer,
-  };
-  if (
-    namerInput.model === defaults.sessionAgents.namer.model &&
-    namerInput.systemPrompt === defaults.sessionAgents.namer.systemPrompt &&
-    (namerInput.provider === defaults.sessionAgents.defaultSession.provider ||
-      namerInput.provider === "openai")
-  ) {
-    namerInput.provider = defaults.sessionAgents.namer.provider;
-  }
 
   return {
-    version: 1,
-    sessionAgents: {
-      defaultSession: normalizeSessionAgentSettings({
-        ...defaults.sessionAgents.defaultSession,
-        ...sessionAgents.defaultSession,
-      }),
-      dumbOrchestrator: normalizeSessionAgentSettings({
-        ...defaults.sessionAgents.dumbOrchestrator,
-        ...sessionAgents.dumbOrchestrator,
-      }),
-      namer: normalizeSessionAgentSettings(namerInput),
-    } satisfies SessionAgentDefaults,
+    version: 2,
+    agents: normalizeAgentProfileState(
+      (input.agents ?? {}) as Partial<AgentSettingsState["agents"]>,
+    ),
     workflowAgents: {
       explorer: normalizeWorkflowAgentSettings("explorer", {
         ...defaults.workflowAgents.explorer,
@@ -129,6 +180,69 @@ export function normalizeAgentSettingsState(
       ...defaults.appPreferences,
       ...input.appPreferences,
     }),
+  };
+}
+
+function normalizeAgentProfileState(
+  input: Partial<AgentSettingsState["agents"]>,
+): AgentSettingsState["agents"] {
+  const defaults = structuredClone(DEFAULT_AGENT_SETTINGS_STATE.agents);
+  const orchestratorsInput = Array.isArray(input.orchestrators) ? input.orchestrators : [];
+  const orchestrators = orchestratorsInput
+    .map((profile) => normalizeAgentProfile(profile))
+    .filter((profile) => profile.kind === "orchestrator")
+    .map((profile) =>
+      profile.id === DEFAULT_ORCHESTRATOR_PROFILE_ID
+        ? { ...profile, builtin: true, locked: true }
+        : profile,
+    );
+  if (!orchestrators.some((profile) => profile.id === DEFAULT_ORCHESTRATOR_PROFILE_ID)) {
+    const defaultOrchestrator = defaults.orchestrators[0];
+    if (defaultOrchestrator) {
+      orchestrators.unshift(defaultOrchestrator);
+    }
+  }
+  const byId = new Map<string, AgentProfileSettings>();
+  for (const profile of orchestrators) {
+    byId.set(profile.id, profile);
+  }
+
+  const threadHandler = normalizeAgentProfile({
+    ...defaults.special.threadHandler,
+    ...input.special?.threadHandler,
+    id: defaults.special.threadHandler.id,
+    kind: "special",
+    locked: true,
+    builtin: true,
+  });
+  const titleNamer = normalizeAgentPromptSettings({
+    ...defaults.titleNamer,
+    ...input.titleNamer,
+  });
+  return {
+    orchestrators: [...byId.values()].toSorted((left, right) => {
+      if (left.id === DEFAULT_ORCHESTRATOR_PROFILE_ID) return -1;
+      if (right.id === DEFAULT_ORCHESTRATOR_PROFILE_ID) return 1;
+      return 0;
+    }),
+    special: { threadHandler },
+    titleNamer,
+  };
+}
+
+function normalizeAgentProfile(input: AgentProfileSettings): AgentProfileSettings {
+  return {
+    id: requireNonEmpty(input.id, "id"),
+    kind: input.kind === "special" ? "special" : "orchestrator",
+    name: requireNonEmpty(input.name, "name"),
+    provider: requireNonEmpty(input.provider, "provider"),
+    model: requireNonEmpty(input.model, "model"),
+    reasoningEffort: input.reasoningEffort,
+    systemPrompt: requireNonEmpty(input.systemPrompt, "systemPrompt"),
+    extensions: Array.isArray(input.extensions) ? input.extensions.filter(Boolean) : [],
+    updateFromComposer: Boolean(input.updateFromComposer),
+    builtin: Boolean(input.builtin),
+    locked: Boolean(input.locked),
   };
 }
 
@@ -169,7 +283,7 @@ export function renderWorkflowAgentsComponent(
   return `${lines.join("\n")}\n`;
 }
 
-function normalizeSessionAgentSettings(input: SessionAgentSettings): SessionAgentSettings {
+function normalizeAgentPromptSettings(input: AgentPromptSettings): AgentPromptSettings {
   return {
     provider: requireNonEmpty(input.provider, "provider"),
     model: requireNonEmpty(input.model, "model"),
@@ -185,7 +299,7 @@ function normalizeWorkflowAgentSettings(
   return assertWorkflowAgentSettingsAssignableToTaskConfig({
     id: key,
     label: requireNonEmpty(input.label, "label"),
-    ...normalizeSessionAgentSettings(input),
+    ...normalizeAgentPromptSettings(input),
     toolSurface: normalizeWorkflowAgentToolSurface(input.toolSurface),
   });
 }

@@ -5,23 +5,16 @@
 	import InfoIcon from "@lucide/svelte/icons/info";
 	import KeyIcon from "@lucide/svelte/icons/key";
 	import ShieldIcon from "@lucide/svelte/icons/shield";
-	import { getModels, getProviders, type Model } from "@mariozechner/pi-ai";
 	import { onMount } from "svelte";
 	import { searchScore } from "./chat-format";
 	import type { ProviderAuthInfo } from "../shared/workspace-contract";
 	import type {
-		AgentSettingsState,
 		AppAppearance,
 		AppPreferences,
 		PreferredExternalEditor,
-		SessionAgentKey,
-		SessionAgentSettings,
-		WorkflowAgentKey,
-		WorkflowAgentSettings,
 		WebProviderId,
 	} from "../shared/agent-settings";
 	import { rpc } from "./rpc";
-	import AgentSettingsForm from "./AgentSettingsForm.svelte";
 	import ProviderApiKeyForm from "./ProviderApiKeyForm.svelte";
 	import Button from "./ui/Button.svelte";
 	import Dialog from "./ui/Dialog.svelte";
@@ -34,12 +27,7 @@
 		onAppAppearanceChanged?: (appearance: AppAppearance) => void;
 	};
 
-	type SettingsSection = "general" | "providers" | "web" | "agents" | "workflow-agents";
-	type ModelOption = {
-		key: string;
-		provider: string;
-		model: Model<any>;
-	};
+	type SettingsSection = "general" | "providers" | "web";
 
 	const WEB_PROVIDER_OPTIONS: Array<{ id: WebProviderId | null; label: string; summary: string }> = [
 		{ id: null, label: "None", summary: "Do not expose web tools or api.web_* helpers." },
@@ -64,13 +52,10 @@
 
 	let activeSection = $state<SettingsSection>("general");
 	let providers = $state<ProviderAuthInfo[]>([]);
-	let agentSettings = $state<AgentSettingsState | null>(null);
 	let appPreferences = $state<AppPreferences | null>(null);
 	let providersLoading = $state(true);
-	let agentSettingsLoading = $state(true);
 	let appPreferencesLoading = $state(true);
 	let error = $state<string | null>(null);
-	let agentSettingsError = $state<string | null>(null);
 	let appPreferencesError = $state<string | null>(null);
 	let searchQuery = $state("");
 	let editingProvider = $state<string | null>(null);
@@ -78,28 +63,6 @@
 	let oauthLoading = $state<Record<string, boolean>>({});
 	let saveMessage = $state<Record<string, string>>({});
 	let preferencesSaveMessage = $state("");
-
-	const connectedProviderIds = $derived(
-		new Set(providers.filter((provider) => provider.hasKey).map((provider) => provider.provider)),
-	);
-
-	const availableModelOptions = $derived.by(() => {
-		const options: ModelOption[] = [];
-		for (const provider of getProviders()) {
-			if (!connectedProviderIds.has(provider)) continue;
-			for (const model of getModels(provider)) {
-				options.push({
-					key: `${provider}:${model.id}`,
-					provider,
-					model,
-				});
-			}
-		}
-		return options.toSorted((left, right) => {
-			const providerComparison = left.provider.localeCompare(right.provider);
-			return providerComparison === 0 ? left.model.name.localeCompare(right.model.name) : providerComparison;
-		});
-	});
 
 	async function refreshProviders(options: { showLoading?: boolean } = {}) {
 		if (options.showLoading) providersLoading = true;
@@ -113,25 +76,6 @@
 		}
 	}
 
-	async function refreshAgentSettings(options: { showLoading?: boolean } = {}) {
-		if (options.showLoading) agentSettingsLoading = true;
-		agentSettingsError = null;
-		if (!workspaceId) {
-			agentSettingsLoading = false;
-			return;
-		}
-		try {
-			agentSettings = await rpc.request.getAgentSettings({ workspaceId });
-			if (appPreferences) {
-				agentSettings.appPreferences = structuredClone(appPreferences);
-			}
-		} catch (err) {
-			agentSettingsError = err instanceof Error ? err.message : "Failed to load agent settings";
-		} finally {
-			agentSettingsLoading = false;
-		}
-	}
-
 	async function refreshAppPreferences(options: { showLoading?: boolean } = {}) {
 		if (options.showLoading) appPreferencesLoading = true;
 		appPreferencesError = null;
@@ -141,9 +85,6 @@
 		}
 		try {
 			appPreferences = await rpc.request.getAppPreferences({ workspaceId });
-			if (agentSettings) {
-				agentSettings.appPreferences = structuredClone(appPreferences);
-			}
 		} catch (err) {
 			appPreferencesError = err instanceof Error ? err.message : "Failed to load app preferences";
 		} finally {
@@ -169,6 +110,15 @@
 		return { text: "API key", tone: "info" as const };
 	}
 
+	function serializeAppPreferences(preferences: AppPreferences): AppPreferences {
+		return {
+			appAppearance: preferences.appAppearance,
+			preferredExternalEditor: preferences.preferredExternalEditor,
+			customExternalEditorCommand: preferences.customExternalEditorCommand,
+			webProvider: preferences.webProvider,
+		};
+	}
+
 	function providerCredentialLabel(info: ProviderAuthInfo): string {
 		if (!info.hasKey) return info.supportsOAuth ? "OAuth or API key available" : "API key required";
 		if (info.keyType === "env") return "Loaded from environment";
@@ -192,24 +142,6 @@
 		if (info?.hasKey) return { text: "Ready", tone: "success" };
 		return { text: "API key required", tone: "warning" };
 	}
-
-	const sessionAgentLabels = {
-		defaultSession: "Default Session",
-		dumbOrchestrator: "Dumb Orchestrator",
-		namer: "Namer",
-	} satisfies Record<SessionAgentKey, string>;
-
-	const sessionAgentSummaries = {
-		defaultSession: "Used for normal repository sessions and long-running orchestrator turns.",
-		dumbOrchestrator: "Used when a new dumb session should use the lightweight orchestrator defaults.",
-		namer: "Generates session and handler-thread titles from the saved naming instruction.",
-	} satisfies Record<SessionAgentKey, string>;
-
-	const workflowAgentSummaries = {
-		explorer: "Conventional saved workflow agent for bounded investigation tasks.",
-		implementer: "Conventional saved workflow agent for production code changes.",
-		reviewer: "Conventional saved workflow agent for verification and review tasks.",
-	} satisfies Record<WorkflowAgentKey, string>;
 
 	const filteredProviders = $derived.by(() => {
 		if (!searchQuery.trim()) {
@@ -258,44 +190,18 @@
 		void Promise.allSettled([
 			refreshProviders({ showLoading: true }),
 			refreshAppPreferences({ showLoading: true }),
-			refreshAgentSettings({ showLoading: true }),
 		]);
 	});
-
-	async function saveSessionAgent(key: SessionAgentKey, settings: SessionAgentSettings) {
-		if (!agentSettings || !workspaceId) return settings;
-		const nextSettings = await rpc.request.updateSessionAgentDefault({
-			workspaceId,
-			key,
-			settings: structuredClone(settings),
-		});
-		agentSettings.sessionAgents[key] = structuredClone(nextSettings.sessionAgents[key]);
-		return agentSettings.sessionAgents[key];
-	}
-
-	async function saveWorkflowAgent(key: WorkflowAgentKey, settings: WorkflowAgentSettings) {
-		if (!agentSettings || !workspaceId) return settings;
-		const nextSettings = await rpc.request.updateWorkflowAgent({
-			workspaceId,
-			key,
-			settings: structuredClone(settings),
-		});
-		agentSettings.workflowAgents[key] = structuredClone(nextSettings.workflowAgents[key]);
-		return agentSettings.workflowAgents[key];
-	}
 
 	async function saveAppPreferences(preferences: AppPreferences) {
 		if (!workspaceId) return;
 		try {
 			preferencesSaveMessage = "Saving";
 			const nextSettings = await rpc.request.updateAppPreferences({
-				...structuredClone(preferences),
+				...serializeAppPreferences(preferences),
 				workspaceId,
 			});
-			appPreferences = structuredClone(nextSettings.appPreferences);
-			if (agentSettings) {
-				agentSettings.appPreferences = structuredClone(nextSettings.appPreferences);
-			}
+			appPreferences = serializeAppPreferences(nextSettings.appPreferences);
 			onAppAppearanceChanged?.(nextSettings.appPreferences.appAppearance);
 			preferencesSaveMessage = "Saved";
 			setTimeout(() => {
@@ -330,12 +236,6 @@
 			...appPreferences,
 			customExternalEditorCommand,
 		});
-	}
-
-	async function seedWorkflowAgents() {
-		if (!workspaceId) return;
-		await rpc.request.ensureWorkflowAgentsComponent({ workspaceId });
-		await refreshAgentSettings();
 	}
 
 	async function handleSaveApiKey(providerId: string, apiKey: string) {
@@ -424,24 +324,6 @@
 			>
 				<span>Web</span>
 				<span>{appPreferences?.webProvider ?? "none"}</span>
-			</button>
-			<button
-				class={`settings-nav-item ${activeSection === "agents" ? "active" : ""}`.trim()}
-				type="button"
-				aria-current={activeSection === "agents" ? "page" : undefined}
-				onclick={() => (activeSection = "agents")}
-			>
-				<span>Session Agents</span>
-				<span>3</span>
-			</button>
-			<button
-				class={`settings-nav-item ${activeSection === "workflow-agents" ? "active" : ""}`.trim()}
-				type="button"
-				aria-current={activeSection === "workflow-agents" ? "page" : undefined}
-				onclick={() => (activeSection = "workflow-agents")}
-			>
-				<span>Workflow Agents</span>
-				<span>3</span>
 			</button>
 		</aside>
 
@@ -706,58 +588,6 @@
 							</article>
 						{/each}
 					</div>
-				{/if}
-			{/if}
-			{#if activeSection === "agents"}
-				{#if agentSettingsLoading}
-					<p class="loading">Loading session agents...</p>
-				{:else if agentSettingsError}
-					<p class="error">{agentSettingsError}</p>
-				{:else if agentSettings}
-					<div class="settings-section-note">
-						<InfoIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-						<p>Session agent changes save directly to workspace settings.</p>
-					</div>
-					<div class="agent-list">
-						{#each ["defaultSession", "dumbOrchestrator", "namer"] as key (key)}
-							{@const settings = agentSettings.sessionAgents[key as SessionAgentKey]}
-							<AgentSettingsForm
-								title={sessionAgentLabels[key as SessionAgentKey]}
-								summary={sessionAgentSummaries[key as SessionAgentKey]}
-								{settings}
-								{availableModelOptions}
-								onSave={(nextSettings) => saveSessionAgent(key as SessionAgentKey, nextSettings as SessionAgentSettings)}
-							/>
-						{/each}
-					</div>
-				{:else}
-					<p class="error">Session agent settings are unavailable for this workspace.</p>
-				{/if}
-			{/if}
-			{#if activeSection === "workflow-agents"}
-				{#if agentSettingsLoading}
-					<p class="loading">Loading workflow agents...</p>
-				{:else if agentSettingsError}
-					<p class="error">{agentSettingsError}</p>
-				{:else if agentSettings}
-					<div class="settings-search">
-						<Button variant="primary" size="sm" onclick={seedWorkflowAgents}>Seed agents.ts</Button>
-						<p class="settings-search-summary">Sync conventional workflow agents to .svvy/workflows/components/agents.ts</p>
-					</div>
-					<div class="agent-list">
-						{#each ["explorer", "implementer", "reviewer"] as key (key)}
-							{@const settings = agentSettings.workflowAgents[key as WorkflowAgentKey]}
-							<AgentSettingsForm
-								title={settings.label}
-								summary={workflowAgentSummaries[key as WorkflowAgentKey]}
-								{settings}
-								{availableModelOptions}
-								onSave={(nextSettings) => saveWorkflowAgent(key as WorkflowAgentKey, nextSettings as WorkflowAgentSettings)}
-							/>
-						{/each}
-					</div>
-				{:else}
-					<p class="error">Workflow agent settings are unavailable for this workspace.</p>
 				{/if}
 			{/if}
 		</section>

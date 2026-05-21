@@ -1059,60 +1059,6 @@
 		line-height: 1;
 	}
 
-	.model-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.28rem;
-		min-width: 0;
-		max-width: 12.5rem;
-		border: 1px solid transparent;
-		border-radius: var(--ui-radius-md);
-		background: transparent;
-		color: var(--ui-text-tertiary);
-		font-family: var(--font-mono);
-		font-size: var(--text-xs);
-		line-height: 1;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-
-	.model-pill {
-		position: relative;
-		min-height: 1.45rem;
-		padding: 0.08rem 0.44rem;
-		cursor: pointer;
-		transition:
-			border-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-			background-color 150ms cubic-bezier(0.19, 1, 0.22, 1),
-			color 150ms cubic-bezier(0.19, 1, 0.22, 1);
-	}
-
-	.model-pill.thinking-field {
-		max-width: 7rem;
-		padding-right: 1.62rem;
-	}
-
-	.model-control {
-		max-width: 12.5rem;
-	}
-
-	.model-pill:hover,
-	.model-pill:focus-visible {
-		outline: none;
-		border-color: var(--ui-border-soft);
-		background: var(--ui-surface-subtle);
-		color: var(--ui-text-primary);
-	}
-
-	.model-pill:disabled {
-		border-color: var(--ui-border-soft);
-		background: var(--ui-surface-muted);
-		color: var(--ui-text-tertiary);
-		cursor: not-allowed;
-	}
-
-	.model-pill:focus-visible,
 	.composer-icon-button:focus-visible,
 	.composer-submit:focus-visible,
 	.mention-chip:focus-visible {
@@ -1205,10 +1151,6 @@
 		color: var(--ui-danger);
 	}
 
-	.thinking-field {
-		width: auto;
-	}
-
 	.composer-error {
 		margin: 0;
 		padding: 0.55rem 0.72rem;
@@ -1229,7 +1171,6 @@
 
 		.composer-icon-button,
 		.composer-submit,
-		.model-pill,
 		.mention-option {
 			min-height: 2.75rem;
 		}
@@ -1245,7 +1186,6 @@
 			min-width: 4.45rem;
 		}
 
-		.model-pill,
 		.compact-budget {
 			display: none;
 		}
@@ -1278,7 +1218,6 @@
 			gap: 0.3rem;
 		}
 
-		.model-pill,
 		.compact-budget {
 			display: none;
 		}

@@ -168,6 +168,15 @@ describe("default workspace renderer shell", () => {
     expect(composerSource).not.toContain("structuredClone(composerDraft.attachments)");
   });
 
+  it("does not structuredClone Svelte settings state in the settings dialog", async () => {
+    const settingsSource = await readFile(new URL("./Settings.svelte", import.meta.url), "utf8");
+
+    expect(settingsSource).toContain("function serializeAppPreferences");
+    expect(settingsSource).not.toContain("Workflow Agents");
+    expect(settingsSource).not.toContain("function serializeWorkflowAgentSettings");
+    expect(settingsSource).not.toContain("structuredClone(");
+  });
+
   it("does not keep focus-global artifact or inspector surfaces in the workspace shell", async () => {
     const workspaceSource = await readFile(
       new URL("./ChatWorkspace.svelte", import.meta.url),

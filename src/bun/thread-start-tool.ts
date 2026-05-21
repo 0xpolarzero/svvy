@@ -1,7 +1,7 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
 import type { Static } from "typebox";
-import type { SessionAgentSettings } from "../shared/agent-settings";
+import type { AgentPromptSettings } from "../shared/agent-settings";
 import type { PromptExecutionRuntimeHandle } from "./prompt-execution-context";
 import type {
   StructuredSessionStateStore,
@@ -53,7 +53,7 @@ export interface ThreadStartBridge {
     parentSurfacePiSessionId: string;
     objective: string;
     contextKeys: OptionalPromptContextKey[];
-    sessionAgentSettings: SessionAgentSettings | null;
+    agentProfileSettings: AgentPromptSettings | null;
     loadedByCommandId: string;
   }): Promise<StructuredThreadRecord>;
 }
@@ -102,7 +102,7 @@ export function createStartThreadTool(options: {
           parentSurfacePiSessionId: runtime.surfacePiSessionId,
           objective,
           contextKeys,
-          sessionAgentSettings: params.agent
+          agentProfileSettings: params.agent
             ? {
                 provider: params.agent.provider,
                 model: params.agent.model,

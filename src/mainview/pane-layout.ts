@@ -24,6 +24,7 @@ export type DockviewPanelChromeKind =
   | "project-ci"
   | "saved-workflow-library"
   | "prompt-library"
+  | "agents"
   | "app-logs"
   | "open-workspace"
   | "command"
@@ -153,6 +154,8 @@ export function createPanelChrome(
       return chrome("Workflows", ".svvy/workflows", "saved-workflow-library", true);
     case "prompt-library":
       return chrome("Context", "instructions", "prompt-library", true);
+    case "agents":
+      return chrome("Agents", "profiles", "agents", true);
     case "app-logs":
       return chrome("Logs", "workspace", "app-logs", true);
     case "open-workspace":
@@ -365,6 +368,8 @@ function normalizePaneBinding(value: unknown): WorkspacePaneSurfaceTarget | null
       return typeof binding.workspaceSessionId === "string" && binding.workspaceSessionId.length > 0
         ? { surface: "prompt-library", workspaceSessionId: binding.workspaceSessionId }
         : { surface: "prompt-library" };
+    case "agents":
+      return { surface: "agents" };
     case "app-logs":
       return typeof binding.workspaceSessionId === "string" && binding.workspaceSessionId.length > 0
         ? { surface: "app-logs", workspaceSessionId: binding.workspaceSessionId }

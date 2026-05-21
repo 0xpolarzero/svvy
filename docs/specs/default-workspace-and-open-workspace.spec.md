@@ -162,14 +162,14 @@ The default workspace label should be `Default Workspace`.
 
 The default workspace supports:
 
-- creating normal sessions
-- creating dumb sessions
+- creating New orchestrator sessions
 - prompt fallback from the command palette
 - Context pane
+- Agents pane
 - Logs pane
 - Settings
 - provider auth and web provider settings
-- session agent defaults
+- agent profiles
 - command palette
 - quick-open placeholder
 - app logs
@@ -286,7 +286,7 @@ Add or update menu groups so the expected top-level product actions are discover
 - `File > Open Workspace...`
 - `File > New Tab`
 - `File > Open Workspace in New Tab...`
-- existing session actions such as `New Session` and `New Dumb Session`
+- existing session actions such as `New orchestrator`
 
 Menu item labels should match command palette labels.
 
@@ -331,14 +331,15 @@ Existing keybindings remain:
 
 | Action | macOS | Windows/Linux |
 | --- | --- | --- |
-| New Session in Focused Pane | `Cmd+N` | `Ctrl+N` |
-| New Session in New Pane | `Cmd+Shift+N` | `Ctrl+Shift+N` |
+| New orchestrator in Focused Pane | `Cmd+N` | `Ctrl+N` |
+| New orchestrator in New Pane | `Cmd+Shift+N` | `Ctrl+Shift+N` |
 | Quick Open | `Cmd+P` | `Ctrl+P` |
 | Command Palette | `Cmd+Shift+P` | `Ctrl+Shift+P` |
 | Toggle Sidebar | `Cmd+B` | `Ctrl+B` |
 | Logs | `Cmd+Shift+1` | `Ctrl+Shift+1` |
-| Workflows | `Cmd+Shift+2` | `Ctrl+Shift+2` |
+| Agents | `Cmd+Shift+2` | `Ctrl+Shift+2` |
 | Context | `Cmd+Shift+3` | `Ctrl+Shift+3` |
+| Workflows | `Cmd+Shift+4` | `Ctrl+Shift+4` |
 
 The open-workspace shortcuts are shell actions and should fire while text inputs are focused, matching command palette and session creation behavior.
 
@@ -367,7 +368,7 @@ type CommandExecutionTarget =
   | ...
 ```
 
-The command palette fallback prompt behavior remains unchanged because the default workspace is a real workspace. Unmatched command-mode text creates a new session in the active workspace, including the default workspace.
+The command palette fallback prompt behavior remains unchanged because the default workspace is a real workspace. Unmatched command-mode text creates a New orchestrator session in the active workspace, including the default workspace.
 
 ## Runtime And Storage Contracts
 
@@ -513,13 +514,13 @@ In the default workspace, sidebar actions are not globally greyed out.
 
 Enabled:
 
-- New Session
-- New Dumb Session
+- New orchestrator
 - Search
 - Command Palette
 - Logs
-- Workflows, if it opens the default workspace's real workflow library
+- Agents
 - Context
+- Workflows, if it opens the default workspace's real workflow library
 - Settings
 
 Disabled or unavailable:
@@ -572,11 +573,11 @@ Menu and shortcut actions resolve as follows:
 - `Open Workspace`: active visual tab, current-tab placement
 - `Open Workspace in New Tab`: new visual tab
 - `New Tab`: new default workspace visual tab
-- `New Session`: active tab's current workspace, including default workspace
-- `New Dumb Session`: active tab's current workspace, including default workspace
+- `New orchestrator`: active tab's current workspace, including default workspace
 - `Logs`: active tab's current workspace logs
-- `Workflows`: active tab's current workspace workflows
+- `Agents`: app-global agent profiles, evaluated from the active tab's workspace context when workspace-scoped projections are needed
 - `Context`: active tab's current workspace-routed Context view
+- `Workflows`: active tab's current workspace workflows
 
 ### Running Work
 

@@ -25,6 +25,10 @@ import type { PromptHistoryEntry } from "./prompt-history";
 import type { ChatRuntimeRpcClient } from "./chat-runtime";
 import type { WorkspaceDockviewLayoutState, WorkspaceLayoutSlotId } from "./pane-layout";
 import { getPromptLibraryContentKey, type PromptLibraryState } from "../shared/prompt-library";
+import {
+  DEFAULT_AGENT_SETTINGS_STATE,
+  DEFAULT_ORCHESTRATOR_PROFILE_ID,
+} from "../shared/agent-settings";
 import { buildWorkspaceSessionNavigation } from "./session-state";
 
 mock.module("electrobun/view", () => {
@@ -268,8 +272,7 @@ function createSurfaceSnapshot(input: {
   provider?: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
-  sessionMode?: ConversationSurfaceSnapshot["sessionMode"];
-  sessionAgentKey?: ConversationSurfaceSnapshot["sessionAgentKey"];
+  agentProfileId?: ConversationSurfaceSnapshot["agentProfileId"];
   systemPrompt?: string;
   resolvedSystemPrompt?: string;
   externalContextSources?: ConversationSurfaceSnapshot["externalContextSources"];
@@ -292,8 +295,7 @@ function createSurfaceSnapshot(input: {
     provider: input.provider ?? "openai",
     model: input.model ?? "gpt-4o",
     reasoningEffort: input.reasoningEffort ?? "medium",
-    sessionMode: input.sessionMode ?? "orchestrator",
-    sessionAgentKey: input.sessionAgentKey ?? "defaultSession",
+    agentProfileId: input.agentProfileId ?? DEFAULT_ORCHESTRATOR_PROFILE_ID,
     systemPrompt,
     resolvedSystemPrompt: input.resolvedSystemPrompt ?? systemPrompt,
     externalContextSources: structuredClone(input.externalContextSources ?? []),
@@ -818,21 +820,19 @@ function createFakeRpc(input: {
           reasoningEffort: "medium",
         }),
         getAgentSettings: async () => ({
-          version: 1,
-          sessionAgents: {
-            defaultSession: {
-              provider: "openai",
-              model: "gpt-4o",
-              reasoningEffort: "medium",
-              systemPrompt: "Default",
-            },
-            dumbOrchestrator: {
-              provider: "openai",
-              model: "gpt-4o-mini",
-              reasoningEffort: "low",
-              systemPrompt: "Dumb",
-            },
-            namer: {
+          ...structuredClone(DEFAULT_AGENT_SETTINGS_STATE),
+          agents: {
+            ...structuredClone(DEFAULT_AGENT_SETTINGS_STATE.agents),
+            orchestrators: [
+              {
+                ...structuredClone(DEFAULT_AGENT_SETTINGS_STATE.agents.orchestrators[0]!),
+                provider: "openai",
+                model: "gpt-4o",
+                reasoningEffort: "medium",
+                systemPrompt: "Default",
+              },
+            ],
+            titleNamer: {
               provider: "openai-codex",
               model: "gpt-5.4-mini",
               reasoningEffort: "low",
@@ -906,14 +906,32 @@ function createFakeRpc(input: {
         }),
         restorePromptLibrarySnapshot: async () => structuredClone(promptLibraryState),
         getOpenWorkspaces: async () => [structuredClone(TEST_WORKSPACE_INFO)],
-        updateSessionAgentDefault: async ({ key, settings, workspaceId }) => {
-          return {
-            ...(await harness.client.request.getAgentSettings({ workspaceId })),
-            sessionAgents: {
-              ...(await harness.client.request.getAgentSettings({ workspaceId })).sessionAgents,
-              [key]: settings,
-            },
-          };
+        updateAgentProfile: async ({ profile, workspaceId }) => {
+          const next = await harness.client.request.getAgentSettings({ workspaceId });
+          if (profile.kind === "orchestrator") {
+            next.agents.orchestrators = next.agents.orchestrators.map((candidate) =>
+              candidate.id === profile.id ? profile : candidate,
+            );
+          } else if (profile.id === next.agents.special.threadHandler.id) {
+            next.agents.special.threadHandler = profile;
+          }
+          return next;
+        },
+        deleteAgentProfile: async ({ id, workspaceId }) => {
+          const next = await harness.client.request.getAgentSettings({ workspaceId });
+          next.agents.orchestrators = next.agents.orchestrators.filter(
+            (candidate) => candidate.id !== id || candidate.locked,
+          );
+          return next;
+        },
+        reorderOrchestratorAgents: async ({ ids, workspaceId }) => {
+          const next = await harness.client.request.getAgentSettings({ workspaceId });
+          const byId = new Map(next.agents.orchestrators.map((profile) => [profile.id, profile]));
+          next.agents.orchestrators = ids.flatMap((id) => {
+            const profile = byId.get(id);
+            return profile ? [profile] : [];
+          });
+          return next;
         },
         updateWorkflowAgent: async ({ key, settings, workspaceId }) => {
           return {
@@ -1173,7 +1191,7 @@ function createFakeRpc(input: {
         }),
         createSession: async ({ title }) => {
           const sessionId = `session-${summaries.size + 1}`;
-          const summary = createSummary(sessionId, title ?? "New Session", "");
+          const summary = createSummary(sessionId, title ?? "New orchestrator", "");
           const snapshot = createSurfaceSnapshot({
             target: createOrchestratorTarget(sessionId),
             messages: [],
@@ -1221,18 +1239,6 @@ function createFakeRpc(input: {
             summary.title = title;
           });
           return { ok: true };
-        },
-        setSessionMode: async ({ target, mode }) => {
-          const record = getSurfaceRecord(target.surfacePiSessionId);
-          const snapshot = createSurfaceSnapshot({
-            ...record.snapshot,
-            sessionMode: mode,
-            sessionAgentKey: mode === "dumb" ? "dumbOrchestrator" : "defaultSession",
-            systemPrompt: mode === "dumb" ? "Dumb" : "Default",
-            resolvedSystemPrompt: mode === "dumb" ? "Dumb" : "Default",
-          });
-          record.snapshot = snapshot;
-          return { ok: true, snapshot: structuredClone(snapshot) };
         },
         forkSession: async ({ sessionId, title }) => {
           const sourceSummary = summaries.get(sessionId) ?? null;
@@ -4041,39 +4047,6 @@ describe("createChatRuntime", () => {
     expect(runtime.sessions).toHaveLength(1);
     expect(runtime.paneLayout.panels).toHaveLength(0);
     expect(runtime.getPane("primary")).toBeUndefined();
-
-    runtime.dispose();
-  });
-
-  it("changes an empty focused session mode without creating a new session or pane", async () => {
-    const harness = createFakeRpc({
-      sessions: [createSummary("session-1", "New Session", "")],
-      surfaces: [
-        createSurfaceSnapshot({
-          target: createOrchestratorTarget("session-1"),
-          messages: [],
-        }),
-      ],
-    });
-
-    const runtime = await createRuntime(harness);
-    const initialSessionCount = runtime.sessions.length;
-    const initialPaneCount = runtime.paneLayout.panels.length;
-
-    await runtime.setSessionMode(runtime.primaryPaneId, "dumb");
-
-    const focusedPane = runtime.getPane(runtime.primaryPaneId);
-    const controller = runtime.getPaneController(runtime.primaryPaneId);
-    expect(runtime.sessions).toHaveLength(initialSessionCount);
-    expect(runtime.paneLayout.panels).toHaveLength(initialPaneCount);
-    expect(
-      focusedPane?.target && "workspaceSessionId" in focusedPane.target
-        ? focusedPane.target.workspaceSessionId
-        : undefined,
-    ).toBe("session-1");
-    expect(controller?.sessionMode).toBe("dumb");
-    expect(controller?.sessionAgentKey).toBe("dumbOrchestrator");
-    expect(harness.getSurfaceSnapshot("session-1").sessionMode).toBe("dumb");
 
     runtime.dispose();
   });

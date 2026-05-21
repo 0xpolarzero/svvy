@@ -5,7 +5,7 @@ import { getSurfaceDisplayTitle } from "./surface-title";
 function session(input: Partial<WorkspaceSessionSummary> = {}): WorkspaceSessionSummary {
   return {
     id: "session-1",
-    title: "New Session",
+    title: "New orchestrator",
     preview: "",
     createdAt: "2026-05-14T00:00:00.000Z",
     updatedAt: "2026-05-14T00:00:00.000Z",
@@ -46,7 +46,7 @@ describe("surface display titles", () => {
   it("uses handler thread titles instead of the parent session title", () => {
     const sessions = [
       session({
-        title: "New Session",
+        title: "New orchestrator",
         sidebarThreads: [
           {
             threadId: "thread-1",
@@ -71,7 +71,7 @@ describe("surface display titles", () => {
           threadId: "thread-1",
         },
         sessions,
-        "New Session",
+        "New orchestrator",
       ),
     ).toBe("Investigate handler pane state");
   });

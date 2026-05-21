@@ -5,8 +5,9 @@ import type {
 } from "../bun/smithers-runtime/workflow-authoring-contract";
 
 export type { ReasoningEffort };
-export type SessionMode = "orchestrator" | "dumb";
-export type SessionAgentKey = "defaultSession" | "dumbOrchestrator" | "namer";
+export type AgentProfileKind = "orchestrator" | "special";
+export type AgentProfileSpecialKey = "threadHandler";
+export type AgentProfileId = string;
 export type WorkflowAgentKey = "explorer" | "implementer" | "reviewer";
 export type AppAppearance = "system" | "light" | "dark";
 export type PreferredExternalEditor = "system" | "code" | "cursor" | "zed" | "sublime" | "custom";
@@ -19,14 +20,25 @@ export interface AgentDefaults {
   reasoningEffort: ReasoningEffort;
 }
 
-export interface SessionAgentSettings extends AgentDefaults {
+export interface AgentPromptSettings extends AgentDefaults {
   systemPrompt: string;
 }
 
-export interface SessionAgentDefaults {
-  defaultSession: SessionAgentSettings;
-  dumbOrchestrator: SessionAgentSettings;
-  namer: SessionAgentSettings;
+export interface AgentProfileSettings extends AgentDefaults {
+  id: AgentProfileId;
+  kind: AgentProfileKind;
+  name: string;
+  systemPrompt: string;
+  extensions: string[];
+  updateFromComposer: boolean;
+  builtin: boolean;
+  locked: boolean;
+}
+
+export interface AgentProfileState {
+  orchestrators: AgentProfileSettings[];
+  special: Record<AgentProfileSpecialKey, AgentProfileSettings>;
+  titleNamer: AgentPromptSettings;
 }
 
 export interface WorkflowAgentSettings extends WorkflowTaskAgentConfig {
@@ -35,8 +47,8 @@ export interface WorkflowAgentSettings extends WorkflowTaskAgentConfig {
 }
 
 export interface AgentSettingsState {
-  version: 1;
-  sessionAgents: SessionAgentDefaults;
+  version: 2;
+  agents: AgentProfileState;
   workflowAgents: Record<WorkflowAgentKey, WorkflowAgentSettings>;
   appPreferences: AppPreferences;
 }
@@ -54,11 +66,14 @@ export const DEFAULT_AGENT_SETTINGS = {
   reasoningEffort: "medium",
 } satisfies AgentDefaults;
 
+export const DEFAULT_ORCHESTRATOR_PROFILE_ID = "default-orchestrator";
+export const DEFAULT_THREAD_HANDLER_PROFILE_ID = "thread-handler";
+
 export const DEFAULT_ORCHESTRATOR_SESSION_PROMPT =
   "You are svvy, the main orchestrator. Own strategy, route bounded delegated work through handler threads, and make final user-facing decisions.";
 
-export const DEFAULT_DUMB_ORCHESTRATOR_PROMPT =
-  "You are svvy dumb orchestrator. Answer or act directly for short, focused work without starting handler threads unless delegation is explicitly necessary.";
+export const DEFAULT_THREAD_HANDLER_PROMPT =
+  "You are a svvy delegated handler thread. Own the bounded objective, supervise workflow runs when useful, ask for clarification when blocked, and hand durable outcomes back to the orchestrator.";
 
 export const DEFAULT_NAMER_SESSION_PROMPT = [
   "You generate concise session titles for svvy.",
@@ -90,23 +105,41 @@ export const DEFAULT_NAMER_SESSION_PROMPT = [
   "Assistant streaming duplicates",
 ].join("\n");
 
-export const DEFAULT_SESSION_AGENT_SETTINGS = {
-  defaultSession: {
-    ...DEFAULT_AGENT_SETTINGS,
-    systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+export const DEFAULT_AGENT_PROFILES = {
+  orchestrators: [
+    {
+      id: DEFAULT_ORCHESTRATOR_PROFILE_ID,
+      kind: "orchestrator",
+      name: "Default orchestrator",
+      ...DEFAULT_AGENT_SETTINGS,
+      systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+      extensions: [],
+      updateFromComposer: false,
+      builtin: true,
+      locked: true,
+    },
+  ],
+  special: {
+    threadHandler: {
+      id: DEFAULT_THREAD_HANDLER_PROFILE_ID,
+      kind: "special",
+      name: "Thread handler",
+      ...DEFAULT_AGENT_SETTINGS,
+      systemPrompt: DEFAULT_THREAD_HANDLER_PROMPT,
+      extensions: [],
+      updateFromComposer: false,
+      builtin: true,
+      locked: true,
+    },
   },
-  dumbOrchestrator: {
-    ...DEFAULT_AGENT_SETTINGS,
-    systemPrompt: DEFAULT_DUMB_ORCHESTRATOR_PROMPT,
-  },
-  namer: {
+  titleNamer: {
     ...DEFAULT_AGENT_SETTINGS,
     provider: "openai-codex",
     model: "gpt-5.4-mini",
     reasoningEffort: "low",
     systemPrompt: DEFAULT_NAMER_SESSION_PROMPT,
   },
-} satisfies SessionAgentDefaults;
+} satisfies AgentProfileState;
 
 export const DEFAULT_WORKFLOW_AGENT_SETTINGS = {
   explorer: {
@@ -189,8 +222,8 @@ export const DEFAULT_WORKFLOW_AGENT_SETTINGS = {
 } satisfies Record<WorkflowAgentKey, WorkflowAgentSettings>;
 
 export const DEFAULT_AGENT_SETTINGS_STATE = {
-  version: 1,
-  sessionAgents: DEFAULT_SESSION_AGENT_SETTINGS,
+  version: 2,
+  agents: DEFAULT_AGENT_PROFILES,
   workflowAgents: DEFAULT_WORKFLOW_AGENT_SETTINGS,
   appPreferences: {
     appAppearance: "system",

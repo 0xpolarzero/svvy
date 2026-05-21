@@ -20,7 +20,7 @@ Always read [ui.prd.md](ui.prd.md) before implementing any item in this roadmap,
 ## Current Baseline
 
 - [x] Ship a functional Svelte renderer around the Electrobun desktop shell and Bun-side pi runtime.
-- [x] Render multi-session workspace navigation, Dockview panel bindings, transcript surfaces, composer, artifacts, workflow inspector, command palette, provider settings, and session-agent settings from svvy-owned runtime and read-model state.
+- [x] Render multi-session workspace navigation, Dockview panel bindings, transcript surfaces, composer, artifacts, workflow inspector, command palette, provider settings, and agent-profile settings from svvy-owned runtime and read-model state.
 - [x] Keep product runtime behavior inside pi-backed surfaces, handler threads, Smithers-backed workflow supervision, and durable workspace state rather than a standalone terminal loop or alternate UI runtime.
 - [x] Capture the desktop UI reference screenshots under `docs/ui/ui.reference-screenshots/`. `c8f047f`
 - [x] Capture the Replit artifact source states that the Svelte UI must match under `docs/ui/ui.reference-screenshots/`. `c8f047f`
@@ -115,7 +115,7 @@ The workflow inspector remains tree-first. Replit artifact graph-oriented workfl
 ## 10. Settings And Auth Surfaces
 
 - [x] Restyle provider auth settings to match the Replit artifact treatment for provider state, OAuth/key entry affordances, validation, missing-provider recovery, and destructive-action confirmation. `a4c279b`
-- [x] Restyle session-agent settings to match the Replit artifact treatment for default session, dumb orchestrator, namer, and per-surface inspection. `a4c279b`
+- [x] Restyle agent-profile settings to match the Replit artifact treatment for orchestrator profiles, the special thread handler profile, internal title naming, and per-surface inspection. `a4c279b`
 - [x] Restyle workflow-agent settings to match the Replit artifact treatment for conventional saved workflow agents while preserving `.svvy/workflows/components/agents.ts` synchronization. `a4c279b`
 - [x] Restyle app preferences such as external editor selection to match the Replit artifact settings form treatment. `a4c279b`
 - [x] Preserve provider auth synchronization, model discovery, reasoning dropdown behavior, settings persistence, and recovery from startup provider gaps. `a4c279b`

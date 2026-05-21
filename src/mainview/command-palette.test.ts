@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { AgentProfileSettings } from "../shared/agent-settings";
 import type {
   PromptTarget,
   WorkspaceHandlerThreadSummary,
@@ -79,6 +80,26 @@ function handlerThread(
     latestCiRun: options.latestCiRun ?? null,
     latestEpisode: options.latestEpisode ?? null,
     workflowTaskAttempts: options.workflowTaskAttempts,
+  };
+}
+
+function orchestratorProfile(
+  id: string,
+  name: string,
+  input: Partial<AgentProfileSettings> = {},
+): AgentProfileSettings {
+  return {
+    id,
+    kind: "orchestrator",
+    name,
+    provider: input.provider ?? "openai",
+    model: input.model ?? "gpt-5.4",
+    reasoningEffort: input.reasoningEffort ?? "medium",
+    systemPrompt: input.systemPrompt ?? "Own strategy.",
+    extensions: input.extensions ?? [],
+    updateFromComposer: input.updateFromComposer ?? false,
+    builtin: input.builtin ?? false,
+    locked: input.locked ?? false,
   };
 }
 
@@ -215,7 +236,7 @@ describe("command palette shortcuts", () => {
     expect(getShortcutHotkey("session.new")).toBe("Mod+N");
     expect(getShortcutReadable("session.new")).toBe("Cmd+N");
     expect(getShortcut("session.new")).toMatchObject({
-      label: "New Session",
+      label: "New orchestrator",
       scope: "workspace-shell",
       inputPolicy: "allow-while-typing",
       accelerator: "CommandOrControl+N",
@@ -224,24 +245,20 @@ describe("command palette shortcuts", () => {
     expect(getShortcutHotkey("session.newPane")).toBe("Mod+Shift+N");
     expect(getShortcutReadable("session.newPane")).toBe("Cmd+Shift+N");
     expect(getShortcut("session.newPane")).toMatchObject({
-      label: "New Session in New Pane",
+      label: "New orchestrator in new pane",
       scope: "workspace-shell",
       inputPolicy: "allow-while-typing",
       accelerator: "CommandOrControl+Shift+N",
     });
-    expect(getShortcut("session.dumb")).toMatchObject({
-      label: "New Dumb Session",
-      hotkey: "",
-      readableShortcut: "",
-      compactShortcut: "",
-      accelerator: null,
-    });
     expect(getShortcutHotkey("surface.logs.open")).toBe("Mod+Shift+1");
-    expect(getShortcutReadable("surface.workflows.open")).toBe("Cmd+Shift+2");
+    expect(getShortcutReadable("surface.agents.open")).toBe("Cmd+Shift+2");
+    expect(getShortcutReadable("surface.context.open")).toBe("Cmd+Shift+3");
     expect(getShortcut("surface.context.open")).toMatchObject({
+      readableShortcut: "Cmd+Shift+3",
       scope: "workspace-shell",
       inputPolicy: "allow-while-typing",
     });
+    expect(getShortcutReadable("surface.workflows.open")).toBe("Cmd+Shift+4");
   });
 
   it("keeps app launcher and shell command chords active while text inputs are focused", () => {
@@ -252,10 +269,10 @@ describe("command palette shortcuts", () => {
     expect(shouldShortcutIgnoreInputs("workspace.openInNewTab")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.new")).toBe(false);
     expect(shouldShortcutIgnoreInputs("session.newPane")).toBe(false);
-    expect(shouldShortcutIgnoreInputs("session.dumb")).toBe(false);
     expect(shouldShortcutIgnoreInputs("sidebar.toggle")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.logs.open")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.workflows.open")).toBe(false);
+    expect(shouldShortcutIgnoreInputs("surface.agents.open")).toBe(false);
     expect(shouldShortcutIgnoreInputs("surface.context.open")).toBe(false);
   });
 
@@ -310,9 +327,6 @@ describe("command palette shortcuts", () => {
       getCommandActionShortcutHints(actions.find((action) => action.id === "session.new")!),
     ).toEqual(["Cmd+N", "Enter", "Cmd+Enter"]);
     expect(
-      getCommandActionShortcutHints(actions.find((action) => action.id === "session.dumb")!),
-    ).toEqual(["Enter", "Cmd+Enter"]);
-    expect(
       getCommandActionShortcutHints(
         actions.find((action) => action.id === "session.open.session-1")!,
       ),
@@ -336,6 +350,7 @@ describe("command palette shortcuts", () => {
       "workspace",
       "session",
       "workflow-library",
+      "agents",
       "project-ci",
       "pane",
       "settings",
@@ -368,6 +383,12 @@ describe("command palette shortcuts", () => {
       getCommandActionPlacementHints(
         actions.find((action) => action.id === "workflow-library.open")!,
       ),
+    ).toEqual([
+      { shortcut: "Enter", label: "New pane" },
+      { shortcut: "Cmd+Enter", label: "Focused pane" },
+    ]);
+    expect(
+      getCommandActionPlacementHints(actions.find((action) => action.id === "agents.open")!),
     ).toEqual([
       { shortcut: "Enter", label: "New pane" },
       { shortcut: "Cmd+Enter", label: "Focused pane" },
@@ -414,9 +435,9 @@ describe("buildCommandRegistry", () => {
     expect(actions.map((action) => action.id)).toContain("workspace.open");
     expect(actions.map((action) => action.id)).toContain("workspace.newTab");
     expect(actions.map((action) => action.id)).toContain("workspace.openInNewTab");
-    expect(actions.map((action) => action.id)).toContain("session.dumb");
     expect(actions.map((action) => action.id)).toContain("settings.open");
     expect(actions.map((action) => action.id)).toContain("workflow-library.open");
+    expect(actions.map((action) => action.id)).toContain("agents.open");
     expect(actions.map((action) => action.id)).not.toContain("pane.split-right");
     expect(actions.map((action) => action.id)).not.toContain("pane.split-below");
     expect(actions.map((action) => action.id)).toContain("pane.duplicate-right");
@@ -444,6 +465,45 @@ describe("buildCommandRegistry", () => {
     expect(actions.find((action) => action.id === "workspace.openInNewTab")?.shortcut).toBe(
       "Cmd+Shift+O",
     );
+    expect(actions.find((action) => action.id === "agents.open")?.shortcut).toBe("Cmd+Shift+2");
+  });
+
+  it("adds profile-specific New orchestrator actions carrying agent profile ids", () => {
+    const actions = buildCommandRegistry({
+      sessions: [],
+      orchestratorProfiles: [
+        orchestratorProfile("default-orchestrator", "Default orchestrator", {
+          locked: true,
+          builtin: true,
+        }),
+        orchestratorProfile("research-orchestrator", "Research orchestrator", {
+          provider: "anthropic",
+          model: "claude-sonnet-4",
+          reasoningEffort: "high",
+        }),
+      ],
+    });
+
+    expect(actions.find((action) => action.id === "session.new")?.execute).toEqual({
+      kind: "create-session",
+    });
+    expect(
+      actions.find((action) => action.id === "session.new.profile.default-orchestrator"),
+    ).toMatchObject({
+      category: "agents",
+      label: "New orchestrator: Default orchestrator",
+      execute: { kind: "create-session", agentProfileId: "default-orchestrator" },
+      badge: "Profile",
+    });
+    expect(
+      actions.find((action) => action.id === "session.new.profile.research-orchestrator"),
+    ).toMatchObject({
+      category: "agents",
+      label: "New orchestrator: Research orchestrator",
+      execute: { kind: "create-session", agentProfileId: "research-orchestrator" },
+      targetName: "anthropic/claude-sonnet-4 · high",
+      badge: "Profile",
+    });
   });
 
   it("keeps the workflow library action workspace-scoped", () => {
@@ -502,7 +562,7 @@ describe("executeCommandAction", () => {
     });
     await executeCommandAction({
       runtime,
-      action: actions.find((action) => action.id === "session.dumb")!,
+      action: actions.find((action) => action.id === "agents.open")!,
       paneId: "pane-d",
     });
 
@@ -512,9 +572,21 @@ describe("executeCommandAction", () => {
       "open:session-1:pane-b",
       "prompt:session-1:Run Project CI for this workspace.",
       "surface:saved-workflow-library:pane-c",
-      "create:pane-d",
+      "surface:agents:pane-d",
     ]);
-    expect(runtime.createRequests.at(-1)).toEqual({ mode: "dumb" });
+  });
+
+  it("passes agent profile ids when executing profile-specific New orchestrator actions", async () => {
+    const runtime = createRuntime();
+    const action = buildCommandRegistry({
+      sessions: [],
+      orchestratorProfiles: [orchestratorProfile("review-orchestrator", "Review orchestrator")],
+    }).find((candidate) => candidate.id === "session.new.profile.review-orchestrator")!;
+
+    await executeCommandAction({ runtime, action, paneId: "pane-a" });
+
+    expect(runtime.calls).toEqual(["create:pane-a"]);
+    expect(runtime.createRequests).toEqual([{ agentProfileId: "review-orchestrator" }]);
   });
 
   it("routes workspace command actions through shell callbacks", async () => {

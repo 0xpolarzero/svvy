@@ -5,7 +5,6 @@
     | "orchestrator"
     | "handler-thread"
     | "workflow-task-agent"
-    | "dumb"
     | "explorer"
     | "implementer"
     | "reviewer"
@@ -27,7 +26,6 @@
   import EyeIcon from "@lucide/svelte/icons/eye";
   import SearchIcon from "@lucide/svelte/icons/search";
   import WorkflowIcon from "@lucide/svelte/icons/workflow";
-  import ZapIcon from "@lucide/svelte/icons/zap";
   import ModelBadge from "./ModelBadge.svelte";
   import StatusBadge from "./StatusBadge.svelte";
 
@@ -44,7 +42,6 @@
     orchestrator: { icon: BotIcon, label: "orchestrator", tone: "orange" },
     "handler-thread": { icon: BotIcon, label: "handler", tone: "blue" },
     "workflow-task-agent": { icon: WorkflowIcon, label: "task-agent", tone: "cyan" },
-    dumb: { icon: ZapIcon, label: "dumb", tone: "yellow" },
     explorer: { icon: SearchIcon, label: "explorer", tone: "blue" },
     implementer: { icon: Code2Icon, label: "implementer", tone: "purple" },
     reviewer: { icon: EyeIcon, label: "reviewer", tone: "cyan" },

@@ -180,7 +180,7 @@ A workspace is the effective repository root or equivalent workspace identity al
 Implications:
 
 - all sessions in the same workspace share one prompt history
-- a new session in the same workspace can recall prompts sent in earlier sessions
+- a new orchestrator session in the same workspace can recall prompts sent in earlier sessions
 - switching to another workspace uses a different prompt history
 - there is no default machine-global prompt history across unrelated repos
 

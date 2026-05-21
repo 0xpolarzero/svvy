@@ -92,7 +92,7 @@ The folders mean:
 
 - `definitions/`: reusable workflow factories and builders
 - `prompts/`: reusable prompt assets
-- `components/`: reusable helpers and workflow agents
+- `components/`: reusable helpers and future packaged-app-safe workflow-agent components
 - `entries/`: launchable saved workflow entry wrappers
 
 Product-specific saved assets use subdirectories inside the same library rather than a separate workflow system.
@@ -176,11 +176,11 @@ Examples:
 - helpers
 - schema utilities
 - workflow building blocks
-- workflow agent values or factories
+- future workflow-agent values or factories
 
-Workflow agent files are ordinary component files that export values conforming to the generated `WorkflowTaskAgentConfig` contract. The canonical config fields are `provider`, `model`, `reasoningEffort`, `systemPrompt`, and `toolSurface`; `thinkingLevel` is not a workflow task-agent config alias. The conventional saved workflow agents live in `.svvy/workflows/components/agents.ts` and export `explorer`, `implementer`, and `reviewer`. App settings seed and synchronize those three conventional exports by writing the component file directly; workflow discovery and validation still treat it as a normal saved component asset. The renderer edits conventional workflow-agent settings through TanStack Form so provider/model/reasoning/prompt validation, dirty state, pending state, reset, and async save errors are local UI state before Bun-side validation writes the component file. Provider/model capability metadata used by these controls and by `workflow_list_models` comes from pi's normalized `Model` records; `svvy` must not maintain a second table of provider-specific reasoning quirks or Codex-specific request behavior. Workflow definitions and entries use Smithers `AgentLike` values for adaptive task execution, with the workflow agent configuration describing the svvy task-agent model, prompt, reasoning, and task-local tool surface. At runtime, `toolSurface` is selected from the generated ordered task-tool registry, `cx_*` tools remain valid documented task-local tools, and `list_tools` is added as the required actor-local inspection tool outside the configurable surface.
+Workflow-agent component files are future packaged-app-safe Workflows assets. When adopted, they should be ordinary component files that export values conforming to the generated `WorkflowTaskAgentConfig` contract. Provider/model capability metadata used by those controls and by `workflow_list_models` must come from pi's normalized `Model` records; `svvy` must not maintain a second table of provider-specific reasoning quirks or Codex-specific request behavior. Workflow definitions and entries use Smithers `AgentLike` values for adaptive task execution, with the workflow agent configuration describing the svvy task-agent model, prompt, reasoning, and task-local tool surface. At runtime, `toolSurface` is selected from the generated ordered task-tool registry, `cx_*` tools remain valid documented task-local tools, and `list_tools` is added as the required actor-local inspection tool outside the configurable surface.
 
-Conventional workflow-agent settings are app-visible settings, but their component-file synchronization is workspace-affecting behavior. Any request that writes or validates `.svvy/workflows/components/agents.ts` must carry the target `workspaceId` and resolve that workspace's runtime from the request, not from the active workspace.
+Future workflow-agent component settings are workspace-affecting behavior. Any request that writes or validates workflow-agent component files must carry the target `workspaceId` and resolve that workspace's runtime from the request, not from the active workspace.
 
 A handler lists component assets and reads candidate component files before using their exported values.
 
@@ -268,9 +268,9 @@ The adopted handler-side workflow-authoring flow is:
 2. The handler uses its injected generated workflow-authoring contract, guide, and examples first.
 3. The handler calls `workflow_list_assets` as needed.
 4. The handler reads promising saved definitions, prompts, or component files through ordinary file reads before relying on implementation details.
-5. The handler reads `.svvy/workflows/components/agents.ts` when a Smithers task needs a reusable explorer, implementer, or reviewer.
-6. The handler optionally calls `workflow_list_models` when it must create or revise a workflow agent.
-7. The handler authors a short-lived artifact workflow under `.svvy/artifacts/workflows/<artifact_workflow_id>/`, including artifact-local workflow agents when the conventional saved agents are not a good fit.
+5. The handler may use future packaged-app-safe workflow-agent components when that Workflows behavior is adopted.
+6. The handler optionally calls `workflow_list_models` when it must create or revise a task-agent configuration.
+7. The handler authors a short-lived artifact workflow under `.svvy/artifacts/workflows/<artifact_workflow_id>/`, including artifact-local task-agent configuration when needed.
 8. The handler calls `smithers_list_workflows`, inspects the artifact entry, and launches it through `smithers_run_workflow({ workflowId, input, runId? })`.
 9. If the user explicitly asks to keep reusable workflow files, the handler writes those files directly into `.svvy/workflows/...` through `write` or `edit`.
 10. The handler reads the returned validation feedback in structured command output and keeps editing until the final saved workflow state validates cleanly.
@@ -408,9 +408,9 @@ The Workflows library surface must not block on an in-app source editor. In-app 
 
 ### Workspace Routing
 
-The Workflows library is workspace-owned state. Reads, source previews, validation refreshes, delete actions, open-in-editor actions, artifact workflow grouping, save-shortcut routing, and conventional workflow-agent synchronization must carry explicit `workspaceId`. The backend must never infer the target workspace from the active workspace, focused tab, focused panel, or active runtime, because Workflows library operations can be issued for a background workspace while another workspace is focused.
+The Workflows library is workspace-owned state. Reads, source previews, validation refreshes, delete actions, open-in-editor actions, artifact workflow grouping, save-shortcut routing, and future workflow-agent component operations must carry explicit `workspaceId`. The backend must never infer the target workspace from the active workspace, focused tab, focused panel, or active runtime, because Workflows library operations can be issued for a background workspace while another workspace is focused.
 
-App-global settings such as provider credentials, web-provider selection, app appearance, preferred external editor, and app-wide session-agent defaults remain separate. Only settings that read or write workspace workflow files, generated workflow diagnostics, or workflow-library projection belong on the workspace-scoped lane.
+App-global settings such as provider credentials, web-provider selection, app appearance, preferred external editor, and app-wide agent profiles remain separate. Only settings that read or write workspace workflow files, generated workflow diagnostics, or workflow-library projection belong on the workspace-scoped lane.
 
 ## Handler Guidance
 
@@ -421,9 +421,9 @@ Handler-thread instructions should say:
 - reuse a saved runnable entry when one clearly fits
 - otherwise author a short-lived artifact workflow
 - mix saved definitions, prompts, and components freely when that produces a clearer workflow than reusing one saved entry unchanged
-- read `.svvy/workflows/components/agents.ts` before creating new workflow agents and reuse `explorer`, `implementer`, or `reviewer` when one clearly fits
-- define task-specific workflow agents inside the current artifact workflow when the conventional saved agents do not fit
-- call `workflow_list_models` only when no saved workflow agent fits or the user explicitly wants a different provider or model
+- use future packaged-app-safe workflow-agent components when that Workflows behavior is adopted
+- define task-specific task-agent configuration inside the current artifact workflow when needed
+- call `workflow_list_models` only when no saved task-agent configuration fits or the user explicitly wants a different provider or model
 - write reusable saved workflow files only on explicit request
 - rely on the returned validation feedback after writes under `.svvy/workflows/...`
 - discover and run configured Project CI entries when CI is needed

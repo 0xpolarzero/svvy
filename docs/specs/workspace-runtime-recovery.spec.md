@@ -48,7 +48,7 @@ These are app-global and must not be recovered through a workspace-runtime sched
 - provider auth and OAuth state
 - app-global provider keys and provider selection
 - app preferences such as theme and preferred external editor
-- app-wide session-agent defaults
+- app-wide agent profiles
 - app chrome workspace-tab order and the list of workspace runtimes to acquire
 - global native menu registration and command accelerator wiring
 

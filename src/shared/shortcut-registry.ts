@@ -10,11 +10,11 @@ export type ShortcutActionId =
   | "workspace.openInNewTab"
   | "session.new"
   | "session.newPane"
-  | "session.dumb"
   | "sidebar.toggle"
   | "surface.logs.open"
-  | "surface.workflows.open"
+  | "surface.agents.open"
   | "surface.context.open"
+  | "surface.workflows.open"
   | "dialog.close"
   | "commandPalette.submit"
   | "commandPalette.submitFocusedPane"
@@ -29,11 +29,11 @@ export type AppMenuAction = Extract<
   | "workspace.openInNewTab"
   | "session.new"
   | "session.newPane"
-  | "session.dumb"
   | "sidebar.toggle"
   | "surface.logs.open"
-  | "surface.workflows.open"
+  | "surface.agents.open"
   | "surface.context.open"
+  | "surface.workflows.open"
 >;
 
 export type ShortcutDefinition = {
@@ -106,7 +106,7 @@ export const SHORTCUTS = {
   },
   "session.new": {
     id: "session.new",
-    label: "New Session",
+    label: "New orchestrator",
     hotkey: "Mod+N",
     readableShortcut: "Cmd+N",
     compactShortcut: "⌘N",
@@ -117,24 +117,13 @@ export const SHORTCUTS = {
   },
   "session.newPane": {
     id: "session.newPane",
-    label: "New Session in New Pane",
+    label: "New orchestrator in new pane",
     hotkey: "Mod+Shift+N",
     readableShortcut: "Cmd+Shift+N",
     compactShortcut: "⌘⇧N",
     accelerator: "CommandOrControl+Shift+N",
     scope: "workspace-shell",
     inputPolicy: "allow-while-typing",
-  },
-  "session.dumb": {
-    id: "session.dumb",
-    label: "New Dumb Session",
-    hotkey: "",
-    readableShortcut: "",
-    compactShortcut: "",
-    accelerator: null,
-    scope: "workspace-shell",
-    inputPolicy: "allow-while-typing",
-    commandActionId: "session.dumb",
   },
   "sidebar.toggle": {
     id: "sidebar.toggle",
@@ -160,6 +149,16 @@ export const SHORTCUTS = {
   "surface.workflows.open": {
     id: "surface.workflows.open",
     label: "Open Workflows",
+    hotkey: "Mod+Shift+4",
+    readableShortcut: "Cmd+Shift+4",
+    compactShortcut: "⌘⇧4",
+    accelerator: "CommandOrControl+Shift+4",
+    scope: "workspace-shell",
+    inputPolicy: "allow-while-typing",
+  },
+  "surface.agents.open": {
+    id: "surface.agents.open",
+    label: "Open Agents",
     hotkey: "Mod+Shift+2",
     readableShortcut: "Cmd+Shift+2",
     compactShortcut: "⌘⇧2",
@@ -251,11 +250,11 @@ const APP_MENU_ACTION_IDS = new Set<string>([
   "workspace.openInNewTab",
   "session.new",
   "session.newPane",
-  "session.dumb",
   "sidebar.toggle",
   "surface.logs.open",
-  "surface.workflows.open",
+  "surface.agents.open",
   "surface.context.open",
+  "surface.workflows.open",
 ]);
 
 export function isAppMenuAction(value: unknown): value is AppMenuAction {

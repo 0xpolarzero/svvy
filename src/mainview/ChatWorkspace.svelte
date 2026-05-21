@@ -5,7 +5,7 @@
   import PanelLeftDashedIcon from "@lucide/svelte/icons/panel-left-dashed";
   import type { AssistantMessage, Model } from "@mariozechner/pi-ai";
   import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-  import type { SessionMode } from "../shared/agent-settings";
+  import type { AgentSettingsState } from "../shared/agent-settings";
   import { ArtifactsController } from "./artifacts";
   import CommandPalette from "./CommandPalette.svelte";
   import DockviewWorkspace from "./DockviewWorkspace.svelte";
@@ -138,7 +138,6 @@
   let errorMessage = $state<string | undefined>(undefined);
   let currentModel = $state<Model<any> | null>(null);
   let currentThinkingLevel = $state<ThinkingLevel>("off");
-  let currentSessionMode = $state<SessionMode>("orchestrator");
   let showModelPicker = $state(false);
   let allowedProviders = $state<string[]>([]);
   let promptHistory = $state<PromptHistoryEntry[]>([]);
@@ -207,6 +206,7 @@
   let paletteError = $state<string | undefined>(undefined);
   let paletteBusy = $state(false);
   let workspaceMentionPaths = $state<ReadonlySet<string>>(new Set());
+  let agentSettings = $state<AgentSettingsState | null>(null);
 
   let sidebarResizePointerId: number | null = null;
   let sidebarResizeOriginX = 0;
@@ -330,10 +330,6 @@
       return `Messaging handler thread ${currentSurface.threadId ?? currentSurface.surfacePiSessionId}`;
     }
 
-    if (currentSessionMode === "dumb") {
-      return "Messaging dumb session";
-    }
-
     return "Messaging orchestrator";
   });
   function formatPaneSurfaceLabel(
@@ -348,6 +344,9 @@
     }
     if (binding?.surface === "prompt-library") {
       return "Context";
+    }
+    if (binding?.surface === "agents") {
+      return "Agents";
     }
     if (binding?.surface === "app-logs") {
       return "Logs";
@@ -367,7 +366,7 @@
     if (paneController?.target.surface === "thread") {
       return "Handler Thread";
     }
-    return paneController?.sessionMode === "dumb" ? "Dumb Session" : "Orchestrator";
+    return "Orchestrator";
   }
   function formatPaneAgentSummary(
     paneController: ChatSurfaceController | null,
@@ -381,6 +380,9 @@
     }
     if (binding?.surface === "prompt-library") {
       return "actors";
+    }
+    if (binding?.surface === "agents") {
+      return "profiles";
     }
     if (binding?.surface === "app-logs") {
       return "workspace";
@@ -399,6 +401,7 @@
     if (binding?.surface === "workflow-inspector") return { label: "surface", value: "workflow" };
     if (binding?.surface === "saved-workflow-library") return { label: "surface", value: "library" };
     if (binding?.surface === "prompt-library") return { label: "surface", value: "context" };
+    if (binding?.surface === "agents") return { label: "surface", value: "agents" };
     if (binding?.surface === "app-logs") return { label: "surface", value: "logs" };
     if (binding?.surface === "command") return { label: "surface", value: "command" };
     if (binding?.surface === "workflow-task-attempt") return { label: "surface", value: "task" };
@@ -495,6 +498,7 @@
       workspaceKind: runtime.kind,
       focusedSessionId: activeSessionId,
       focusedSurfaceTarget,
+      orchestratorProfiles: agentSettings?.agents.orchestrators ?? [],
       handlerThreads,
       projectCiStatus,
     }),
@@ -558,6 +562,11 @@
         hotkey: getShortcutHotkey("surface.workflows.open"),
         callback: () => openSavedWorkflowLibrary(),
         options: () => workspaceShortcutOptions("surface.workflows.open"),
+      },
+      {
+        hotkey: getShortcutHotkey("surface.agents.open"),
+        callback: () => openAgentsPane(),
+        options: () => workspaceShortcutOptions("surface.agents.open"),
       },
       {
         hotkey: getShortcutHotkey("surface.context.open"),
@@ -737,6 +746,15 @@
     await runSessionMutation(() => runtime.switchWorkspaceBranch(branch), { rethrow: true });
   }
 
+  async function refreshAgentSettings() {
+    try {
+      agentSettings = await runtime.getAgentSettings();
+    } catch (error) {
+      console.error("Failed to load agent settings:", error);
+      agentSettings = null;
+    }
+  }
+
   async function handleSwitchLayout(layoutId: WorkspaceLayoutSlotId) {
     if (!layoutSlotsEnabled) return;
     await runSessionMutation(() => runtime.switchWorkspaceLayout(layoutId));
@@ -778,9 +796,6 @@
       case "session.newPane":
         void handleCreateSessionInNewPane();
         return;
-      case "session.dumb":
-        void handleCreateDumbSession();
-        return;
       case "sidebar.toggle":
         toggleSidebarVisibility();
         return;
@@ -789,6 +804,9 @@
         return;
       case "surface.workflows.open":
         openSavedWorkflowLibrary();
+        return;
+      case "surface.agents.open":
+        openAgentsPane();
         return;
       case "surface.context.open":
         openPromptLibrary();
@@ -876,20 +894,18 @@
     return event?.metaKey ? { kind: "new-panel", direction: "right" } : { kind: "focused-panel" };
   }
 
-  async function handleCreateSession(event?: MouseEvent) {
-    await runSessionMutation(() => runtime.createSession({}, getNewSessionOpenTarget(event)));
+  async function handleCreateSession(event?: MouseEvent, agentProfileId?: string) {
+    await runSessionMutation(() =>
+      runtime.createSession(
+        agentProfileId ? { agentProfileId } : {},
+        getNewSessionOpenTarget(event),
+      ),
+    );
     await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
   }
 
   async function handleCreateSessionInNewPane() {
     await runSessionMutation(() => runtime.createSession({}, { kind: "new-panel", direction: "right" }));
-    await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
-  }
-
-  async function handleCreateDumbSession() {
-    await runSessionMutation(() =>
-      runtime.createSession({ mode: "dumb" }, { kind: "new-panel", direction: "right" }),
-    );
     await focusComposerForPanel(runtime.paneLayout.focusedPanelId);
   }
 
@@ -901,13 +917,6 @@
       (candidate) => candidate.dataset.panelId === panelId,
     );
     pane?.querySelector<HTMLTextAreaElement>(".composer-shell textarea")?.focus({ preventScroll: true });
-  }
-
-  async function handleSelectCurrentSessionMode(mode: SessionMode) {
-    if (currentSessionMode === mode) {
-      return;
-    }
-    await runSessionMutation(() => runtime.setSessionMode(focusedPanelId, mode));
   }
 
   async function handleOpenSession(sessionId: string, event?: MouseEvent) {
@@ -1107,7 +1116,7 @@
         title: getSurfaceDisplayTitle(
           paneController.target,
           sessions,
-          session?.title ?? "New Session",
+          session?.title ?? "New orchestrator",
         ),
         status: session?.status ?? "idle",
         createdAt: session?.createdAt ?? new Date(0).toISOString(),
@@ -1234,6 +1243,15 @@
     void runtime.openSurface(
       {
         surface: "saved-workflow-library",
+      },
+      { kind: "split", panelId: focusedPanelId, direction: "right" },
+    );
+  }
+
+  function openAgentsPane(): void {
+    void runtime.openSurface(
+      {
+        surface: "agents",
       },
       { kind: "split", panelId: focusedPanelId, direction: "right" },
     );
@@ -1462,7 +1480,6 @@
       errorMessage = undefined;
       currentModel = null;
       currentThinkingLevel = "off";
-      currentSessionMode = "orchestrator";
       return;
     }
 
@@ -1477,7 +1494,6 @@
     errorMessage = surface.agent.state.error ?? getLatestAssistantFailureMessage(nextMessages);
     currentModel = surface.agent.state.model;
     currentThinkingLevel = surface.agent.state.thinkingLevel as ThinkingLevel;
-    currentSessionMode = surface.sessionMode;
   }
 
   function syncRuntimeState() {
@@ -1548,6 +1564,7 @@
       .catch((error) => {
         console.error("Failed to load workspace mention paths:", error);
       });
+    void refreshAgentSettings();
 
     const unsubscribeRuntime = runtime.subscribe(() => {
       syncRuntimeState();
@@ -1685,8 +1702,8 @@
           {appLogSummary}
           busy={mutatingSession}
           errorMessage={sidebarError}
+          orchestratorProfiles={agentSettings?.agents.orchestrators ?? []}
           onCreateSession={handleCreateSession}
-          onCreateDumbSession={handleCreateDumbSession}
           onOpenSession={handleOpenSession}
           onOpenHandlerThread={handleOpenSidebarHandlerThread}
           onOpenWorkflowRun={handleOpenSidebarWorkflowRun}
@@ -1704,6 +1721,7 @@
           onOpenCommandPalette={() => openPalette("commands")}
           onOpenAppLogs={openAppLogs}
           onOpenWorkflowLibrary={() => openSavedWorkflowLibrary()}
+          onOpenAgents={openAgentsPane}
           onOpenPromptLibrary={openPromptLibrary}
           onOpenSettings={onOpenSettings}
           onListWorkspaceBranches={runtime.listWorkspaceBranches}
@@ -1742,6 +1760,7 @@
         recentWorkspaces={knownWorkspaces}
         onFocusPanel={(panelId) => void handleFocusPane(panelId)}
         onOpenModelPicker={(panelId) => void handleOpenPaneModelPicker(panelId)}
+        onAgentSettingsChanged={(settings) => (agentSettings = settings)}
         onOpenWorkspace={() => onOpenWorkspace?.()}
         onOpenWorkspaceInNewTab={() => onOpenWorkspaceInNewTab?.()}
         onPersistDockview={(dockview, panelId) => runtime.setDockviewLayout(dockview, panelId)}

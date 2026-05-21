@@ -344,6 +344,8 @@
 <style>
   .compact-combobox {
     position: relative;
+    display: inline-flex;
+    align-items: flex-start;
     min-width: 0;
     --compact-control-font-family: var(--font-mono);
     --compact-control-font-weight: 500;
@@ -355,6 +357,7 @@
     align-items: center;
     gap: 0.32rem;
     min-width: 0;
+    overflow: visible;
   }
 
   .compact-combobox-trigger.model-pill,
@@ -410,6 +413,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 1.35;
+    padding-block: 0.08rem;
+    margin-block: -0.08rem;
   }
 
   .compact-combobox-trigger.scope-select {
@@ -465,7 +471,7 @@
     z-index: calc(var(--ui-z-dialog) - 1);
     display: grid;
     gap: 0.24rem;
-    min-width: max(100%, 8rem);
+    min-width: 8rem;
     max-width: min(14rem, calc(100vw - 2rem));
     padding: 0.28rem;
     border: 1px solid var(--ui-border-soft);

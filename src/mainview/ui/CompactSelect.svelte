@@ -2,7 +2,7 @@
   import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
   import FolderGit2Icon from "@lucide/svelte/icons/folder-git-2";
   import GitBranchIcon from "@lucide/svelte/icons/git-branch";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   export type CompactSelectOption = {
     value: string;
@@ -20,6 +20,7 @@
     optionClass?: string;
     leadingIcon?: "branch" | "workspace";
     textTransform?: "none" | "lowercase";
+    placement?: "above" | "below";
     open?: boolean;
     onBeforeOpen?: () => void | Promise<void>;
     onSelect: (value: string) => void | Promise<void>;
@@ -35,20 +36,31 @@
     optionClass = "",
     leadingIcon,
     textTransform = "none",
+    placement = "above",
     open = $bindable(false),
     onBeforeOpen,
     onSelect,
   }: Props = $props();
 
   let root = $state<HTMLDivElement | null>(null);
+  let triggerElement = $state<HTMLButtonElement | null>(null);
+  let menuElement = $state<HTMLDivElement | null>(null);
   let opening = $state(false);
+  let menuStyle = $state("");
   const selectedOption = $derived(options.find((option) => option.value === value));
   const triggerLabel = $derived(selectedOption?.label ?? value);
+
+  $effect(() => {
+    if (!open) return;
+    void value;
+    void options.length;
+    positionMenu();
+  });
 
   onMount(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Node) || root?.contains(target)) return;
+      if (!(target instanceof Node) || root?.contains(target) || menuElement?.contains(target)) return;
       open = false;
     };
 
@@ -58,14 +70,65 @@
       }
     };
 
+    const handleViewportChange = () => {
+      if (open) {
+        positionMenu();
+      }
+    };
+
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
 
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
     };
   });
+
+  function portalMenu(node: HTMLElement) {
+    document.body.append(node);
+
+    return {
+      destroy() {
+        node.remove();
+      },
+    };
+  }
+
+  function clampPosition(nextValue: number, minimum: number, maximum: number) {
+    if (maximum < minimum) return minimum;
+    return Math.min(Math.max(nextValue, minimum), maximum);
+  }
+
+  function positionMenu() {
+    if (!triggerElement) return;
+    const rect = triggerElement.getBoundingClientRect();
+    const gap = 5;
+    const viewportPadding = 8;
+    const availableWidth = Math.max(128, window.innerWidth - viewportPadding * 2);
+    const targetWidth = Math.min(Math.max(rect.width, 104), availableWidth);
+    const measuredRect = menuElement?.getBoundingClientRect();
+    const menuWidth = Math.min(measuredRect?.width ?? targetWidth, availableWidth);
+    const menuHeight = measuredRect?.height ?? 192;
+    const spaceAbove = rect.top - viewportPadding - gap;
+    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding - gap;
+    const resolvedPlacement =
+      placement === "below"
+        ? spaceBelow >= menuHeight || spaceBelow >= spaceAbove
+          ? "below"
+          : "above"
+        : spaceAbove >= menuHeight || spaceAbove >= spaceBelow
+          ? "above"
+          : "below";
+    const unclampedTop = resolvedPlacement === "below" ? rect.bottom + gap : rect.top - menuHeight - gap;
+    const top = clampPosition(unclampedTop, viewportPadding, window.innerHeight - menuHeight - viewportPadding);
+    const left = clampPosition(rect.left, viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+    menuStyle = `left: ${left}px; top: ${top}px; width: ${targetWidth}px; max-width: ${availableWidth}px;`;
+  }
 
   async function selectOption(option: CompactSelectOption) {
     if (option.disabled || option.value === value) {
@@ -88,7 +151,10 @@
     opening = true;
     try {
       await onBeforeOpen?.();
+      positionMenu();
       open = true;
+      await tick();
+      positionMenu();
     } finally {
       opening = false;
     }
@@ -97,6 +163,7 @@
 
 <div class="compact-select" bind:this={root}>
   <button
+    bind:this={triggerElement}
     class={`compact-select-trigger ${triggerClass}`.trim()}
     type="button"
     aria-haspopup="listbox"
@@ -116,7 +183,14 @@
     </span>
   </button>
   {#if open}
-    <div class={`compact-select-menu ${menuClass}`.trim()} role="listbox" aria-label={ariaLabel}>
+    <div
+      bind:this={menuElement}
+      use:portalMenu
+      class={`compact-select-menu ${menuClass}`.trim()}
+      style={menuStyle}
+      role="listbox"
+      aria-label={ariaLabel}
+    >
       {#each options as option (option.value)}
         {@const selected = option.value === value}
         <button
@@ -138,6 +212,8 @@
 <style>
   .compact-select {
     position: relative;
+    display: inline-flex;
+    align-items: flex-start;
     min-width: 0;
     --compact-control-font-family: var(--font-mono);
     --compact-control-font-weight: 500;
@@ -149,6 +225,7 @@
     align-items: center;
     gap: 0.32rem;
     min-width: 0;
+    overflow: visible;
   }
 
   .compact-select-trigger.model-pill {
@@ -270,13 +347,11 @@
   }
 
   .compact-select-menu {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.35rem);
+    position: fixed;
     z-index: var(--ui-z-overlay);
     display: grid;
     gap: 0;
-    min-width: max(100%, 6.5rem);
+    min-width: 6.5rem;
     max-width: min(12rem, calc(100vw - 2rem));
     padding: 0.28rem;
     border: 1px solid var(--ui-border-soft);
@@ -290,9 +365,6 @@
   }
 
   .compact-select-menu.branch-menu {
-    right: 2.18rem;
-    bottom: calc(100% + 0.32rem);
-    left: 0.42rem;
     min-width: 8rem;
     width: max-content;
     max-height: 14rem;

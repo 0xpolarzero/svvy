@@ -15,7 +15,7 @@ Use this checklist before marking UI rollout work complete. Capture manual verif
 | Workflow inspector | Tree-first workflow inspector shows rows, selected details, search/tabs, descendants, and failed/waiting states. | Active descendant is exposed, large trees scroll, selected-node details stay readable. |
 | Artifact panel | Artifact panel or overlay shows grouped artifacts, preview/raw/metadata modes, missing content, and open-in-editor action. | Large logs/previews scroll, missing artifacts have clear state, paths do not overflow. |
 | Command palette | `Cmd+Shift+P` opens product actions and `Cmd+P` opens the quick-open placeholder state. | Matching, disabled states, shortcuts, Dockview placement, and unmatched prompt creation remain correct. |
-| Settings | Provider auth, session-agent settings, workflow-agent settings, and app preferences render current persisted state. | Form labels are accessible, destructive actions require confirmation, narrow width remains usable. |
+| Settings | Provider auth, agent-profile settings, workflow-agent settings, and app preferences render current persisted state. | Form labels are accessible, destructive actions require confirmation, narrow width remains usable. |
 | Narrow shell | At 767 px and below, the shell becomes a single-column surface with collapsed navigation and overlay inspectors. | Touch targets are usable, hidden controls are not focusable, text stays inside controls. |
 
 ## Manual Inspection Steps

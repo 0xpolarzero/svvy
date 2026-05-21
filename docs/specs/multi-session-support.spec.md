@@ -224,11 +224,11 @@ Examples:
 - update session title metadata
 - read or edit Context Library state and generated prompt context for a target workspace
 - inspect, validate, delete, or open saved workflow-library assets for a target workspace
-- synchronize conventional workflow-agent settings into `.svvy/workflows/components/agents.ts` for a target workspace
+- manage future workflow-agent component settings for a target workspace when that packaged-app-safe Workflows behavior is adopted
 
 These operations target `workspaceId` plus any narrower id they need, such as `workspaceSessionId`, `threadId`, `workflowRunId`, or asset path. They must work whether or not the relevant surfaces are currently open.
 
-App-global settings are not workspace-scoped operations. Provider credentials, app-wide provider preferences, app appearance, preferred external editor, and app-wide session-agent defaults may be served by app-global settings APIs. Any setting that reads or writes workspace files, workspace prompt projection, generated context, or workflow-library state must use the workspace-scoped lane instead.
+App-global settings are not workspace-scoped operations. Provider credentials, app-wide provider preferences, app appearance, preferred external editor, and app-wide agent profiles may be served by app-global settings APIs. Any setting that reads or writes workspace files, workspace prompt projection, generated context, or workflow-library state must use the workspace-scoped lane instead.
 
 ### Surface-Scoped Operations
 

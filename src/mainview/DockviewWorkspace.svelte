@@ -16,6 +16,7 @@
   import DockviewPanelHost from "./DockviewPanelHost.svelte";
   import PromptLibrarySnapshotControls from "./PromptLibrarySnapshotControls.svelte";
   import type { ChatRuntime } from "./chat-runtime";
+  import type { AgentSettingsState } from "../shared/agent-settings";
   import type { WorkspaceTabInfo } from "../shared/workspace-contract";
   import type { WorkspaceDockviewPanelState } from "./pane-layout";
   import { getSurfaceDisplayTitle } from "./surface-title";
@@ -34,6 +35,7 @@
     recentWorkspaces?: WorkspaceTabInfo[];
     onFocusPanel: (panelId: string) => void;
     onOpenModelPicker: (panelId: string) => void;
+    onAgentSettingsChanged?: (settings: AgentSettingsState) => void;
     onOpenWorkspace?: () => void;
     onOpenWorkspaceInNewTab?: () => void;
     onPersistDockview: (dockview: SerializedDockview | null, focusedPanelId: string | null) => void;
@@ -49,6 +51,7 @@
     recentWorkspaces = [],
     onFocusPanel,
     onOpenModelPicker,
+    onAgentSettingsChanged,
     onOpenWorkspace,
     onOpenWorkspaceInNewTab,
     onPersistDockview,
@@ -87,6 +90,7 @@
           runtime,
           panelId: this.panelId,
           onOpenModelPicker,
+          onAgentSettingsChanged,
           openingWorkspace,
           openWorkspaceError,
           recentWorkspaces,
@@ -105,6 +109,7 @@
           runtime,
           panelId: this.panelId,
           onOpenModelPicker,
+          onAgentSettingsChanged,
           openingWorkspace,
           openWorkspaceError,
           recentWorkspaces,

@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import type { SessionAgentKey, SessionMode } from "../shared/agent-settings";
+import type { AgentProfileId } from "../shared/agent-settings";
 import type { ComposerAttachment } from "../shared/workspace-contract";
 
 const DEFAULT_SIDEBAR_SECTION_SIZES = {
@@ -113,11 +113,9 @@ export interface StructuredPiSessionRecord {
   provider?: string;
   model?: string;
   reasoningEffort?: string;
-  sessionMode?: SessionMode;
-  defaultSessionAgentJson?: string | null;
-  dumbOrchestratorSessionAgentJson?: string | null;
-  namerSessionAgentJson?: string | null;
-  defaultOrchestratorPromptKey?: SessionAgentKey;
+  orchestratorAgentProfileId?: AgentProfileId;
+  orchestratorAgentProfileJson?: string | null;
+  titleNamerAgentJson?: string | null;
   titleGenerationStatus?: StructuredTitleGenerationStatus;
   titleGenerationTriggeredAt?: string | null;
   titleGenerationFinishedAt?: string | null;
@@ -184,7 +182,7 @@ export interface StructuredThreadRecord {
   wait: StructuredWaitState | null;
   loadedContextKeys: string[];
   worktree?: string;
-  sessionAgentJson?: string | null;
+  agentProfileJson?: string | null;
   startedAt: string;
   updatedAt: string;
   finishedAt: string | null;
@@ -551,7 +549,7 @@ export interface StructuredSessionStateStore {
     title: string;
     objective: string;
     worktree?: string;
-    sessionAgentJson?: string | null;
+    agentProfileJson?: string | null;
   }): StructuredThreadRecord;
   loadThreadContext(input: {
     threadId: string;
@@ -566,7 +564,7 @@ export interface StructuredSessionStateStore {
     title?: string;
     objective?: string;
     worktree?: string | null;
-    sessionAgentJson?: string | null;
+    agentProfileJson?: string | null;
   }): StructuredThreadRecord;
   setSessionWait(input: {
     sessionId: string;
@@ -817,11 +815,9 @@ type SessionRow = {
   provider: string | null;
   model: string | null;
   reasoning_effort: string | null;
-  session_mode: SessionMode | null;
-  default_session_agent_json: string | null;
-  dumb_orchestrator_session_agent_json: string | null;
-  namer_session_agent_json: string | null;
-  default_orchestrator_prompt_key: SessionAgentKey | null;
+  orchestrator_agent_profile_id: AgentProfileId | null;
+  orchestrator_agent_profile_json: string | null;
+  title_namer_agent_json: string | null;
   title_generation_status: StructuredTitleGenerationStatus | null;
   title_generation_triggered_at: string | null;
   title_generation_finished_at: string | null;
@@ -894,7 +890,7 @@ type ThreadRow = {
   wait_resume_when: string | null;
   wait_since: string | null;
   worktree: string | null;
-  session_agent_json: string | null;
+  agent_profile_json: string | null;
   started_at: string;
   updated_at: string;
   finished_at: string | null;
@@ -1253,11 +1249,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            provider,
            model,
            reasoning_effort,
-           session_mode,
-           default_session_agent_json,
-           dumb_orchestrator_session_agent_json,
-           namer_session_agent_json,
-           default_orchestrator_prompt_key,
+           orchestrator_agent_profile_id,
+           orchestrator_agent_profile_json,
+           title_namer_agent_json,
            title_generation_status,
            title_generation_triggered_at,
            title_generation_finished_at,
@@ -1280,7 +1274,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            wait_reason,
            wait_resume_when,
            wait_since
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         pi.sessionId,
@@ -1288,15 +1282,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         pi.provider ?? null,
         pi.model ?? null,
         pi.reasoningEffort ?? null,
-        pi.sessionMode ?? existing?.session_mode ?? "orchestrator",
-        pi.defaultSessionAgentJson ?? existing?.default_session_agent_json ?? null,
-        pi.dumbOrchestratorSessionAgentJson ??
-          existing?.dumb_orchestrator_session_agent_json ??
-          null,
-        pi.namerSessionAgentJson ?? existing?.namer_session_agent_json ?? null,
-        pi.defaultOrchestratorPromptKey ??
-          existing?.default_orchestrator_prompt_key ??
-          "defaultSession",
+        pi.orchestratorAgentProfileId ?? existing?.orchestrator_agent_profile_id ?? null,
+        pi.orchestratorAgentProfileJson ?? existing?.orchestrator_agent_profile_json ?? null,
+        pi.titleNamerAgentJson ?? existing?.title_namer_agent_json ?? null,
         pi.titleGenerationStatus ?? existing?.title_generation_status ?? "not-started",
         pi.titleGenerationTriggeredAt ?? existing?.title_generation_triggered_at ?? null,
         pi.titleGenerationFinishedAt ?? existing?.title_generation_finished_at ?? null,
@@ -1712,7 +1700,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     title: string;
     objective: string;
     worktree?: string;
-    sessionAgentJson?: string | null;
+    agentProfileJson?: string | null;
   }): StructuredThreadRecord {
     const turn = this.mustFindTurnRow(input.turnId);
     const parent = input.parentThreadId ? this.mustFindThreadRow(input.parentThreadId) : null;
@@ -1738,7 +1726,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            wait_resume_when,
            wait_since,
            worktree,
-           session_agent_json,
+           agent_profile_json,
            started_at,
            updated_at,
            finished_at
@@ -1754,7 +1742,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         input.objective,
         "running-handler",
         input.worktree ?? null,
-        input.sessionAgentJson ?? null,
+        input.agentProfileJson ?? null,
         timestamp,
         timestamp,
       );
@@ -1833,7 +1821,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     title?: string;
     objective?: string;
     worktree?: string | null;
-    sessionAgentJson?: string | null;
+    agentProfileJson?: string | null;
   }): StructuredThreadRecord {
     const existing = this.mustFindThreadRow(input.threadId);
     const timestamp = this.now();
@@ -1848,10 +1836,10 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
     const nextObjective = input.objective ?? existing.objective;
     const nextWorktree =
       input.worktree === undefined ? existing.worktree : (input.worktree ?? null);
-    const nextSessionAgentJson =
-      input.sessionAgentJson === undefined
-        ? existing.session_agent_json
-        : (input.sessionAgentJson ?? null);
+    const nextAgentProfileJson =
+      input.agentProfileJson === undefined
+        ? existing.agent_profile_json
+        : (input.agentProfileJson ?? null);
     const finishedAt = isTerminalThreadStatus(nextStatus) ? timestamp : null;
 
     this.db
@@ -1866,7 +1854,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
              wait_resume_when = ?,
              wait_since = ?,
              worktree = ?,
-             session_agent_json = ?,
+             agent_profile_json = ?,
              updated_at = ?,
              finished_at = ?
          WHERE id = ?`,
@@ -1881,7 +1869,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         nextWait?.resumeWhen ?? null,
         nextWait?.since ?? null,
         nextWorktree,
-        nextSessionAgentJson,
+        nextAgentProfileJson,
         timestamp,
         finishedAt,
         input.threadId,
@@ -3684,11 +3672,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            provider,
            model,
            reasoning_effort,
-           session_mode,
-           default_session_agent_json,
-           dumb_orchestrator_session_agent_json,
-           namer_session_agent_json,
-           default_orchestrator_prompt_key,
+           orchestrator_agent_profile_id,
+           orchestrator_agent_profile_json,
+           title_namer_agent_json,
            title_generation_status,
            title_generation_triggered_at,
            title_generation_finished_at,
@@ -3708,7 +3694,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
            wait_reason,
            wait_resume_when,
            wait_since
-         ) VALUES (?, ?, NULL, NULL, NULL, 'orchestrator', NULL, NULL, NULL, 'defaultSession', 'not-started', NULL, NULL, NULL, 0, 0, 0, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)`,
+         ) VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, NULL, 'not-started', NULL, NULL, NULL, 0, 0, 0, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)`,
       )
       .run(sessionId, sessionId, "idle", timestamp, timestamp, sessionId);
     return this.mustFindSessionRow(sessionId);
@@ -4306,11 +4292,9 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
       provider: row.provider ?? undefined,
       model: row.model ?? undefined,
       reasoningEffort: row.reasoning_effort ?? undefined,
-      sessionMode: row.session_mode ?? undefined,
-      defaultSessionAgentJson: row.default_session_agent_json,
-      dumbOrchestratorSessionAgentJson: row.dumb_orchestrator_session_agent_json,
-      namerSessionAgentJson: row.namer_session_agent_json,
-      defaultOrchestratorPromptKey: row.default_orchestrator_prompt_key ?? undefined,
+      orchestratorAgentProfileId: row.orchestrator_agent_profile_id ?? undefined,
+      orchestratorAgentProfileJson: row.orchestrator_agent_profile_json,
+      titleNamerAgentJson: row.title_namer_agent_json,
       titleGenerationStatus: row.title_generation_status ?? "not-started",
       titleGenerationTriggeredAt: row.title_generation_triggered_at,
       titleGenerationFinishedAt: row.title_generation_finished_at,
@@ -4415,7 +4399,7 @@ class SqliteStructuredSessionStateStore implements StructuredSessionStateStore {
         (context) => context.context_key,
       ),
       worktree: row.worktree ?? undefined,
-      sessionAgentJson: row.session_agent_json,
+      agentProfileJson: row.agent_profile_json,
       startedAt: row.started_at,
       updatedAt: row.updated_at,
       finishedAt: row.finished_at,
@@ -4689,11 +4673,9 @@ function initializeSchema(db: Database): void {
       provider TEXT,
       model TEXT,
       reasoning_effort TEXT,
-      session_mode TEXT,
-      default_session_agent_json TEXT,
-      dumb_orchestrator_session_agent_json TEXT,
-      namer_session_agent_json TEXT,
-      default_orchestrator_prompt_key TEXT,
+      orchestrator_agent_profile_id TEXT,
+      orchestrator_agent_profile_json TEXT,
+      title_namer_agent_json TEXT,
       title_generation_status TEXT NOT NULL DEFAULT 'not-started',
       title_generation_triggered_at TEXT,
       title_generation_finished_at TEXT,
@@ -4762,7 +4744,7 @@ function initializeSchema(db: Database): void {
       wait_resume_when TEXT,
       wait_since TEXT,
       worktree TEXT,
-      session_agent_json TEXT,
+      agent_profile_json TEXT,
       started_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       finished_at TEXT
@@ -5000,11 +4982,9 @@ function initializeSchema(db: Database): void {
   ensureColumn(db, "session", "unread_at", "TEXT");
   ensureColumn(db, "session", "unread_reason", "TEXT");
   ensureColumn(db, "session", "last_read_at", "TEXT");
-  ensureColumn(db, "session", "session_mode", "TEXT");
-  ensureColumn(db, "session", "default_session_agent_json", "TEXT");
-  ensureColumn(db, "session", "dumb_orchestrator_session_agent_json", "TEXT");
-  ensureColumn(db, "session", "namer_session_agent_json", "TEXT");
-  ensureColumn(db, "session", "default_orchestrator_prompt_key", "TEXT");
+  ensureColumn(db, "session", "orchestrator_agent_profile_id", "TEXT");
+  ensureColumn(db, "session", "orchestrator_agent_profile_json", "TEXT");
+  ensureColumn(db, "session", "title_namer_agent_json", "TEXT");
   ensureColumn(db, "session", "title_generation_status", "TEXT NOT NULL DEFAULT 'not-started'");
   ensureColumn(db, "session", "title_generation_triggered_at", "TEXT");
   ensureColumn(db, "session", "title_generation_finished_at", "TEXT");
@@ -5041,7 +5021,7 @@ function initializeSchema(db: Database): void {
     "archived_group_size_px",
     "INTEGER NOT NULL DEFAULT 190",
   );
-  ensureColumn(db, "thread", "session_agent_json", "TEXT");
+  ensureColumn(db, "thread", "agent_profile_json", "TEXT");
   ensureColumn(db, "surface_message_queue", "position", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(db, "surface_message_queue", "cancelled_at", "TEXT");
   ensureColumn(db, "surface_message_queue", "kind", "TEXT NOT NULL DEFAULT 'user_message'");

@@ -228,7 +228,7 @@ Why it is expensive:
 
 What to do instead:
 
-- persist session-agent and workflow-agent metadata separately from transcript materialization
+- persist agent-profile and workflow-agent metadata separately from transcript materialization
 - treat full session context as a detail load, not a metadata prerequisite
 
 ## Why These Costs Exist
@@ -325,7 +325,7 @@ PRD pressure:
 
 Optimization requirement:
 
-- maintain incremental token-accounting state per surface and session agent
+- maintain incremental token-accounting state per surface and agent profile
 
 Do not:
 
@@ -358,11 +358,11 @@ Preferred direction:
 - fuzzy-search cache
 - symbolic mention storage keyed by workspace-relative path or durable file identity
 
-### 6. Session agents and per-session overrides
+### 6. Agent profiles and per-session overrides
 
 PRD pressure:
 
-- app-wide session agent settings exist for the default session agent, dumb orchestrator session agent, and namer
+- app-wide agent profile settings exist for orchestrator profiles, the special thread handler profile, and internal title naming
 - the namer starts from first-turn metadata concurrently with the orchestrator and uses its settings prompt as the only naming instruction
 - conventional workflow agents exist as `.svvy/workflows/components/agents.ts` exports for explorer, implementer, and reviewer
 - sessions can override those agent settings
@@ -370,11 +370,11 @@ PRD pressure:
 
 Optimization requirement:
 
-- session-agent resolution should be metadata-driven and cheap
+- agent-profile resolution should be metadata-driven and cheap
 
 Do not:
 
-- derive session-agent state by replaying sessions or rebuilding large config objects on every routing step
+- derive agent-profile state by replaying sessions or rebuilding large config objects on every routing step
 
 Preferred direction:
 
@@ -521,7 +521,7 @@ Capture durable events for:
 - CI run/check result records
 - workflow run updates
 - worktree associations
-- session-agent and workflow-agent setting changes
+- agent-profile and workflow-agent setting changes
 
 ### 2. Normalized product-state store
 

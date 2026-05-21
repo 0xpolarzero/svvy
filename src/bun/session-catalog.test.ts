@@ -19,8 +19,9 @@ import type {
   WorkspaceSyncMessage,
 } from "../shared/workspace-contract";
 import {
-  DEFAULT_DUMB_ORCHESTRATOR_PROMPT,
+  DEFAULT_ORCHESTRATOR_PROFILE_ID,
   DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+  DEFAULT_THREAD_HANDLER_PROMPT,
 } from "../shared/agent-settings";
 import { buildSystemPrompt } from "./default-system-prompt";
 import {
@@ -1378,7 +1379,7 @@ describe("WorkspaceSessionCatalog", () => {
               parentSurfacePiSessionId: string;
               objective: string;
               contextKeys: [];
-              sessionAgentSettings: null;
+              agentProfileSettings: null;
               loadedByCommandId: string;
             }): Promise<{ id: string; title: string }>;
           }
@@ -1389,7 +1390,7 @@ describe("WorkspaceSessionCatalog", () => {
           parentSurfacePiSessionId: created.target.surfacePiSessionId,
           objective: "Configure Project CI checks for this repository.",
           contextKeys: [],
-          sessionAgentSettings: null,
+          agentProfileSettings: null,
           loadedByCommandId: orchestratorThread.id,
         });
 
@@ -1467,7 +1468,9 @@ describe("WorkspaceSessionCatalog", () => {
       const openedHandler = await catalog.openSurface(handler.target);
       const handlerManaged = getManagedSurface(catalog, handler.target.surfacePiSessionId);
 
-      expect(openedHandler.systemPrompt).toBe(buildSystemPrompt("handler"));
+      expect(openedHandler.systemPrompt).toBe(
+        `${buildSystemPrompt("handler")}\n\n## Handler Profile Override\n${DEFAULT_THREAD_HANDLER_PROMPT}`,
+      );
       expect(openedHandler.resolvedSystemPrompt).toContain(buildSystemPrompt("handler"));
       expect(openedHandler.resolvedSystemPrompt).toContain("# Project Standards");
       expect(openedHandler.resolvedSystemPrompt).not.toContain("Hidden append text.");
@@ -1503,89 +1506,89 @@ describe("WorkspaceSessionCatalog", () => {
     }
   });
 
-  it("does not mark a fresh session-agent prompt binding stale", async () => {
+  it("does not mark a fresh orchestrator profile prompt binding stale", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
     try {
       const created = await catalog.createSession(
-        { title: "Fresh Session Agent" },
+        { title: "Fresh Orchestrator Profile" },
         {
           ...DEFAULTS,
-          sessionAgentKey: "defaultSession",
-          sessionAgentSettings: {
+          agentProfileId: DEFAULT_ORCHESTRATOR_PROFILE_ID,
+          agentProfileSettings: {
+            id: DEFAULT_ORCHESTRATOR_PROFILE_ID,
+            kind: "orchestrator",
+            name: "Default orchestrator",
             provider: DEFAULTS.provider,
             model: DEFAULTS.model,
             reasoningEffort: DEFAULTS.thinkingLevel,
             systemPrompt: DEFAULT_ORCHESTRATOR_SESSION_PROMPT,
+            extensions: [],
+            updateFromComposer: false,
+            builtin: true,
+            locked: true,
           },
         },
       );
 
       expect(created.promptBinding?.stale).toBe(false);
-      expect(created.systemPrompt).not.toContain("## Session Agent");
+      expect(created.systemPrompt).not.toContain("## Orchestrator Profile");
       expect(created.systemPrompt).toBe(buildSystemPrompt("orchestrator"));
     } finally {
       await catalog.dispose();
     }
   });
 
-  it("composes new-session prompts from raw session-agent settings once", async () => {
+  it("composes new-session prompts from raw orchestrator profile settings once", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
-    const suffix = "Custom raw session-agent suffix.";
+    const suffix = "Custom raw orchestrator profile suffix.";
 
     try {
       const created = await catalog.createSession(
         { title: "Raw Settings Prompt" },
         {
           ...DEFAULTS,
-          sessionAgentKey: "defaultSession",
-          sessionAgentSettings: {
+          agentProfileId: "custom-orchestrator",
+          agentProfileSettings: {
+            id: "custom-orchestrator",
+            kind: "orchestrator",
+            name: "Custom orchestrator",
             provider: DEFAULTS.provider,
             model: DEFAULTS.model,
             reasoningEffort: DEFAULTS.thinkingLevel,
             systemPrompt: suffix,
+            extensions: [],
+            updateFromComposer: false,
+            builtin: false,
+            locked: false,
           },
         },
       );
 
       expect(created.systemPrompt.startsWith(buildSystemPrompt("orchestrator"))).toBe(true);
-      expect(countOccurrences(created.systemPrompt, "## Session Agent")).toBe(1);
+      expect(countOccurrences(created.systemPrompt, "## Orchestrator Profile")).toBe(1);
       expect(countOccurrences(created.systemPrompt, suffix)).toBe(1);
       expect(created.systemPrompt).not.toContain(
-        `${buildSystemPrompt("orchestrator")}\n\n## Session Agent\n${buildSystemPrompt("orchestrator")}`,
+        `${buildSystemPrompt("orchestrator")}\n\n## Orchestrator Profile\n${buildSystemPrompt("orchestrator")}`,
       );
     } finally {
       await catalog.dispose();
     }
   });
 
-  it("composes mode-switch prompts through the same raw settings path", async () => {
+  it("rejects unknown create-session agent profiles instead of falling back", async () => {
     const { cwd, agentDir, sessionDir } = createWorkspaceFixture();
     const catalog = new WorkspaceSessionCatalog(cwd, agentDir, sessionDir);
 
     try {
-      const created = await catalog.createSession({ title: "Mode Prompt" }, DEFAULTS);
-      const changed = await catalog.setSessionMode(created.target, "dumb", {
-        ...DEFAULTS,
-        sessionAgentKey: "dumbOrchestrator",
-        sessionAgentSettings: {
-          provider: DEFAULTS.provider,
-          model: DEFAULTS.model,
-          reasoningEffort: DEFAULTS.thinkingLevel,
-          systemPrompt: DEFAULT_DUMB_ORCHESTRATOR_PROMPT,
-        },
-      });
-
-      expect(changed.ok).toBe(true);
-      expect(changed.snapshot?.systemPrompt.startsWith(buildSystemPrompt("orchestrator"))).toBe(
-        true,
-      );
-      expect(countOccurrences(changed.snapshot?.systemPrompt ?? "", "## Session Agent")).toBe(1);
-      expect(
-        countOccurrences(changed.snapshot?.systemPrompt ?? "", DEFAULT_DUMB_ORCHESTRATOR_PROMPT),
-      ).toBe(1);
+      await expect(
+        catalog.createSession(
+          { title: "Unknown Profile", agentProfileId: "missing-profile" },
+          DEFAULTS,
+        ),
+      ).rejects.toThrow("Unknown orchestrator agent profile: missing-profile");
     } finally {
       await catalog.dispose();
     }
@@ -2055,7 +2058,9 @@ describe("WorkspaceSessionCatalog", () => {
       );
 
       expect(openedHandler.systemPrompt).toBe(
-        buildSystemPrompt("handler", { loadedContextKeys: ["ci"] }),
+        `${buildSystemPrompt("handler", {
+          loadedContextKeys: ["ci"],
+        })}\n\n## Handler Profile Override\n${DEFAULT_THREAD_HANDLER_PROMPT}`,
       );
       expect(openedHandler.resolvedSystemPrompt).toContain(
         "Loaded optional prompt context: Project CI.",
@@ -3056,7 +3061,7 @@ describe("WorkspaceSessionCatalog", () => {
               objective: string;
               contextKeys: [];
               loadedByCommandId: string;
-              sessionAgentSettings: null;
+              agentProfileSettings: null;
             }): Promise<{ id: string; surfacePiSessionId: string }>;
           }
         ).createHandlerThread({
@@ -3067,7 +3072,7 @@ describe("WorkspaceSessionCatalog", () => {
           objective: "Inspect the repository and report the result.",
           contextKeys: [],
           loadedByCommandId: orchestratorThread.id,
-          sessionAgentSettings: null,
+          agentProfileSettings: null,
         });
 
         await waitFor(() => handlerPrompts.length === 1);

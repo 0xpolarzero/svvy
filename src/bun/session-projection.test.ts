@@ -58,7 +58,7 @@ describe("session projection", () => {
     ).toBe("Refactor queue handling");
   });
 
-  it("falls back to the first user message and then New Session", () => {
+  it("falls back to the first user message and then New orchestrator", () => {
     expect(
       getSessionTitle({
         firstMessage: "",
@@ -70,7 +70,7 @@ describe("session projection", () => {
         firstMessage: "",
         messages: [],
       }),
-    ).toBe("New Session");
+    ).toBe("New orchestrator");
   });
 
   it("uses the latest user message for the preview", () => {

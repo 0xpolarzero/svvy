@@ -10,7 +10,7 @@ import type {
 } from "../shared/workspace-contract";
 import { createAppLogger, type BridgeLogLevel } from "./app-logger";
 import { createAppLogStore, type AppLogStore } from "./app-log-store";
-import { createSessionAgentSettingsStore } from "./session-agent-settings";
+import { createAgentSettingsStore } from "./agent-settings-store";
 import {
   getSvvySessionDir,
   getSvvyAgentDir,
@@ -50,7 +50,7 @@ export type WorkspaceRuntime = {
   openedAt: string;
   catalog: WorkspaceSessionCatalog;
   pathIndex: WorkspacePathIndex;
-  agentSettingsStore: ReturnType<typeof createSessionAgentSettingsStore>;
+  agentSettingsStore: ReturnType<typeof createAgentSettingsStore>;
   appLogStore: AppLogStore;
   appLog: ReturnType<typeof createAppLogger>;
   getInfo: () => WorkspaceInfoResponse;
@@ -186,7 +186,7 @@ export class WorkspaceRuntimeRegistry {
       workspaceId,
     );
     const pathIndex = new WorkspacePathIndex(cwd);
-    const agentSettingsStore = createSessionAgentSettingsStore({
+    const agentSettingsStore = createAgentSettingsStore({
       cwd,
       agentDir: this.agentDir,
     });

@@ -2,12 +2,11 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type {
   AgentDefaults,
+  AgentProfileId,
+  AgentProfileSettings,
   AgentSettingsState,
   AppPreferences,
   ReasoningEffort,
-  SessionAgentKey,
-  SessionAgentSettings,
-  SessionMode,
   WorkflowAgentKey,
   WorkflowAgentSettings,
 } from "./agent-settings";
@@ -141,6 +140,10 @@ export interface OpenWorkspacePaneTarget {
   surface: "open-workspace";
 }
 
+export interface AgentsPaneTarget {
+  surface: "agents";
+}
+
 export type StaticInspectorPaneTarget =
   | { workspaceSessionId: string; surface: "command"; commandId: string }
   | {
@@ -157,6 +160,7 @@ export type WorkspacePaneSurfaceTarget =
   | SavedWorkflowLibraryPaneTarget
   | PromptLibraryPaneTarget
   | AppLogsPaneTarget
+  | AgentsPaneTarget
   | OpenWorkspacePaneTarget
   | StaticInspectorPaneTarget;
 
@@ -242,17 +246,6 @@ export interface SetSurfaceModelRequest {
 export interface SetSurfaceThoughtLevelRequest {
   target: PromptTarget;
   level: ReasoningEffort;
-}
-
-export interface SetSessionModeRequest {
-  target: PromptTarget;
-  mode: SessionMode;
-}
-
-export interface SetSessionModeResponse {
-  ok: boolean;
-  snapshot?: ConversationSurfaceSnapshot;
-  error?: string;
 }
 
 export interface UpdateComposerDraftRequest {
@@ -1113,8 +1106,7 @@ export interface ConversationSurfaceSnapshot {
   provider: string;
   model: string;
   reasoningEffort: ReasoningEffort;
-  sessionMode: SessionMode;
-  sessionAgentKey: SessionAgentKey;
+  agentProfileId: AgentProfileId;
   systemPrompt: string;
   resolvedSystemPrompt: string;
   externalContextSources: PromptLibraryExternalSource[];
@@ -1193,12 +1185,19 @@ export interface ListSessionsResponse {
 export interface CreateSessionRequest {
   title?: string;
   parentSessionId?: string;
-  mode?: SessionMode;
+  agentProfileId?: AgentProfileId;
 }
 
-export interface UpdateSessionAgentDefaultRequest {
-  key: SessionAgentKey;
-  settings: SessionAgentSettings;
+export interface UpdateAgentProfileRequest {
+  profile: AgentProfileSettings;
+}
+
+export interface DeleteAgentProfileRequest {
+  id: AgentProfileId;
+}
+
+export interface ReorderOrchestratorAgentsRequest {
+  ids: AgentProfileId[];
 }
 
 export interface UpdateWorkflowAgentRequest {
@@ -1294,8 +1293,16 @@ export interface ChatRPCSchema {
         params: WorkspaceScopedRequest;
         response: PromptLibraryExternalSource[];
       };
-      updateSessionAgentDefault: {
-        params: WorkspaceScoped<UpdateSessionAgentDefaultRequest>;
+      updateAgentProfile: {
+        params: WorkspaceScoped<UpdateAgentProfileRequest>;
+        response: AgentSettingsState;
+      };
+      deleteAgentProfile: {
+        params: WorkspaceScoped<DeleteAgentProfileRequest>;
+        response: AgentSettingsState;
+      };
+      reorderOrchestratorAgents: {
+        params: WorkspaceScoped<ReorderOrchestratorAgentsRequest>;
         response: AgentSettingsState;
       };
       updateWorkflowAgent: {
@@ -1486,10 +1493,6 @@ export interface ChatRPCSchema {
       renameSession: {
         params: WorkspaceScoped<RenameSessionRequest>;
         response: WorkspaceMutationResponse;
-      };
-      setSessionMode: {
-        params: WorkspaceScoped<SetSessionModeRequest>;
-        response: SetSessionModeResponse;
       };
       forkSession: {
         params: WorkspaceScoped<ForkSessionRequest>;

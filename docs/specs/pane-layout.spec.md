@@ -511,7 +511,7 @@ Placement must preserve live runtime ownership:
 
 - opening an existing interactive surface binds the chosen panel to that surface's existing `surfacePiSessionId`
 - opening the same surface in multiple panels must not create duplicate live runtime controllers
-- opening a new session creates a normal durable workspace session and orchestrator surface, then binds the chosen panel to that surface
+- opening a New orchestrator session creates a normal durable workspace session and orchestrator surface, then binds the chosen panel to that surface
 - opening a handler-thread surface binds to that thread's pi-backed surface
 - opening workflow inspector, artifact, or Project CI projection surfaces must preserve their durable state ownership and only create live runtime state when the surface kind requires it
 

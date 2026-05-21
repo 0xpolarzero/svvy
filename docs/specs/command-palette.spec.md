@@ -10,7 +10,7 @@
   - define the command/action registry model
   - define the shortcut registry and TanStack Hotkeys dispatch boundary
   - define prefix-driven command search, matching, and execution routing semantics
-  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, Workflows library browsing, Context library browsing, Dockview panels, settings, agent settings, and future product actions
+  - define how the palette relates to sessions, Project CI, handler threads, workflow inspectors, Workflows library browsing, Agents profile browsing, Context library browsing, Dockview panels, settings, and future product actions
 
 ## Purpose
 
@@ -18,7 +18,7 @@ The palette is the shell-level action and search surface for `svvy`.
 
 It gives users a VS Code-like way to discover and execute product actions without turning those actions into a second runtime. There is one shared palette shell, one input, and one result interaction model. Command behavior is selected by the input prefix: `>` means command mode. `Cmd+Shift+P` opens the shared palette with `>` already inserted, while `Cmd+P` opens the same shared palette with an empty input for file quick-open search mode, which is intentionally a placeholder until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist.
 
-The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, Workflows library browsing, Context library browsing, durable state, settings, and agent settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
+The palette invokes existing product behavior. It routes into sessions, Dockview panels, surfaces, orchestrator and handler turns, Smithers-native tools, Project CI projection, Workflows library browsing, Agents profile browsing, Context library browsing, durable state, and settings. It must not become an alternate execution engine, standalone shell, custom terminal loop, readline loop, or parallel workflow abstraction.
 
 ## Source Boundaries
 
@@ -56,7 +56,7 @@ All palette, sidebar, pane, and action shortcuts come from the product shortcut 
 
 With that prefix present, the palette discovers and executes product actions, including:
 
-- create a new session
+- create a New orchestrator session
 - open or switch to existing session-like targets, including orchestrator sessions, handler-thread sessions, and workflow task-agent projection sessions
 - pin, unpin, archive, and unarchive sessions
 - open focused session, thread, workflow, artifact, and Project CI surfaces
@@ -65,7 +65,7 @@ With that prefix present, the palette discovers and executes product actions, in
 - open workflow inspector-related surfaces
 - open the read-only Workflows library surface
 - Dockview panel and layout actions once Dockview layout exists
-- settings and agent-setting actions when those features exist
+- settings and Agents profile actions when those features exist
 - future product actions as they are added
 
 `Cmd+P` opens the same shared palette with an empty input. If the palette is already open, the same chord switches the focused palette input to quick-open mode and clears the command prefix.
@@ -100,7 +100,7 @@ type CommandAction = {
     | "workflow-library"
     | "pane"
     | "settings"
-    | "agent-settings";
+    | "agents";
   aliases: string[];
   shortcut: string | null;
   availability: CommandAvailability;
@@ -116,8 +116,16 @@ type CommandAvailability =
 type CommandExecutionTarget =
   | { kind: "create-session"; initialPrompt?: string }
   | { kind: "open-session"; workspaceSessionId: string }
-  | { kind: "open-workflow-task-attempt"; workspaceSessionId: string; workflowTaskAttemptId: string }
-  | { kind: "update-session-navigation"; workspaceSessionId: string; action: "pin" | "unpin" | "archive" | "unarchive" }
+  | {
+      kind: "open-workflow-task-attempt";
+      workspaceSessionId: string;
+      workflowTaskAttemptId: string;
+    }
+  | {
+      kind: "update-session-navigation";
+      workspaceSessionId: string;
+      action: "pin" | "unpin" | "archive" | "unarchive";
+    }
   | { kind: "open-surface"; surface: CommandSurfaceTarget }
   | { kind: "start-orchestrator-turn"; workspaceSessionId: string; prompt: string }
   | { kind: "start-handler-turn"; workspaceSessionId: string; threadId: string; prompt: string }
@@ -141,7 +149,7 @@ Scopes include:
 - `dialog`
 - `input`
 
-The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, `Cmd+N` for a new session in the focused pane, `Cmd+Shift+N` for a new session in a new pane, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Workflows, and `Cmd+Shift+3` for Context, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
+The registry decides whether a shortcut may fire while the user is typing. App launcher and shell command chords, including `Cmd+Shift+P`, `Cmd+P`, `Cmd+N` for New orchestrator in the focused pane, `Cmd+Shift+N` for New orchestrator in a new pane, sidebar toggle, `Cmd+Shift+1` for Logs, `Cmd+Shift+2` for Agents, `Cmd+Shift+3` for Context, and `Cmd+Shift+4` for Workflows, are intentionally available while workspace text inputs such as the composer are focused because they are command chords rather than text editing keystrokes. Text-editing-like shortcuts are suppressed inside text inputs, textareas, selects, and contenteditable regions unless the shortcut is explicitly input-local or dialog-local, such as composer Enter, palette Enter, or dialog Escape.
 
 TanStack Hotkeys owns renderer keyboard subscription, chord matching, scoped attachment, conflict handling, and input suppression. It does not own product semantics. Hotkey callbacks dispatch product actions through the shortcut registry and command/action registry rather than executing unrelated product behavior directly.
 
@@ -176,17 +184,17 @@ Rules:
 - handler-thread actions target existing handler-thread surfaces or create handler work through `thread_start` only when the orchestrator model calls for delegation
 - workflow inspector actions open inspection surfaces over durable workflow-run state and Smithers-native inspection APIs
 - Smithers operations remain handler-thread tools exposed under the `smithers_*` surface; the palette must not introduce a parallel `workflow_*` command system
-- settings and agent-setting commands open or update the product-owned settings surfaces when those features exist
+- settings and Agents profile commands open or update the product-owned settings surfaces when those features exist
 
 The command palette does not execute repository commands directly. Repository work still flows through pi-backed surfaces, normal turns, `execute_typescript`, handler threads, and Smithers-backed workflows.
 
 ## Fallback Prompt Behavior
 
-When the shared palette is in command mode and the text after `>` does not match an existing command or action, pressing Enter creates a new session and uses the text after `>` as that session's initial prompt.
+When the shared palette is in command mode and the text after `>` does not match an existing command or action, pressing Enter creates a New orchestrator session and uses the text after `>` as that session's initial prompt.
 
 Rules:
 
-- empty or whitespace-only text must not create a new session
+- empty or whitespace-only text must not create a new orchestrator session
 - matched commands execute the selected command instead of creating a prompt session
 - unmatched command-mode text creates a normal top-level session container with a main orchestrator surface
 - the initial prompt enters the orchestrator through the normal turn model
@@ -219,7 +227,7 @@ Command-related action controls use two distinct feedback layers:
 - an instant in-control shortcut hint for controls with a direct keybinding
 - a delayed explanatory tooltip that appears after 500 ms of hover or keyboard focus
 
-The instant hint uses the compact display shortcut from the product shortcut registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. For the sidebar New Session control, the delayed tooltip also explains click, `Cmd+N`, `Cmd`-click, and `Cmd+Shift+N` placement because the same control supports focused-pane and new-pane creation. For other explicit labeled sidebar actions such as command palette and quick open, the instant hint is usually sufficient and those actions do not also need an explanatory tooltip.
+The instant hint uses the compact display shortcut from the product shortcut registry, such as `⌘N`. It belongs inside the action control and appears immediately on hover or focus without resizing the control. For the sidebar New orchestrator control, the delayed tooltip also explains click, `Cmd+N`, `Cmd`-click, `Cmd+Shift+N` placement, and profile-picker behavior because the same control supports focused-pane and new-pane creation from the ordered orchestrator profile list. For other explicit labeled sidebar actions such as command palette and quick open, the instant hint is usually sufficient and those actions do not also need an explanatory tooltip.
 
 The delayed tooltip uses the readable shortcut form from the same registry, such as `Cmd+N`, when a shortcut exists, but renders it with the same segmented keycap treatment as compact hints. It explains icon-only or ambiguous actions rather than repeating obvious sidebar labels. Native browser `title` tooltips must not be used for these product action buttons because their delay, styling, and shortcut rendering are browser-controlled.
 
@@ -231,8 +239,8 @@ Controls without keybindings may still use the delayed tooltip when the icon or 
 
 Sessions:
 
-- the palette exposes new session, switch session, open session, pin, unpin, archive, and unarchive actions
-- fallback unmatched command-mode text creates a normal session with an initial orchestrator prompt
+- the palette exposes New orchestrator, switch session, open session, pin, unpin, archive, and unarchive actions
+- fallback unmatched command-mode text creates a normal orchestrator session with an initial orchestrator prompt
 
 Project CI:
 
@@ -255,10 +263,10 @@ Dockview panels:
 - the palette can expose panel and layout actions once Dockview layout exists
 - panel placement and focused-panel replacement behavior are defined by the pane-layout spec
 
-Settings and agent settings:
+Settings and Agents:
 
-- the palette exposes ordinary session creation and dumb-session creation as distinct actions
-- the palette can expose settings, provider, session-agent, and workflow-agent actions when those features exist
+- the palette exposes New orchestrator actions backed by ordered orchestrator profiles and carries the selected `agentProfileId` into normal session creation
+- the palette can expose settings, provider, Agents profile, and future extension or workflow-agent actions when those features exist
 - these actions open or update product-owned settings surfaces
 
 Future product actions:
@@ -270,7 +278,7 @@ Future product actions:
 
 - `Cmd+Shift+P` opens the shared palette with `>` prefilled.
 - `Cmd+P` opens the shared palette with an empty input for file quick-open search mode.
-- `Cmd+Shift+1`, `Cmd+Shift+2`, and `Cmd+Shift+3` open Logs, Workflows, and Context in sidebar order while preserving plain `Cmd+1/2/3` for future pane or tab switching.
+- `Cmd+Shift+1`, `Cmd+Shift+2`, `Cmd+Shift+3`, and `Cmd+Shift+4` open Logs, Agents, Context, and Workflows in sidebar order while preserving plain `Cmd+1/2/3/4` for future pane or tab switching.
 - The leading `>` is the only command-mode switch; adding or removing it changes live behavior in the same UI.
 - File quick-open is a placeholder until file-oriented surfaces exist.
 - The palette uses `cmdk-sv` as the intended Svelte UI primitive when implemented.
@@ -278,7 +286,7 @@ Future product actions:
 - Product action buttons use the product shortcut registry for shortcut hints and avoid native browser `title` tooltips; command-palette and quick-open launchers live in the sidebar rather than duplicated in the top-right workspace chrome.
 - TanStack Hotkeys is the renderer dispatch primitive and is not the source of product command semantics.
 - Commands route into existing product models and durable state.
-- Unmatched non-empty command-mode text after `>` creates a new session initial prompt.
+- Unmatched non-empty command-mode text after `>` creates a New orchestrator initial prompt.
 - Non-command quick-open text must not create a session while quick-open is a placeholder.
 - The palette is not an execution engine.
 - The palette is not a standalone shell, terminal, readline loop, or alternate TUI stack.
@@ -303,6 +311,6 @@ This design is successful when:
 
 - users can discover and execute product actions from `Cmd+Shift+P` or by typing `>` into the shared palette
 - `Cmd+P` is reserved for future file quick-open behavior without implying file surfaces that do not exist
-- unmatched command-mode text starts a normal new session prompt without including the leading `>` in the prompt
+- unmatched command-mode text starts a normal New orchestrator prompt without including the leading `>` in the prompt
 - command results use existing sessions, surfaces, orchestrator and handler routing, durable state, and Dockview panel semantics
 - implementation can use `cmdk-sv` for the Svelte menu UI without delegating product semantics to the UI library

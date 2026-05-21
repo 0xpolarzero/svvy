@@ -3,7 +3,7 @@ import type { SessionStatus, WorkspaceSessionSummary } from "../shared/workspace
 
 const PREVIEW_LIMIT = 140;
 const TITLE_LIMIT = 72;
-const NEW_SESSION_TITLE = "New Session";
+const NEW_ORCHESTRATOR_TITLE = "New orchestrator";
 
 interface SessionSummaryBase {
   id: string;
@@ -149,7 +149,7 @@ export function getSessionTitle(source: {
     return firstUserMessage;
   }
 
-  return NEW_SESSION_TITLE;
+  return NEW_ORCHESTRATOR_TITLE;
 }
 
 export function getSessionPreview(source: {

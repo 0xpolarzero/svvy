@@ -36,8 +36,8 @@ import {
 } from "../shared/shortcut-registry";
 import {
   DEFAULT_AGENT_SETTINGS,
+  DEFAULT_ORCHESTRATOR_PROFILE_ID,
   type AgentDefaults,
-  type SessionMode,
 } from "../shared/agent-settings";
 import {
   getProviderEnvVar,
@@ -239,8 +239,12 @@ function resolveSendDefaults(runtime: WorkspaceRuntime, request: SendPromptReque
 
 function getDefaultAgentSettings(runtime?: WorkspaceRuntime): AgentDefaults {
   if (runtime) {
-    const savedDefault = runtime.agentSettingsStore.getState().sessionAgents.defaultSession;
-    if (savedDefault.provider && savedDefault.model) {
+    const savedDefault =
+      runtime.agentSettingsStore
+        .getState()
+        .agents.orchestrators.find((agent) => agent.id === DEFAULT_ORCHESTRATOR_PROFILE_ID) ??
+      runtime.agentSettingsStore.getState().agents.orchestrators[0];
+    if (savedDefault?.provider && savedDefault.model) {
       return {
         provider: savedDefault.provider,
         model: savedDefault.model,
@@ -286,12 +290,14 @@ function getDefaultAgentSettings(runtime?: WorkspaceRuntime): AgentDefaults {
 
 function getSessionDefaults(
   runtime: WorkspaceRuntime,
-  mode: SessionMode = "orchestrator",
+  profileId = DEFAULT_ORCHESTRATOR_PROFILE_ID,
 ): SessionDefaults {
-  const agentSettings =
-    runtime.agentSettingsStore.getState().sessionAgents[
-      mode === "dumb" ? "dumbOrchestrator" : "defaultSession"
-    ];
+  const agentSettings = runtime.agentSettingsStore
+    .getState()
+    .agents.orchestrators.find((agent) => agent.id === profileId);
+  if (!agentSettings) {
+    throw new Error(`Unknown orchestrator agent profile: ${profileId}`);
+  }
   const defaults =
     agentSettings.provider && agentSettings.model
       ? agentSettings
@@ -300,9 +306,8 @@ function getSessionDefaults(
     model: defaults.model,
     provider: defaults.provider,
     thinkingLevel: defaults.reasoningEffort,
-    sessionMode: mode,
-    sessionAgentKey: mode === "dumb" ? "dumbOrchestrator" : "defaultSession",
-    sessionAgentSettings: agentSettings,
+    agentProfileId: agentSettings.id,
+    agentProfileSettings: agentSettings,
   };
 }
 
@@ -766,12 +771,24 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       getPromptLibraryExternalSources: async (input) => {
         return getWorkspaceRuntime(input).catalog.getPromptLibraryExternalSources();
       },
-      updateSessionAgentDefault: async (input) => {
+      updateAgentProfile: async (input) => {
         const runtime = getWorkspaceRuntime(input);
-        const { key, settings } = input;
+        const { profile } = input;
         resolvedDefaults = null;
-        runtime.appLog.info("settings", "Session agent defaults updated.", { key });
-        return runtime.agentSettingsStore.setSessionAgentDefault(key, settings);
+        runtime.appLog.info("settings", "Agent profile updated.", { profileId: profile.id });
+        return runtime.agentSettingsStore.setAgentProfile(profile);
+      },
+      deleteAgentProfile: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { id } = input;
+        runtime.appLog.info("settings", "Agent profile deleted.", { profileId: id });
+        return runtime.agentSettingsStore.deleteAgentProfile(id);
+      },
+      reorderOrchestratorAgents: async (input) => {
+        const runtime = getWorkspaceRuntime(input);
+        const { ids } = input;
+        runtime.appLog.info("settings", "Orchestrator agents reordered.", { count: ids.length });
+        return runtime.agentSettingsStore.reorderOrchestratorProfiles(ids);
       },
       updateWorkflowAgent: async (input) => {
         const runtime = getWorkspaceRuntime(input);
@@ -1065,10 +1082,10 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
       },
       createSession: async (input) => {
         const runtime = getWorkspaceRuntime(input);
-        const { title, parentSessionId, mode } = input;
+        const { title, parentSessionId, agentProfileId } = input;
         const session = await runtime.catalog.createSession(
-          { title, parentSessionId, mode },
-          getSessionDefaults(runtime, mode ?? "orchestrator"),
+          { title, parentSessionId, agentProfileId },
+          getSessionDefaults(runtime, agentProfileId),
         );
         recordDevBrowserToolsEvent("session.created", {
           parentSessionId: parentSessionId ?? null,
@@ -1149,29 +1166,6 @@ const rpc = defineElectrobunRPC<ChatRPCSchema, "bun">("bun", {
           workspaceSessionId: sessionId,
           title,
         });
-        return result;
-      },
-      setSessionMode: async (input) => {
-        const runtime = getWorkspaceRuntime(input);
-        const { target, mode } = input;
-        const result = await runtime.catalog.setSessionMode(
-          target,
-          mode,
-          getSessionDefaults(runtime, mode),
-        );
-        if (result.ok && result.snapshot) {
-          recordDevBrowserToolsEvent("session.mode.changed", {
-            mode,
-            sessionId: target.workspaceSessionId,
-            surfacePiSessionId: target.surfacePiSessionId,
-          });
-        } else {
-          runtime.appLog.error("session", result.error ?? "Session mode update failed.", {
-            mode,
-            sessionId: target.workspaceSessionId,
-            surfacePiSessionId: target.surfacePiSessionId,
-          });
-        }
         return result;
       },
       forkSession: async (input) => {
@@ -1734,7 +1728,6 @@ const appMenu: Parameters<typeof ApplicationMenu.setApplicationMenu>[0] = [
       { type: "separator" },
       appMenuItem("session.new"),
       appMenuItem("session.newPane"),
-      appMenuItem("session.dumb"),
     ],
   },
   {

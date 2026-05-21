@@ -127,7 +127,7 @@ Current product decisions for this section are specified in `docs/specs/web-tool
 - [x] Define the discovery metadata contract compiled from JSDoc headers in `ts` or `tsx` files and frontmatter in `mdx` prompt files. Commit(s): `37afcb3`, `4515233`
 - [x] Expose handler-owned `workflow_list_assets` directly and duplicate it as handler-only `api.workflow_list_assets(...)` for code-mode composition. Commit(s): `4515233`
 - [x] Expose handler-owned `workflow_list_models` directly and duplicate it as handler-only `api.workflow_list_models()` for code-mode composition. Commit(s): `4515233`
-- [x] Build a POC saved definition plus saved entry that are reused by a new short-lived artifact entry with different prompts, workflow agents, or config bound at authoring time. Commit(s): `37afcb3`
+- [x] Build a POC saved definition plus saved entry that are reused by a new short-lived artifact entry with different prompts or config bound at authoring time. Commit(s): `37afcb3`
 - [x] Keep authored workflows artifact-only by default until the handler explicitly writes reusable files into `.svvy/workflows/`. Commit(s): `0b2d1ff`
 - [x] Run automatic saved-workflow validation after direct `write` or `edit` operations under `.svvy/workflows/...`, surfacing diagnostics through structured command records. Commit(s): `0b2d1ff`
 - [x] Surface all runnable saved and artifact entries through `smithers_list_workflows` and `smithers_run_workflow({ workflowId, input, runId? })`, with `smithers_list_workflows` returning each entry's explicit launch contract, `workflowId`, `label`, `summary`, `sourceScope`, `entryPath`, grouped asset refs, derived `assetPaths`, and `workflowId` filter support rather than relying on inferred import graphs. Commit(s): `4515233`, `dc1da8c`
@@ -182,13 +182,13 @@ Current product decisions for this section are specified in `docs/specs/command-
 
 - [x] Define the product-owned command/action registry shape, including stable ids, labels, aliases, categories, availability, shortcuts, and typed execution targets. Commit(s): `cb319ac`
 - [x] Define the shared VS Code-style palette shell where `Cmd+Shift+P` opens with `>` prefilled and `Cmd+P` opens the same input without a prefix. Commit(s): `cb319ac`
-- [x] Define `>` as the live command-mode prefix for session, surface, Project CI, handler-thread, workflow-inspector, Dockview panel, settings, agent settings, and future product actions. Commit(s): `cb319ac`
+- [x] Define `>` as the live command-mode prefix for session, surface, Project CI, handler-thread, workflow-inspector, Dockview panel, settings, Agents profile, and future product actions. Commit(s): `cb319ac`
 - [x] Define unprefixed `Cmd+P` behavior as file quick-open search with placeholder or no-op behavior until file-tree, editor, syntax-highlighting, typecheck, and diagnostics surfaces exist. Commit(s): `cb319ac`
 - [x] Adopt `cmdk-sv` as the Svelte command palette UI primitive while keeping product routing and command semantics owned by `svvy`. Commit(s): `cb319ac`
 - [x] Build a POC command palette over static product actions. Commit(s): `cb319ac`
 - [x] Expose session creation, open/switch, pin, unpin, archive, and unarchive actions through the palette. Commit(s): `cb319ac`
 - [x] Show unified `Open Session` results for orchestrator, handler-thread, and workflow task-agent projection categories with visible kind badges. Commit(s): `12d89d8`
-- [x] Route unmatched non-empty command-mode text after `>` into a new session initial prompt through the normal orchestrator turn model. Commit(s): `cb319ac`
+- [x] Route unmatched non-empty command-mode text after `>` into a New orchestrator initial prompt through the normal orchestrator turn model. Commit(s): `cb319ac`
 - [x] Add keyboard shortcut handling for `Cmd+Shift+P`, `Cmd+P`, Enter, and command-palette `Cmd+Enter` placement once Dockview layout exists. Commit(s): `cb319ac`
 - [x] Add tests for shortcut dispatch, command matching, action routing, disabled or hidden availability, and unmatched prompt-session creation. Commit(s): `cb319ac`
 - [ ] Keep a product-owned shortcut registry with stable action ids, labels, platform chords, compact and readable display strings, scopes, input-typing policy, availability, and command-palette or tooltip metadata.
@@ -218,36 +218,37 @@ Current product decisions for this section are specified in `docs/specs/pane-lay
 - [ ] Open a selected handler-thread surface in a chosen Dockview panel as a fully interactive surface.
 - [ ] Keep duplicated panel views of the same surface synchronized while allowing independent scroll position.
 
-## 11. Session Agents And Workflow Agents
+## 11. Agents Pane And Agent Profiles
 
-- [x] Define the stored shape for session agent settings used by orchestrator, dumb orchestrator, and handler surfaces. Commit(s): `8e19462`
-- [x] Keep session agent settings separate from requestable context packs so Project CI uses normal handler-thread execution plus `context: ["ci"]`. Commit(s): `2a5dbbe`
-- [x] Seed initial app-wide default values for the default session agent and dumb orchestrator session agent. Commit(s): `8e19462`
-- [x] Build a POC settings model for editing app-wide session agent defaults. Commit(s): `8e19462`
-- [x] Persist app-wide session agent defaults. Commit(s): `8e19462`
-- [x] Build a POC session creation flow with a primary orchestrator session action and a dumb session alternative. Commit(s): `8e19462`
-- [x] Persist session mode and the default orchestrator-surface prompt selection. Commit(s): `8e19462`
-- [x] Persist per-session overrides for the default session agent and dumb orchestrator session agent. Commit(s): `8e19462`
-- [x] Persist per-thread overrides for handler-thread session agent settings when a delegated thread needs a specific model or reasoning level. Commit(s): `8e19462`
-- [x] Apply the dumb orchestrator agent settings and dumb orchestrator system prompt at session creation. Commit(s): `8e19462`
-- [x] Show the current focused-surface session agent summary in pane chrome. Commit(s): `8e19462`
-- [x] Expand the session agent panel to inspect the session agent settings for the focused surface's session and thread. Commit(s): `8e19462`
-- [x] Seed `.svvy/workflows/components/agents.ts` with conventional `explorer`, `implementer`, and `reviewer` workflow agent exports. Commit(s): `8e19462`
-- [x] Build settings support for editing conventional workflow agents by synchronizing model, reasoning, and prompt fields with `.svvy/workflows/components/agents.ts`. Commit(s): `8e19462`
-- [ ] Use TanStack Form for complex session-agent, workflow-agent, provider key, web-provider, and app-preference settings forms, including direct-save semantics, validation, dirty state, reset/cancel, pending submit state, async save errors, pi-normalized provider/model/reasoning constraints, and synchronization to `.svvy/workflows/components/agents.ts`.
-- [x] Teach handler prompts to inspect and reuse `.svvy/workflows/components/agents.ts` exports when they fit, author artifact-local workflow agents for one-off needs, and write saved workflow agent components only on explicit request. Commit(s): `92c5397`
+- [x] Define the stored shape for pi-backed agent profile settings used by orchestrator and handler surfaces. Commit(s): `8e19462`
+- [x] Keep agent profiles separate from requestable context packs so Project CI uses normal handler-thread execution plus `context: ["ci"]`. Commit(s): `2a5dbbe`
+- [x] Seed initial app-wide values for the default orchestrator profile and special profiles. Commit(s): `8e19462`
+- [x] Build a POC settings model for editing app-wide agent profile defaults. Commit(s): `8e19462`
+- [x] Persist app-wide agent profile settings. Commit(s): `8e19462`
+- [x] Build a POC New orchestrator creation flow with profile-backed orchestrator selection. Commit(s): `8e19462`
+- [x] Persist the orchestrator profile snapshot and prompt selection used by created sessions. Commit(s): `8e19462`
+- [x] Persist per-session orchestrator profile overrides. Commit(s): `8e19462`
+- [x] Persist per-thread overrides for handler-thread agent profile settings when a delegated thread needs a specific model or reasoning level. Commit(s): `8e19462`
+- [ ] Keep the Agents sidebar pane between Logs and Context, with orchestrator profiles plus the `threadHandler` special profile owned there instead of in General settings.
+- [ ] Drive the New orchestrator picker order, profile-specific command palette actions, and surface profile badges from Agents-pane orchestrator profile order.
+- [ ] Keep the default orchestrator profile locked, first, non-draggable, non-deletable, and editable for settings.
+- [ ] Keep the `threadHandler` special profile available for delegated handler-thread surfaces.
+- [x] Show the current focused-surface agent profile summary in pane chrome. Commit(s): `8e19462`
+- [ ] Use TanStack Form for complex agent profile, provider key, web-provider, and app-preference settings forms, including direct-save semantics, validation, dirty state, reset/cancel, pending submit state, async save errors, and pi-normalized provider/model/reasoning constraints.
+- [ ] Define future workflow-agent and extension-provided profile surfaces without coupling shipped product workflow runtime to repo-root `workflows/`.
+- [ ] Define future handler guidance for reusable workflow-agent components without coupling shipped product workflow runtime to repo-root `workflows/`.
 
 ## 12. Session Titles
 
 - [x] Define the stored title states for top-level sessions and handler threads. Commit(s): `b510857`, `fe53a3b`
-- [x] Add `namer` as a pi-backed session-agent default, alongside `defaultSession` and `dumbOrchestrator`, for one-shot top-level session naming rather than as a Smithers workflow agent. Commit(s): `354db28`
-- [x] Seed the `namer` session agent to `openai-codex`/`gpt-5.4-mini` with low reasoning effort, expose it in session-agent settings for customization, and treat its settings prompt as the only naming instruction. Commit(s): `354db28`
+- [x] Add `namer` as a pi-backed special agent profile for one-shot top-level session naming rather than as a Smithers workflow agent. Commit(s): `354db28`
+- [x] Seed the internal title namer settings to `openai-codex`/`gpt-5.4-mini` with low reasoning effort and treat its settings prompt as the only naming instruction, without exposing titleNamer as a special profile while only the thread handler is currently special. Commit(s): `354db28`
 - [x] Build a POC event-driven title-generation flow that starts a durable one-shot naming job concurrently with the first real top-level user turn without waiting for the orchestrator response. Commit(s): `354db28`
 - [x] Use the first live composer draft or first submitted user message as the provisional visible session title until the namer-generated title lands. Commit(s): `5378dcb`
 - [x] Persist generated top-level session titles, title-generation lifecycle state, and the first-turn trigger so app restart cannot duplicate or lose title generation. Commit(s): `354db28`
 - [x] Block manual session rename while a title-generation job is pending or running, then release the lock after success, failure, or cancellation. Commit(s): `354db28`
 - [x] Freeze auto-titling after manual rename or after the first successful generated title. Commit(s): `354db28`
-- [x] Generate handler-thread titles with the same `namer` session agent used for top-level sessions, using the orchestrator-supplied `thread_start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
+- [x] Generate handler-thread titles with the same `namer` special profile used for top-level sessions, using the orchestrator-supplied `thread_start` objective as the naming input, while keeping workflow-run labels derived from the workflow's own name or entry metadata instead of adding a separate workflow-run title. Commit(s): `4d74c78`
 
 ## 13. Composer Mention Links
 
@@ -286,7 +287,7 @@ Current product decisions for this section are specified in `docs/specs/prompt-l
 - [x] Define requestable prompt context as the on-demand product-knowledge layer for specialized handler work. Commit(s): `2a5dbbe`
 - [x] Render loaded requested context keys in thread metadata so users can see when context such as `ci` is active. Commit(s): `2a5dbbe`
 - [x] Store app-wide Context Library instruction blocks, context packs, actor recipe settings, generated prompt-part references, internal revision counters, and app-global/workspace-scoped activation metadata. Commit(s): `118fd39c9f`
-- [x] Add a `Context` sidebar surface below `Logs` and `Workflows`, with `Instructions`, `Context Packs`, and `Actors` sections that manage reusable prompt material rather than exposing one raw system-prompt textarea. Commit(s): `118fd39c9f`
+- [x] Add a `Context` sidebar surface below `Agents`, with `Instructions`, `Context Packs`, and `Actors` sections that manage reusable prompt material rather than exposing one raw system-prompt textarea. Commit(s): `118fd39c9f`
 - [x] Seed editable shipped instruction blocks for common, orchestrator, handler, and workflow task guidance, with actor filters, enable state, non-deletable builtin rows, app-global scope, and per-block reset behavior. Commit(s): `118fd39c9f`
 - [x] Seed editable shipped context packs for code navigation, Smithers routing, Smithers supervision, workflow task boundary, and Project CI, with default-loaded actor switches, enable state, non-deletable builtin rows, app-global scope, and per-block reset behavior. Commit(s): `118fd39c9f`
 - [x] Render actor aggregate recipes for orchestrator, handler, and workflow task-agent prompts, linking instruction and context-pack rows back to their editable blocks and showing generated rows as scrollable code previews with editor links to generated context files. Commit(s): `118fd39c9f`

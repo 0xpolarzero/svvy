@@ -34,6 +34,10 @@ describe("createPanelChrome", () => {
       title: "Context",
       kind: "prompt-library",
     });
+    expect(createPanelChrome({ surface: "agents" })).toMatchObject({
+      title: "Agents",
+      kind: "agents",
+    });
   });
 });
 

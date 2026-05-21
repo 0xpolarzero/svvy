@@ -26,11 +26,11 @@ The product model is:
 Context = editable Context Library + generated contracts + read-only runtime standards
 ```
 
-The user manages reusable prompt material in the editable Context Library. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. Pi-discovered runtime standards sources are shown in the same read-only generated-context area as generated prompt parts, but they are not edited, snapshotted, or rediscovered by svvy. New sessions always use the latest context library revision and current runtime standards hashes. Existing sessions keep the revision and standards content they were created with until the user explicitly updates them. Raw revision counters are internal and are not shown as primary Context pane UI.
+The user manages reusable prompt material in the editable Context Library. Actor prompts are aggregates assembled from that material plus generated tool or schema contracts. Pi-discovered runtime standards sources are shown in the same read-only generated-context area as generated prompt parts, but they are not edited, snapshotted, or rediscovered by svvy. New orchestrator sessions always use the latest context library revision and current runtime standards hashes. Existing sessions keep the revision and standards content they were created with until the user explicitly updates them. Raw revision counters are internal and are not shown as primary Context pane UI.
 
 ## Product Principles
 
-- Context customization is a first-class product surface, not hidden inside session-agent settings.
+- Context customization is a first-class product surface, not hidden inside agent profile settings.
 - The Context pane organizes similar material together. Actors are recipes, not the primary authoring unit.
 - Instruction blocks and context packs are ordinary editable records with names, bodies, actor settings, enabled state, scope, custom-record delete actions, and reset behavior.
 - Shipped defaults are protected from deletion but not editing. Reset actions restore their shipped state.
@@ -76,7 +76,7 @@ Runtime standards sources are not Context Library records. They are not user-edi
 
 A monotonically increasing internal version of the context library used for binding sessions, handler threads, and workflow task agents to the prompt state that was current when they started.
 
-New sessions, handler threads, and workflow task agents bind to a prompt revision so the product can explain what prompt shape they used later.
+New orchestrator sessions, handler threads, and workflow task agents bind to a prompt revision so the product can explain what prompt shape they used later.
 
 ### User Snapshot
 
@@ -149,15 +149,18 @@ The workspace sidebar includes:
 
 ```text
 Logs
-Workflows
+Agents
 Context
+Workflows
 ```
+
+`Agents` opens the app-wide agent profile pane. It sits between Logs and Context so model/profile selection is adjacent to prompt composition without owning reusable prompt text.
 
 `Saved Workflows` is renamed to `Workflows`.
 
 The renamed `Workflows` entry still opens the Workflows library surface. The label change reflects that the surface presents saved workflow assets plus artifact workflow groups and should not overstate that the only useful concept is "saved".
 
-The new `Context` entry opens the Context pane.
+The `Context` entry opens the Context pane.
 
 ## Context Pane Structure
 
@@ -688,19 +691,19 @@ Workflow task-agent prompt configuration is an overlay, not a replacement. If a 
 
 The task-attempt prompt binding is written to `workflowTaskAttempt.meta.promptBinding` when the task-local runtime first binds the exact Smithers attempt identity. That binding must be keyed by Smithers `(runId, nodeId, iteration, attempt)`, not by resume-handle recency or transcript inference.
 
-## New Session Invariant
+## New orchestrator Invariant
 
-Every new top-level session, handler thread, and workflow task agent must use the latest applicable prompt revision at creation time.
+Every new top-level orchestrator session, handler thread, and workflow task agent must use the latest applicable prompt revision at creation time.
 
 This applies to:
 
-- sessions created from the sidebar
+- New orchestrator sessions created from the sidebar
 - sessions created from command palette unmatched command-mode text
 - forked sessions
 - delegated handler threads from `thread_start`
 - workflow task-agent attempts created by Smithers supervision
 
-Forking a session creates a new session that uses the latest prompt revision by default unless a future explicit "preserve old prompt revision" action is introduced.
+Forking a session creates a new orchestrator session that uses the latest prompt revision by default unless a future explicit "preserve old prompt revision" action is introduced.
 
 ## Existing Surface Behavior
 
@@ -897,20 +900,22 @@ The backend must resolve these requests from the supplied `workspaceId`, not fro
 
 The app may keep Context Library records as app-owned settings with workspace-scoped activation metadata, but workspace-specific projection of those records is a workspace-scoped operation. The renderer must preserve `workspaceId` through debounced text autosaves, immediate checkbox/chip/scope persistence, reset actions, delete actions, snapshot actions, actor aggregate reads, and generated-context/open-in-editor actions.
 
-## Relationship To Session-Agent Settings
+## Relationship To Agent Profiles
 
-Session-agent settings continue to own:
+Agent profiles continue to own:
 
 - provider
 - model
 - reasoning level
 - namer prompt
-- dumb orchestrator mode settings
-- conventional workflow-agent settings
+- default orchestrator profile settings
+- handler-thread special profile settings
 
 The Context pane owns reusable prompt material used by orchestrator, handler, and workflow task-agent prompt composition.
 
-Per-session or per-thread session-agent prompt suffixes should be represented as prompt-library-compatible override blocks when possible so they appear in actor recipes and revision diffs. Until that migration lands, actor aggregate views must still show those suffixes as included prompt parts.
+Per-session or per-thread agent profile prompt suffixes should be represented as prompt-library-compatible override blocks when possible so they appear in actor recipes and revision diffs. Until that lands, actor aggregate views must still show those suffixes as included prompt parts.
+
+Workflow-agent and extension-provided profile settings are future work. When adopted, they should integrate with the Agents pane or Workflows library without treating repo-root `workflows/` as shipped product runtime state.
 
 ## Relationship To Prompt Context Requests
 
@@ -953,7 +958,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 - Generated prompt parts are visible inside actor recipes.
 - Runtime standards sources are visible in the generated-context area, read-only, openable in the configured external editor, and not editable through the Context pane.
 - Pi `SYSTEM.md` and `APPEND_SYSTEM.md` files do not participate in svvy prompt composition.
-- New sessions use the latest internal prompt revision.
+- New orchestrator sessions use the latest internal prompt revision.
 - Existing sessions warn when their effective bound prompt, runtime standards hashes, or resolved hash differs from current prompt settings.
 - Existing sessions update only through an explicit user action.
 
@@ -979,7 +984,7 @@ When a surface prompt differs from current prompt settings, the transcript metad
 
 - Persist internal prompt revisions and user-named snapshots.
 - Add Context pane snapshot creation, loading, and rename controls.
-- Bind new sessions, handler threads, and workflow task agents to the latest revision.
+- Bind new orchestrator sessions, handler threads, and workflow task agents to the latest revision.
 - Store resolved prompt hashes and inspectable prompt text.
 - Store runtime standards hashes in prompt bindings.
 - Show stale-prompt warnings on existing surfaces.

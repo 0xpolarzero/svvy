@@ -1,3 +1,4 @@
+import type { AgentProfileSettings } from "../shared/agent-settings";
 import type {
   PromptTarget,
   WorkspacePaneSurfaceTarget,
@@ -24,7 +25,7 @@ export type CommandActionCategory =
   | "workflow-library"
   | "pane"
   | "settings"
-  | "agent-settings";
+  | "agents";
 
 export type CommandAvailability =
   | { kind: "available" }
@@ -34,7 +35,7 @@ export type CommandAvailability =
 export type CommandPlacement = "new-panel" | "focused-panel";
 
 export type CommandExecutionTarget =
-  | { kind: "create-session"; mode?: "orchestrator" | "dumb"; initialPrompt?: string }
+  | { kind: "create-session"; agentProfileId?: string; initialPrompt?: string }
   | { kind: "open-session"; workspaceSessionId: string }
   | {
       kind: "open-workflow-task-attempt";
@@ -48,6 +49,7 @@ export type CommandExecutionTarget =
     }
   | { kind: "open-surface"; surface: PromptTarget }
   | { kind: "open-saved-workflow-library" }
+  | { kind: "open-agents" }
   | { kind: "start-orchestrator-turn"; workspaceSessionId: string; prompt: string }
   | { kind: "open-settings"; target: string }
   | { kind: "workspace-action"; action: "open" | "new-tab" | "open-in-new-tab" }
@@ -84,6 +86,7 @@ export type CommandRegistryInput = {
   workspaceKind?: WorkspaceKind;
   focusedSessionId?: string;
   focusedSurfaceTarget?: PromptTarget | null;
+  orchestratorProfiles?: AgentProfileSettings[];
   handlerThreads?: WorkspaceHandlerThreadSummary[];
   projectCiStatus?: WorkspaceProjectCiStatusPanel | null;
 };
@@ -125,7 +128,7 @@ const COMMAND_ACTION_CATEGORY_LABELS: Record<CommandActionCategory, string> = {
   "workflow-library": "Workflows",
   pane: "Panes",
   settings: "Settings",
-  "agent-settings": "Agent Settings",
+  agents: "Agents",
 };
 
 const COMMAND_ACTION_CATEGORY_ORDER: CommandActionCategory[] = [
@@ -135,10 +138,10 @@ const COMMAND_ACTION_CATEGORY_ORDER: CommandActionCategory[] = [
   "surface",
   "workflow-inspector",
   "workflow-library",
+  "agents",
   "project-ci",
   "pane",
   "settings",
-  "agent-settings",
 ];
 
 export function getCommandPaletteInitialInput(mode: CommandPaletteMode): string {
@@ -234,21 +237,12 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
     },
     {
       id: "session.new",
-      label: "New Session",
+      label: "New orchestrator",
       category: "session",
       aliases: ["create session", "new chat", "new orchestrator session"],
       shortcut: getShortcutReadable("session.new"),
       availability: { kind: "available" },
       execute: { kind: "create-session" },
-    },
-    {
-      id: "session.dumb",
-      label: "New Dumb Session",
-      category: "session",
-      aliases: ["dumb session", "scratch session", "fast session", "lightweight orchestrator"],
-      shortcut: null,
-      availability: { kind: "available" },
-      execute: { kind: "create-session", mode: "dumb" },
     },
     {
       id: "settings.open",
@@ -268,6 +262,16 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
       availability: { kind: "available" },
       execute: { kind: "open-saved-workflow-library" },
     },
+    {
+      id: "agents.open",
+      label: "Open Agents",
+      category: "agents",
+      aliases: ["agent profiles", "orchestrator profiles", "thread handler profile"],
+      shortcut: getShortcutReadable("surface.agents.open"),
+      availability: { kind: "available" },
+      execute: { kind: "open-agents" },
+    },
+    ...buildProfileNewOrchestratorActions(input.orchestratorProfiles ?? []),
     {
       id: "pane.duplicate-right",
       label: "Duplicate Pane Right",
@@ -411,6 +415,29 @@ export function buildCommandRegistry(input: CommandRegistryInput): CommandAction
   return actions;
 }
 
+function buildProfileNewOrchestratorActions(
+  profiles: readonly AgentProfileSettings[],
+): CommandAction[] {
+  return profiles.map((profile) => ({
+    id: `session.new.profile.${profile.id}`,
+    label: `New orchestrator: ${profile.name}`,
+    category: "agents",
+    aliases: [
+      "new orchestrator profile",
+      "agent profile",
+      "orchestrator profile",
+      profile.provider,
+      profile.model,
+      profile.reasoningEffort,
+    ],
+    shortcut: null,
+    availability: { kind: "available" },
+    execute: { kind: "create-session", agentProfileId: profile.id },
+    targetName: `${profile.provider}/${profile.model} · ${profile.reasoningEffort}`,
+    badge: "Profile",
+  }));
+}
+
 function buildWorkflowTaskAttemptAction(
   workspaceSessionId: string,
   thread: WorkspaceHandlerThreadSummary,
@@ -539,6 +566,7 @@ export function getCommandActionShortcutHints(action: CommandAction): string[] {
     case "open-session":
     case "open-surface":
     case "open-saved-workflow-library":
+    case "open-agents":
     case "start-orchestrator-turn":
       return action.shortcut
         ? [
@@ -569,6 +597,7 @@ export function getCommandActionPlacementHints(
     case "open-session":
     case "open-surface":
     case "open-saved-workflow-library":
+    case "open-agents":
     case "start-orchestrator-turn":
       return [
         { shortcut: getShortcutReadable("commandPalette.submit"), label: "New pane" },
@@ -601,7 +630,10 @@ export async function executeCommandAction(input: {
   const target = action.execute;
   switch (target.kind) {
     case "create-session":
-      await runtime.createSession({ mode: target.mode }, paneId);
+      await runtime.createSession(
+        target.agentProfileId ? { agentProfileId: target.agentProfileId } : {},
+        paneId,
+      );
       if (target.initialPrompt) {
         await executeInitialPrompt({ runtime, paneId, prompt: target.initialPrompt });
       }
@@ -626,6 +658,9 @@ export async function executeCommandAction(input: {
       return;
     case "open-saved-workflow-library":
       await runtime.openSurface({ surface: "saved-workflow-library" }, paneId);
+      return;
+    case "open-agents":
+      await runtime.openSurface({ surface: "agents" }, paneId);
       return;
     case "start-orchestrator-turn":
       await runtime.openSession(target.workspaceSessionId, paneId);

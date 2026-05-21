@@ -134,7 +134,9 @@ describe("formatSessionStatusLabel", () => {
 
 describe("shouldShowSessionUpdatedAt", () => {
   it("hides the sidebar timestamp until a session has transcript activity", () => {
-    expect(shouldShowSessionUpdatedAt(session({ id: "empty", title: "New Session" }))).toBe(false);
+    expect(shouldShowSessionUpdatedAt(session({ id: "empty", title: "New orchestrator" }))).toBe(
+      false,
+    );
     expect(
       shouldShowSessionUpdatedAt(session({ id: "active", title: "Parser", messageCount: 1 })),
     ).toBe(true);
@@ -145,7 +147,7 @@ describe("getSessionSidebarSubtitle", () => {
   it("does not render generic idle previews as sidebar subtitles", () => {
     expect(
       getSessionSidebarSubtitle(
-        session({ id: "session-new", title: "New Session", preview: "(no message)" }),
+        session({ id: "session-new", title: "New orchestrator", preview: "(no message)" }),
       ),
     ).toBeNull();
     expect(

@@ -4,6 +4,7 @@
   import ChatTranscript from "./ChatTranscript.svelte";
   import RelatedInspectorPane from "./RelatedInspectorPane.svelte";
   import AppLogsPane from "./AppLogsPane.svelte";
+  import AgentsPane from "./AgentsPane.svelte";
   import OpenWorkspacePanel from "./OpenWorkspacePanel.svelte";
   import PromptLibraryPane from "./PromptLibraryPane.svelte";
   import SavedWorkflowLibraryPane from "./SavedWorkflowLibraryPane.svelte";
@@ -20,6 +21,7 @@
   import type { ChatRuntime } from "./chat-runtime";
   import type { ChatSurfaceController } from "./chat-runtime";
   import type { QueuedPrompt } from "./chat-runtime";
+  import type { AgentSettingsState } from "../shared/agent-settings";
   import type {
     WorkspaceHandlerThreadSummary,
     WorkspaceSessionSummary,
@@ -39,6 +41,7 @@
     recentWorkspaces?: WorkspaceTabInfo[];
     onOpenWorkspace?: () => void;
     onOpenWorkspaceInNewTab?: () => void;
+    onAgentSettingsChanged?: (settings: AgentSettingsState) => void;
   };
 
   let {
@@ -50,6 +53,7 @@
     recentWorkspaces = [],
     onOpenWorkspace,
     onOpenWorkspaceInNewTab,
+    onAgentSettingsChanged,
   }: Props = $props();
   let controller = $state<ChatSurfaceController | null>(null);
   let pane = $state<ReturnType<ChatRuntime["getPane"]> | null>(null);
@@ -389,6 +393,8 @@
   <WorkflowInspectorPane {runtime} sessionId={pane.target.workspaceSessionId} workflowRunId={pane.target.workflowRunId} {panelId} />
 {:else if pane?.target?.surface === "app-logs"}
   <AppLogsPane {runtime} {panelId} />
+{:else if pane?.target?.surface === "agents"}
+  <AgentsPane {runtime} {panelId} onSettingsChanged={onAgentSettingsChanged} />
 {:else if pane?.target?.surface === "prompt-library"}
   <PromptLibraryPane {runtime} {panelId} />
 {:else if pane?.target?.surface === "saved-workflow-library"}
