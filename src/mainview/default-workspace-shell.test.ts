@@ -142,6 +142,25 @@ describe("default workspace renderer shell", () => {
     expect(transcriptSource).toContain("scroller.scrollTop = scroller.scrollHeight;");
   });
 
+  it("renders a stop control instead of the send button while a surface is streaming", async () => {
+    const composerSource = await readFile(
+      new URL("./ChatComposer.svelte", import.meta.url),
+      "utf8",
+    );
+    const panelHostSource = await readFile(
+      new URL("./DockviewPanelHost.svelte", import.meta.url),
+      "utf8",
+    );
+
+    expect(composerSource).toContain("{#if isStreaming}");
+    expect(composerSource).toContain('aria-label="Stop agent"');
+    expect(composerSource).toContain("onclick={() => void stopStreaming()}");
+    expect(composerSource).not.toContain('isStreaming ? "Queue message" : "Send message"');
+    expect(panelHostSource).toContain("async function stopAgent()");
+    expect(panelHostSource).toContain("await controller.abort();");
+    expect(panelHostSource).toContain("onStop={stopAgent}");
+  });
+
   it("keeps non-empty transcript rows visible when virtualizer total size is temporarily zero", async () => {
     const transcriptSource = await readFile(
       new URL("./ChatTranscript.svelte", import.meta.url),

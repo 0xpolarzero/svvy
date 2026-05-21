@@ -235,6 +235,11 @@
 		return true;
 	}
 
+	async function stopAgent(): Promise<void> {
+		if (!controller) return;
+		await controller.abort();
+	}
+
   function startEditingUserMessage(message: UserMessage, text: string): void {
     editDraft = {
       messageTimestamp: message.timestamp,
@@ -488,6 +493,7 @@
         controller?.agent.setModel(model);
       }}
       onSend={send}
+      onStop={stopAgent}
       onDraftChange={(draft) => void controller.updateComposerDraft(draft)}
       onBufferChange={(draft) => {
         composerBuffer = structuredClone(draft);

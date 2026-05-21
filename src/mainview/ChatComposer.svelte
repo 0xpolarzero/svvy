@@ -6,6 +6,7 @@
 	import TriangleAlertIcon from "@lucide/svelte/icons/triangle-alert";
 	import ArrowUpIcon from "@lucide/svelte/icons/arrow-up";
 	import ClockIcon from "@lucide/svelte/icons/clock";
+	import SquareIcon from "@lucide/svelte/icons/square";
 	import XIcon from "@lucide/svelte/icons/x";
 	import { onMount, tick } from "svelte";
 	import type { Model } from "@mariozechner/pi-ai";
@@ -69,6 +70,7 @@
 		onListModels: () => Promise<ModelComboboxOption[]>;
 		onModelChange: (model: Model<any>) => void;
 		onSend: (input: ComposerSubmit) => Promise<boolean> | boolean;
+		onStop: () => Promise<void> | void;
 		onDraftChange?: (draft: { text: string; attachments: ComposerAttachment[] }) => void;
 		onBufferChange?: (draft: { text: string; attachments: ComposerAttachment[] }) => void;
 		onEditQueuedMessage?: (promptId: string) => Promise<string | null> | string | null;
@@ -101,6 +103,7 @@
 		onListModels,
 		onModelChange,
 		onSend,
+		onStop,
 		onDraftChange = () => {},
 		onBufferChange = () => {},
 		onEditQueuedMessage = () => {},
@@ -116,6 +119,7 @@
 
 	let draft = $state("");
 	let isSubmitting = $state(false);
+	let isStopping = $state(false);
 	let showThinkingMenu = $state(false);
 	let showModelMenu = $state(false);
 	let modelOptions = $state<CompactComboboxOption[]>([]);
@@ -193,6 +197,12 @@
 			workingTimerNow = Date.now();
 		}, 1000);
 		return () => window.clearInterval(timer);
+	});
+
+	$effect(() => {
+		if (!isStreaming) {
+			isStopping = false;
+		}
 	});
 
 	$effect(() => {
@@ -426,6 +436,17 @@
 			attachments = nextAttachments;
 		} finally {
 			isSubmitting = false;
+		}
+	}
+
+	async function stopStreaming() {
+		if (!isStreaming || isStopping) return;
+		isStopping = true;
+		try {
+			await onStop();
+		} finally {
+			isStopping = false;
+			draftElement?.focus();
 		}
 	}
 
@@ -759,17 +780,31 @@
 								</span>
 							</Tooltip>
 						{/if}
-						<Tooltip label={isStreaming ? "Queue message" : "Send message"} disabled={!currentModel || !canSubmit || isSubmitting}>
-							<button
-								class="composer-submit"
-								type="button"
-								aria-label={isStreaming ? "Queue message" : "Send"}
-								onclick={() => void submit()}
-								disabled={!currentModel || !canSubmit || isSubmitting}
-							>
-								<ArrowUpIcon size={15} aria-hidden="true" />
-							</button>
-						</Tooltip>
+						{#if isStreaming}
+							<Tooltip label={isStopping ? "Stopping agent" : "Stop agent"} disabled={isStopping}>
+								<button
+									class="composer-submit composer-stop"
+									type="button"
+									aria-label="Stop agent"
+									onclick={() => void stopStreaming()}
+									disabled={isStopping}
+								>
+									<SquareIcon size={13} aria-hidden="true" />
+								</button>
+							</Tooltip>
+						{:else}
+							<Tooltip label="Send message" disabled={!currentModel || !canSubmit || isSubmitting}>
+								<button
+									class="composer-submit"
+									type="button"
+									aria-label="Send"
+									onclick={() => void submit()}
+									disabled={!currentModel || !canSubmit || isSubmitting}
+								>
+									<ArrowUpIcon size={15} aria-hidden="true" />
+								</button>
+							</Tooltip>
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -1030,6 +1065,18 @@
 	.composer-submit:focus-visible {
 		outline: none;
 		background: var(--ui-accent-strong);
+	}
+
+	.composer-stop {
+		border-color: color-mix(in oklab, var(--ui-danger) 44%, var(--ui-border-soft));
+		background: color-mix(in oklab, var(--ui-danger-soft) 88%, var(--ui-surface));
+		color: color-mix(in oklab, var(--ui-danger) 86%, var(--ui-text-primary));
+	}
+
+	.composer-stop:hover,
+	.composer-stop:focus-visible {
+		background: var(--ui-danger-soft);
+		color: var(--ui-danger);
 	}
 
 	.composer-submit:disabled {
